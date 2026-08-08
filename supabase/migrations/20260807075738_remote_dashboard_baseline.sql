@@ -1,0 +1,2 @@
+-- Migration history placeholder for the initial remote project bootstrap.
+-- The application schema is defined by the subsequent checked-in migrations.

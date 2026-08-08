@@ -1,0 +1,2987 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+
+import '../backend/supabase_service.dart';
+import '../data/campus_data.dart';
+import '../data/seed_accounts.dart';
+import '../data/seed_audit.dart';
+import '../data/seed_facilities.dart';
+import '../data/seed_reservations.dart';
+import '../model/account.dart';
+import '../model/audit_entry.dart';
+import '../model/calendar_event.dart';
+import '../model/facility.dart';
+import '../model/facility_draft.dart';
+import '../model/notice.dart';
+import '../model/reservation.dart';
+import '../model/verification.dart';
+import '../util/campus_calendar.dart';
+import '../util/geo.dart';
+import 'app_view.dart';
+
+class AdministratorCredentials {
+  const AdministratorCredentials({
+    required this.email,
+    required this.temporaryPassword,
+  });
+
+  final String email;
+  final String temporaryPassword;
+
+  String get exportText =>
+      'SmartReserve administrator credentials\n\n'
+      'Email: $email\n'
+      'Temporary password: $temporaryPassword\n\n'
+      'Store this file securely. Change the temporary password after the '
+      'first sign-in.';
+}
+
+class AdministratorCreationResult {
+  const AdministratorCreationResult._({this.credentials, this.error});
+
+  const AdministratorCreationResult.success(AdministratorCredentials value)
+    : this._(credentials: value);
+
+  const AdministratorCreationResult.failure(String value)
+    : this._(error: value);
+
+  final AdministratorCredentials? credentials;
+  final String? error;
+}
+
+class AppState extends ChangeNotifier {
+  AppState({bool useDemoData = true}) : _useDemoData = useDemoData {
+    facilities = useDemoData ? seedFacilities() : [];
+    requests = useDemoData ? seedRequests() : [];
+    bookings = useDemoData ? [...seedBookings, ...seriesDemoBookings] : [];
+    verifications = useDemoData ? seedVerifications() : [];
+    accounts = useDemoData ? seedAccounts() : [];
+    audit = useDemoData ? seedAudit() : [];
+    calendarAnchor = useDemoData ? campusToday : campusNow();
+  }
+
+  final bool _useDemoData;
+
+  AppView view = AppView.auth;
+
+  AppView _profileOrigin = AppView.auth;
+
+  void goTo(AppView next) {
+    if (isExternalAdmin &&
+        (next == AppView.verifications ||
+            next == AppView.users ||
+            next == AppView.audit)) {
+      showToast(
+        const ToastMessage(
+          'This administrator role cannot access that area.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
+    if (hasSession && !isAdmin && next.usesAdminChrome) {
+      showToast(
+        const ToastMessage(
+          'This account cannot access the admin console.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
+    if (next == AppView.profile) _profileOrigin = view;
+    if (view == next) return;
+    view = next;
+    closeOverlays();
+    notifyListeners();
+  }
+
+  void leaveProfile() => goTo(_profileOrigin);
+
+  bool statesOpen = false;
+  bool notificationsOpen = false;
+
+  void toggleStates() {
+    statesOpen = !statesOpen;
+    notificationsOpen = false;
+    notifyListeners();
+  }
+
+  void toggleNotifications() {
+    notificationsOpen = !notificationsOpen;
+    statesOpen = false;
+    notifyListeners();
+  }
+
+  void closeOverlays() {
+    if (!statesOpen && !notificationsOpen) return;
+    statesOpen = false;
+    notificationsOpen = false;
+    notifyListeners();
+  }
+
+  late List<Facility> facilities;
+  late List<ReservationRequest> requests;
+  late List<VerificationSubmission> verifications;
+  late List<Account> accounts;
+  late List<AuditEntry> audit;
+  late List<Booking> bookings;
+  List<BackendNotification> notifications = [];
+  Map<String, bool> notificationPreferences = {
+    'Decision on my requests': true,
+    'Reminder the day before': true,
+    'New facilities on campus': false,
+  };
+  final Map<String, BackendReservation> _backendReservations = {};
+  SmartReserveBackend? backend;
+  SessionProfile? sessionProfile;
+  BackendVerification? myVerification;
+  Account? _sessionAccount;
+  StreamSubscription<List<BackendVerification>>? _verificationSubscription;
+  StreamSubscription<List<BackendFacility>>? _facilitySubscription;
+  StreamSubscription<List<BackendAccount>>? _accountSubscription;
+  StreamSubscription<List<BackendReservation>>? _reservationSubscription;
+  StreamSubscription<List<BackendNotification>>? _notificationSubscription;
+
+  bool get hasSession => sessionProfile != null;
+  bool get isInternalAdmin => sessionProfile?.isInternalAdmin ?? false;
+  bool get isExternalAdmin => sessionProfile?.isExternalAdmin ?? false;
+  bool get isAdmin => sessionProfile?.isAdmin ?? false;
+
+  void configureBackend(SmartReserveBackend service) {
+    backend = service;
+  }
+
+  Future<void> initializeBackend() async {
+    final service = backend;
+    if (service == null) return;
+    await applyBackendProfile(await service.currentProfile());
+  }
+
+  Future<void> applyBackendProfile(SessionProfile? profile) async {
+    sessionProfile = profile;
+    _syncSessionAccount();
+    _verificationSubscription?.cancel();
+    _verificationSubscription = null;
+    _facilitySubscription?.cancel();
+    _facilitySubscription = null;
+    _accountSubscription?.cancel();
+    _accountSubscription = null;
+    _reservationSubscription?.cancel();
+    _reservationSubscription = null;
+    _notificationSubscription?.cancel();
+    _notificationSubscription = null;
+    if (profile == null) {
+      view = AppView.auth;
+      verifications = [];
+      myVerification = null;
+      _sessionAccount = null;
+      facilities = [];
+      requests = _useDemoData ? seedRequests() : [];
+      bookings = _useDemoData ? [...seedBookings, ...seriesDemoBookings] : [];
+      notifications = [];
+      _backendReservations.clear();
+      if (!_useDemoData) accounts = [];
+      accountsLoading = false;
+      accountsError = null;
+      notifyListeners();
+      return;
+    }
+    await refreshFacilities();
+    _facilitySubscription = backend?.facilityStream().listen(
+      _applyFacilityRows,
+      onError: (Object error) {
+        facilitiesError = 'Facilities could not refresh: $error';
+        facilitiesLoading = false;
+        notifyListeners();
+      },
+    );
+    await refreshReservations();
+    _reservationSubscription = backend?.reservationStream().listen(
+      _applyReservationRows,
+      onError: (Object error) {
+        reservationsError = 'Reservations could not refresh: $error';
+        reservationsLoading = false;
+        notifyListeners();
+      },
+    );
+    await refreshNotifications();
+    _notificationSubscription = backend?.notificationStream().listen(
+      _applyNotifications,
+      onError: (Object error) {
+        notificationsError = 'Notifications could not refresh: $error';
+        notifyListeners();
+      },
+    );
+    if (profile.isInternalAdmin) {
+      await refreshAccounts();
+      _accountSubscription = backend?.accountStream().listen(
+        _applyBackendAccounts,
+        onError: (Object error) {
+          accountsError = 'Accounts could not refresh: ${_accountError(error)}';
+          accountsLoading = false;
+          notifyListeners();
+        },
+      );
+      await refreshVerifications();
+      _verificationSubscription = backend?.verificationStream().listen((_) {
+        unawaited(refreshVerifications());
+      });
+      view = AppView.facilities;
+    } else if (profile.isExternalAdmin) {
+      if (!_useDemoData) accounts = [];
+      view = AppView.facilities;
+    } else {
+      if (!_useDemoData) accounts = [];
+      myVerification = await backend?.currentVerification();
+      verifications = myVerification == null
+          ? []
+          : [_toVerification(myVerification!)];
+      _syncSessionAccount();
+      _verificationSubscription = backend?.verificationStream().listen((_) {
+        unawaited(refreshMyVerification());
+      });
+      view = myVerification != null || !profile.onboardingComplete
+          ? AppView.auth
+          : AppView.studentApp;
+    }
+    notifyListeners();
+  }
+
+  Future<void> refreshMyVerification() async {
+    myVerification = await backend?.currentVerification();
+    verifications = myVerification == null
+        ? []
+        : [_toVerification(myVerification!)];
+    _syncSessionAccount();
+    notifyListeners();
+  }
+
+  VerificationState get _sessionVerification {
+    final submissionStatus = myVerification?.status;
+    if (submissionStatus != null) {
+      return switch (submissionStatus) {
+        'approved' => VerificationState.verified,
+        'rejected' => VerificationState.rejected,
+        'pending' || 'changes_requested' => VerificationState.pending,
+        _ => VerificationState.none,
+      };
+    }
+    return VerificationState.fromRaw(
+      sessionProfile?.verificationStatus ?? 'none',
+    );
+  }
+
+  void _syncSessionAccount() {
+    final profile = sessionProfile;
+    if (profile == null || profile.isAdmin) {
+      _sessionAccount = null;
+      return;
+    }
+
+    final existing = _sessionAccount;
+    if (existing != null && existing.id == profile.id) {
+      existing
+        ..name = profile.fullName
+        ..email = profile.email
+        ..role = AccountRole.fromRaw(profile.role)
+        ..unit = profile.unit ?? ''
+        ..idNumber = profile.campusId ?? ''
+        ..verification = _sessionVerification
+        ..status = AccountStatus.fromRaw(profile.accountStatus)
+        ..suspendReason = profile.suspensionReason
+        ..suspendUntil = profile.suspendedUntil == null
+            ? null
+            : _accountDate(profile.suspendedUntil);
+      return;
+    }
+
+    _sessionAccount = Account(
+      id: profile.id,
+      name: profile.fullName,
+      email: profile.email,
+      role: AccountRole.fromRaw(profile.role),
+      unit: profile.unit ?? '',
+      idNumber: profile.campusId ?? '',
+      verification: _sessionVerification,
+      status: AccountStatus.fromRaw(profile.accountStatus),
+      reservations: 0,
+      lastActive: 'Now',
+      joined: _formatProfileDate(profile.createdAt),
+      noShows: 0,
+      isSelf: true,
+      suspendReason: profile.suspensionReason,
+      suspendUntil: profile.suspendedUntil == null
+          ? null
+          : _accountDate(profile.suspendedUntil),
+    );
+  }
+
+  Future<void> refreshVerifications() async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) return;
+    final rows = await service.verifications();
+    verifications = rows.map(_toVerification).toList();
+    notifyListeners();
+  }
+
+  bool accountsLoading = false;
+  String? accountsError;
+
+  Future<void> refreshAccounts() async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) return;
+    accountsLoading = true;
+    accountsError = null;
+    notifyListeners();
+    try {
+      _applyBackendAccounts(await service.accounts());
+    } catch (error) {
+      accountsLoading = false;
+      accountsError = 'Accounts could not be loaded: ${_accountError(error)}';
+      notifyListeners();
+    }
+  }
+
+  void _applyBackendAccounts(List<BackendAccount> rows) {
+    accounts = rows.map(_toAccount).toList();
+    accountsLoading = false;
+    accountsError = null;
+    notifyListeners();
+  }
+
+  Account _toAccount(BackendAccount row) => Account(
+    id: row.id,
+    name: row.fullName.trim().isEmpty ? row.email : row.fullName,
+    email: row.email,
+    role: AccountRole.fromRaw(row.role),
+    unit: row.unit.trim().isEmpty ? '—' : row.unit,
+    idNumber: row.campusId.trim().isEmpty ? '—' : row.campusId,
+    verification: VerificationState.fromRaw(row.verificationStatus),
+    status: AccountStatus.fromRaw(row.accountStatus),
+    reservations: 0,
+    lastActive: row.isSelf
+        ? 'Now'
+        : _relativeAccountTime(row.lastSignInAt, never: 'Never'),
+    joined: _accountDate(row.createdAt),
+    noShows: 0,
+    isSelf: row.isSelf,
+    suspendUntil: row.suspendedUntil == null
+        ? null
+        : _accountDate(row.suspendedUntil),
+    suspendReason: row.suspensionReason,
+    invitationSentAt: row.invitationSentAt,
+    lastActiveAt: row.lastSignInAt,
+    joinedAt: row.createdAt,
+    activityMetricsAvailable: row.activityMetricsAvailable,
+  );
+
+  void _upsertBackendAccount(BackendAccount row) {
+    final account = _toAccount(row);
+    final index = accounts.indexWhere((item) => item.id == account.id);
+    if (index == -1) {
+      accounts = [account, ...accounts];
+    } else {
+      accounts = [...accounts]..[index] = account;
+    }
+    accountsError = null;
+    notifyListeners();
+  }
+
+  static String _accountDate(DateTime? value) {
+    if (value == null) return '—';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${value.day} ${months[value.month - 1]} ${value.year}';
+  }
+
+  static String _relativeAccountTime(DateTime? value, {required String never}) {
+    if (value == null) return never;
+    final difference = DateTime.now().difference(value);
+    if (difference.inMinutes < 2) return 'Now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes} min ago';
+    if (difference.inHours < 24) return '${difference.inHours} hours ago';
+    if (difference.inDays == 1) return 'Yesterday';
+    if (difference.inDays < 30) return '${difference.inDays} days ago';
+    return _accountDate(value);
+  }
+
+  static String _accountError(Object error) {
+    final text = error.toString().replaceFirst(RegExp(r'^Bad state: '), '');
+    return text.replaceFirst(RegExp(r'^Exception: '), '');
+  }
+
+  String? facilitiesError;
+
+  Future<void> refreshFacilities() async {
+    final service = backend;
+    if (service == null || sessionProfile == null) return;
+    facilitiesLoading = true;
+    facilitiesError = null;
+    notifyListeners();
+    try {
+      _applyFacilityRows(await service.facilities());
+    } catch (error) {
+      facilitiesError = 'Facilities could not be loaded: $error';
+      facilitiesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _applyFacilityRows(List<BackendFacility> rows) {
+    final service = backend;
+    if (service == null) return;
+    facilities = [
+      for (final row in rows) row.toFacility(service.facilityPhotoUrl),
+    ];
+    facilitiesLoading = false;
+    facilitiesError = null;
+    notifyListeners();
+  }
+
+  VerificationSubmission _toVerification(BackendVerification row) =>
+      VerificationSubmission(
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        kind: switch (row.claimType) {
+          'faculty' => 'Faculty',
+          'staff' => 'University staff',
+          _ => 'Student',
+        },
+        idNumber: row.campusId,
+        unit: row.unit,
+        document: row.documentPath == null
+            ? 'Deleted after final decision'
+            : row.documentName,
+        submitted: row.submittedAt.toLocal().toString().substring(0, 16),
+        registryMatch: true,
+        nameMatch: true,
+        alreadyClaimed: false,
+        legible: true,
+        decision: switch (row.status) {
+          'approved' => VerificationDecision.approved,
+          'changes_requested' => VerificationDecision.changesRequested,
+          'rejected' => VerificationDecision.rejected,
+          _ => VerificationDecision.pending,
+        },
+        decidedAt: row.decidedAt?.toLocal().toString().substring(0, 16),
+        reason: row.reason,
+        fromOnboarding: row.userId == sessionProfile?.id,
+        userId: row.userId,
+        documentPath: row.documentPath,
+      );
+
+  Future<void> signOut() async {
+    Object? signOutError;
+    try {
+      await backend?.signOut();
+    } catch (error, stackTrace) {
+      signOutError = error;
+      debugPrint('SmartReserve sign-out failure: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      // Never retain account data or an authenticated screen locally if the
+      // auth client reports an error after clearing its current session.
+      await applyBackendProfile(null);
+    }
+    if (signOutError != null) {
+      showToast(
+        const ToastMessage(
+          'You are signed out on this device, but the server could not confirm it.',
+        ),
+      );
+    }
+  }
+
+  Account get currentAdmin {
+    final profile = sessionProfile;
+    if (profile?.isAdmin ?? false) {
+      return Account(
+        id: profile!.id,
+        name: profile.fullName,
+        email: profile.email,
+        role: profile.isInternalAdmin
+            ? AccountRole.internalAdmin
+            : AccountRole.externalAdmin,
+        unit: profile.unit ?? '',
+        idNumber: profile.campusId ?? '',
+        verification: VerificationState.verified,
+        status: AccountStatus.active,
+        reservations: 0,
+        lastActive: 'Now',
+        joined: 'Now',
+        noShows: 0,
+        isSelf: true,
+      );
+    }
+    return accounts.firstWhere((a) => a.isSelf, orElse: () => accounts.last);
+  }
+
+  bool facilitiesLoading = false;
+  bool forceMapOffline = false;
+  bool forceDraftBanner = false;
+
+  void setDemo({bool? mapOffline, bool? draftBanner}) {
+    forceMapOffline = mapOffline ?? forceMapOffline;
+    forceDraftBanner = draftBanner ?? forceDraftBanner;
+    notifyListeners();
+  }
+
+  void clearDemo() {
+    forceMapOffline = false;
+    forceDraftBanner = false;
+    notifyListeners();
+  }
+
+  int get pendingRequests =>
+      requests.where((r) => r.status == RequestStatus.pending).length;
+
+  int get pendingVerifications =>
+      verifications.where((v) => v.isPending).length;
+
+  int get mappedCount => facilities.where((f) => f.coords != null).length;
+
+  int get catalogueTotal => facilities.length;
+
+  ToastMessage? toast;
+  Timer? _toastTimer;
+
+  UndoOffer? undo;
+  Timer? _undoTimer;
+
+  void showToast(
+    ToastMessage message, {
+    Duration duration = const Duration(seconds: 4),
+  }) {
+    _toastTimer?.cancel();
+    toast = message;
+    notifyListeners();
+    _toastTimer = Timer(duration, () {
+      toast = null;
+      notifyListeners();
+    });
+  }
+
+  void offerUndo(
+    UndoOffer offer, {
+    Duration window = const Duration(seconds: 8),
+  }) {
+    _undoTimer?.cancel();
+    undo = offer;
+    notifyListeners();
+    _undoTimer = Timer(window, dismissUndo);
+  }
+
+  void dismissUndo() {
+    if (undo == null) return;
+    _undoTimer?.cancel();
+    undo = null;
+    notifyListeners();
+  }
+
+  void takeUndo() {
+    final offer = undo;
+    if (offer == null) return;
+    dismissUndo();
+    offer.onUndo();
+  }
+
+  @override
+  void dispose() {
+    _toastTimer?.cancel();
+    _undoTimer?.cancel();
+    _verificationSubscription?.cancel();
+    _facilitySubscription?.cancel();
+    _accountSubscription?.cancel();
+    _reservationSubscription?.cancel();
+    _notificationSubscription?.cancel();
+    super.dispose();
+  }
+
+  void log({
+    required String action,
+    required String target,
+    required AuditKind kind,
+    required List<String> diff,
+    String reason = '',
+    bool material = true,
+    bool revertable = false,
+    String? recordId,
+  }) {
+    audit = [
+      AuditEntry.now(
+        actor: currentAdmin.name,
+        actorRole: currentAdmin.role.label,
+        action: action,
+        target: target,
+        kind: kind,
+        diff: diff,
+        reason: reason,
+        material: material,
+        revertable: revertable,
+        recordId: recordId,
+      ),
+      ...audit,
+    ];
+  }
+
+  List<AuditEntry> facilityActivity(Facility facility) => [
+    for (final entry in audit)
+      if (entry.recordId == facility.id ||
+          (entry.recordId == null &&
+              entry.kind == AuditKind.facility &&
+              entry.target == facility.name))
+        entry,
+  ];
+
+  List<AuditEntry> requestActivity(String requestId) => [
+    for (final entry in audit)
+      if (entry.recordId == requestId) entry,
+  ];
+
+  Facility? facilityNamed(String name) {
+    for (final f in facilities) {
+      if (f.name == name) return f;
+    }
+    return null;
+  }
+
+  bool reservationsLoading = false;
+  String? reservationsError;
+  String? notificationsError;
+  final Set<String> reservationActionsPending = {};
+
+  int get unreadNotifications =>
+      notifications.where((item) => item.unread).length;
+
+  Future<void> refreshReservations() async {
+    final service = backend;
+    if (service == null || !hasSession) return;
+    reservationsLoading = true;
+    reservationsError = null;
+    notifyListeners();
+    try {
+      _applyReservationRows(await service.reservations());
+    } catch (error) {
+      reservationsError = 'Reservations could not load: $error';
+      reservationsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _applyReservationRows(List<BackendReservation> rows) {
+    _backendReservations
+      ..clear()
+      ..addEntries(rows.map((row) => MapEntry(row.id, row)));
+    requests = rows.map(_toReservationRequest).toList();
+    bookings = [
+      for (final row in rows)
+        for (final occurrence in row.occurrences)
+          if (occurrence.bookingState == 'booked')
+            Booking(
+              id: occurrence.id,
+              facility: row.facilityName,
+              date: formatCampusDate(campusWallTime(occurrence.startsAt)),
+              start: _clock(campusWallTime(occurrence.startsAt)),
+              end: _clock(campusWallTime(occurrence.endsAt)),
+              label: row.purpose.split('.').first,
+              requester: row.requesterName,
+              sourceRequestId: row.id,
+            ),
+    ];
+    if (calendarFacilityFilter != 'All facilities' &&
+        !calendarFacilities.contains(calendarFacilityFilter)) {
+      calendarFacilityFilter = 'All facilities';
+    }
+    final nonReservation = audit
+        .where((entry) => entry.kind != AuditKind.reservation)
+        .toList();
+    final reservationAudit = <AuditEntry>[
+      for (final row in rows)
+        for (final event in row.events)
+          AuditEntry(
+            id: event.id,
+            actor: event.actorName,
+            actorRole: event.actorRole,
+            action: event.action,
+            target: '${row.purpose.split('.').first} — ${row.requesterName}',
+            kind: AuditKind.reservation,
+            when: _relative(event.createdAt),
+            absolute: event.createdAt.toLocal().toString(),
+            material: event.material,
+            diff: [if (event.details.isNotEmpty) event.details.toString()],
+            reason: event.reason ?? '',
+            recordId: row.id,
+          ),
+    ]..sort((a, b) => b.absolute.compareTo(a.absolute));
+    audit = [...reservationAudit, ...nonReservation];
+    reservationsLoading = false;
+    reservationsError = null;
+    if (selectedRequestId != null &&
+        !requests.any((request) => request.id == selectedRequestId)) {
+      selectedRequestId = null;
+    }
+    notifyListeners();
+  }
+
+  ReservationRequest _toReservationRequest(BackendReservation row) {
+    final occurrences = [
+      for (final occurrence in row.occurrences)
+        ReservationOccurrence(
+          id: occurrence.id,
+          startsAt: campusWallTime(occurrence.startsAt),
+          endsAt: campusWallTime(occurrence.endsAt),
+          bookingState: occurrence.bookingState,
+          stage: switch (occurrence.lifecycleStage) {
+            'checked_in' => BookingStage.checkedIn,
+            'completed' => BookingStage.completed,
+            'no_show' => BookingStage.noShow,
+            _ => BookingStage.booked,
+          },
+          proposedStartsAt: occurrence.proposedStartsAt == null
+              ? null
+              : campusWallTime(occurrence.proposedStartsAt!),
+          proposedEndsAt: occurrence.proposedEndsAt == null
+              ? null
+              : campusWallTime(occurrence.proposedEndsAt!),
+          reason: occurrence.exceptionReason,
+        ),
+    ];
+    final first = occurrences.isEmpty
+        ? DateTime.now()
+        : occurrences.first.startsAt;
+    return ReservationRequest(
+      id: row.id,
+      requesterId: row.requesterId,
+      facilityId: row.facilityId,
+      facility: row.facilityName,
+      building: row.facilityBuilding,
+      room: row.facilityRoom,
+      capacity: row.facilityCapacity,
+      requester: row.requesterName,
+      role: row.requesterRole,
+      org: row.requesterUnit,
+      purpose: row.purpose,
+      date: formatCampusDate(first),
+      start: _clock(first),
+      end: _clock(occurrences.isEmpty ? first : occurrences.first.endsAt),
+      heads: row.headcount,
+      submitted: _relative(row.createdAt),
+      urgent: first.difference(campusNow()).inHours <= 48,
+      attachments: row.attachments.length,
+      noShows: 0,
+      status: RequestStatus.fromRaw(row.status),
+      recurring: occurrences.length > 1
+          ? 'Weekly · ${occurrences.length} occurrences'
+          : null,
+      decidedBy: row.decidedByName,
+      decidedAt: row.decidedAt == null ? null : _relative(row.decidedAt!),
+      reason: row.decisionReason,
+      heldForVerification: row.heldForVerification,
+      stage: occurrences.isEmpty
+          ? BookingStage.booked
+          : occurrences.first.stage,
+      seriesExceptions: [
+        for (final occurrence in occurrences)
+          if (occurrence.needsNewTime) formatCampusDate(occurrence.startsAt),
+      ],
+      version: row.version,
+      paymentAmountCentavos: row.paymentAmountCentavos,
+      paymentStatus: PaymentTrackingStatus.fromRaw(row.paymentStatus),
+      occurrences: occurrences,
+      files: [
+        for (final file in row.attachments)
+          ReservationFile(
+            id: file.id,
+            name: file.fileName,
+            mimeType: file.mimeType,
+            byteSize: file.byteSize,
+            storagePath: file.storagePath,
+          ),
+      ],
+    );
+  }
+
+  static String _clock(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}';
+
+  static String _relative(DateTime value) {
+    final difference = DateTime.now().difference(value.toLocal());
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inHours < 1) return '${difference.inMinutes} min ago';
+    if (difference.inDays < 1) return '${difference.inHours} hours ago';
+    return '${difference.inDays} days ago';
+  }
+
+  Future<void> refreshNotifications() async {
+    final service = backend;
+    if (service == null || !hasSession) return;
+    try {
+      _applyNotifications(await service.notifications());
+      notificationPreferences = await service.notificationPreferences();
+      notifyListeners();
+    } catch (error) {
+      notificationsError = 'Notifications could not load: $error';
+      notifyListeners();
+    }
+  }
+
+  void setNotificationPreference(String key, bool value) {
+    notificationPreferences = {...notificationPreferences, key: value};
+    notifyListeners();
+    final service = backend;
+    if (service != null && hasSession) {
+      unawaited(
+        service.saveNotificationPreferences(notificationPreferences).catchError(
+          (Object error) {
+            showToast(
+              ToastMessage(
+                'Notification preference could not be saved: $error',
+                tone: AdvisoryTone.block,
+              ),
+            );
+          },
+        ),
+      );
+    }
+  }
+
+  void _applyNotifications(List<BackendNotification> rows) {
+    notifications = rows;
+    notificationsError = null;
+    notifyListeners();
+  }
+
+  Future<void> openNotification(BackendNotification notification) async {
+    final service = backend;
+    if (notification.unread && service != null) {
+      await service.markNotificationRead(notification.id);
+      await refreshNotifications();
+    }
+    final requestId = notification.requestId;
+    if (requestId == null) return;
+    if (isAdmin) {
+      view = AppView.reservations;
+      final request = requestById(requestId);
+      if (request != null) {
+        requestTab = request.status;
+        selectedRequestId = request.id;
+      }
+      notifyListeners();
+    } else {
+      goTo(AppView.studentApp);
+    }
+  }
+
+  Future<Facility> persistFacility(
+    FacilityDraft draft, {
+    String? editingId,
+  }) async {
+    final service = backend;
+    if (service == null || !isAdmin) {
+      return saveFromDraft(draft, editingId: editingId);
+    }
+
+    final row = await service.saveFacility(draft, editingId: editingId);
+    final saved = row.toFacility(service.facilityPhotoUrl);
+    final previous = editingId == null
+        ? null
+        : facilities.cast<Facility?>().firstWhere(
+            (facility) => facility?.id == editingId,
+            orElse: () => null,
+          );
+    facilities = [
+      saved,
+      for (final facility in facilities)
+        if (facility.id != saved.id) facility,
+    ];
+    log(
+      action: previous == null ? 'created the facility' : 'edited',
+      target: saved.name,
+      kind: AuditKind.facility,
+      diff: [
+        '${saved.whereLine} · ${saved.capacity} seats',
+        '${saved.photoCount} photo${saved.photoCount == 1 ? '' : 's'} saved',
+      ],
+      recordId: saved.id,
+    );
+    notifyListeners();
+    return saved;
+  }
+
+  Facility saveFromDraft(FacilityDraft draft, {String? editingId}) {
+    final existing = editingId == null
+        ? null
+        : facilities.cast<Facility?>().firstWhere(
+            (f) => f?.id == editingId,
+            orElse: () => null,
+          );
+
+    final pinConfidence = draft.pin == null
+        ? PinConfidence.none
+        : (draft.confirmedOutside || !inPolygon(draft.pin!, campus.boundary)
+              ? PinConfidence.needsCheck
+              : PinConfidence.verified);
+
+    final state = draft.confirmedOutside
+        ? FacilityState.underReview
+        : FacilityState.fromLabel(draft.status.label);
+
+    if (existing == null) {
+      final created = Facility(
+        id: 'f-${DateTime.now().microsecondsSinceEpoch}',
+        name: draft.name.trim(),
+        room: draft.room.trim(),
+        building: draft.building,
+        category: draft.category,
+        capacity: draft.capacitySeats ?? 0,
+        pinConfidence: pinConfidence,
+        state: state,
+        floor: draft.floor,
+        coords: draft.pin,
+        accuracy: draft.accuracy,
+        description: draft.description.trim(),
+        amenities: List.of(draft.amenities),
+        hours: draft.hoursLine,
+        days: draft.daysLine,
+        approvalRequired: draft.requiresApproval,
+        maxDuration: draft.maxDuration,
+        advance: draft.advance,
+        buffer: draft.buffer,
+        publicListing: draft.publicListing,
+        campusName: draft.campusName,
+        updated: '${_today()} · ${currentAdmin.name}',
+        bookings: 0,
+        photoCount: draft.photos.length,
+        photos: List.of(draft.photos),
+        confirmedOutside: draft.confirmedOutside,
+        geoBuilding: draft.geoBuilding,
+        street: draft.street,
+        barangay: draft.barangay,
+        municipality: draft.municipality,
+        province: draft.province,
+        region: draft.region,
+        country: draft.country,
+        geoEdited: draft.geoEdited.toList(),
+      );
+      facilities = [created, ...facilities];
+      log(
+        action: 'created the facility',
+        target: created.name,
+        kind: AuditKind.facility,
+        diff: [
+          '${created.whereLine} · ${created.capacity} seats',
+          if (created.coords != null)
+            'Pinned at ${formatCoords(created.coords!)} · ±'
+                '${created.accuracy ?? 0} m',
+        ],
+        reason: draft.confirmedOutside
+            ? 'Pin kept outside the campus boundary and flagged for review.'
+            : '',
+        recordId: created.id,
+      );
+      notifyListeners();
+      return created;
+    }
+
+    final diff = <String>[];
+    void change(String label, Object? before, Object? after) {
+      if ('$before' != '$after') diff.add('$label $before  →  $after');
+    }
+
+    change('Name', existing.name, draft.name.trim());
+    change('Capacity', existing.capacity, draft.capacitySeats ?? 0);
+    change('Category', existing.category, draft.category);
+    change('Building', existing.building, draft.building);
+    change('Status', existing.state.label, state.label);
+    if (existing.coords != draft.pin && draft.pin != null) {
+      final movedFrom = existing.coords;
+      diff.add(
+        movedFrom == null
+            ? 'Pin set at ${formatCoords(draft.pin!)}'
+            : '${formatCoords(movedFrom)}  →  ${formatCoords(draft.pin!)}',
+      );
+      if (movedFrom != null) {
+        final metres = haversine(movedFrom, draft.pin!);
+        diff.add(
+          'Moved ${formatMetres(metres)} '
+          '${compassFrom(movedFrom, draft.pin!)} · accuracy ±'
+          '${draft.accuracy ?? 0} m',
+        );
+      }
+    }
+
+    existing
+      ..name = draft.name.trim()
+      ..room = draft.room.trim()
+      ..building = draft.building
+      ..category = draft.category
+      ..capacity = draft.capacitySeats ?? 0
+      ..pinConfidence = pinConfidence
+      ..state = state
+      ..floor = draft.floor
+      ..coords = draft.pin
+      ..accuracy = draft.accuracy
+      ..description = draft.description.trim()
+      ..amenities = List.of(draft.amenities)
+      ..hours = draft.hoursLine
+      ..days = draft.daysLine
+      ..approvalRequired = draft.requiresApproval
+      ..maxDuration = draft.maxDuration
+      ..advance = draft.advance
+      ..buffer = draft.buffer
+      ..publicListing = draft.publicListing
+      ..photoCount = draft.photos.length
+      ..photos = List.of(draft.photos)
+      ..confirmedOutside = draft.confirmedOutside
+      ..geoBuilding = draft.geoBuilding
+      ..street = draft.street
+      ..barangay = draft.barangay
+      ..municipality = draft.municipality
+      ..province = draft.province
+      ..region = draft.region
+      ..country = draft.country
+      ..geoEdited = draft.geoEdited.toList()
+      ..updated = '${_today()} · ${currentAdmin.name}';
+
+    if (diff.isNotEmpty) {
+      log(
+        action: 'edited',
+        target: existing.name,
+        kind: AuditKind.facility,
+        diff: diff,
+        revertable: true,
+        recordId: existing.id,
+      );
+    }
+    notifyListeners();
+    return existing;
+  }
+
+  final Set<String> archivingFacilityIds = {};
+
+  Future<void> deleteFacility(Facility facility, {String reason = ''}) async {
+    final service = backend;
+    if (service != null && isAdmin) {
+      if (!archivingFacilityIds.add(facility.id)) return;
+      notifyListeners();
+      try {
+        await service.archiveFacility(facility.id);
+      } catch (error) {
+        showToast(
+          ToastMessage(
+            'Facility could not be archived: $error',
+            tone: AdvisoryTone.block,
+          ),
+        );
+        return;
+      } finally {
+        archivingFacilityIds.remove(facility.id);
+        notifyListeners();
+      }
+    }
+    facilities = facilities.where((f) => f.id != facility.id).toList();
+    log(
+      action: 'archived the facility',
+      target: facility.name,
+      kind: AuditKind.facility,
+      diff: [
+        '${facility.whereLine} · ${facility.bookings} bookings on record',
+        'Removed from the catalogue',
+      ],
+      reason: reason,
+      revertable: true,
+      recordId: facility.id,
+    );
+    notifyListeners();
+    offerUndo(
+      UndoOffer(
+        label: '${facility.name} archived',
+        onUndo: () {
+          unawaited(_restoreFacility(facility));
+        },
+      ),
+    );
+  }
+
+  Future<void> _restoreFacility(Facility facility) async {
+    final service = backend;
+    try {
+      if (service != null && isAdmin) {
+        await service.restoreFacility(facility.id);
+      }
+      facilities = [
+        facility,
+        for (final current in facilities)
+          if (current.id != facility.id) current,
+      ];
+      log(
+        action: 'restored the facility',
+        target: facility.name,
+        kind: AuditKind.facility,
+        diff: ['Archived  →  Active'],
+        recordId: facility.id,
+      );
+      notifyListeners();
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'Facility could not be restored: $error',
+          tone: AdvisoryTone.block,
+        ),
+      );
+    }
+  }
+
+  RequestStatus requestTab = RequestStatus.pending;
+  String? selectedRequestId = 'r1';
+  final Set<String> selectedRequestIds = {};
+
+  String? _requestAnchorId;
+
+  List<String> get scheduleFacilities {
+    final names = <String>{
+      for (final f in facilities) f.name,
+      for (final b in bookings) b.facility,
+      for (final r in requests) r.facility,
+    }.toList()..sort();
+    return names;
+  }
+
+  /// The centralized calendar always works with occurrences, not request
+  /// headers. That keeps every date of a recurring reservation visible.
+  late DateTime calendarAnchor;
+  CalendarViewMode calendarViewMode = CalendarViewMode.month;
+  String calendarFacilityFilter = 'All facilities';
+  String calendarQuery = '';
+  final Set<CalendarEventState> calendarStates = {
+    ...CalendarEventState.defaultVisible,
+  };
+  String? selectedCalendarEventId;
+
+  List<String> get calendarFacilities => [
+    'All facilities',
+    ...scheduleFacilities,
+  ];
+
+  List<CalendarEvent> get calendarEvents {
+    final events = <CalendarEvent>[];
+    final requestOccurrenceIds = <String>{};
+
+    for (final request in requests) {
+      if (request.occurrences.isEmpty) {
+        final date = parseCampusDate(request.date);
+        if (date == null) continue;
+        final startsAt = _dateAtClock(date, request.start);
+        final endsAt = _dateAtClock(date, request.end);
+        events.add(
+          CalendarEvent(
+            id: request.id,
+            requestId: request.id,
+            startsAt: startsAt,
+            endsAt: endsAt.isAfter(startsAt)
+                ? endsAt
+                : endsAt.add(const Duration(days: 1)),
+            facility: request.facility,
+            building: request.building,
+            room: request.room,
+            requester: request.requester,
+            organization: request.org,
+            purpose: request.purpose,
+            headcount: request.heads,
+            state: _calendarStateFor(request),
+            lifecycle: request.stage,
+            recurrenceLabel: request.recurring,
+          ),
+        );
+        continue;
+      }
+
+      for (final occurrence in request.occurrences) {
+        requestOccurrenceIds.add(occurrence.id);
+        events.add(
+          CalendarEvent(
+            id: '${request.id}:${occurrence.id}',
+            requestId: request.id,
+            occurrenceId: occurrence.id,
+            startsAt: occurrence.startsAt,
+            endsAt: occurrence.endsAt,
+            facility: request.facility,
+            building: request.building,
+            room: request.room,
+            requester: request.requester,
+            organization: request.org,
+            purpose: request.purpose,
+            headcount: request.heads,
+            state: _calendarStateFor(request, occurrence),
+            lifecycle: occurrence.stage,
+            recurrenceLabel: request.recurring,
+          ),
+        );
+      }
+    }
+
+    for (final booking in bookings) {
+      if (booking.sourceRequestId != null &&
+          requests.any((request) => request.id == booking.sourceRequestId)) {
+        continue;
+      }
+      final date = parseCampusDate(booking.date);
+      if (date == null || requestOccurrenceIds.contains(booking.id)) continue;
+      final startsAt = _dateAtClock(date, booking.start);
+      final endsAt = _dateAtClock(date, booking.end);
+      events.add(
+        CalendarEvent(
+          id: booking.id,
+          requestId: booking.sourceRequestId,
+          startsAt: startsAt,
+          endsAt: endsAt.isAfter(startsAt)
+              ? endsAt
+              : endsAt.add(const Duration(days: 1)),
+          facility: booking.facility,
+          building: '',
+          room: '',
+          requester: booking.requester,
+          organization: '',
+          purpose: booking.label,
+          headcount: 0,
+          state: CalendarEventState.confirmed,
+          lifecycle: BookingStage.booked,
+          legacy: booking.sourceRequestId == null,
+        ),
+      );
+    }
+    events.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return events;
+  }
+
+  List<CalendarEvent> get visibleCalendarEvents {
+    final query = calendarQuery.trim().toLowerCase();
+    return [
+      for (final event in calendarEvents)
+        if ((calendarFacilityFilter == 'All facilities' ||
+                event.facility == calendarFacilityFilter) &&
+            calendarStates.contains(event.state) &&
+            event.matchesQuery(query))
+          event,
+    ];
+  }
+
+  CalendarEvent? get selectedCalendarEvent {
+    final id = selectedCalendarEventId;
+    if (id == null) return null;
+    for (final event in calendarEvents) {
+      if (event.id == id) return event;
+    }
+    return null;
+  }
+
+  void setCalendarViewMode(CalendarViewMode mode) {
+    if (calendarViewMode == mode) return;
+    calendarViewMode = mode;
+    notifyListeners();
+  }
+
+  void setCalendarFacilityFilter(String facility) {
+    calendarFacilityFilter = facility;
+    notifyListeners();
+  }
+
+  void setCalendarQuery(String query) {
+    calendarQuery = query;
+    notifyListeners();
+  }
+
+  void toggleCalendarState(CalendarEventState state) {
+    if (!calendarStates.remove(state)) calendarStates.add(state);
+    notifyListeners();
+  }
+
+  void navigateCalendar(int direction) {
+    calendarAnchor = switch (calendarViewMode) {
+      CalendarViewMode.month => DateTime(
+        calendarAnchor.year,
+        calendarAnchor.month + direction,
+        1,
+      ),
+      CalendarViewMode.week => calendarAnchor.add(
+        Duration(days: 7 * direction),
+      ),
+      CalendarViewMode.day => calendarAnchor.add(Duration(days: direction)),
+    };
+    selectedCalendarEventId = null;
+    notifyListeners();
+  }
+
+  void goToCalendarToday() {
+    calendarAnchor = _useDemoData ? campusToday : campusNow();
+    selectedCalendarEventId = null;
+    notifyListeners();
+  }
+
+  void selectCalendarDate(DateTime date, {CalendarViewMode? mode}) {
+    calendarAnchor = DateTime(date.year, date.month, date.day);
+    if (mode != null) calendarViewMode = mode;
+    selectedCalendarEventId = null;
+    notifyListeners();
+  }
+
+  void selectCalendarEvent(String? id) {
+    selectedCalendarEventId = id;
+    notifyListeners();
+  }
+
+  void openRequestFromCalendar(CalendarEvent event) {
+    final id = event.requestId;
+    if (id == null) return;
+    final request = requestById(id);
+    if (request == null) return;
+    requestTab = request.status;
+    selectedRequestId = request.id;
+    selectedRequestIds.clear();
+    _requestAnchorId = null;
+    view = AppView.reservations;
+    closeOverlays();
+    notifyListeners();
+  }
+
+  static DateTime _dateAtClock(DateTime date, String clock) {
+    final value = parseClock(clock);
+    final hour = value.floor();
+    final minute = ((value - hour) * 60).round();
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
+  static CalendarEventState _calendarStateFor(
+    ReservationRequest request, [
+    ReservationOccurrence? occurrence,
+  ]) {
+    final bookingState = occurrence?.bookingState;
+    return switch (bookingState) {
+      'booked' => CalendarEventState.confirmed,
+      'requested' => CalendarEventState.needsDecision,
+      'changes_requested' || 'bumped' => CalendarEventState.changesRequested,
+      'expired' => CalendarEventState.expired,
+      'cancelled' when request.status == RequestStatus.declined =>
+        CalendarEventState.declined,
+      'cancelled' => CalendarEventState.cancelled,
+      _ => switch (request.status) {
+        RequestStatus.approved => CalendarEventState.confirmed,
+        RequestStatus.pending => CalendarEventState.needsDecision,
+        RequestStatus.changesRequested => CalendarEventState.changesRequested,
+        RequestStatus.declined => CalendarEventState.declined,
+        RequestStatus.cancelled => CalendarEventState.cancelled,
+        RequestStatus.expired => CalendarEventState.expired,
+      },
+    };
+  }
+
+  List<ReservationRequest> get visibleRequests =>
+      requests.where((r) => r.status == requestTab).toList();
+
+  ReservationRequest? get selectedRequest {
+    for (final r in requests) {
+      if (r.id == selectedRequestId) return r;
+    }
+    return null;
+  }
+
+  void setRequestTab(RequestStatus tab) {
+    requestTab = tab;
+    selectedRequestIds.clear();
+    _requestAnchorId = null;
+    final list = visibleRequests;
+    selectedRequestId = list.isEmpty ? null : list.first.id;
+    notifyListeners();
+  }
+
+  void selectRequest(String? id) {
+    selectedRequestId = id;
+    notifyListeners();
+  }
+
+  void stepRequestSelection(int delta) {
+    final list = visibleRequests;
+    if (list.isEmpty) return;
+    final index = list.indexWhere((r) => r.id == selectedRequestId);
+    final next = (index < 0 ? 0 : index + delta).clamp(0, list.length - 1);
+    selectedRequestId = list[next].id;
+    notifyListeners();
+  }
+
+  void toggleRequestSelection(String id, {bool extend = false}) {
+    final rows = [for (final r in visibleRequests) r.id];
+    if (extend && _requestAnchorId != null) {
+      selectedRequestIds.addAll(_range(rows, _requestAnchorId!, id));
+      notifyListeners();
+      return;
+    }
+    if (!selectedRequestIds.remove(id)) selectedRequestIds.add(id);
+    _requestAnchorId = id;
+    notifyListeners();
+  }
+
+  static List<String> _range(List<String> rows, String from, String to) {
+    final a = rows.indexOf(from);
+    final b = rows.indexOf(to);
+    if (a < 0 || b < 0) return const [];
+    return rows.sublist(a < b ? a : b, (a < b ? b : a) + 1);
+  }
+
+  void clearRequestSelection() {
+    selectedRequestIds.clear();
+    _requestAnchorId = null;
+    notifyListeners();
+  }
+
+  void decideRequest(
+    String id,
+    RequestStatus outcome, {
+    String reason = '',
+    bool announce = true,
+  }) {
+    final request = requests.cast<ReservationRequest?>().firstWhere(
+      (r) => r?.id == id,
+      orElse: () => null,
+    );
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      final action = switch (outcome) {
+        RequestStatus.approved => 'approve',
+        RequestStatus.declined => 'decline',
+        RequestStatus.changesRequested => 'request_changes',
+        RequestStatus.pending => 'reopen',
+        RequestStatus.expired => 'expire',
+        RequestStatus.cancelled => 'cancel',
+      };
+      unawaited(
+        _runReservationAction(
+          request,
+          action,
+          reason: reason,
+          announce: announce,
+        ),
+      );
+      return;
+    }
+
+    final before = request.status;
+    final beforeReason = request.reason;
+    request
+      ..status = outcome
+      ..reason = reason.isEmpty ? null : reason
+      ..decidedBy = 'You'
+      ..decidedAt = 'Just now';
+
+    log(
+      action: switch (outcome) {
+        RequestStatus.approved => 'approved the reservation',
+        RequestStatus.declined => 'declined the reservation',
+        RequestStatus.changesRequested =>
+          'requested changes to the reservation',
+        _ => 'updated the reservation',
+      },
+      target: '${request.purpose.split('.').first} — ${request.org}',
+      kind: AuditKind.reservation,
+      diff: [
+        '${before.label}  →  ${outcome.label}',
+        '${request.date} · ${request.start}–${request.end} · '
+            '${request.facility}',
+      ],
+      reason: reason,
+      revertable: true,
+      recordId: request.id,
+    );
+    notifyListeners();
+
+    if (!announce) return;
+    offerUndo(
+      UndoOffer(
+        label: '${outcome.label} — ${request.requester}',
+        onUndo: () {
+          request
+            ..status = before
+            ..reason = beforeReason
+            ..decidedBy = null
+            ..decidedAt = null;
+          log(
+            action: 'undid the decision on',
+            target: '${request.purpose.split('.').first} — ${request.org}',
+            kind: AuditKind.reservation,
+            diff: ['${outcome.label}  →  ${before.label}'],
+            recordId: request.id,
+          );
+          notifyListeners();
+        },
+      ),
+    );
+  }
+
+  void bulkApproveRequests(Iterable<String> ids) {
+    final list = ids.toList();
+    if (list.isEmpty) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      unawaited(_runBulkApprove(list));
+      return;
+    }
+    for (final id in list) {
+      decideRequest(id, RequestStatus.approved, announce: false);
+    }
+    selectedRequestIds.clear();
+    notifyListeners();
+    showToast(
+      ToastMessage(
+        '${list.length} request${list.length == 1 ? '' : 's'} approved.',
+      ),
+    );
+  }
+
+  void bumpFor(String requestId, String reason) {
+    final request = requests.cast<ReservationRequest?>().firstWhere(
+      (r) => r?.id == requestId,
+      orElse: () => null,
+    );
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      unawaited(_runReservationAction(request, 'approve_bump', reason: reason));
+      return;
+    }
+    final bumped = bookings
+        .where(
+          (b) =>
+              b.facility == request.facility &&
+              b.date == request.date &&
+              b.overlaps(request.startAt, request.endAt),
+        )
+        .toList();
+    bookings.removeWhere(bumped.contains);
+    decideRequest(requestId, RequestStatus.approved, reason: reason);
+    log(
+      action: 'bumped a confirmed booking for',
+      target: request.facility,
+      kind: AuditKind.reservation,
+      diff: [
+        for (final b in bumped)
+          '${b.label} (${b.requester}) · ${b.start}–${b.end} · removed',
+        'Both parties notified',
+      ],
+      reason: reason,
+      revertable: true,
+      recordId: request.id,
+    );
+    notifyListeners();
+  }
+
+  void offerAlternativeSlot(String requestId, String start, String end) {
+    final request = requests.cast<ReservationRequest?>().firstWhere(
+      (r) => r?.id == requestId,
+      orElse: () => null,
+    );
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      final occurrence = request.occurrences.isEmpty
+          ? null
+          : request.occurrences.first;
+      if (occurrence == null) return;
+      DateTime at(String value) {
+        final parts = value.split(':').map(int.parse).toList();
+        return DateTime(
+          occurrence.startsAt.year,
+          occurrence.startsAt.month,
+          occurrence.startsAt.day,
+          parts[0],
+          parts[1],
+        );
+      }
+
+      unawaited(
+        _runReservationAction(
+          request,
+          'offer_alternative',
+          reason:
+              'The requested slot is unavailable. An alternative was offered.',
+          payload: {
+            'occurrence_id': occurrence.id,
+            'starts_at': at(start).toUtc().toIso8601String(),
+            'ends_at': at(end).toUtc().toIso8601String(),
+          },
+        ),
+      );
+      return;
+    }
+    final was = '${request.start}–${request.end}';
+    request
+      ..start = start
+      ..end = end;
+    decideRequest(
+      requestId,
+      RequestStatus.changesRequested,
+      reason:
+          'The slot you asked for is taken. $start–$end on the same day is '
+          'free — accept it and the booking is confirmed.',
+    );
+    log(
+      action: 'offered an alternative slot for',
+      target: request.facility,
+      kind: AuditKind.reservation,
+      diff: ['$was  →  $start–$end'],
+      recordId: request.id,
+    );
+    notifyListeners();
+  }
+
+  Future<void> _runReservationAction(
+    ReservationRequest request,
+    String action, {
+    String reason = '',
+    Map<String, dynamic> payload = const {},
+    bool announce = true,
+    bool reversible = true,
+  }) async {
+    final service = backend;
+    if (service == null || reservationActionsPending.contains(request.id)) {
+      return;
+    }
+    reservationActionsPending.add(request.id);
+    notifyListeners();
+    try {
+      final result = await service.performReservationAction(
+        ReservationActionCommand(
+          requestId: request.id,
+          action: action,
+          expectedVersion: request.version,
+          reason: reason.trim().isEmpty ? null : reason.trim(),
+          payload: payload,
+        ),
+      );
+      await refreshReservations();
+      if (announce) {
+        showToast(ToastMessage('${_actionLabel(action)} saved.'));
+      }
+      final actionId = result.actionId;
+      if (reversible && actionId != null) {
+        offerUndo(
+          UndoOffer(
+            label: '${_actionLabel(action)} — ${request.requester}',
+            onUndo: () => unawaited(_undoBackendReservation(actionId)),
+          ),
+        );
+      }
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      await refreshReservations();
+    } finally {
+      reservationActionsPending.remove(request.id);
+      notifyListeners();
+    }
+  }
+
+  Future<void> _runBulkApprove(List<String> ids) async {
+    final service = backend;
+    if (service == null) return;
+    final rows = ids
+        .map((id) => _backendReservations[id])
+        .whereType<BackendReservation>()
+        .toList();
+    if (rows.length != ids.length) {
+      showToast(
+        const ToastMessage(
+          'The selection changed. Refresh and select the requests again.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
+    reservationActionsPending.addAll(ids);
+    notifyListeners();
+    try {
+      final result = await service.bulkApproveReservations(rows);
+      selectedRequestIds.clear();
+      await refreshReservations();
+      showToast(ToastMessage('${ids.length} requests approved.'));
+      if (result.actionIds.isNotEmpty) {
+        offerUndo(
+          UndoOffer(
+            label: '${ids.length} approvals',
+            onUndo: () =>
+                unawaited(_undoBackendReservations(result.actionIds.reversed)),
+          ),
+        );
+      }
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      await refreshReservations();
+    } finally {
+      reservationActionsPending.removeAll(ids);
+      notifyListeners();
+    }
+  }
+
+  Future<void> _undoBackendReservation(String actionId) async {
+    try {
+      await backend?.undoReservationAction(actionId);
+      await refreshReservations();
+      showToast(const ToastMessage('Reservation action undone.'));
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+    }
+  }
+
+  Future<void> _undoBackendReservations(Iterable<String> actionIds) async {
+    try {
+      for (final actionId in actionIds) {
+        await backend?.undoReservationAction(actionId);
+      }
+      await refreshReservations();
+      showToast(const ToastMessage('Bulk approval undone.'));
+    } catch (error) {
+      await refreshReservations();
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+    }
+  }
+
+  static String _actionLabel(String action) => switch (action) {
+    'approve' => 'Approval',
+    'approve_partial' => 'Series approval',
+    'approve_bump' => 'Approval and bump',
+    'decline' => 'Decline',
+    'request_changes' => 'Change request',
+    'offer_alternative' => 'Alternative time',
+    'reopen' => 'Reopen',
+    'expire' => 'Expiry',
+    'check_in' => 'Check-in',
+    'complete' => 'Completion',
+    'no_show' => 'No-show',
+    'cancel' => 'Cancellation',
+    'resubmit' => 'Resubmission',
+    _ => 'Reservation update',
+  };
+
+  static String _reservationError(Object error) {
+    final message = '$error';
+    if (message.contains('23P01') || message.toLowerCase().contains('booked')) {
+      return 'That time was just booked. Refresh and choose another slot.';
+    }
+    if (message.contains('40001') || message.contains('changed')) {
+      return 'This reservation changed in another session. It has been refreshed.';
+    }
+    return message.replaceFirst(RegExp(r'^.*?message:\s*'), '');
+  }
+
+  ReservationRequest? requestById(String id) {
+    for (final r in requests) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  void _bookOccurrences(ReservationRequest request, List<String> dates) {
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    for (var i = 0; i < dates.length; i++) {
+      bookings.add(
+        Booking(
+          id: 'b-$stamp-$i',
+          facility: request.facility,
+          date: dates[i],
+          start: request.start,
+          end: request.end,
+          label: request.purpose.split('.').first,
+          requester: request.requester,
+          sourceRequestId: request.id,
+        ),
+      );
+    }
+  }
+
+  void approveSeries(String id, List<String> dates) {
+    final request = requestById(id);
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      unawaited(_runReservationAction(request, 'approve'));
+      return;
+    }
+    request.seriesExceptions.clear();
+    _bookOccurrences(request, dates);
+    decideRequest(id, RequestStatus.approved, announce: false);
+    log(
+      action: 'approved the whole series for',
+      target: request.facility,
+      kind: AuditKind.reservation,
+      diff: [
+        '${dates.length} dates booked · ${request.start}–${request.end}',
+        '${dates.first}  →  ${dates.last}',
+      ],
+      revertable: true,
+      recordId: request.id,
+    );
+    notifyListeners();
+    showToast(
+      ToastMessage('${dates.length} dates booked for ${request.requester}.'),
+    );
+  }
+
+  void approveSeriesWithExceptions(
+    String id, {
+    required List<String> booked,
+    required List<String> excepted,
+  }) {
+    final request = requestById(id);
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      unawaited(_runReservationAction(request, 'approve_partial'));
+      return;
+    }
+    request.seriesExceptions
+      ..clear()
+      ..addAll(excepted);
+    _bookOccurrences(request, booked);
+    decideRequest(
+      id,
+      RequestStatus.approved,
+      reason:
+          '${booked.length} of ${booked.length + excepted.length} dates are '
+          'confirmed. ${excepted.join(', ')} '
+          '${excepted.length == 1 ? 'is' : 'are'} already taken — pick another '
+          'time for ${excepted.length == 1 ? 'it' : 'those'} and it goes '
+          'straight through.',
+      announce: false,
+    );
+    log(
+      action: 'approved the series with exceptions for',
+      target: request.facility,
+      kind: AuditKind.reservation,
+      diff: [
+        '${booked.length} dates booked',
+        '${excepted.length} returned: ${excepted.join(', ')}',
+      ],
+      revertable: true,
+      recordId: request.id,
+    );
+    notifyListeners();
+    showToast(
+      ToastMessage(
+        '${booked.length} dates booked · ${excepted.length} returned for a '
+        'new time.',
+      ),
+    );
+  }
+
+  bool canExpire(ReservationRequest request) {
+    if (!request.isPending) return false;
+    if (!_useDemoData && request.occurrences.isNotEmpty) {
+      return request.occurrences.every(
+        (occurrence) => occurrence.startsAt.isBefore(campusNow()),
+      );
+    }
+    final date = parseCampusDate(request.date);
+    if (date != null && date.isBefore(campusToday)) return true;
+    final match = RegExp(r'(\d+)\s*day').firstMatch(request.submitted);
+    return int.parse(match?.group(1) ?? '0') >= 3;
+  }
+
+  void expireRequest(String id) {
+    final request = requestById(id);
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      unawaited(_runReservationAction(request, 'expire'));
+      return;
+    }
+    final before = request.status;
+    request
+      ..status = RequestStatus.expired
+      ..decidedBy = 'the system'
+      ..decidedAt = 'Just now';
+    log(
+      action: 'marked the reservation expired',
+      target: '${request.purpose.split('.').first} — ${request.org}',
+      kind: AuditKind.reservation,
+      diff: [
+        '${before.label}  →  ${RequestStatus.expired.label}',
+        'No decision was needed — the date has passed',
+      ],
+      revertable: true,
+      recordId: request.id,
+    );
+    notifyListeners();
+    offerUndo(
+      UndoOffer(
+        label: 'Expired — ${request.requester}',
+        onUndo: () {
+          request
+            ..status = before
+            ..decidedBy = null
+            ..decidedAt = null;
+          notifyListeners();
+        },
+      ),
+    );
+  }
+
+  void advanceStage(String id, BookingStage stage) {
+    final request = requestById(id);
+    if (request == null) return;
+    if (!_useDemoData && backend != null && hasSession) {
+      final occurrence = request.occurrences.firstWhere(
+        (item) => item.isBooked && item.stage != BookingStage.completed,
+        orElse: () => request.occurrences.first,
+      );
+      final action = switch (stage) {
+        BookingStage.checkedIn => 'check_in',
+        BookingStage.completed => 'complete',
+        BookingStage.noShow => 'no_show',
+        BookingStage.booked => 'reopen',
+      };
+      unawaited(
+        _runReservationAction(
+          request,
+          action,
+          payload: {'occurrence_id': occurrence.id},
+          reversible: false,
+        ),
+      );
+      return;
+    }
+    final before = request.stage;
+    request.stage = stage;
+    log(
+      action: switch (stage) {
+        BookingStage.checkedIn => 'checked in attendees for',
+        BookingStage.completed => 'closed the booking for',
+        BookingStage.noShow => 'marked a no-show for',
+        BookingStage.booked => 'reopened the booking for',
+      },
+      target: request.facility,
+      kind: AuditKind.reservation,
+      diff: [
+        '${before.label}  →  ${stage.label}',
+        if (stage == BookingStage.completed)
+          'Counts toward utilisation for ${request.facility}',
+      ],
+      material: stage == BookingStage.completed,
+      recordId: request.id,
+    );
+    notifyListeners();
+  }
+
+  void advanceOccurrenceStage(
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+    BookingStage stage,
+  ) {
+    if (_useDemoData || backend == null) {
+      advanceStage(request.id, stage);
+      return;
+    }
+    final action = switch (stage) {
+      BookingStage.checkedIn => 'check_in',
+      BookingStage.completed => 'complete',
+      BookingStage.noShow => 'no_show',
+      BookingStage.booked => 'reopen',
+    };
+    unawaited(
+      _runReservationAction(
+        request,
+        action,
+        payload: {'occurrence_id': occurrence.id},
+        reversible: false,
+      ),
+    );
+  }
+
+  VerificationDecision verificationTab = VerificationDecision.pending;
+  String? selectedVerificationId = 'v1';
+  final Set<String> selectedVerificationIds = {};
+
+  List<VerificationSubmission> get visibleVerifications =>
+      verifications.where((v) => v.decision == verificationTab).toList();
+
+  VerificationSubmission? get selectedVerification {
+    for (final v in verifications) {
+      if (v.id == selectedVerificationId) return v;
+    }
+    return null;
+  }
+
+  void setVerificationTab(VerificationDecision tab) {
+    verificationTab = tab;
+    selectedVerificationIds.clear();
+    _verificationAnchorId = null;
+    final list = visibleVerifications;
+    selectedVerificationId = list.isEmpty ? null : list.first.id;
+    notifyListeners();
+  }
+
+  void selectVerification(String? id) {
+    selectedVerificationId = id;
+    notifyListeners();
+  }
+
+  String? _verificationAnchorId;
+
+  void toggleVerificationSelection(String id, {bool extend = false}) {
+    final rows = [for (final v in visibleVerifications) v.id];
+    if (extend && _verificationAnchorId != null) {
+      selectedVerificationIds.addAll(_range(rows, _verificationAnchorId!, id));
+      notifyListeners();
+      return;
+    }
+    if (!selectedVerificationIds.remove(id)) selectedVerificationIds.add(id);
+    _verificationAnchorId = id;
+    notifyListeners();
+  }
+
+  void clearVerificationSelection() {
+    selectedVerificationIds.clear();
+    _verificationAnchorId = null;
+    notifyListeners();
+  }
+
+  final Set<String> verificationDecisionIds = {};
+
+  bool verificationDecisionPending(String id) =>
+      verificationDecisionIds.contains(id);
+
+  Future<bool> decideVerification(
+    String id,
+    VerificationDecision outcome, {
+    String reason = '',
+    bool announce = true,
+  }) async {
+    if (backend != null && isInternalAdmin) {
+      return _decideRemote(id, outcome, reason);
+    }
+    final submission = verifications.cast<VerificationSubmission?>().firstWhere(
+      (v) => v?.id == id,
+      orElse: () => null,
+    );
+    if (submission == null) return false;
+
+    final before = submission.decision;
+    submission
+      ..decision = outcome
+      ..reason = reason.isEmpty ? null : reason
+      ..decidedAt = 'Just now';
+
+    final released = _applyVerificationToAccount(submission, outcome);
+
+    log(
+      action: switch (outcome) {
+        VerificationDecision.approved => 'verified',
+        VerificationDecision.rejected => 'rejected the campus claim of',
+        VerificationDecision.changesRequested =>
+          'asked for a clearer document from',
+        VerificationDecision.pending => 'reopened the verification for',
+      },
+      target: submission.name,
+      kind: AuditKind.account,
+      diff: [
+        '${verificationLabel(before)}  →  ${verificationLabel(outcome)}',
+        if (outcome == VerificationDecision.approved)
+          'ID ${submission.idNumber} '
+              '${submission.registryMatch ? 'matched' : 'not found in'} the '
+              'registry',
+        if (released > 0)
+          '$released held request${released == 1 ? '' : 's'} released',
+      ],
+      reason: reason,
+    );
+    notifyListeners();
+
+    if (released > 0) {
+      showToast(
+        ToastMessage(
+          '${submission.name} verified · $released held '
+          'request${released == 1 ? '' : 's'} released into the queue.',
+        ),
+      );
+    }
+    if (!announce) return true;
+    offerUndo(
+      UndoOffer(
+        label: '${verificationLabel(outcome)} — ${submission.name}',
+        onUndo: () {
+          submission
+            ..decision = before
+            ..reason = null
+            ..decidedAt = null;
+          _applyVerificationToAccount(submission, before);
+          log(
+            action: 'undid the verification decision for',
+            target: submission.name,
+            kind: AuditKind.account,
+            diff: [
+              '${verificationLabel(outcome)}  →  '
+                  '${verificationLabel(before)}',
+            ],
+          );
+          notifyListeners();
+        },
+      ),
+    );
+    return true;
+  }
+
+  Future<bool> _decideRemote(
+    String id,
+    VerificationDecision outcome,
+    String reason,
+  ) async {
+    final decision = switch (outcome) {
+      VerificationDecision.approved => 'approved',
+      VerificationDecision.changesRequested => 'changes_requested',
+      VerificationDecision.rejected => 'rejected',
+      VerificationDecision.pending => 'pending',
+    };
+    if (decision == 'pending' || !verificationDecisionIds.add(id)) return false;
+    notifyListeners();
+    try {
+      await backend!.decideVerification(
+        submissionId: id,
+        decision: decision,
+        reason: reason,
+      );
+      await refreshVerifications();
+      verificationTab = outcome;
+      selectedVerificationId = id;
+      selectedVerificationIds.remove(id);
+      showToast(
+        ToastMessage(
+          outcome == VerificationDecision.approved
+              ? 'Campus member verified.'
+              : outcome == VerificationDecision.rejected
+              ? 'Campus claim rejected.'
+              : 'A clearer document was requested.',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'Verification decision failed: $error',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    } finally {
+      verificationDecisionIds.remove(id);
+      notifyListeners();
+    }
+  }
+
+  int _applyVerificationToAccount(
+    VerificationSubmission submission,
+    VerificationDecision outcome,
+  ) {
+    final account = accounts.cast<Account?>().firstWhere(
+      (a) => a?.email == submission.email,
+      orElse: () => null,
+    );
+    if (account == null) return 0;
+
+    account.verification = switch (outcome) {
+      VerificationDecision.approved => VerificationState.verified,
+      VerificationDecision.rejected => VerificationState.rejected,
+      _ => VerificationState.pending,
+    };
+    if (outcome == VerificationDecision.approved) {
+      account.role = switch (submission.kind) {
+        'Faculty' => AccountRole.faculty,
+        'University staff' => AccountRole.staff,
+        _ => AccountRole.student,
+      };
+    }
+
+    if (outcome != VerificationDecision.approved) return 0;
+    var released = 0;
+    for (final request in requests) {
+      if (request.requester == submission.name && request.heldForVerification) {
+        request.heldForVerification = false;
+        released++;
+      }
+    }
+    return released;
+  }
+
+  static String verificationLabel(VerificationDecision d) => switch (d) {
+    VerificationDecision.pending => 'Awaiting review',
+    VerificationDecision.approved => 'Verified campus member',
+    VerificationDecision.changesRequested => 'Better document requested',
+    VerificationDecision.rejected => 'Rejected',
+  };
+
+  void bulkVerify(Iterable<String> ids) {
+    final list = ids.toList();
+    if (list.isEmpty) return;
+    for (final id in list) {
+      unawaited(
+        decideVerification(id, VerificationDecision.approved, announce: false),
+      );
+    }
+    selectedVerificationIds.clear();
+    notifyListeners();
+    showToast(
+      ToastMessage(
+        '${list.length} member${list.length == 1 ? '' : 's'} verified.',
+      ),
+    );
+  }
+
+  int get _activeInternalAdmins => accounts
+      .where(
+        (a) =>
+            a.role == AccountRole.internalAdmin &&
+            a.status == AccountStatus.active,
+      )
+      .length;
+
+  bool isLastInternalAdmin(Account account) =>
+      account.role == AccountRole.internalAdmin &&
+      account.status == AccountStatus.active &&
+      _activeInternalAdmins <= 1;
+
+  String? roleChangeBlockedReason(Account account) {
+    if (account.isSelf) {
+      return 'Nobody can change their own role — ask another internal admin.';
+    }
+    if (isLastInternalAdmin(account)) {
+      return 'This is the last active internal admin. Demoting it would leave '
+          'nobody able to approve verifications — invite a replacement first.';
+    }
+    return null;
+  }
+
+  Future<String?> changeRole(
+    Account account,
+    AccountRole role,
+    String reason,
+  ) async {
+    final blocked = roleChangeBlockedReason(account);
+    if (blocked != null) return blocked;
+    final before = account.role;
+    if (backend != null) {
+      try {
+        final updated = await backend!.changeAccountRole(
+          accountId: account.id,
+          role: _roleRaw(role),
+          reason: reason,
+        );
+        _upsertBackendAccount(updated);
+      } catch (error) {
+        return _accountError(error);
+      }
+    } else {
+      account.role = role;
+      notifyListeners();
+    }
+    log(
+      action: 'changed the role of',
+      target: account.name,
+      kind: AuditKind.account,
+      diff: ['${before.label}  →  ${role.label}'],
+      reason: reason,
+      revertable: true,
+    );
+    showToast(ToastMessage('${account.name} is now ${role.label}.'));
+    return null;
+  }
+
+  Future<String?> suspendAccount(
+    Account account,
+    String reason,
+    DateTime? until,
+  ) async {
+    if (account.isSelf) return 'You cannot suspend your own account.';
+    if (backend != null) {
+      try {
+        final updated = await backend!.suspendUserAccount(
+          accountId: account.id,
+          reason: reason,
+          suspendedUntil: until,
+        );
+        _upsertBackendAccount(updated);
+      } catch (error) {
+        return _accountError(error);
+      }
+    } else {
+      account
+        ..status = AccountStatus.suspended
+        ..suspendReason = reason
+        ..suspendUntil = until == null ? null : _accountDate(until);
+      notifyListeners();
+    }
+    final untilLabel = until == null ? '' : _accountDate(until);
+    log(
+      action: 'suspended',
+      target: account.name,
+      kind: AuditKind.account,
+      diff: [
+        'Active  →  Suspended${until == null ? ' indefinitely' : ' until $untilLabel'}',
+        'New requests blocked · approved bookings stand',
+      ],
+      reason: reason,
+      revertable: true,
+    );
+    showToast(ToastMessage('${account.name} is suspended.'));
+    return null;
+  }
+
+  Future<String?> liftSuspension(Account account) async {
+    if (backend != null) {
+      try {
+        _upsertBackendAccount(await backend!.liftUserSuspension(account.id));
+      } catch (error) {
+        return _accountError(error);
+      }
+    } else {
+      account
+        ..status = AccountStatus.active
+        ..suspendReason = null
+        ..suspendUntil = null;
+      notifyListeners();
+    }
+    log(
+      action: 'lifted the suspension on',
+      target: account.name,
+      kind: AuditKind.account,
+      diff: ['Suspended  →  Active'],
+    );
+    showToast(ToastMessage('${account.name} can request again.'));
+    return null;
+  }
+
+  Future<String?> sendPasswordReset(Account account) async {
+    if (backend != null) {
+      try {
+        _upsertBackendAccount(
+          await backend!.sendAccountPasswordReset(account.id),
+        );
+      } catch (error) {
+        return _accountError(error);
+      }
+    }
+    log(
+      action: 'sent a password reset to',
+      target: account.name,
+      kind: AuditKind.account,
+      diff: [
+        'Reset link sent to ${account.email} · expires under the configured '
+            'email policy',
+      ],
+      material: false,
+    );
+    notifyListeners();
+    showToast(
+      ToastMessage(
+        'Reset link sent to ${account.email}. Passwords are never set for '
+        'someone else.',
+      ),
+    );
+    return null;
+  }
+
+  Future<String?> rerunVerification(Account account) async {
+    if (backend != null) {
+      try {
+        _upsertBackendAccount(
+          await backend!.requestAccountReverification(account.id),
+        );
+      } catch (error) {
+        return _accountError(error);
+      }
+      log(
+        action: 'requested re-verification for',
+        target: account.name,
+        kind: AuditKind.account,
+        diff: ['A current campus document was requested'],
+      );
+      showToast(ToastMessage('${account.name} was asked to verify again.'));
+      return null;
+    }
+    account.verification = VerificationState.pending;
+    verifications = [
+      VerificationSubmission(
+        id: 'v-${DateTime.now().microsecondsSinceEpoch}',
+        name: account.name,
+        email: account.email,
+        kind: switch (account.role) {
+          AccountRole.faculty => 'Faculty',
+          AccountRole.staff => 'University staff',
+          _ => 'Student',
+        },
+        idNumber: account.idNumber,
+        unit: account.unit,
+        document: 'Re-verification requested — awaiting a new document',
+        submitted: 'Just now',
+        registryMatch: true,
+        nameMatch: true,
+        alreadyClaimed: false,
+        legible: true,
+        decision: VerificationDecision.pending,
+      ),
+      ...verifications,
+    ];
+    log(
+      action: 're-ran verification for',
+      target: account.name,
+      kind: AuditKind.account,
+      diff: ['Verified  →  Awaiting review', 'Placed back in the queue'],
+    );
+    notifyListeners();
+    showToast(
+      ToastMessage('${account.name} is back in the verification queue.'),
+    );
+    return null;
+  }
+
+  Future<AdministratorCreationResult> createAdministrator(
+    String email,
+    AccountRole role,
+    String note,
+  ) async {
+    final trimmed = email.trim().toLowerCase();
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(trimmed)) {
+      return const AdministratorCreationResult.failure(
+        'Enter a valid email address.',
+      );
+    }
+    if (accounts.any((a) => a.email.toLowerCase() == trimmed)) {
+      return const AdministratorCreationResult.failure(
+        'That address already has an account.',
+      );
+    }
+    if (backend != null) {
+      if (!isInternalAdmin) {
+        return const AdministratorCreationResult.failure(
+          'Only an internal admin can create administrators.',
+        );
+      }
+      try {
+        final created = await backend!.createAdministrator(
+          email: trimmed,
+          role: _roleRaw(role),
+          note: note,
+        );
+        _upsertBackendAccount(created.account);
+        log(
+          action: 'created an administrator account for',
+          target: '$trimmed as ${role.label}',
+          kind: AuditKind.account,
+          diff: ['Temporary credentials generated and shown once'],
+          reason: note.trim(),
+        );
+        showToast(ToastMessage('Administrator account created for $trimmed.'));
+        return AdministratorCreationResult.success(
+          AdministratorCredentials(
+            email: trimmed,
+            temporaryPassword: created.temporaryPassword,
+          ),
+        );
+      } catch (error) {
+        return AdministratorCreationResult.failure(_accountError(error));
+      }
+    }
+
+    final password = _temporaryPassword();
+    accounts = [
+      Account(
+        id: 'u-${DateTime.now().microsecondsSinceEpoch}',
+        name: trimmed,
+        email: trimmed,
+        role: role,
+        unit: 'Administrator account created ${_today()}',
+        idNumber: '—',
+        verification: VerificationState.none,
+        status: AccountStatus.active,
+        reservations: 0,
+        lastActive: 'Never',
+        joined: _today(),
+        noShows: 0,
+      ),
+      ...accounts,
+    ];
+    log(
+      action: 'created an administrator account for',
+      target: '$trimmed as ${role.label}',
+      kind: AuditKind.account,
+      diff: ['Temporary credentials generated and shown once'],
+      reason: note.trim(),
+    );
+    notifyListeners();
+    return AdministratorCreationResult.success(
+      AdministratorCredentials(email: trimmed, temporaryPassword: password),
+    );
+  }
+
+  Future<String?> inviteAdmin(
+    String email,
+    AccountRole role,
+    String note,
+  ) async {
+    final trimmed = email.trim();
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(trimmed)) {
+      return 'Enter a valid email address.';
+    }
+    if (accounts.any((a) => a.email.toLowerCase() == trimmed.toLowerCase())) {
+      return 'That address already has an account.';
+    }
+    if (backend != null) {
+      if (!isInternalAdmin) {
+        return 'Only an internal admin can invite administrators.';
+      }
+      try {
+        _upsertBackendAccount(
+          await backend!.inviteAccountAdmin(
+            email: trimmed,
+            role: _roleRaw(role),
+            note: note,
+          ),
+        );
+      } catch (error) {
+        return _accountError(error);
+      }
+      log(
+        action: 'invited',
+        target: '$trimmed as ${role.label}',
+        kind: AuditKind.account,
+        diff: [
+          'Invitation sent · single-use link',
+          if (note.trim().isNotEmpty) 'Note: ${note.trim()}',
+        ],
+      );
+      showToast(ToastMessage('Invitation sent to $trimmed.'));
+      return null;
+    }
+    accounts = [
+      ...accounts,
+      Account(
+        id: 'u-${DateTime.now().microsecondsSinceEpoch}',
+        name: trimmed,
+        email: trimmed,
+        role: role,
+        unit: 'Invitation sent ${_today()}',
+        idNumber: '—',
+        verification: VerificationState.none,
+        status: AccountStatus.invited,
+        reservations: 0,
+        lastActive: 'Never',
+        joined: '—',
+        noShows: 0,
+        invitationSentAt: DateTime.now(),
+      ),
+    ];
+    log(
+      action: 'invited',
+      target: '$trimmed as ${role.label}',
+      kind: AuditKind.account,
+      diff: [
+        'Invitation sent · single-use link',
+        if (note.trim().isNotEmpty) 'Note: ${note.trim()}',
+      ],
+    );
+    notifyListeners();
+    showToast(ToastMessage('Invitation sent to $trimmed.'));
+    return null;
+  }
+
+  static String _temporaryPassword() {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const digits = '23456789';
+    const symbols = '!@#\$%*-_';
+    const all = '$upper$lower$digits$symbols';
+    final random = Random.secure();
+    String character(String alphabet) =>
+        alphabet[random.nextInt(alphabet.length)];
+    final characters = <String>[
+      character(upper),
+      character(lower),
+      character(digits),
+      character(symbols),
+      for (var i = 0; i < 16; i++) character(all),
+    ]..shuffle(random);
+    return characters.join();
+  }
+
+  Future<String?> resendInvite(Account account) async {
+    if (backend != null) {
+      try {
+        _upsertBackendAccount(await backend!.resendAdminInvite(account.id));
+      } catch (error) {
+        return _accountError(error);
+      }
+    } else {
+      account.invitationSentAt = DateTime.now();
+      notifyListeners();
+    }
+    log(
+      action: 'resent the invitation to',
+      target: account.email,
+      kind: AuditKind.account,
+      diff: ['New single-use link · previous link invalidated'],
+      material: false,
+    );
+    notifyListeners();
+    showToast(ToastMessage('Invitation resent to ${account.email}.'));
+    return null;
+  }
+
+  Future<String?> revokeInvite(Account account) async {
+    if (backend != null) {
+      try {
+        final removedId = await backend!.revokeAdminInvite(account.id);
+        accounts = accounts.where((a) => a.id != removedId).toList();
+      } catch (error) {
+        return _accountError(error);
+      }
+    } else {
+      accounts = accounts.where((a) => a.id != account.id).toList();
+    }
+    log(
+      action: 'revoked the invitation for',
+      target: account.email,
+      kind: AuditKind.account,
+      diff: ['Invitation revoked · link no longer valid'],
+    );
+    notifyListeners();
+    showToast(ToastMessage('Invitation for ${account.email} revoked.'));
+    return null;
+  }
+
+  static String _roleRaw(AccountRole role) => switch (role) {
+    AccountRole.student => 'student',
+    AccountRole.faculty => 'faculty',
+    AccountRole.staff => 'staff',
+    AccountRole.guest => 'guest',
+    AccountRole.internalAdmin => 'internal_admin',
+    AccountRole.externalAdmin => 'external_admin',
+  };
+
+  void revertAudit(AuditEntry entry) {
+    log(
+      action: 'reverted a change to',
+      target: entry.target,
+      kind: entry.kind,
+      diff: [
+        'Reverting: ${entry.diff.isEmpty ? entry.action : entry.diff.first}',
+        'Original entry ${entry.absolute} by ${entry.actor} is kept',
+      ],
+      reason: 'Reverted from the audit log.',
+    );
+    notifyListeners();
+    showToast(
+      const ToastMessage(
+        'Reverted. The original entry is untouched — a new one records the '
+        'reversal.',
+      ),
+    );
+  }
+
+  String exportAuditCsv(List<AuditEntry> rows) {
+    log(
+      action: 'exported the audit log',
+      target: '${rows.length} entries',
+      kind: AuditKind.account,
+      diff: ['Exported by ${currentAdmin.name} · ${rows.length} rows'],
+      material: false,
+    );
+    notifyListeners();
+    return [
+      AuditEntry.csvHeader,
+      for (final row in rows) row.toCsvRow(),
+      '# exported by ${currentAdmin.name} (${currentAdmin.email}) '
+          'on ${_today()}',
+    ].join('\n');
+  }
+
+  String studentAccountId = 'u1';
+
+  Account get studentAccount =>
+      _sessionAccount ??
+      accounts.firstWhere(
+        (a) => a.id == studentAccountId,
+        orElse: () => accounts.first,
+      );
+
+  void signInAsStudent(String accountId) {
+    studentAccountId = accountId;
+    notifyListeners();
+  }
+
+  bool get studentDetailsEditable =>
+      !hasSession && studentAccount.verification != VerificationState.verified;
+
+  void updateStudentDetail(String field, String value) {
+    if (!studentDetailsEditable) return;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+    final account = studentAccount;
+    switch (field) {
+      case 'name':
+        account.name = trimmed;
+      case 'idNumber':
+        account.idNumber = trimmed;
+      case 'unit':
+        account.unit = trimmed;
+    }
+    notifyListeners();
+  }
+
+  List<ReservationRequest> get myRequests => [
+    for (final r in requests)
+      if (r.requester == studentAccount.name) r,
+  ];
+
+  static const hourlyRate = 500;
+
+  int quoteFor(Facility facility, double hours) {
+    final size = facility.capacity >= 400
+        ? 3
+        : (facility.capacity >= 80 ? 2 : 1);
+    return (hourlyRate * size * hours).round();
+  }
+
+  Future<bool> submitReservationRequest({
+    required Facility facility,
+    required List<DateTime> startsAt,
+    required List<DateTime> endsAt,
+    required int heads,
+    required String purpose,
+    List<ReservationUpload> attachments = const [],
+  }) async {
+    final service = backend;
+    if (_useDemoData || service == null || !hasSession) {
+      submitBooking(
+        facility: facility,
+        date: formatCampusDate(campusWallTime(startsAt.first)),
+        start: _clock(campusWallTime(startsAt.first)),
+        end: _clock(campusWallTime(endsAt.first)),
+        heads: heads,
+        purpose: purpose,
+      );
+      return true;
+    }
+    if (reservationActionsPending.contains('submit')) return false;
+    reservationActionsPending.add('submit');
+    notifyListeners();
+    try {
+      final duration = endsAt.first.difference(startsAt.first).inMinutes / 60;
+      await service.submitReservation(
+        ReservationDraft(
+          facilityId: facility.id,
+          purpose: purpose,
+          headcount: heads,
+          startsAt: startsAt,
+          endsAt: endsAt,
+          attachments: attachments,
+          paymentAmountCentavos: studentAccount.reservesFree
+              ? 0
+              : quoteFor(facility, duration) * 100,
+        ),
+      );
+      await refreshReservations();
+      showToast(
+        ToastMessage(
+          studentAccount.verification == VerificationState.pending
+              ? 'Request sent and held until verification is approved.'
+              : 'Request sent to the registrar.',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    } finally {
+      reservationActionsPending.remove('submit');
+      notifyListeners();
+    }
+  }
+
+  void cancelReservation(
+    ReservationRequest request, {
+    String reason = '',
+    String? occurrenceId,
+  }) {
+    if (_useDemoData || backend == null) {
+      decideRequest(request.id, RequestStatus.cancelled, reason: reason);
+      return;
+    }
+    final payload = <String, dynamic>{};
+    if (occurrenceId != null) payload['occurrence_id'] = occurrenceId;
+    unawaited(
+      _runReservationAction(
+        request,
+        'cancel',
+        reason: reason,
+        payload: payload,
+      ),
+    );
+  }
+
+  void acceptReservationAlternative(
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+  ) => unawaited(
+    _runReservationAction(
+      request,
+      'accept_alternative',
+      payload: {'occurrence_id': occurrence.id},
+    ),
+  );
+
+  void resubmitReservation(
+    ReservationRequest request, {
+    required String purpose,
+    required int headcount,
+    required ReservationOccurrence occurrence,
+    required DateTime startsAt,
+    required DateTime endsAt,
+  }) => unawaited(
+    _runReservationAction(
+      request,
+      'resubmit',
+      payload: {
+        'purpose': purpose,
+        'headcount': headcount,
+        'occurrence_id': occurrence.id,
+        'starts_at': campusInstant(startsAt).toIso8601String(),
+        'ends_at': campusInstant(endsAt).toIso8601String(),
+      },
+    ),
+  );
+
+  Future<String?> reservationAttachmentUrl(ReservationFile file) async {
+    try {
+      return await backend?.reservationAttachmentUrl(file.storagePath);
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return null;
+    }
+  }
+
+  ReservationRequest submitBooking({
+    required Facility facility,
+    required String date,
+    required String start,
+    required String end,
+    required int heads,
+    required String purpose,
+  }) {
+    final account = studentAccount;
+    if (account.status == AccountStatus.suspended) {
+      throw StateError(
+        account.suspendReason ??
+            'This account is suspended and cannot submit new requests.',
+      );
+    }
+    final held = account.verification == VerificationState.pending;
+    final request = ReservationRequest(
+      id: 'r-${DateTime.now().microsecondsSinceEpoch}',
+      facility: facility.name,
+      building: facility.building,
+      room: facility.room,
+      capacity: facility.capacity,
+      requester: account.name,
+      role: '${account.role.label} · ${account.unit}',
+      org: account.unit,
+      purpose: purpose,
+      date: date,
+      start: start,
+      end: end,
+      heads: heads,
+      submitted: 'Just now',
+      urgent: false,
+      attachments: 0,
+      noShows: account.noShows,
+      status: RequestStatus.pending,
+      heldForVerification: held,
+    );
+    requests = [request, ...requests];
+    account.reservations += 1;
+    log(
+      action: 'submitted a reservation request for',
+      target: facility.name,
+      kind: AuditKind.reservation,
+      diff: [
+        '$date · $start–$end · $heads people',
+        if (held) 'Held until campus verification passes',
+      ],
+      material: false,
+    );
+    notifyListeners();
+    showToast(
+      ToastMessage(
+        held
+            ? 'Request sent and held. It reaches the registrar the moment your '
+                  'verification passes.'
+            : 'Request sent to the registrar.',
+      ),
+    );
+    return request;
+  }
+
+  static String _today() {
+    final now = DateTime.now();
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${now.day} ${months[now.month - 1]} ${now.year}';
+  }
+
+  static String _formatProfileDate(DateTime? value) {
+    if (value == null) return 'Unknown';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = value.toLocal();
+    return '${local.day} ${months[local.month - 1]} ${local.year}';
+  }
+}

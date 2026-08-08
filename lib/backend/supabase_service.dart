@@ -1,0 +1,1665 @@
+// ignore_for_file: annotate_overrides
+
+import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../data/campus_data.dart';
+import '../model/facility.dart';
+import '../model/facility_draft.dart';
+import '../model/facility_photo.dart';
+import '../util/geo.dart';
+
+class SessionProfile {
+  const SessionProfile({
+    required this.id,
+    required this.email,
+    required this.fullName,
+    required this.role,
+    required this.campusClaim,
+    required this.campusId,
+    required this.unit,
+    required this.verificationStatus,
+    required this.onboardingComplete,
+    required this.accountStatus,
+    required this.createdAt,
+    this.suspensionReason,
+    this.suspendedUntil,
+  });
+
+  final String id;
+  final String email;
+  final String fullName;
+  final String role;
+  final String? campusClaim;
+  final String? campusId;
+  final String? unit;
+  final String verificationStatus;
+  final bool onboardingComplete;
+  final String accountStatus;
+  final DateTime? createdAt;
+  final String? suspensionReason;
+  final DateTime? suspendedUntil;
+
+  bool get isActive => accountStatus == 'active';
+  bool get isInternalAdmin => role == 'internal_admin' && isActive;
+  bool get isExternalAdmin => role == 'external_admin' && isActive;
+  bool get isAdmin => isInternalAdmin || isExternalAdmin;
+
+  factory SessionProfile.fromJson(Map<String, dynamic> json) => SessionProfile(
+    id: json['id'] as String,
+    email: (json['email'] as String?) ?? '',
+    fullName: (json['full_name'] as String?) ?? '',
+    role: (json['role'] as String?) ?? 'guest',
+    campusClaim: json['campus_claim'] as String?,
+    campusId: json['campus_id'] as String?,
+    unit: json['unit'] as String?,
+    verificationStatus: (json['verification_status'] as String?) ?? 'none',
+    onboardingComplete: (json['onboarding_complete'] as bool?) ?? false,
+    accountStatus: (json['account_status'] as String?) ?? 'active',
+    createdAt: DateTime.tryParse((json['created_at'] as String?) ?? ''),
+    suspensionReason: json['suspension_reason'] as String?,
+    suspendedUntil: DateTime.tryParse(
+      (json['suspended_until'] as String?) ?? '',
+    ),
+  );
+}
+
+class BackendAccount {
+  const BackendAccount({
+    required this.id,
+    required this.email,
+    required this.fullName,
+    required this.role,
+    required this.unit,
+    required this.campusId,
+    required this.verificationStatus,
+    required this.accountStatus,
+    required this.createdAt,
+    required this.lastSignInAt,
+    required this.invitationSentAt,
+    required this.emailConfirmedAt,
+    required this.suspensionReason,
+    required this.suspendedUntil,
+    required this.isSelf,
+    required this.activityMetricsAvailable,
+  });
+
+  final String id;
+  final String email;
+  final String fullName;
+  final String role;
+  final String unit;
+  final String campusId;
+  final String verificationStatus;
+  final String accountStatus;
+  final DateTime? createdAt;
+  final DateTime? lastSignInAt;
+  final DateTime? invitationSentAt;
+  final DateTime? emailConfirmedAt;
+  final String? suspensionReason;
+  final DateTime? suspendedUntil;
+  final bool isSelf;
+  final bool activityMetricsAvailable;
+
+  factory BackendAccount.fromJson(Map<String, dynamic> json) => BackendAccount(
+    id: json['id'] as String,
+    email: (json['email'] as String?) ?? '',
+    fullName: (json['full_name'] as String?) ?? '',
+    role: (json['role'] as String?) ?? 'guest',
+    unit: (json['unit'] as String?) ?? '',
+    campusId: (json['campus_id'] as String?) ?? '',
+    verificationStatus: (json['verification_status'] as String?) ?? 'none',
+    accountStatus: (json['account_status'] as String?) ?? 'active',
+    createdAt: _date(json['created_at']),
+    lastSignInAt: _date(json['last_sign_in_at']),
+    invitationSentAt: _date(json['invitation_sent_at']),
+    emailConfirmedAt: _date(json['email_confirmed_at']),
+    suspensionReason: json['suspension_reason'] as String?,
+    suspendedUntil: _date(json['suspended_until']),
+    isSelf: (json['is_self'] as bool?) ?? false,
+    activityMetricsAvailable:
+        (json['activity_metrics_available'] as bool?) ?? false,
+  );
+
+  static DateTime? _date(Object? value) =>
+      value is String ? DateTime.tryParse(value)?.toLocal() : null;
+}
+
+/// Returned only once when an internal administrator creates a direct account.
+/// The temporary password is intentionally never persisted in the profile or
+/// included in account-administration audit values.
+class BackendCreatedAdministrator {
+  const BackendCreatedAdministrator({
+    required this.account,
+    required this.temporaryPassword,
+  });
+
+  final BackendAccount account;
+  final String temporaryPassword;
+}
+
+class BackendVerification {
+  const BackendVerification({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.email,
+    required this.claimType,
+    required this.campusId,
+    required this.unit,
+    required this.documentName,
+    required this.documentPath,
+    required this.status,
+    required this.reason,
+    required this.submittedAt,
+    required this.decidedAt,
+  });
+
+  final String id;
+  final String userId;
+  final String name;
+  final String email;
+  final String claimType;
+  final String campusId;
+  final String unit;
+  final String documentName;
+  final String? documentPath;
+  final String status;
+  final String? reason;
+  final DateTime submittedAt;
+  final DateTime? decidedAt;
+
+  bool get hasDocument => documentPath != null;
+
+  factory BackendVerification.fromJson(Map<String, dynamic> json) {
+    final profile = json['profiles'];
+    final profileMap = profile is Map<String, dynamic>
+        ? profile
+        : <String, dynamic>{};
+    return BackendVerification(
+      id: json['id'] as String,
+      userId: json['user_id'] as String,
+      name: (profileMap['full_name'] as String?) ?? '',
+      email: (profileMap['email'] as String?) ?? '',
+      claimType: json['claim_type'] as String,
+      campusId: json['campus_id'] as String,
+      unit: json['unit'] as String,
+      documentName: json['document_name'] as String,
+      documentPath: json['document_path'] as String?,
+      status: json['status'] as String,
+      reason: json['reason'] as String?,
+      submittedAt: DateTime.parse(json['submitted_at'] as String),
+      decidedAt: json['decided_at'] == null
+          ? null
+          : DateTime.parse(json['decided_at'] as String),
+    );
+  }
+}
+
+class ReservationUpload {
+  const ReservationUpload({
+    required this.name,
+    required this.mimeType,
+    required this.bytes,
+  });
+
+  final String name;
+  final String mimeType;
+  final Uint8List bytes;
+}
+
+class ReservationDraft {
+  const ReservationDraft({
+    required this.facilityId,
+    required this.purpose,
+    required this.headcount,
+    required this.startsAt,
+    required this.endsAt,
+    this.attachments = const [],
+    this.paymentAmountCentavos = 0,
+  });
+
+  final String facilityId;
+  final String purpose;
+  final int headcount;
+  final List<DateTime> startsAt;
+  final List<DateTime> endsAt;
+  final List<ReservationUpload> attachments;
+  final int paymentAmountCentavos;
+}
+
+class BackendReservationOccurrence {
+  const BackendReservationOccurrence({
+    required this.id,
+    required this.startsAt,
+    required this.endsAt,
+    required this.bookingState,
+    required this.lifecycleStage,
+    this.proposedStartsAt,
+    this.proposedEndsAt,
+    this.exceptionReason,
+  });
+
+  final String id;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final String bookingState;
+  final String lifecycleStage;
+  final DateTime? proposedStartsAt;
+  final DateTime? proposedEndsAt;
+  final String? exceptionReason;
+
+  factory BackendReservationOccurrence.fromJson(Map<String, dynamic> json) =>
+      BackendReservationOccurrence(
+        id: json['id'] as String,
+        startsAt: DateTime.parse(json['starts_at'] as String),
+        endsAt: DateTime.parse(json['ends_at'] as String),
+        bookingState: '${json['booking_state'] ?? 'requested'}',
+        lifecycleStage: '${json['lifecycle_stage'] ?? 'booked'}',
+        proposedStartsAt: _date(json['proposed_starts_at']),
+        proposedEndsAt: _date(json['proposed_ends_at']),
+        exceptionReason: json['exception_reason'] as String?,
+      );
+}
+
+class BackendReservationAttachment {
+  const BackendReservationAttachment({
+    required this.id,
+    required this.fileName,
+    required this.mimeType,
+    required this.byteSize,
+    required this.storagePath,
+  });
+
+  final String id;
+  final String fileName;
+  final String mimeType;
+  final int byteSize;
+  final String storagePath;
+
+  factory BackendReservationAttachment.fromJson(Map<String, dynamic> json) =>
+      BackendReservationAttachment(
+        id: json['id'] as String,
+        fileName: '${json['file_name'] ?? ''}',
+        mimeType: '${json['mime_type'] ?? ''}',
+        byteSize: (json['byte_size'] as num?)?.toInt() ?? 0,
+        storagePath: '${json['storage_path'] ?? ''}',
+      );
+}
+
+class BackendReservationEvent {
+  const BackendReservationEvent({
+    required this.id,
+    required this.actorName,
+    required this.actorRole,
+    required this.action,
+    required this.createdAt,
+    required this.material,
+    this.reason,
+    this.details = const {},
+  });
+
+  final String id;
+  final String actorName;
+  final String actorRole;
+  final String action;
+  final DateTime createdAt;
+  final bool material;
+  final String? reason;
+  final Map<String, dynamic> details;
+
+  factory BackendReservationEvent.fromJson(Map<String, dynamic> json) =>
+      BackendReservationEvent(
+        id: json['id'] as String,
+        actorName: '${json['actor_name'] ?? 'the system'}',
+        actorRole: '${json['actor_role'] ?? 'system'}',
+        action: '${json['action'] ?? ''}',
+        createdAt: DateTime.parse(json['created_at'] as String),
+        material: json['material'] as bool? ?? true,
+        reason: json['reason'] as String?,
+        details: Map<String, dynamic>.from(
+          (json['details'] as Map?) ?? const {},
+        ),
+      );
+}
+
+class BackendReservation {
+  const BackendReservation({
+    required this.id,
+    required this.requesterId,
+    required this.facilityId,
+    required this.requesterName,
+    required this.requesterRole,
+    required this.requesterUnit,
+    required this.facilityName,
+    required this.facilityBuilding,
+    required this.facilityRoom,
+    required this.facilityCapacity,
+    required this.purpose,
+    required this.headcount,
+    required this.status,
+    required this.heldForVerification,
+    required this.recurrence,
+    required this.paymentAmountCentavos,
+    required this.paymentStatus,
+    required this.version,
+    required this.createdAt,
+    required this.occurrences,
+    required this.attachments,
+    required this.events,
+    this.decisionReason,
+    this.decidedByName,
+    this.decidedAt,
+  });
+
+  final String id;
+  final String requesterId;
+  final String facilityId;
+  final String requesterName;
+  final String requesterRole;
+  final String requesterUnit;
+  final String facilityName;
+  final String facilityBuilding;
+  final String facilityRoom;
+  final int facilityCapacity;
+  final String purpose;
+  final int headcount;
+  final String status;
+  final bool heldForVerification;
+  final String recurrence;
+  final String? decisionReason;
+  final String? decidedByName;
+  final DateTime? decidedAt;
+  final int paymentAmountCentavos;
+  final String paymentStatus;
+  final int version;
+  final DateTime createdAt;
+  final List<BackendReservationOccurrence> occurrences;
+  final List<BackendReservationAttachment> attachments;
+  final List<BackendReservationEvent> events;
+
+  factory BackendReservation.fromJson(Map<String, dynamic> json) {
+    List<T> rows<T>(String key, T Function(Map<String, dynamic>) parse) =>
+        ((json[key] as List?) ?? const [])
+            .map((row) => parse(Map<String, dynamic>.from(row as Map)))
+            .toList();
+    final occurrences = rows(
+      'reservation_occurrences',
+      BackendReservationOccurrence.fromJson,
+    )..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    final events = rows('reservation_events', BackendReservationEvent.fromJson)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return BackendReservation(
+      id: json['id'] as String,
+      requesterId: json['requester_id'] as String,
+      facilityId: json['facility_id'] as String,
+      requesterName: '${json['requester_name'] ?? ''}',
+      requesterRole: '${json['requester_role'] ?? ''}',
+      requesterUnit: '${json['requester_unit'] ?? ''}',
+      facilityName: '${json['facility_name'] ?? ''}',
+      facilityBuilding: '${json['facility_building'] ?? ''}',
+      facilityRoom: '${json['facility_room'] ?? ''}',
+      facilityCapacity: (json['facility_capacity'] as num?)?.toInt() ?? 0,
+      purpose: '${json['purpose'] ?? ''}',
+      headcount: (json['headcount'] as num?)?.toInt() ?? 0,
+      status: '${json['status'] ?? 'pending'}',
+      heldForVerification: json['held_for_verification'] as bool? ?? false,
+      recurrence: '${json['recurrence'] ?? 'none'}',
+      decisionReason: json['decision_reason'] as String?,
+      decidedByName: json['decided_by_name'] as String?,
+      decidedAt: _date(json['decided_at']),
+      paymentAmountCentavos:
+          (json['payment_amount_centavos'] as num?)?.toInt() ?? 0,
+      paymentStatus: '${json['payment_status'] ?? 'not_required'}',
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      occurrences: occurrences,
+      attachments: rows(
+        'reservation_attachments',
+        BackendReservationAttachment.fromJson,
+      ),
+      events: events,
+    );
+  }
+}
+
+class ReservationActionCommand {
+  const ReservationActionCommand({
+    required this.requestId,
+    required this.action,
+    required this.expectedVersion,
+    this.reason,
+    this.payload = const {},
+    this.idempotencyKey,
+  });
+
+  final String requestId;
+  final String action;
+  final int expectedVersion;
+  final String? reason;
+  final Map<String, dynamic> payload;
+  final String? idempotencyKey;
+}
+
+class ReservationActionResult {
+  const ReservationActionResult({
+    this.actionId,
+    this.actionIds = const [],
+    this.undoUntil,
+  });
+  final String? actionId;
+  final List<String> actionIds;
+  final DateTime? undoUntil;
+}
+
+class BackendNotification {
+  const BackendNotification({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.body,
+    required this.createdAt,
+    this.requestId,
+    this.readAt,
+  });
+
+  final String id;
+  final String kind;
+  final String title;
+  final String body;
+  final String? requestId;
+  final DateTime createdAt;
+  final DateTime? readAt;
+
+  bool get unread => readAt == null;
+
+  factory BackendNotification.fromJson(Map<String, dynamic> json) =>
+      BackendNotification(
+        id: json['id'] as String,
+        kind: '${json['kind'] ?? ''}',
+        title: '${json['title'] ?? ''}',
+        body: '${json['body'] ?? ''}',
+        requestId: json['request_id'] as String?,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        readAt: _date(json['read_at']),
+      );
+}
+
+DateTime? _date(Object? value) =>
+    value is String ? DateTime.tryParse(value)?.toLocal() : null;
+
+abstract interface class SmartReserveBackend {
+  User? get user;
+  Stream<AuthState> get authChanges;
+  Future<void> signUp({
+    required String fullName,
+    required String email,
+    required String password,
+  });
+  Future<void> confirmSignup(String email, String token);
+  Future<void> resendSignup(String email);
+  Future<void> signIn(String email, String password);
+  Future<void> sendRecovery(String email);
+  Future<void> confirmRecovery(String email, String token, String password);
+  Future<void> signOut();
+  Future<SessionProfile?> currentProfile();
+  Future<void> completeGuestOnboarding();
+  Future<BackendVerification> submitVerification({
+    required String claimType,
+    required String campusId,
+    required String unit,
+    required String documentName,
+    required String mimeType,
+    required Uint8List bytes,
+  });
+  Future<BackendVerification?> currentVerification();
+  Future<List<BackendVerification>> verifications();
+  Stream<List<BackendVerification>> verificationStream();
+  Future<Uint8List> downloadDocument(String path);
+  Future<void> decideVerification({
+    required String submissionId,
+    required String decision,
+    String? reason,
+  });
+  Future<List<BackendReservation>> reservations();
+  Stream<List<BackendReservation>> reservationStream();
+  Future<BackendReservation> submitReservation(ReservationDraft draft);
+  Future<ReservationActionResult> performReservationAction(
+    ReservationActionCommand command,
+  );
+  Future<ReservationActionResult> bulkApproveReservations(
+    List<BackendReservation> reservations,
+  );
+  Future<void> undoReservationAction(String actionId);
+  Future<String> reservationAttachmentUrl(String path);
+  Future<List<BackendNotification>> notifications();
+  Stream<List<BackendNotification>> notificationStream();
+  Future<void> markNotificationRead(String notificationId);
+  Future<Map<String, bool>> notificationPreferences();
+  Future<void> saveNotificationPreferences(Map<String, bool> preferences);
+  Future<void> inviteAdmin({
+    required String email,
+    required String role,
+    String? note,
+  });
+  Future<List<BackendAccount>> accounts();
+  Stream<List<BackendAccount>> accountStream();
+  Future<BackendAccount> inviteAccountAdmin({
+    required String email,
+    required String role,
+    String? note,
+  });
+  Future<BackendCreatedAdministrator> createAdministrator({
+    required String email,
+    required String role,
+    String? note,
+  });
+  Future<BackendAccount> resendAdminInvite(String accountId);
+  Future<String> revokeAdminInvite(String accountId);
+  Future<BackendAccount> changeAccountRole({
+    required String accountId,
+    required String role,
+    required String reason,
+  });
+  Future<BackendAccount> suspendUserAccount({
+    required String accountId,
+    required String reason,
+    DateTime? suspendedUntil,
+  });
+  Future<BackendAccount> liftUserSuspension(String accountId);
+  Future<BackendAccount> requestAccountReverification(String accountId);
+  Future<BackendAccount> sendAccountPasswordReset(String accountId);
+  Future<List<BackendFacility>> facilities();
+  Stream<List<BackendFacility>> facilityStream();
+  Future<BackendFacility> saveFacility(
+    FacilityDraft draft, {
+    String? editingId,
+  });
+  Future<void> archiveFacility(String id);
+  Future<void> restoreFacility(String id);
+  String facilityPhotoUrl(String path);
+}
+
+class BackendFacility {
+  const BackendFacility({
+    required this.id,
+    required this.name,
+    required this.room,
+    required this.building,
+    required this.category,
+    required this.capacity,
+    required this.status,
+    required this.pinConfidence,
+    required this.campusName,
+    required this.floor,
+    required this.latitude,
+    required this.longitude,
+    required this.accuracy,
+    required this.confirmedOutside,
+    required this.description,
+    required this.geoBuilding,
+    required this.street,
+    required this.barangay,
+    required this.municipality,
+    required this.province,
+    required this.region,
+    required this.country,
+    required this.geoEdited,
+    required this.amenities,
+    required this.photoPaths,
+    required this.requiresApproval,
+    required this.publicListing,
+    required this.openDays,
+    required this.openTime,
+    required this.closeTime,
+    required this.maxDuration,
+    required this.advanceBooking,
+    required this.bookingBuffer,
+    required this.bookingCount,
+    required this.updatedByName,
+    required this.updatedAt,
+    this.maxDurationMinutes = 240,
+    this.advanceBookingDays = 30,
+    this.bookingBufferMinutes = 15,
+  });
+
+  final String id;
+  final String name;
+  final String room;
+  final String building;
+  final String category;
+  final int capacity;
+  final String status;
+  final String pinConfidence;
+  final String campusName;
+  final String floor;
+  final double? latitude;
+  final double? longitude;
+  final int? accuracy;
+  final bool confirmedOutside;
+  final String description;
+  final String geoBuilding;
+  final String street;
+  final String barangay;
+  final String municipality;
+  final String province;
+  final String region;
+  final String country;
+  final List<String> geoEdited;
+  final List<String> amenities;
+  final List<String> photoPaths;
+  final bool requiresApproval;
+  final bool publicListing;
+  final List<bool> openDays;
+  final String openTime;
+  final String closeTime;
+  final String maxDuration;
+  final String advanceBooking;
+  final String bookingBuffer;
+  final int bookingCount;
+  final String updatedByName;
+  final DateTime updatedAt;
+  final int maxDurationMinutes;
+  final int advanceBookingDays;
+  final int bookingBufferMinutes;
+
+  factory BackendFacility.fromJson(Map<String, dynamic> json) {
+    List<String> strings(String key) =>
+        ((json[key] as List?) ?? const []).map((e) => '$e').toList();
+    final days = ((json['open_days'] as List?) ?? const [])
+        .map((e) => e == true)
+        .toList();
+    String clock(String key) {
+      final value = (json[key] as String?) ?? '';
+      return value.length >= 5 ? value.substring(0, 5) : value;
+    }
+
+    return BackendFacility(
+      id: json['id'] as String,
+      name: '${json['name'] ?? ''}',
+      room: '${json['room'] ?? ''}',
+      building: '${json['building'] ?? ''}',
+      category: '${json['category'] ?? ''}',
+      capacity: (json['capacity'] as num).toInt(),
+      status: '${json['status'] ?? 'draft'}',
+      pinConfidence: '${json['pin_confidence'] ?? 'none'}',
+      campusName: '${json['campus_name'] ?? campus.name}',
+      floor: '${json['floor'] ?? ''}',
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      accuracy: (json['accuracy'] as num?)?.toInt(),
+      confirmedOutside: json['confirmed_outside'] as bool? ?? false,
+      description: '${json['description'] ?? ''}',
+      geoBuilding: '${json['geo_building'] ?? ''}',
+      street: '${json['street'] ?? ''}',
+      barangay: '${json['barangay'] ?? ''}',
+      municipality: '${json['municipality'] ?? ''}',
+      province: '${json['province'] ?? ''}',
+      region: '${json['region'] ?? ''}',
+      country: '${json['country'] ?? ''}',
+      geoEdited: strings('geo_edited'),
+      amenities: strings('amenities'),
+      photoPaths: strings('photo_paths'),
+      requiresApproval: json['requires_approval'] as bool? ?? true,
+      publicListing: json['public_listing'] as bool? ?? true,
+      openDays: days.length == 7
+          ? days
+          : const [true, true, true, true, true, false, false],
+      openTime: clock('open_time'),
+      closeTime: clock('close_time'),
+      maxDuration: '${json['max_duration'] ?? '4 hours'}',
+      advanceBooking: '${json['advance_booking'] ?? '30 days ahead'}',
+      bookingBuffer: '${json['booking_buffer'] ?? '15 minutes'}',
+      bookingCount: (json['booking_count'] as num?)?.toInt() ?? 0,
+      updatedByName: '${json['updated_by_name'] ?? 'Administrator'}',
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+      maxDurationMinutes:
+          (json['max_duration_minutes'] as num?)?.toInt() ?? 240,
+      advanceBookingDays: (json['advance_booking_days'] as num?)?.toInt() ?? 30,
+      bookingBufferMinutes:
+          (json['booking_buffer_minutes'] as num?)?.toInt() ?? 15,
+    );
+  }
+
+  Facility toFacility(String Function(String path) publicUrlFor) {
+    final coords = latitude == null || longitude == null
+        ? null
+        : LatLng(latitude!, longitude!);
+    final photos = [
+      for (final path in photoPaths)
+        FacilityPhoto.remote(storagePath: path, publicUrl: publicUrlFor(path)),
+    ];
+    return Facility(
+      id: id,
+      name: name,
+      room: room,
+      building: building,
+      category: category,
+      capacity: capacity,
+      pinConfidence: switch (pinConfidence) {
+        'verified' => PinConfidence.verified,
+        'needs_check' => PinConfidence.needsCheck,
+        _ => PinConfidence.none,
+      },
+      state: switch (status) {
+        'active' => FacilityState.active,
+        'under_review' => FacilityState.underReview,
+        'maintenance' => FacilityState.maintenance,
+        _ => FacilityState.draft,
+      },
+      floor: floor,
+      coords: coords,
+      accuracy: accuracy,
+      description: description,
+      amenities: amenities,
+      hours: '$openTime–$closeTime',
+      days: _daysLabel(openDays),
+      approvalRequired: requiresApproval,
+      maxDuration: maxDuration,
+      advance: advanceBooking,
+      buffer: bookingBuffer,
+      publicListing: publicListing,
+      campusName: campusName,
+      updated: '${_shortDate(updatedAt.toLocal())} · $updatedByName',
+      bookings: bookingCount,
+      photoCount: photos.length,
+      photos: photos,
+      confirmedOutside: confirmedOutside,
+      geoBuilding: geoBuilding,
+      street: street,
+      barangay: barangay,
+      municipality: municipality,
+      province: province,
+      region: region,
+      country: country,
+      geoEdited: geoEdited,
+      maxDurationMinutes: maxDurationMinutes,
+      advanceBookingDays: advanceBookingDays,
+      bookingBufferMinutes: bookingBufferMinutes,
+    );
+  }
+
+  static String _daysLabel(List<bool> days) {
+    final enabled = [
+      for (var i = 0; i < days.length; i++)
+        if (days[i]) dayLabels[i],
+    ];
+    if (enabled.isEmpty) return 'No days selected';
+    if (enabled.length == 7) return 'Mon–Sun';
+    final first = days.indexOf(true);
+    final last = days.lastIndexOf(true);
+    final contiguous = [
+      for (var i = first; i <= last; i++) days[i],
+    ].every((value) => value);
+    return contiguous && enabled.length > 2
+        ? '${dayLabels[first]}–${dayLabels[last]}'
+        : enabled.join(', ');
+  }
+
+  static String _shortDate(DateTime value) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${value.day} ${months[value.month - 1]} ${value.year}';
+  }
+}
+
+class SupabaseService implements SmartReserveBackend {
+  SupabaseService(this._client);
+
+  final SupabaseClient _client;
+
+  User? get user => _client.auth.currentUser;
+  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
+
+  Future<void> signUp({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: {'full_name': fullName},
+    );
+  }
+
+  Future<void> confirmSignup(String email, String token) async {
+    await _client.auth.verifyOTP(
+      email: email,
+      token: token,
+      type: OtpType.signup,
+    );
+  }
+
+  Future<void> resendSignup(String email) =>
+      _client.auth.resend(type: OtpType.signup, email: email);
+
+  Future<void> signIn(String email, String password) =>
+      _client.auth.signInWithPassword(email: email, password: password);
+
+  Future<void> sendRecovery(String email) =>
+      _client.auth.resetPasswordForEmail(email);
+
+  Future<void> confirmRecovery(
+    String email,
+    String token,
+    String password,
+  ) async {
+    await _client.auth.verifyOTP(
+      email: email,
+      token: token,
+      type: OtpType.recovery,
+    );
+    await _client.auth.updateUser(UserAttributes(password: password));
+  }
+
+  Future<void> signOut() => _client.auth.signOut();
+
+  Future<SessionProfile?> currentProfile() async {
+    final currentUser = user;
+    if (currentUser == null) return null;
+    await _client.rpc('normalize_my_expired_suspension');
+    final row = await _client
+        .from('profiles')
+        .select()
+        .eq('id', currentUser.id)
+        .maybeSingle();
+    if (row == null) return null;
+    return SessionProfile.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> completeGuestOnboarding() async {
+    if (user == null) throw const AuthException('Please sign in again.');
+    await _client.rpc('complete_guest_onboarding');
+  }
+
+  Future<BackendVerification> submitVerification({
+    required String claimType,
+    required String campusId,
+    required String unit,
+    required String documentName,
+    required String mimeType,
+    required Uint8List bytes,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    final path = '${currentUser.id}/current';
+    await _client.storage
+        .from('verification-documents')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(contentType: mimeType, upsert: true),
+        );
+    try {
+      final row = await _client
+          .from('verification_submissions')
+          .upsert({
+            'user_id': currentUser.id,
+            'claim_type': claimType,
+            'campus_id': campusId,
+            'unit': unit,
+            'document_name': documentName,
+            'document_path': path,
+            'document_mime_type': mimeType,
+            'status': 'pending',
+            'reason': null,
+            'decided_at': null,
+            'decided_by': null,
+            'submitted_at': DateTime.now().toUtc().toIso8601String(),
+          }, onConflict: 'user_id')
+          .select(
+            '*, profiles!verification_submissions_user_id_fkey(full_name,email)',
+          )
+          .single();
+      return BackendVerification.fromJson(Map<String, dynamic>.from(row));
+    } catch (_) {
+      await _client.storage.from('verification-documents').remove([path]);
+      rethrow;
+    }
+  }
+
+  Future<BackendVerification?> currentVerification() async {
+    final currentUser = user;
+    if (currentUser == null) return null;
+    final row = await _client
+        .from('verification_submissions')
+        .select(
+          '*, profiles!verification_submissions_user_id_fkey(full_name,email)',
+        )
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+    if (row == null) return null;
+    return BackendVerification.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<List<BackendVerification>> verifications() async {
+    final rows = await _client
+        .from('verification_submissions')
+        .select(
+          '*, profiles!verification_submissions_user_id_fkey(full_name,email)',
+        )
+        .order('submitted_at', ascending: false);
+    return (rows as List)
+        .map(
+          (row) => BackendVerification.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
+  }
+
+  Stream<List<BackendVerification>> verificationStream() => _client
+      .from('verification_submissions')
+      .stream(primaryKey: ['id'])
+      .order('submitted_at', ascending: false)
+      .asyncMap((_) => verifications());
+
+  Future<Uint8List> downloadDocument(String path) =>
+      _client.storage.from('verification-documents').download(path);
+
+  Future<void> decideVerification({
+    required String submissionId,
+    required String decision,
+    String? reason,
+  }) async {
+    final trimmedReason = reason?.trim();
+    await _client.rpc(
+      'decide_verification',
+      params: {
+        'p_submission_id': submissionId,
+        'p_decision': decision,
+        'p_reason': trimmedReason == null || trimmedReason.isEmpty
+            ? null
+            : trimmedReason,
+      },
+    );
+  }
+
+  static String _uuid() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
+  }
+
+  static const _reservationSelect =
+      '*,reservation_occurrences(*),reservation_attachments(*),'
+      'reservation_events(*)';
+
+  @override
+  Future<List<BackendReservation>> reservations() async {
+    final rows = await _client
+        .from('reservation_requests')
+        .select(_reservationSelect)
+        .order('created_at', ascending: false);
+    return (rows as List)
+        .map(
+          (row) => BackendReservation.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Stream<List<BackendReservation>> reservationStream() => _client
+      .from('reservation_requests')
+      .stream(primaryKey: ['id'])
+      .asyncMap((_) => reservations());
+
+  @override
+  Future<BackendReservation> submitReservation(ReservationDraft draft) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    final requestId = _uuid();
+    final uploaded = <Map<String, dynamic>>[];
+    try {
+      for (final file in draft.attachments) {
+        final extension = file.name.contains('.')
+            ? '.${file.name.split('.').last.toLowerCase()}'
+            : '';
+        final path = '${currentUser.id}/$requestId/${_uuid()}$extension';
+        await _client.storage
+            .from('reservation-attachments')
+            .uploadBinary(
+              path,
+              file.bytes,
+              fileOptions: FileOptions(contentType: file.mimeType),
+            );
+        uploaded.add({
+          'storage_path': path,
+          'file_name': file.name,
+          'mime_type': file.mimeType,
+          'byte_size': file.bytes.lengthInBytes,
+        });
+      }
+      await _client.rpc(
+        'submit_reservation',
+        params: {
+          'p_request_id': requestId,
+          'p_facility_id': draft.facilityId,
+          'p_purpose': draft.purpose,
+          'p_headcount': draft.headcount,
+          'p_starts_at': [
+            for (final date in draft.startsAt) date.toUtc().toIso8601String(),
+          ],
+          'p_ends_at': [
+            for (final date in draft.endsAt) date.toUtc().toIso8601String(),
+          ],
+          'p_attachment_metadata': uploaded,
+          'p_payment_amount_centavos': draft.paymentAmountCentavos,
+        },
+      );
+      final row = await _client
+          .from('reservation_requests')
+          .select(_reservationSelect)
+          .eq('id', requestId)
+          .single();
+      return BackendReservation.fromJson(Map<String, dynamic>.from(row));
+    } catch (_) {
+      if (uploaded.isNotEmpty) {
+        await _client.storage.from('reservation-attachments').remove([
+          for (final item in uploaded) item['storage_path'] as String,
+        ]);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ReservationActionResult> performReservationAction(
+    ReservationActionCommand command,
+  ) async {
+    if (command.action == 'approve_bump') {
+      final response = await _client.rpc(
+        'approve_and_bump_reservation',
+        params: {
+          'p_request_id': command.requestId,
+          'p_reason': command.reason,
+          'p_expected_version': command.expectedVersion,
+          'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+        },
+      );
+      final data = Map<String, dynamic>.from(response as Map);
+      return ReservationActionResult(
+        actionId: data['action_id'] as String?,
+        undoUntil: _date(data['undo_until']),
+      );
+    }
+    if (command.action == 'resubmit') {
+      final response = await _client.rpc(
+        'resubmit_reservation',
+        params: {
+          'p_request_id': command.requestId,
+          'p_purpose': command.payload['purpose'],
+          'p_headcount': command.payload['headcount'],
+          'p_occurrence_id': command.payload['occurrence_id'],
+          'p_starts_at': command.payload['starts_at'],
+          'p_ends_at': command.payload['ends_at'],
+          'p_expected_version': command.expectedVersion,
+          'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+        },
+      );
+      final data = Map<String, dynamic>.from(response as Map);
+      return ReservationActionResult(
+        actionId: data['action_id'] as String?,
+        undoUntil: _date(data['undo_until']),
+      );
+    }
+    final response = await _client.rpc(
+      'reservation_action',
+      params: {
+        'p_request_id': command.requestId,
+        'p_action': command.action,
+        'p_reason': command.reason,
+        'p_payload': command.payload,
+        'p_expected_version': command.expectedVersion,
+        'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+      },
+    );
+    final data = Map<String, dynamic>.from(response as Map);
+    return ReservationActionResult(
+      actionId: data['action_id'] as String?,
+      undoUntil: _date(data['undo_until']),
+    );
+  }
+
+  @override
+  Future<ReservationActionResult> bulkApproveReservations(
+    List<BackendReservation> reservations,
+  ) async {
+    final response = await _client.rpc(
+      'bulk_approve_reservations',
+      params: {
+        'p_request_ids': [for (final row in reservations) row.id],
+        'p_expected_versions': {
+          for (final row in reservations) row.id: row.version,
+        },
+        'p_idempotency_key': _uuid(),
+      },
+    );
+    final data = Map<String, dynamic>.from(response as Map);
+    final actionIds = (data['action_ids'] as List?)?.cast<String>();
+    return ReservationActionResult(
+      actionId: actionIds == null || actionIds.isEmpty ? null : actionIds.last,
+      actionIds: actionIds ?? const [],
+    );
+  }
+
+  @override
+  Future<void> undoReservationAction(String actionId) =>
+      _client.rpc('undo_reservation_action', params: {'p_action_id': actionId});
+
+  @override
+  Future<String> reservationAttachmentUrl(String path) => _client.storage
+      .from('reservation-attachments')
+      .createSignedUrl(path, 60 * 10);
+
+  @override
+  Future<List<BackendNotification>> notifications() async {
+    await _client.rpc('generate_my_reservation_reminders');
+    final rows = await _client
+        .from('app_notifications')
+        .select()
+        .order('created_at', ascending: false)
+        .limit(100);
+    return (rows as List)
+        .map(
+          (row) => BackendNotification.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Stream<List<BackendNotification>> notificationStream() => _client
+      .from('app_notifications')
+      .stream(primaryKey: ['id'])
+      .order('created_at', ascending: false)
+      .asyncMap((_) => notifications());
+
+  @override
+  Future<void> markNotificationRead(String notificationId) async {
+    await _client.rpc(
+      'mark_my_notification_read',
+      params: {'p_notification_id': notificationId},
+    );
+  }
+
+  @override
+  Future<Map<String, bool>> notificationPreferences() async {
+    final currentUser = user;
+    if (currentUser == null) return const {};
+    final row = await _client
+        .from('notification_preferences')
+        .select()
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+    return {
+      'Decision on my requests': row?['reservation_decisions'] as bool? ?? true,
+      'Reminder the day before': row?['day_before_reminders'] as bool? ?? true,
+      'New facilities on campus': row?['new_facilities'] as bool? ?? false,
+    };
+  }
+
+  @override
+  Future<void> saveNotificationPreferences(
+    Map<String, bool> preferences,
+  ) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    await _client.from('notification_preferences').upsert({
+      'user_id': currentUser.id,
+      'reservation_decisions': preferences['Decision on my requests'] ?? true,
+      'day_before_reminders': preferences['Reminder the day before'] ?? true,
+      'new_facilities': preferences['New facilities on campus'] ?? false,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  String facilityPhotoUrl(String path) =>
+      _client.storage.from('facility-photos').getPublicUrl(path);
+
+  @override
+  Future<List<BackendFacility>> facilities() async {
+    final rows = await _client
+        .from('facilities')
+        .select()
+        .isFilter('archived_at', null)
+        .order('updated_at', ascending: false);
+    return (rows as List)
+        .map(
+          (row) =>
+              BackendFacility.fromJson(Map<String, dynamic>.from(row as Map)),
+        )
+        .toList();
+  }
+
+  @override
+  Stream<List<BackendFacility>> facilityStream() => _client
+      .from('facilities')
+      .stream(primaryKey: ['id'])
+      .asyncMap((_) => facilities());
+
+  @override
+  Future<BackendFacility> saveFacility(
+    FacilityDraft draft, {
+    String? editingId,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+
+    var previousPaths = <String>[];
+    if (editingId != null) {
+      final existing = await _client
+          .from('facilities')
+          .select('photo_paths')
+          .eq('id', editingId)
+          .single();
+      previousPaths = ((existing['photo_paths'] as List?) ?? const [])
+          .map((value) => '$value')
+          .toList();
+    }
+
+    final resolved = await _resolveFacilityPhotos(draft.photos, currentUser.id);
+    try {
+      final payload = _facilityPayload(draft, resolved.paths);
+      final dynamic row;
+      if (editingId == null) {
+        row = await _client
+            .from('facilities')
+            .insert(payload)
+            .select()
+            .single();
+      } else {
+        row = await _client
+            .from('facilities')
+            .update(payload)
+            .eq('id', editingId)
+            .select()
+            .single();
+      }
+
+      final removed = previousPaths
+          .where((path) => !resolved.paths.contains(path))
+          .toList();
+      if (removed.isNotEmpty) {
+        try {
+          await _client.storage.from('facility-photos').remove(removed);
+        } catch (_) {
+          // The database no longer exposes these paths. Orphan cleanup can be
+          // retried independently without making a successful save look lost.
+        }
+      }
+      return BackendFacility.fromJson(Map<String, dynamic>.from(row as Map));
+    } catch (_) {
+      if (resolved.uploaded.isNotEmpty) {
+        try {
+          await _client.storage
+              .from('facility-photos')
+              .remove(resolved.uploaded);
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  Map<String, dynamic> _facilityPayload(
+    FacilityDraft draft,
+    List<String> photoPaths,
+  ) {
+    final outside =
+        draft.pin != null &&
+        (draft.confirmedOutside || !inPolygon(draft.pin!, campus.boundary));
+    final status = outside
+        ? 'under_review'
+        : switch (draft.status) {
+            FacilityStatus.active => 'active',
+            FacilityStatus.maintenance => 'maintenance',
+            FacilityStatus.draft => 'draft',
+          };
+    final confidence = draft.pin == null
+        ? 'none'
+        : (outside ? 'needs_check' : 'verified');
+    return {
+      'name': draft.name.trim(),
+      'room': draft.room.trim(),
+      'building': draft.building,
+      'category': draft.category,
+      'capacity': draft.capacitySeats,
+      'status': status,
+      'pin_confidence': confidence,
+      'campus_name': draft.campusName,
+      'floor': draft.floor,
+      'latitude': draft.pin?.latitude,
+      'longitude': draft.pin?.longitude,
+      'accuracy': draft.accuracy,
+      'confirmed_outside': draft.confirmedOutside,
+      'description': draft.description.trim(),
+      'geo_building': draft.geoBuilding,
+      'street': draft.street,
+      'barangay': draft.barangay,
+      'municipality': draft.municipality,
+      'province': draft.province,
+      'region': draft.region,
+      'country': draft.country,
+      'geo_edited': draft.geoEdited.toList(),
+      'amenities': List<String>.from(draft.amenities),
+      'photo_paths': photoPaths,
+      'requires_approval': draft.requiresApproval,
+      'public_listing': draft.publicListing,
+      'open_days': List<bool>.from(draft.days),
+      'open_time': draft.openTime,
+      'close_time': draft.closeTime,
+      'max_duration': draft.maxDuration,
+      'advance_booking': draft.advance,
+      'booking_buffer': draft.buffer,
+      'max_duration_minutes':
+          (int.tryParse(
+                RegExp(r'\d+').firstMatch(draft.maxDuration)?.group(0) ?? '',
+              ) ??
+              4) *
+          60,
+      'advance_booking_days':
+          int.tryParse(
+            RegExp(r'\d+').firstMatch(draft.advance)?.group(0) ?? '',
+          ) ??
+          30,
+      'booking_buffer_minutes':
+          int.tryParse(
+            RegExp(r'\d+').firstMatch(draft.buffer)?.group(0) ?? '',
+          ) ??
+          15,
+      'archived_at': null,
+    };
+  }
+
+  Future<({List<String> paths, List<String> uploaded})> _resolveFacilityPhotos(
+    List<FacilityPhoto> photos,
+    String userId,
+  ) async {
+    if (photos.isEmpty) {
+      throw const FormatException('Add at least one facility photo.');
+    }
+    if (photos.length > 8) {
+      throw const FormatException('A facility can have at most 8 photos.');
+    }
+
+    final paths = <String>[];
+    final uploaded = <String>[];
+    try {
+      for (var index = 0; index < photos.length; index++) {
+        final photo = photos[index];
+        if (photo.storagePath case final existing?) {
+          paths.add(existing);
+          continue;
+        }
+        if (photo.isPlaceholder) {
+          throw const FormatException(
+            'Placeholder images cannot be saved. Add a JPG or PNG.',
+          );
+        }
+        final bytes = await photo.readBytes();
+        if (bytes == null || bytes.isEmpty) {
+          throw FormatException('${photo.label ?? 'A photo'} cannot be read.');
+        }
+        if (bytes.length > 10 * 1024 * 1024) {
+          throw FormatException(
+            '${photo.label ?? 'A photo'} is larger than 10 MB.',
+          );
+        }
+        final lower = (photo.label ?? photo.path ?? '').toLowerCase();
+        final isPng = lower.endsWith('.png');
+        final isJpeg = lower.endsWith('.jpg') || lower.endsWith('.jpeg');
+        if (!isPng && !isJpeg) {
+          throw FormatException(
+            '${photo.label ?? 'A photo'} must be JPG or PNG.',
+          );
+        }
+        final extension = isPng ? 'png' : 'jpg';
+        final contentType = isPng ? 'image/png' : 'image/jpeg';
+        final validSignature = isPng
+            ? bytes.length >= 8 &&
+                  bytes[0] == 0x89 &&
+                  bytes[1] == 0x50 &&
+                  bytes[2] == 0x4e &&
+                  bytes[3] == 0x47
+            : bytes.length >= 3 &&
+                  bytes[0] == 0xff &&
+                  bytes[1] == 0xd8 &&
+                  bytes[2] == 0xff;
+        if (!validSignature) {
+          throw FormatException(
+            '${photo.label ?? 'A photo'} does not contain a valid image.',
+          );
+        }
+        final path =
+            '$userId/${DateTime.now().microsecondsSinceEpoch}-$index.$extension';
+        await _client.storage
+            .from('facility-photos')
+            .uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType),
+            );
+        paths.add(path);
+        uploaded.add(path);
+      }
+      return (paths: paths, uploaded: uploaded);
+    } catch (_) {
+      if (uploaded.isNotEmpty) {
+        try {
+          await _client.storage.from('facility-photos').remove(uploaded);
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> archiveFacility(String id) async {
+    await _client
+        .from('facilities')
+        .update({'archived_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('id', id);
+  }
+
+  @override
+  Future<void> restoreFacility(String id) async {
+    await _client.from('facilities').update({'archived_at': null}).eq('id', id);
+  }
+
+  Future<void> inviteAdmin({
+    required String email,
+    required String role,
+    String? note,
+  }) async {
+    await inviteAccountAdmin(email: email, role: role, note: note);
+  }
+
+  Future<Map<String, dynamic>> _manageUsers(
+    String action, {
+    Map<String, dynamic> fields = const {},
+  }) async {
+    late final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'manage-users',
+        body: {'action': action, ...fields},
+      );
+    } on FunctionException catch (error) {
+      final details = error.details;
+      if (details is Map && details['error'] is String) {
+        throw StateError(details['error'] as String);
+      }
+      throw StateError(error.reasonPhrase ?? 'User management request failed.');
+    }
+    final data = response.data;
+    if (data is! Map) {
+      throw StateError('User management returned an invalid response.');
+    }
+    final json = Map<String, dynamic>.from(data);
+    if (json['error'] != null) throw StateError(json['error'] as String);
+    return json;
+  }
+
+  BackendAccount _accountResult(Map<String, dynamic> response) {
+    final value = response['account'];
+    if (value is! Map) {
+      throw StateError('User management did not return an account.');
+    }
+    return BackendAccount.fromJson(Map<String, dynamic>.from(value));
+  }
+
+  @override
+  Future<List<BackendAccount>> accounts() async {
+    final response = await _manageUsers('list');
+    final rows = response['accounts'];
+    if (rows is! List) {
+      throw StateError('User management did not return an account list.');
+    }
+    return [
+      for (final row in rows)
+        BackendAccount.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Stream<List<BackendAccount>> accountStream() => _client
+      .from('profiles')
+      .stream(primaryKey: ['id'])
+      .asyncMap((_) => accounts());
+
+  @override
+  Future<BackendAccount> inviteAccountAdmin({
+    required String email,
+    required String role,
+    String? note,
+  }) async => _accountResult(
+    await _manageUsers(
+      'invite',
+      fields: {
+        'email': email,
+        'role': role,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    ),
+  );
+
+  @override
+  Future<BackendCreatedAdministrator> createAdministrator({
+    required String email,
+    required String role,
+    String? note,
+  }) async {
+    final response = await _manageUsers(
+      'create_admin',
+      fields: {
+        'email': email,
+        'role': role,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    final temporaryPassword = response['temporary_password'];
+    if (temporaryPassword is! String || temporaryPassword.isEmpty) {
+      throw StateError('User management did not return temporary credentials.');
+    }
+    return BackendCreatedAdministrator(
+      account: _accountResult(response),
+      temporaryPassword: temporaryPassword,
+    );
+  }
+
+  @override
+  Future<BackendAccount> resendAdminInvite(String accountId) async =>
+      _accountResult(
+        await _manageUsers('resend_invite', fields: {'target_id': accountId}),
+      );
+
+  @override
+  Future<String> revokeAdminInvite(String accountId) async {
+    final response = await _manageUsers(
+      'revoke_invite',
+      fields: {'target_id': accountId},
+    );
+    return (response['removed_id'] as String?) ?? accountId;
+  }
+
+  @override
+  Future<BackendAccount> changeAccountRole({
+    required String accountId,
+    required String role,
+    required String reason,
+  }) async => _accountResult(
+    await _manageUsers(
+      'change_role',
+      fields: {'target_id': accountId, 'role': role, 'reason': reason},
+    ),
+  );
+
+  @override
+  Future<BackendAccount> suspendUserAccount({
+    required String accountId,
+    required String reason,
+    DateTime? suspendedUntil,
+  }) async => _accountResult(
+    await _manageUsers(
+      'suspend',
+      fields: {
+        'target_id': accountId,
+        'reason': reason,
+        if (suspendedUntil != null)
+          'suspended_until': _dateOnly(suspendedUntil),
+      },
+    ),
+  );
+
+  @override
+  Future<BackendAccount> liftUserSuspension(String accountId) async =>
+      _accountResult(
+        await _manageUsers('lift_suspension', fields: {'target_id': accountId}),
+      );
+
+  @override
+  Future<BackendAccount> requestAccountReverification(String accountId) async =>
+      _accountResult(
+        await _manageUsers(
+          'request_reverification',
+          fields: {'target_id': accountId},
+        ),
+      );
+
+  @override
+  Future<BackendAccount> sendAccountPasswordReset(String accountId) async =>
+      _accountResult(
+        await _manageUsers(
+          'send_password_reset',
+          fields: {'target_id': accountId},
+        ),
+      );
+
+  String _dateOnly(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+}
