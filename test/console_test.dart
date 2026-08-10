@@ -253,6 +253,38 @@ void main() {
   });
 
   group('reports', () {
+    test(
+      'backend report snapshots preserve metrics and administrator access data',
+      () {
+        final snapshot = ReportSnapshot.fromJson({
+          'utilisation': [
+            {
+              'facility_id': 'f1',
+              'booked_hours': 8,
+              'available_hours': 20,
+              'fraction': .4,
+            },
+          ],
+          'demand': [
+            {'day': 1, 'hour': 7, 'count': 3},
+          ],
+          'performance': {
+            'median_hours': 12,
+            'within_48': .75,
+            'expired': 1,
+            'declined': 2,
+            'over_capacity': 3,
+            'per_admin': [
+              {'name': 'Registrar', 'decisions': 4, 'median_hours': 12},
+            ],
+          },
+        });
+        expect(snapshot.utilisation.single.bookedHours, 8);
+        expect(snapshot.demand.single.count, 3);
+        expect(snapshot.performance.perAdmin.single.who, 'Registrar');
+      },
+    );
+
     test('utilisation is booked over available, worst first', () {
       final state = AppState();
       final rows = utilisationFor(

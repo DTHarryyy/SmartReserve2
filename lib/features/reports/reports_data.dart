@@ -2,6 +2,7 @@ import '../../data/campus_data.dart';
 import '../../model/facility.dart';
 import '../../model/reservation.dart';
 import '../../util/geo.dart';
+import '../../util/campus_calendar.dart';
 
 enum ReportRange {
   week('Last 7 days', 1),
@@ -14,6 +15,175 @@ enum ReportRange {
 
   final int weeks;
 }
+
+class ReportScope {
+  const ReportScope({
+    required this.range,
+    required this.from,
+    required this.to,
+    this.category,
+  });
+
+  final ReportRange range;
+  final DateTime from;
+  final DateTime to;
+  final String? category;
+
+  factory ReportScope.forRange(
+    ReportRange range, {
+    String? category,
+    DateTime? now,
+  }) {
+    final end = campusInstant(now ?? campusNow());
+    final start = switch (range) {
+      ReportRange.week => end.subtract(const Duration(days: 7)),
+      ReportRange.month => end.subtract(const Duration(days: 30)),
+      ReportRange.semester => DateTime.utc(
+        end.month >= 8 ? end.year : end.year - 1,
+        8,
+        1,
+      ),
+    };
+    return ReportScope(range: range, from: start, to: end, category: category);
+  }
+}
+
+class ReportSnapshot {
+  const ReportSnapshot({
+    required this.utilisation,
+    required this.demand,
+    required this.performance,
+  });
+
+  final List<ReportUtilisation> utilisation;
+  final List<ReportDemandCell> demand;
+  final ReportPerformance performance;
+
+  factory ReportSnapshot.fromJson(Map<String, dynamic> json) => ReportSnapshot(
+    utilisation: ((json['utilisation'] as List?) ?? const [])
+        .map(
+          (row) =>
+              ReportUtilisation.fromJson(Map<String, dynamic>.from(row as Map)),
+        )
+        .toList(),
+    demand: ((json['demand'] as List?) ?? const [])
+        .map(
+          (row) =>
+              ReportDemandCell.fromJson(Map<String, dynamic>.from(row as Map)),
+        )
+        .toList(),
+    performance: ReportPerformance.fromJson(
+      Map<String, dynamic>.from((json['performance'] as Map?) ?? const {}),
+    ),
+  );
+}
+
+class ReportUtilisation {
+  const ReportUtilisation({
+    required this.facilityId,
+    required this.bookedHours,
+    required this.availableHours,
+    required this.fraction,
+  });
+  final String facilityId;
+  final double bookedHours;
+  final double availableHours;
+  final double fraction;
+  factory ReportUtilisation.fromJson(Map<String, dynamic> json) =>
+      ReportUtilisation(
+        facilityId: '${json['facility_id']}',
+        bookedHours: (json['booked_hours'] as num?)?.toDouble() ?? 0,
+        availableHours: (json['available_hours'] as num?)?.toDouble() ?? 0,
+        fraction: (json['fraction'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class ReportDemandCell {
+  const ReportDemandCell({
+    required this.day,
+    required this.hour,
+    required this.count,
+  });
+  final int day;
+  final int hour;
+  final int count;
+  factory ReportDemandCell.fromJson(Map<String, dynamic> json) =>
+      ReportDemandCell(
+        day: (json['day'] as num?)?.toInt() ?? 1,
+        hour: (json['hour'] as num?)?.toInt() ?? 7,
+        count: (json['count'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class ReportPerformance {
+  const ReportPerformance({
+    this.medianHours,
+    this.withinFortyEight,
+    required this.expired,
+    required this.declined,
+    required this.overCapacity,
+    required this.perAdmin,
+  });
+  final double? medianHours;
+  final double? withinFortyEight;
+  final int expired;
+  final int declined;
+  final int overCapacity;
+  final List<({String who, int decisions, double median})> perAdmin;
+  factory ReportPerformance.fromJson(Map<String, dynamic> json) =>
+      ReportPerformance(
+        medianHours: (json['median_hours'] as num?)?.toDouble(),
+        withinFortyEight: (json['within_48'] as num?)?.toDouble(),
+        expired: (json['expired'] as num?)?.toInt() ?? 0,
+        declined: (json['declined'] as num?)?.toInt() ?? 0,
+        overCapacity: (json['over_capacity'] as num?)?.toInt() ?? 0,
+        perAdmin: ((json['per_admin'] as List?) ?? const []).map((row) {
+          final value = Map<String, dynamic>.from(row as Map);
+          return (
+            who: '${value['name']}',
+            decisions: (value['decisions'] as num?)?.toInt() ?? 0,
+            median: (value['median_hours'] as num?)?.toDouble() ?? 0,
+          );
+        }).toList(),
+      );
+}
+
+List<Utilisation> utilisationFromReport(
+  ReportSnapshot snapshot,
+  List<Facility> facilities,
+) {
+  final byId = {for (final facility in facilities) facility.id: facility};
+  return [
+    for (final row in snapshot.utilisation)
+      if (byId[row.facilityId] case final facility?)
+        Utilisation(
+          facility: facility,
+          bookedHours: row.bookedHours,
+          availableHours: row.availableHours,
+        ),
+  ]..sort((a, b) => a.fraction.compareTo(b.fraction));
+}
+
+DemandHeatmap demandFromReport(ReportSnapshot snapshot) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const hours = ['07', '09', '11', '13', '15', '17', '19'];
+  final cells = [for (var day = 0; day < 7; day++) List.filled(7, 0)];
+  for (final cell in snapshot.demand) {
+    final hour = ((cell.hour - 7) ~/ 2);
+    if (cell.day >= 1 && cell.day <= 7 && hour >= 0 && hour < 7) {
+      cells[cell.day - 1][hour] = cell.count;
+    }
+  }
+  return DemandHeatmap(cells, hours, days);
+}
+
+ApprovalPerformance performanceFromReport(ReportSnapshot snapshot) =>
+    ApprovalPerformance(
+      medianHours: snapshot.performance.medianHours,
+      withinFortyEight: snapshot.performance.withinFortyEight ?? 0,
+      expired: snapshot.performance.expired,
+      perAdmin: snapshot.performance.perAdmin,
+    );
 
 class Utilisation {
   const Utilisation({

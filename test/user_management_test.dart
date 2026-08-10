@@ -389,8 +389,7 @@ class _FakeUserBackend implements SmartReserveBackend {
   Future<List<BackendReservation>> reservations() async => [];
 
   @override
-  Stream<List<BackendReservation>> reservationStream() =>
-      const Stream.empty();
+  Stream<List<BackendReservation>> reservationStream() => const Stream.empty();
 
   @override
   Future<List<BackendNotification>> notifications() async => [];

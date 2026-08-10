@@ -456,11 +456,12 @@ class _DecisionPanelState extends State<DecisionPanel> {
                       SrButton(
                         label: 'Check in',
                         dense: true,
-                        onPressed: campusNow().isBefore(
-                          occurrence.startsAt.subtract(
-                            const Duration(minutes: 30),
-                          ),
-                        )
+                        onPressed:
+                            campusNow().isBefore(
+                              occurrence.startsAt.subtract(
+                                const Duration(minutes: 30),
+                              ),
+                            )
                             ? null
                             : () => widget.state.advanceOccurrenceStage(
                                 _request,
@@ -473,11 +474,12 @@ class _DecisionPanelState extends State<DecisionPanel> {
                         label: 'No-show',
                         dense: true,
                         kind: SrButtonKind.danger,
-                        onPressed: campusNow().isBefore(
-                          occurrence.startsAt.add(
-                            const Duration(minutes: 15),
-                          ),
-                        )
+                        onPressed:
+                            campusNow().isBefore(
+                              occurrence.startsAt.add(
+                                const Duration(minutes: 15),
+                              ),
+                            )
                             ? null
                             : () => widget.state.advanceOccurrenceStage(
                                 _request,
@@ -535,7 +537,8 @@ class _DecisionPanelState extends State<DecisionPanel> {
               ],
             ],
           ),
-          if (stage != BookingStage.completed && stage != BookingStage.noShow) ...[
+          if (stage != BookingStage.completed &&
+              stage != BookingStage.noShow) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
@@ -696,7 +699,8 @@ class _DecisionPanelState extends State<DecisionPanel> {
             ReasonBox(
               tone: ReasonTone.neutral,
               title: 'Why this reservation is being reopened',
-              placeholder: 'Explain what changed and what must be reviewed again.',
+              placeholder:
+                  'Explain what changed and what must be reviewed again.',
               confirmLabel: 'Reopen for decision',
               onCancel: () => setState(() => _prompt = _Prompt.none),
               onConfirm: (reason) {

@@ -17,6 +17,7 @@ import '../model/facility_draft.dart';
 import '../model/notice.dart';
 import '../model/reservation.dart';
 import '../model/verification.dart';
+import '../features/reports/reports_data.dart';
 import '../util/campus_calendar.dart';
 import '../util/geo.dart';
 import 'app_view.dart';
@@ -93,8 +94,93 @@ class AppState extends ChangeNotifier {
     if (next == AppView.profile) _profileOrigin = view;
     if (view == next) return;
     view = next;
+    if (next == AppView.reports) unawaited(refreshReports());
+    if (next == AppView.audit) unawaited(refreshAudit());
     closeOverlays();
     notifyListeners();
+  }
+
+  Future<void> refreshReports({ReportScope? scope}) async {
+    final service = backend;
+    if (service == null || !isAdmin) return;
+    reportsLoading = true;
+    reportsError = null;
+    notifyListeners();
+    try {
+      reportSnapshot = await service.adminReport(
+        scope ?? ReportScope.forRange(ReportRange.month),
+      );
+    } catch (error) {
+      reportsError = 'Reports could not load: $error';
+    } finally {
+      reportsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshAudit({AuditQuery? query}) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) return;
+    auditQuery = query ?? auditQuery;
+    auditLoading = true;
+    auditError = null;
+    notifyListeners();
+    try {
+      final page = await service.auditEntries(auditQuery);
+      remoteAudit = page.entries;
+      auditActors = page.actors;
+      auditTotal = page.total;
+    } catch (error) {
+      auditError = 'Audit log could not load: $error';
+    } finally {
+      auditLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMoreAudit() async {
+    final service = backend;
+    if (service == null ||
+        auditLoadingMore ||
+        remoteAudit.length >= auditTotal ||
+        remoteAudit.isEmpty)
+      // ignore: curly_braces_in_flow_control_structures
+      return;
+    auditLoadingMore = true;
+    notifyListeners();
+    try {
+      final last = remoteAudit.last;
+      final page = await service.auditEntries(
+        auditQuery.copyWith(
+          beforeCreatedAt: DateTime.tryParse(last.absolute),
+          beforeId: last.id,
+        ),
+      );
+      remoteAudit = [...remoteAudit, ...page.entries];
+    } catch (error) {
+      auditError = 'More audit entries could not load: $error';
+    } finally {
+      auditLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<AuditEntry>> auditExportRows() async {
+    final service = backend;
+    if (service == null) return audit;
+    final rows = <AuditEntry>[];
+    var query = auditQuery;
+    while (true) {
+      final page = await service.auditEntries(query);
+      rows.addAll(page.entries);
+      if (rows.length >= page.total || page.entries.isEmpty) break;
+      final last = page.entries.last;
+      query = query.copyWith(
+        beforeCreatedAt: DateTime.tryParse(last.absolute),
+        beforeId: last.id,
+      );
+    }
+    return rows;
   }
 
   void leaveProfile() => goTo(_profileOrigin);
@@ -127,6 +213,16 @@ class AppState extends ChangeNotifier {
   late List<Account> accounts;
   late List<AuditEntry> audit;
   late List<Booking> bookings;
+  ReportSnapshot? reportSnapshot;
+  bool reportsLoading = false;
+  String? reportsError;
+  List<AuditEntry> remoteAudit = [];
+  List<String> auditActors = [];
+  int auditTotal = 0;
+  bool auditLoading = false;
+  bool auditLoadingMore = false;
+  String? auditError;
+  AuditQuery auditQuery = const AuditQuery();
   List<BackendNotification> notifications = [];
   Map<String, bool> notificationPreferences = {
     'Decision on my requests': true,
@@ -2680,6 +2776,10 @@ class AppState extends ChangeNotifier {
   };
 
   void revertAudit(AuditEntry entry) {
+    if (backend != null) {
+      unawaited(_revertRemoteAudit(entry));
+      return;
+    }
     log(
       action: 'reverted a change to',
       target: entry.target,
@@ -2699,15 +2799,35 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Future<void> _revertRemoteAudit(AuditEntry entry) async {
+    try {
+      await backend!.revertAuditEntry(entry.id, 'Reverted from the audit log.');
+      await refreshAudit();
+      await refreshFacilities();
+      showToast(
+        const ToastMessage('Reverted. A new audit entry records the reversal.'),
+      );
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'This change could not be reverted: $error',
+          tone: AdvisoryTone.block,
+        ),
+      );
+    }
+  }
+
   String exportAuditCsv(List<AuditEntry> rows) {
-    log(
-      action: 'exported the audit log',
-      target: '${rows.length} entries',
-      kind: AuditKind.account,
-      diff: ['Exported by ${currentAdmin.name} · ${rows.length} rows'],
-      material: false,
-    );
-    notifyListeners();
+    if (backend == null) {
+      log(
+        action: 'exported the audit log',
+        target: '${rows.length} entries',
+        kind: AuditKind.account,
+        diff: ['Exported by ${currentAdmin.name} · ${rows.length} rows'],
+        material: false,
+      );
+      notifyListeners();
+    }
     return [
       AuditEntry.csvHeader,
       for (final row in rows) row.toCsvRow(),

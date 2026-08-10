@@ -103,6 +103,52 @@ class AuditEntry {
 
   final String? recordId;
 
+  factory AuditEntry.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse('${json['created_at'] ?? ''}')?.toLocal() ??
+        DateTime.now();
+    final details = Map<String, dynamic>.from(
+      (json['details'] as Map?) ?? const {},
+    );
+    final before = Map<String, dynamic>.from(
+      (json['before_values'] as Map?) ?? const {},
+    );
+    final after = Map<String, dynamic>.from(
+      (json['after_values'] as Map?) ?? const {},
+    );
+    final changes = <String>[
+      ...details.entries.map((entry) => '${entry.key}: ${entry.value}'),
+    ];
+    for (final key in {...before.keys, ...after.keys}) {
+      if (before[key] != after[key]) {
+        changes.add('$key: ${before[key] ?? '—'} → ${after[key] ?? '—'}');
+      }
+    }
+    return AuditEntry(
+      id: '${json['id']}',
+      actor: '${json['actor_name'] ?? 'System'}',
+      actorRole: '${json['actor_role'] ?? 'system'}',
+      action: '${json['action'] ?? ''}',
+      target: '${json['target_label'] ?? ''}',
+      kind: AuditKind.fromRaw('${json['entity_type'] ?? 'facility'}'),
+      when: _relative(createdAt),
+      absolute: createdAt.toString(),
+      material: json['material'] as bool? ?? true,
+      diff: changes,
+      reason: '${json['reason'] ?? ''}',
+      revertable: json['revertable'] as bool? ?? false,
+      recordId: json['entity_id'] as String?,
+    );
+  }
+
+  static String _relative(DateTime value) {
+    final delta = DateTime.now().difference(value);
+    if (delta.inMinutes < 2) return 'Just now';
+    if (delta.inHours < 1) return '${delta.inMinutes} min ago';
+    if (delta.inDays < 1) return '${delta.inHours} h ago';
+    return '${delta.inDays} d ago';
+  }
+
   String get initials => actor
       .replaceAll(RegExp(r'[^A-Za-z. ]'), ' ')
       .split(RegExp(r'[\s.]+'))

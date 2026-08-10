@@ -1,5 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
@@ -30,10 +33,10 @@ class _AuditScreenState extends State<AuditScreen> {
     super.dispose();
   }
 
-  List<AuditEntry> _visible(AppState state) {
+  List<AuditEntry> _visible(List<AuditEntry> entries) {
     final q = _query.trim().toLowerCase();
     return [
-      for (final e in state.audit)
+      for (final e in entries)
         if ((_actor == 'All people' || e.actor == _actor) &&
             (_kind == 'All records' || e.kind.label == _kind) &&
             (!_materialOnly || e.material) &&
@@ -50,9 +53,10 @@ class _AuditScreenState extends State<AuditScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final rows = _visible(state);
+    final entries = state.backend == null ? state.audit : state.remoteAudit;
+    final rows = _visible(entries);
     final stacked = MediaQuery.sizeOf(context).width < SR.tabletMin;
-    final actors = <String>{'All people', for (final e in state.audit) e.actor};
+    final actors = <String>{'All people', ...state.auditActors, for (final e in entries) e.actor};
 
     return Scrollbar(
       child: SingleChildScrollView(
@@ -70,7 +74,7 @@ class _AuditScreenState extends State<AuditScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 FilterBar(
-                  count: '${rows.length} of ${state.audit.length}',
+                  count: '${rows.length} of ${state.backend == null ? state.audit.length : state.auditTotal}',
                   trailing: [
                     SrButton(
                       label: 'Export CSV',
@@ -82,13 +86,19 @@ class _AuditScreenState extends State<AuditScreen> {
                       controller: _search,
                       placeholder: 'Search people, records or reasons',
                       width: stacked ? 220 : 280,
-                      onChanged: (v) => setState(() => _query = v),
+                      onChanged: (v) {
+                        setState(() => _query = v);
+                        state.refreshAudit(query: state.auditQuery.copyWith(search: v));
+                      },
                     ),
                     FilterSelect(
                       value: _actor,
                       items: actors.toList(),
                       semanticLabel: 'Filter by person',
-                      onChanged: (v) => setState(() => _actor = v),
+                      onChanged: (v) {
+                        setState(() => _actor = v);
+                        state.refreshAudit(query: state.auditQuery.copyWith(actor: v == 'All people' ? null : v, clearActor: v == 'All people'));
+                      },
                     ),
                     FilterSelect(
                       value: _kind,
@@ -99,17 +109,24 @@ class _AuditScreenState extends State<AuditScreen> {
                         'ACCOUNT',
                       ],
                       semanticLabel: 'Filter by record type',
-                      onChanged: (v) => setState(() => _kind = v),
+                      onChanged: (v) {
+                        setState(() => _kind = v);
+                        state.refreshAudit(query: state.auditQuery.copyWith(entityType: v == 'All records' ? null : v.toLowerCase(), clearEntityType: v == 'All records'));
+                      },
                     ),
                     FilterPill(
                       label: 'Material changes only',
                       selected: _materialOnly,
-                      onTap: () =>
-                          setState(() => _materialOnly = !_materialOnly),
+                      onTap: () {
+                        setState(() => _materialOnly = !_materialOnly);
+                        state.refreshAudit(query: state.auditQuery.copyWith(materialOnly: _materialOnly));
+                      },
                     ),
                   ],
                 ),
 
+                if (state.auditLoading) const Padding(padding: EdgeInsets.only(bottom: 10), child: LinearProgressIndicator()),
+                if (state.auditError case final error?) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error, style: sans(11.5, color: SR.red))),
                 Container(
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
@@ -137,6 +154,9 @@ class _AuditScreenState extends State<AuditScreen> {
                   ),
                 ),
 
+                if (state.backend != null && rows.length < state.auditTotal)
+                  Padding(padding: const EdgeInsets.only(top: 12), child: SrButton(label: state.auditLoadingMore ? 'Loading…' : 'Load more', onPressed: state.auditLoadingMore ? null : state.loadMoreAudit)),
+
                 const SizedBox(height: 12),
                 Text(
                   'Append-only: reverting writes a new entry and keeps the '
@@ -155,11 +175,13 @@ class _AuditScreenState extends State<AuditScreen> {
   }
 
   Future<void> _export(AppState state, List<AuditEntry> rows) async {
-    final csv = state.exportAuditCsv(rows);
-    await Clipboard.setData(ClipboardData(text: csv));
+    final exportedRows = await state.auditExportRows();
+    final csv = state.exportAuditCsv(exportedRows);
+    await FileSaver.instance.saveAs(name: 'smartreserve-audit-log', bytes: Uint8List.fromList(utf8.encode(csv)), fileExtension: 'csv', mimeType: MimeType.text);
+    if (state.backend != null) await state.backend!.recordAuditExport(state.auditQuery, exportedRows.length);
     state.showToast(
       ToastMessage(
-        '${rows.length} entries copied as CSV, signed with your name. The '
+        '${exportedRows.length} entries saved as CSV, signed with your name. The '
         'export is itself logged.',
         tone: AdvisoryTone.info,
       ),

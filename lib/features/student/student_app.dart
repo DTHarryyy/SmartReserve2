@@ -157,7 +157,10 @@ class _StudentAppState extends State<StudentApp> {
                 right: 2,
                 top: 2,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
                     color: SR.red,
                     borderRadius: BorderRadius.circular(10),
@@ -218,12 +221,20 @@ class _StudentAppState extends State<StudentApp> {
                           final item = state.notifications[index];
                           return ListTile(
                             tileColor: item.unread ? SR.blueTint : null,
-                            title: Text(item.title, style: sans(12.5, w: item.unread ? 600 : 500)),
-                            subtitle: Text(item.body, style: sans(11, height: 1.45, color: SR.ink4)),
+                            title: Text(
+                              item.title,
+                              style: sans(12.5, w: item.unread ? 600 : 500),
+                            ),
+                            subtitle: Text(
+                              item.body,
+                              style: sans(11, height: 1.45, color: SR.ink4),
+                            ),
                             onTap: () async {
                               Navigator.pop(context);
                               await state.openNotification(item);
-                              if (mounted) setState(() => _tab = StudentTab.mine);
+                              if (mounted) {
+                                setState(() => _tab = StudentTab.mine);
+                              }
                             },
                           );
                         },
@@ -606,9 +617,10 @@ class _StudentAppState extends State<StudentApp> {
                             style: sans(10.5, w: 500, color: SR.muted),
                           ),
                           if (occurrence.startsAt.isAfter(campusNow()) &&
-                              !const ['cancelled', 'expired'].contains(
-                                occurrence.bookingState,
-                              )) ...[
+                              !const [
+                                'cancelled',
+                                'expired',
+                              ].contains(occurrence.bookingState)) ...[
                             const SizedBox(width: 6),
                             SrButton(
                               label: 'Cancel date',
@@ -768,7 +780,9 @@ class _StudentAppState extends State<StudentApp> {
                             context: context,
                             initialTime: endTime,
                           );
-                          if (picked != null) setDialogState(() => endTime = picked);
+                          if (picked != null) {
+                            setDialogState(() => endTime = picked);
+                          }
                         },
                         child: Text('To ${endTime.format(context)}'),
                       ),
@@ -826,8 +840,18 @@ class _StudentAppState extends State<StudentApp> {
 
   static String _reservationDate(DateTime value) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${value.day} ${months[value.month - 1]} ${value.year}';
   }

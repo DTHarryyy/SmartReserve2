@@ -6,7 +6,10 @@ enum BookingStage {
   booked('Approved', 'Approved — the room is held and the requester notified.'),
   checkedIn('Checked in', 'Checked in — attendees are in the room.'),
   completed('Completed', 'Completed and closed.'),
-  noShow('No-show', 'The requester did not check in before the grace period ended.');
+  noShow(
+    'No-show',
+    'The requester did not check in before the grace period ended.',
+  );
 
   const BookingStage(this.label, this.summary);
 
@@ -32,7 +35,8 @@ enum RequestStatus {
   final Color foreground;
 
   static RequestStatus fromRaw(String raw) => values.firstWhere(
-    (s) => s.raw == raw ||
+    (s) =>
+        s.raw == raw ||
         (s == RequestStatus.changesRequested && raw == 'changes_requested'),
     orElse: () => RequestStatus.pending,
   );
@@ -77,7 +81,8 @@ class ReservationOccurrence {
   final String? reason;
 
   bool get isBooked => bookingState == 'booked';
-  bool get needsNewTime => bookingState == 'changes_requested' || bookingState == 'bumped';
+  bool get needsNewTime =>
+      bookingState == 'changes_requested' || bookingState == 'bumped';
 }
 
 class ReservationFile {

@@ -1,5 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
@@ -32,15 +35,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final narrow = MediaQuery.sizeOf(context).width < 900;
     final stacked = MediaQuery.sizeOf(context).width < SR.tabletMin;
 
-    final utilisation = utilisationFor(
+    final localUtilisation = utilisationFor(
       facilities: state.facilities,
       requests: state.requests,
       bookings: state.bookings,
       range: _range,
       category: _category,
     );
-    final heatmap = demandFor(state.requests);
-    final performance = performanceFor(state.requests);
+    final snapshot = state.reportSnapshot;
+    final utilisation = snapshot == null
+        ? localUtilisation
+        : utilisationFromReport(snapshot, state.facilities);
+    final heatmap = snapshot == null
+        ? demandFor(state.requests)
+        : demandFromReport(snapshot);
+    final performance = snapshot == null
+        ? performanceFor(state.requests)
+        : performanceFromReport(snapshot);
     final issues = qualityIssuesFor(state.facilities);
 
     return Scrollbar(
@@ -59,6 +70,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _scopeBar(state),
+                if (state.reportsLoading) const LinearProgressIndicator(),
+                if (state.reportsError case final error?)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(error, style: sans(11.5, color: SR.red)),
+                  ),
                 _utilisation(state, utilisation),
                 if (narrow) ...[
                   _demand(heatmap, state),
@@ -105,6 +122,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
           semanticLabel: 'Date range',
           onChanged: (v) => setState(() {
             _range = ReportRange.values.firstWhere((r) => r.label == v);
+            state.refreshReports(
+              scope: ReportScope.forRange(
+                _range,
+                category: _category == 'All categories' ? null : _category,
+              ),
+            );
           }),
         ),
         FilterSelect(
@@ -114,6 +137,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
           onChanged: (v) => setState(() {
             _category = v;
             _drillFacility = null;
+            state.refreshReports(
+              scope: ReportScope.forRange(
+                _range,
+                category: _category == 'All categories' ? null : _category,
+              ),
+            );
           }),
         ),
       ],
@@ -136,10 +165,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
             '${u.availableHours.toStringAsFixed(1)},${u.percent}%',
       '# ${_range.label} · $_category · exported by ${state.currentAdmin.name}',
     ].join('\n');
-    await Clipboard.setData(ClipboardData(text: csv));
+    await FileSaver.instance.saveAs(
+      name: 'smartreserve-utilisation-report',
+      bytes: Uint8List.fromList(utf8.encode(csv)),
+      fileExtension: 'csv',
+      mimeType: MimeType.text,
+    );
     state.showToast(
       const ToastMessage(
-        'Utilisation copied as CSV, with the scope printed in the footer.',
+        'Utilisation report saved as CSV, with the scope printed in the footer.',
         tone: AdvisoryTone.info,
       ),
     );
@@ -340,10 +374,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _demand(DemandHeatmap heatmap, AppState state) {
-    final declined = state.requests
-        .where((r) => r.status == RequestStatus.declined)
-        .length;
-    final unmet = state.requests.where((r) => r.heads > r.capacity).length;
+    final declined =
+        state.reportSnapshot?.performance.declined ??
+        state.requests.where((r) => r.status == RequestStatus.declined).length;
+    final unmet =
+        state.reportSnapshot?.performance.overCapacity ??
+        state.requests.where((r) => r.heads > r.capacity).length;
 
     return _section(
       number: '02',

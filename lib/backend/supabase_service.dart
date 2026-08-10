@@ -10,6 +10,8 @@ import '../data/campus_data.dart';
 import '../model/facility.dart';
 import '../model/facility_draft.dart';
 import '../model/facility_photo.dart';
+import '../features/reports/reports_data.dart';
+import '../model/audit_entry.dart';
 import '../util/geo.dart';
 
 class SessionProfile {
@@ -491,6 +493,81 @@ class BackendNotification {
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value)?.toLocal() : null;
 
+class AuditQuery {
+  const AuditQuery({
+    this.search = '',
+    this.actor,
+    this.entityType,
+    this.materialOnly = false,
+    this.from,
+    this.to,
+    this.beforeCreatedAt,
+    this.beforeId,
+    this.limit = 50,
+  });
+  final String search;
+  final String? actor;
+  final String? entityType;
+  final bool materialOnly;
+  final DateTime? from;
+  final DateTime? to;
+  final DateTime? beforeCreatedAt;
+  final String? beforeId;
+  final int limit;
+  AuditQuery copyWith({
+    String? search,
+    String? actor,
+    bool clearActor = false,
+    String? entityType,
+    bool clearEntityType = false,
+    bool? materialOnly,
+    DateTime? from,
+    DateTime? to,
+    DateTime? beforeCreatedAt,
+    String? beforeId,
+  }) => AuditQuery(
+    search: search ?? this.search,
+    actor: clearActor ? null : actor ?? this.actor,
+    entityType: clearEntityType ? null : entityType ?? this.entityType,
+    materialOnly: materialOnly ?? this.materialOnly,
+    from: from ?? this.from,
+    to: to ?? this.to,
+    beforeCreatedAt: beforeCreatedAt ?? this.beforeCreatedAt,
+    beforeId: beforeId ?? this.beforeId,
+    limit: limit,
+  );
+  Map<String, dynamic> get filters => {
+    'search': search,
+    'actor': actor,
+    'entity_type': entityType,
+    'material_only': materialOnly,
+    'from': from?.toUtc().toIso8601String(),
+    'to': to?.toUtc().toIso8601String(),
+  };
+}
+
+class AuditPage {
+  const AuditPage({
+    required this.entries,
+    required this.total,
+    required this.actors,
+  });
+  final List<AuditEntry> entries;
+  final int total;
+  final List<String> actors;
+  factory AuditPage.fromJson(Map<String, dynamic> json) => AuditPage(
+    entries: ((json['rows'] as List?) ?? const [])
+        .map(
+          (row) => AuditEntry.fromJson(Map<String, dynamic>.from(row as Map)),
+        )
+        .toList(),
+    total: (json['total'] as num?)?.toInt() ?? 0,
+    actors: ((json['actors'] as List?) ?? const [])
+        .map((value) => '$value')
+        .toList(),
+  );
+}
+
 abstract interface class SmartReserveBackend {
   User? get user;
   Stream<AuthState> get authChanges;
@@ -580,6 +657,10 @@ abstract interface class SmartReserveBackend {
   });
   Future<void> archiveFacility(String id);
   Future<void> restoreFacility(String id);
+  Future<ReportSnapshot> adminReport(ReportScope scope);
+  Future<AuditPage> auditEntries(AuditQuery query);
+  Future<void> recordAuditExport(AuditQuery query, int rowCount);
+  Future<void> revertAuditEntry(String entryId, String reason);
   String facilityPhotoUrl(String path);
 }
 
@@ -1488,6 +1569,50 @@ class SupabaseService implements SmartReserveBackend {
   Future<void> restoreFacility(String id) async {
     await _client.from('facilities').update({'archived_at': null}).eq('id', id);
   }
+
+  @override
+  Future<ReportSnapshot> adminReport(ReportScope scope) async {
+    final data = await _client.rpc(
+      'get_admin_report',
+      params: {
+        'p_from': scope.from.toUtc().toIso8601String(),
+        'p_to': scope.to.toUtc().toIso8601String(),
+        'p_category': scope.category,
+      },
+    );
+    return ReportSnapshot.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AuditPage> auditEntries(AuditQuery query) async {
+    final data = await _client.rpc(
+      'get_audit_entries',
+      params: {
+        'p_search': query.search.isEmpty ? null : query.search,
+        'p_actor': query.actor,
+        'p_entity_type': query.entityType,
+        'p_material_only': query.materialOnly,
+        'p_from': query.from?.toUtc().toIso8601String(),
+        'p_to': query.to?.toUtc().toIso8601String(),
+        'p_before_created_at': query.beforeCreatedAt?.toUtc().toIso8601String(),
+        'p_before_id': query.beforeId,
+        'p_limit': query.limit,
+      },
+    );
+    return AuditPage.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<void> recordAuditExport(AuditQuery query, int rowCount) => _client.rpc(
+    'record_audit_export',
+    params: {'p_row_count': rowCount, 'p_filters': query.filters},
+  );
+
+  @override
+  Future<void> revertAuditEntry(String entryId, String reason) => _client.rpc(
+    'revert_facility_audit_entry',
+    params: {'p_entry_id': entryId, 'p_reason': reason},
+  );
 
   Future<void> inviteAdmin({
     required String email,
