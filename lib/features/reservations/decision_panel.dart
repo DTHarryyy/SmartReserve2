@@ -858,6 +858,9 @@ class _PanelTab extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: SR.stateChange,
+          constraints: BoxConstraints(
+            minHeight: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 0,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
           decoration: BoxDecoration(
             color: selected

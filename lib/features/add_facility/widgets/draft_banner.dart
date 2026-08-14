@@ -87,6 +87,9 @@ class _BannerButton extends StatelessWidget {
       onTap: onPressed,
       child: AnimatedContainer(
         duration: SR.stateChange,
+        constraints: BoxConstraints(
+          minHeight: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 0,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
           color: solid

@@ -9,7 +9,7 @@ enum AppView {
   reports('Reports', 'Reports'),
   notes('Design notes', 'Design notes'),
   profile('Profile', 'Your profile'),
-  studentApp('Student app', 'SmartReserve'),
+  userApp('User app', 'SmartReserve'),
   auth('Onboarding', 'Onboarding');
 
   const AppView(this.crumb, this.title);
@@ -22,8 +22,7 @@ enum AppView {
       ? const ['Facilities', 'Add facility']
       : [crumb];
 
-  bool get usesAdminChrome =>
-      this != AppView.studentApp && this != AppView.auth;
+  bool get usesAdminChrome => this != AppView.userApp && this != AppView.auth;
 
   AppView get navSection =>
       this == AppView.addFacility ? AppView.facilities : this;

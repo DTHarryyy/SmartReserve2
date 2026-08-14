@@ -146,6 +146,7 @@ Deno.serve(async (request) => {
 
   const action = typeof body.action === "string" ? body.action : "";
   const targetId = typeof body.target_id === "string" ? body.target_id : "";
+  const requestId = crypto.randomUUID();
 
   const loadAuthUsers = async () => {
     const users: Record<string, unknown>[] = [];
@@ -406,11 +407,25 @@ Deno.serve(async (request) => {
       ["change_role", "suspend", "lift_suspension", "request_reverification"]
         .includes(action)
     ) {
+      const requestedRole = typeof body.role === "string" ? body.role : null;
+      if (
+        action === "change_role" &&
+        (requestedRole === null ||
+          !["user", "internal_admin", "external_admin"].includes(
+            requestedRole,
+          ))
+      ) {
+        return json({
+          code: "invalid_role",
+          error:
+            "That's not a role SmartReserve recognizes. Choose User, Internal admin, or External admin.",
+        }, 400);
+      }
       const { error } = await admin.rpc("admin_manage_account", {
         p_actor: userData.user.id,
         p_target: targetId,
         p_action: action,
-        p_role: typeof body.role === "string" ? body.role : null,
+        p_role: requestedRole,
         p_reason: typeof body.reason === "string" ? body.reason.trim() : null,
         p_suspended_until:
           typeof body.suspended_until === "string" && body.suspended_until
@@ -458,21 +473,51 @@ Deno.serve(async (request) => {
       lower.includes("last active") || lower.includes("cannot change") ||
       lower.includes("cannot suspend")
     ) {
-      return json({ code: "guardrail", error: message }, 409);
+      const guardrailMessage = lower.includes("own role")
+        ? "You cannot change your own role."
+        : lower.includes("own account")
+        ? "You cannot suspend your own account."
+        : lower.includes("demoted")
+        ? "The last active internal administrator cannot be demoted."
+        : "The last active internal administrator cannot be suspended.";
+      return json({ code: "guardrail", error: guardrailMessage }, 409);
     }
     if (lower.includes("already") || lower.includes("registered")) {
-      return json({ code: "conflict", error: message }, 409);
+      return json({
+        code: "conflict",
+        error: "That email address already has an account.",
+      }, 409);
     }
-    if (
-      lower.includes("invalid") || lower.includes("required") ||
-      lower.includes("future lift")
-    ) {
-      return json({ code: "invalid_request", error: message }, 400);
+    if (lower.includes("invalid role")) {
+      return json({
+        code: "invalid_role",
+        error:
+          "That's not a role SmartReserve recognizes. Choose User, Internal admin, or External admin.",
+      }, 400);
     }
-    console.error("manage-users failed", { action, error });
+    if (lower.includes("reason is required")) {
+      return json({
+        code: "reason_required",
+        error: "Enter a reason before saving this action.",
+      }, 400);
+    }
+    if (lower.includes("future lift")) {
+      return json({
+        code: "invalid_lift_date",
+        error: "Choose a future suspension lift date.",
+      }, 400);
+    }
+    if (lower.includes("rate limit") || lower.includes("too many requests")) {
+      return json({
+        code: "rate_limited",
+        error: "Too many requests. Wait a moment and try again.",
+      }, 429);
+    }
+    console.error("manage-users failed", { requestId, action, error });
     return json({
       code: "server_error",
-      error: message || "User management failed.",
+      error: "User management is temporarily unavailable. Try again.",
+      request_id: requestId,
     }, 500);
   }
 });

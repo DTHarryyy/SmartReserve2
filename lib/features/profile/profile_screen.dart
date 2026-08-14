@@ -13,10 +13,11 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final admin = state.currentAdmin;
+    final width = MediaQuery.sizeOf(context).width;
 
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        padding: SR.pageInsets(width, bottom: 32),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 460),
@@ -34,7 +35,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: EdgeInsets.all(SR.isCompact(width) ? 16 : 20),
                   decoration: BoxDecoration(
                     color: SR.surface,
                     borderRadius: BorderRadius.circular(12),

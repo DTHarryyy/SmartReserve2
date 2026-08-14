@@ -14,7 +14,7 @@ SessionProfile memberProfile({
   id: '00000000-0000-0000-0000-000000000099',
   email: 'roel@example.com',
   fullName: 'Roel Dela Cruz',
-  role: 'student',
+  role: 'user',
   campusClaim: 'student',
   campusId: '2026-00123',
   unit: 'BS Information Technology',
@@ -27,6 +27,16 @@ SessionProfile memberProfile({
 );
 
 void main() {
+  test('authorization exposes exactly three fail-closed roles', () {
+    expect(AccountRole.values, [
+      AccountRole.user,
+      AccountRole.internalAdmin,
+      AccountRole.externalAdmin,
+    ]);
+    expect(() => AccountRole.fromRaw('student'), throwsArgumentError);
+    expect(() => AccountRole.fromRaw('unexpected'), throwsArgumentError);
+  });
+
   test('authenticated student account uses the Supabase profile', () async {
     final state = AppState();
 
@@ -34,17 +44,17 @@ void main() {
       memberProfile(verificationStatus: 'verified'),
     );
 
-    final account = state.studentAccount;
+    final account = state.userAccount;
     expect(account.id, '00000000-0000-0000-0000-000000000099');
     expect(account.name, 'Roel Dela Cruz');
     expect(account.email, 'roel@example.com');
-    expect(account.role, AccountRole.student);
+    expect(account.role, AccountRole.user);
     expect(account.idNumber, '2026-00123');
     expect(account.unit, 'BS Information Technology');
     expect(account.verification, VerificationState.verified);
     expect(account.status, AccountStatus.active);
     expect(account.joined, '7 Aug 2026');
-    expect(state.studentDetailsEditable, isFalse);
+    expect(state.userDetailsEditable, isFalse);
   });
 
   test(
@@ -65,27 +75,27 @@ void main() {
             accountStatus: 'suspended',
           ),
         );
-        expect(state.studentAccount.verification, entry.value);
-        expect(state.studentAccount.status, AccountStatus.suspended);
+        expect(state.userAccount.verification, entry.value);
+        expect(state.userAccount.status, AccountStatus.suspended);
       }
     },
   );
 
   test('a sessionless state retains the seeded demo account fallback', () {
-    final state = AppState()..signInAsStudent('u3');
+    final state = AppState()..signInAsUser('u3');
 
     expect(state.hasSession, isFalse);
-    expect(state.studentAccount.id, 'u3');
+    expect(state.userAccount.id, 'u3');
   });
 
-  test('pending campus users can reserve without a guest-rate quote', () {
-    final state = AppState()..signInAsStudent('u3');
+  test('only verified users reserve free', () {
+    final state = AppState()..signInAsUser('u3');
 
-    expect(state.studentAccount.verification, VerificationState.pending);
-    expect(state.studentAccount.reservesFree, isTrue);
+    expect(state.userAccount.verification, VerificationState.pending);
+    expect(state.userAccount.reservesFree, isFalse);
 
-    state.signInAsStudent('u5');
-    expect(state.studentAccount.reservesFree, isFalse);
+    state.signInAsUser('u5');
+    expect(state.userAccount.reservesFree, isFalse);
   });
 
   test(
@@ -101,8 +111,8 @@ void main() {
         ),
       );
 
-      expect(state.studentAccount.suspendReason, 'Repeated no-shows');
-      expect(state.studentAccount.suspendUntil, '20 Aug 2026');
+      expect(state.userAccount.suspendReason, 'Repeated no-shows');
+      expect(state.userAccount.suspendUntil, '20 Aug 2026');
       expect(
         () => state.submitBooking(
           facility: state.facilities.first,

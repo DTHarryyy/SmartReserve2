@@ -14,6 +14,7 @@ class AppHeader extends StatelessWidget {
     this.actions = const [],
     this.chip,
     this.compact = false,
+    this.mobile = false,
     this.onMenu,
   });
 
@@ -27,6 +28,7 @@ class AppHeader extends StatelessWidget {
 
   final Widget? chip;
   final bool compact;
+  final bool mobile;
   final VoidCallback? onMenu;
 
   @override
@@ -55,28 +57,33 @@ class AppHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  for (var i = 0; i < crumbs.length; i++) ...[
-                    if (i > 0)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                        child: Text('/', style: sans(11, color: SR.mutedLight)),
+              if (!compact) ...[
+                Row(
+                  children: [
+                    for (var i = 0; i < crumbs.length; i++) ...[
+                      if (i > 0)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 7),
+                          child: Text(
+                            '/',
+                            style: sans(11, color: SR.mutedLight),
+                          ),
+                        ),
+                      Flexible(
+                        child: Text(
+                          crumbs[i],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: i == crumbs.length - 1
+                              ? sans(11, w: 500)
+                              : sans(11, color: SR.ink4),
+                        ),
                       ),
-                    Flexible(
-                      child: Text(
-                        crumbs[i],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: i == crumbs.length - 1
-                            ? sans(11, w: 500)
-                            : sans(11, color: SR.ink4),
-                      ),
-                    ),
+                    ],
                   ],
-                ],
-              ),
-              const SizedBox(height: 2),
+                ),
+                const SizedBox(height: 2),
+              ],
               Text(
                 title,
                 maxLines: 1,
@@ -92,13 +99,15 @@ class AppHeader extends StatelessWidget {
           ),
         ),
         if (chip != null && !compact) ...[const SizedBox(width: 14), chip!],
-        const SizedBox(width: 12),
-        SrButton(
-          label: 'States',
-          dense: true,
-          fontSize: 12,
-          onPressed: onToggleStates,
-        ),
+        if (!compact) ...[
+          const SizedBox(width: 12),
+          SrButton(
+            label: 'States',
+            dense: true,
+            fontSize: 12,
+            onPressed: onToggleStates,
+          ),
+        ],
         if (!compact) ...[
           const SizedBox(width: 8),
           _Avatar(initials: avatarInitials, onTap: onOpenProfile),

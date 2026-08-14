@@ -40,6 +40,18 @@ const monthNames = [
   'Dec',
 ];
 
+/// `8 Aug 2026, 09:08` — the shared date+time stamp format, matching the
+/// 24-hour style already used across the app (e.g. `AuditEntry.now`).
+String formatStamp(DateTime value) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${value.day} ${monthNames[value.month - 1]} ${value.year}, '
+      '${two(value.hour)}:${two(value.minute)}';
+}
+
+/// `8 Aug 2026` — date only, no time.
+String formatDay(DateTime value) =>
+    '${value.day} ${monthNames[value.month - 1]} ${value.year}';
+
 DateTime? parseCampusDate(String label) {
   var day = 0;
   var month = 0;

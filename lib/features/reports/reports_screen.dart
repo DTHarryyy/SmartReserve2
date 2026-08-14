@@ -6,19 +6,19 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
-import '../../data/campus_data.dart';
 import '../../model/facility.dart';
 import '../../model/notice.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/campus_calendar.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/sr_controls.dart';
 import 'reports_data.dart';
 
 class ReportsScreen extends StatefulWidget {
-  const ReportsScreen({super.key, required this.onFixLocation});
+  const ReportsScreen({super.key, this.onFixLocation});
 
-  final void Function(Facility facility) onFixLocation;
+  final void Function(Facility facility)? onFixLocation;
 
   @override
   State<ReportsScreen> createState() => _ReportsScreenState();
@@ -32,36 +32,51 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final narrow = MediaQuery.sizeOf(context).width < 900;
-    final stacked = MediaQuery.sizeOf(context).width < SR.tabletMin;
-
-    final localUtilisation = utilisationFor(
-      facilities: state.facilities,
-      requests: state.requests,
-      bookings: state.bookings,
-      range: _range,
-      category: _category,
-    );
+    final width = MediaQuery.sizeOf(context).width;
+    final narrow = width < 900;
+    final stacked = width < SR.tabletMin;
+    final selectedCategory = _category == 'All categories' ? null : _category;
     final snapshot = state.reportSnapshot;
-    final utilisation = snapshot == null
-        ? localUtilisation
-        : utilisationFromReport(snapshot, state.facilities);
-    final heatmap = snapshot == null
+    final selectedSnapshot =
+        snapshot != null &&
+            snapshot.scope.range == _range &&
+            snapshot.scope.category == selectedCategory
+        ? snapshot
+        : null;
+    final utilisation = state.usesDemoData
+        ? utilisationFor(
+            facilities: state.facilities,
+            requests: state.requests,
+            bookings: state.bookings,
+            range: _range,
+            category: _category,
+          )
+        : selectedSnapshot == null
+        ? null
+        : utilisationFromReport(selectedSnapshot);
+    final heatmap = state.usesDemoData
         ? demandFor(state.requests)
-        : demandFromReport(snapshot);
-    final performance = snapshot == null
+        : selectedSnapshot == null
+        ? null
+        : demandFromReport(selectedSnapshot);
+    final performance = state.usesDemoData
         ? performanceFor(state.requests)
-        : performanceFromReport(snapshot);
-    final issues = qualityIssuesFor(state.facilities);
+        : selectedSnapshot == null
+        ? null
+        : performanceFromReport(selectedSnapshot);
+    final issues = qualityIssuesFor(
+      state.facilities
+          .where(
+            (facility) =>
+                selectedCategory == null ||
+                facility.category == selectedCategory,
+          )
+          .toList(),
+    );
 
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          stacked ? 14 : 24,
-          stacked ? 14 : 20,
-          stacked ? 14 : 24,
-          40,
-        ),
+        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
         child: Align(
           alignment: Alignment.topLeft,
           child: ConstrainedBox(
@@ -69,28 +84,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _scopeBar(state),
+                _scopeBar(state, selectedSnapshot, utilisation),
                 if (state.reportsLoading) const LinearProgressIndicator(),
                 if (state.reportsError case final error?)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(error, style: sans(11.5, color: SR.red)),
-                  ),
-                _utilisation(state, utilisation),
-                if (narrow) ...[
-                  _demand(heatmap, state),
-                  _performance(performance),
-                ] else
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                  _reportError(state, error, stale: selectedSnapshot != null),
+                if (state.reportsStale && selectedSnapshot != null)
+                  _staleNotice(selectedSnapshot),
+                if (utilisation != null &&
+                    heatmap != null &&
+                    performance != null) ...[
+                  _utilisation(state, utilisation, selectedSnapshot),
+                  if (narrow) ...[
+                    _demand(heatmap, state, selectedSnapshot),
+                    _performance(performance),
+                  ] else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(child: _demand(heatmap, state)),
+                        Expanded(
+                          child: _demand(heatmap, state, selectedSnapshot),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(child: _performance(performance)),
                       ],
                     ),
-                  ),
+                ] else if (!state.reportsLoading && state.reportsError == null)
+                  _initialReportState(),
                 _quality(issues),
               ],
             ),
@@ -100,71 +119,149 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _scopeBar(AppState state) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-    decoration: BoxDecoration(
-      color: SR.surface,
-      borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.border),
-    ),
-    child: FilterBar(
-      count:
-          '${_range.label.toLowerCase()} · '
-          '${_category == 'All categories' ? 'all categories' : _category.toLowerCase()}',
-      trailing: [
-        SrButton(label: 'Export CSV', onPressed: () => _exportCsv(state)),
-      ],
-      children: [
-        FilterSelect(
-          value: _range.label,
-          items: [for (final r in ReportRange.values) r.label],
-          semanticLabel: 'Date range',
-          onChanged: (v) => setState(() {
-            _range = ReportRange.values.firstWhere((r) => r.label == v);
-            state.refreshReports(
-              scope: ReportScope.forRange(
-                _range,
-                category: _category == 'All categories' ? null : _category,
-              ),
-            );
-          }),
-        ),
-        FilterSelect(
-          value: _category,
-          items: ['All categories', ...categories],
-          semanticLabel: 'Category',
-          onChanged: (v) => setState(() {
-            _category = v;
-            _drillFacility = null;
-            state.refreshReports(
-              scope: ReportScope.forRange(
-                _range,
-                category: _category == 'All categories' ? null : _category,
-              ),
-            );
-          }),
-        ),
-      ],
-    ),
-  );
-
-  Future<void> _exportCsv(AppState state) async {
-    final rows = utilisationFor(
-      facilities: state.facilities,
-      requests: state.requests,
-      bookings: state.bookings,
-      range: _range,
-      category: _category,
+  Widget _scopeBar(
+    AppState state,
+    ReportSnapshot? snapshot,
+    List<Utilisation>? utilisation,
+  ) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final rangeFilter = FilterSelect(
+      value: _range.label,
+      items: [for (final r in ReportRange.values) r.label],
+      width: compact ? null : 160,
+      semanticLabel: 'Date range',
+      onChanged: (v) => setState(() {
+        _range = ReportRange.values.firstWhere((r) => r.label == v);
+        _drillFacility = null;
+        state.refreshReports(
+          scope: ReportScope.forRange(
+            _range,
+            category: _category == 'All categories' ? null : _category,
+          ),
+        );
+      }),
     );
-    final csv = [
-      'facility,building,category,booked_hours,available_hours,utilisation',
-      for (final u in rows)
-        '"${u.facility.name}","${u.facility.building}",'
-            '"${u.facility.category}",${u.bookedHours.toStringAsFixed(1)},'
-            '${u.availableHours.toStringAsFixed(1)},${u.percent}%',
-      '# ${_range.label} · $_category · exported by ${state.currentAdmin.name}',
-    ].join('\n');
+    final categoryFilter = FilterSelect(
+      value: _category,
+      items: ['All categories', ..._liveCategories(state)],
+      width: compact ? null : 210,
+      semanticLabel: 'Category',
+      onChanged: (v) => setState(() {
+        _category = v;
+        _drillFacility = null;
+        state.refreshReports(
+          scope: ReportScope.forRange(
+            _range,
+            category: _category == 'All categories' ? null : _category,
+          ),
+        );
+      }),
+    );
+    final export = SrButton(
+      label: 'Export CSV',
+      minHeight: compact ? 44 : null,
+      onPressed:
+          !state.reportsLoading && (state.usesDemoData || snapshot != null)
+          ? () => _exportCsv(state, snapshot)
+          : null,
+    );
+    final drillName = _findDrill(utilisation, _drillFacility)?.facilityName;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 13,
+        vertical: 11,
+      ),
+      decoration: BoxDecoration(
+        color: SR.surface,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: SR.border),
+      ),
+      child: compact
+          ? Row(
+              children: [
+                Expanded(child: rangeFilter),
+                const SizedBox(width: 6),
+                Expanded(child: categoryFilter),
+                const SizedBox(width: 6),
+                export,
+              ],
+            )
+          : FilterBar(
+              count: _scopeSummary(snapshot),
+              trailing: [export],
+              children: [
+                rangeFilter,
+                categoryFilter,
+                if (drillName != null)
+                  FilterPill(
+                    label: 'Facility: $drillName',
+                    selected: true,
+                    onTap: () => setState(() => _drillFacility = null),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Utilisation? _findDrill(List<Utilisation>? rows, String? id) {
+    if (rows == null || id == null) return null;
+    for (final row in rows) {
+      if (row.facilityId == id) return row;
+    }
+    return null;
+  }
+
+  // The dropdowns right next to this text already say the range and
+  // category — echoing them back added no information. Once a snapshot
+  // has loaded, show what the dropdowns can't: the resolved date window
+  // and how fresh the numbers are.
+  String _scopeSummary(ReportSnapshot? snapshot) {
+    if (snapshot == null) {
+      return '${_range.label.toLowerCase()} · '
+          '${_category == 'All categories' ? 'all categories' : _category.toLowerCase()}';
+    }
+    return '${formatDay(snapshot.scope.from)} – ${formatDay(snapshot.scope.to)} '
+        '· updated ${_relativeFreshness(snapshot.generatedAt)}';
+  }
+
+  String _relativeFreshness(DateTime generatedAt) {
+    final delta = DateTime.now().difference(generatedAt);
+    if (delta.inMinutes < 1) return 'just now';
+    if (delta.inMinutes < 60) return '${delta.inMinutes} min ago';
+    if (delta.inHours < 24) return '${delta.inHours} h ago';
+    return '${delta.inDays} d ago';
+  }
+
+  List<String> _liveCategories(AppState state) =>
+      state.facilities.map((facility) => facility.category).toSet().toList()
+        ..sort();
+
+  Future<void> _exportCsv(AppState state, ReportSnapshot? snapshot) async {
+    late final String csv;
+    if (state.usesDemoData) {
+      final rows = utilisationFor(
+        facilities: state.facilities,
+        requests: state.requests,
+        bookings: state.bookings,
+        range: _range,
+        category: _category,
+      );
+      csv = [
+        'facility,building,category,booked_hours,available_hours,utilisation',
+        for (final u in rows)
+          '"${u.facilityName.replaceAll('"', '""')}",'
+              '"${u.building.replaceAll('"', '""')}",'
+              '"${u.category.replaceAll('"', '""')}",'
+              '${u.bookedHours.toStringAsFixed(2)},'
+              '${u.availableHours.toStringAsFixed(2)},'
+              '${(u.fraction * 100).toStringAsFixed(2)}',
+      ].join('\n');
+    } else {
+      if (snapshot == null || state.reportsLoading) return;
+      csv = reportCsv(snapshot, exportedBy: state.currentAdmin.name);
+    }
     await FileSaver.instance.saveAs(
       name: 'smartreserve-utilisation-report',
       bytes: Uint8List.fromList(utf8.encode(csv)),
@@ -179,49 +276,130 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  Widget _reportError(AppState state, String error, {required bool stale}) =>
+      Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: SR.redTint,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: SR.red.withValues(alpha: .25)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                stale ? '$error Showing the last verified result.' : error,
+                style: sans(11.5, height: 1.45, color: SR.red),
+              ),
+            ),
+            const SizedBox(width: 10),
+            SrButton(
+              label: 'Retry',
+              dense: true,
+              onPressed: state.reportsLoading
+                  ? null
+                  : () => state.refreshReports(
+                      scope: ReportScope.forRange(
+                        _range,
+                        category: _category == 'All categories'
+                            ? null
+                            : _category,
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _staleNotice(ReportSnapshot snapshot) => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+    decoration: BoxDecoration(
+      color: SR.amberTint,
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Text(
+      'Last verified ${_reportTimestamp(snapshot.generatedAt)}. These figures may be out of date.',
+      style: sans(11.5, color: SR.ink3),
+    ),
+  );
+
+  Widget _initialReportState() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+    decoration: BoxDecoration(
+      color: SR.surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: SR.border),
+    ),
+    child: Text(
+      'No verified report is available for this scope.',
+      textAlign: TextAlign.center,
+      style: sans(12, color: SR.muted),
+    ),
+  );
+
+  String _reportTimestamp(DateTime value) {
+    final local = campusWallTime(value);
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${formatCampusDate(local)} ${local.hour}:$minute';
+  }
+
   Widget _section({
     required String number,
     required String title,
     required String caption,
     required Widget child,
     String? tooltip,
-  }) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: SR.surface,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 9,
-          runSpacing: 2,
-          children: [
-            Text(number, style: mono(10, w: 500, color: SR.blue)),
-            Text(title, style: sans(13.5, w: 600, tracking: -.01)),
-            Tooltip(
-              message: tooltip ?? caption,
-              child: Text('$caption ⓘ', style: sans(11, color: SR.muted)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        child,
-      ],
-    ),
-  );
+  }) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(compact ? 14 : 18),
+      decoration: BoxDecoration(
+        color: SR.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SR.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 9,
+            runSpacing: 2,
+            children: [
+              Text(number, style: mono(10, w: 500, color: SR.blue)),
+              Text(title, style: sans(13.5, w: 600, tracking: -.01)),
+              Tooltip(
+                message: tooltip ?? caption,
+                child: Text('$caption ⓘ', style: sans(11, color: SR.muted)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
 
-  Widget _utilisation(AppState state, List<Utilisation> rows) {
-    final average = rows.isEmpty
-        ? 0
-        : (rows.map((u) => u.fraction).reduce((a, b) => a + b) /
-                  rows.length *
-                  100)
-              .round();
+  Widget _utilisation(
+    AppState state,
+    List<Utilisation> rows,
+    ReportSnapshot? snapshot,
+  ) {
+    final totalAvailable = rows.fold<double>(
+      0,
+      (total, row) => total + row.availableHours,
+    );
+    final averageFraction =
+        snapshot?.fraction ??
+        (totalAvailable == 0
+            ? 0
+            : rows.fold<double>(0, (total, row) => total + row.bookedHours) /
+                  totalAvailable);
     final worst = rows.isEmpty ? null : rows.first;
 
     return _section(
@@ -242,7 +420,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '$average%',
+                    formatUtilisationPercent(averageFraction),
                     style: sans(26, w: 600, height: 1, tracking: -.03),
                   ),
                   const SizedBox(height: 5),
@@ -256,8 +434,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   rows.isEmpty
                       ? 'No facilities in this category yet — insufficient '
                             'data to report.'
-                      : '${worst!.facility.name} is the emptiest at '
-                            '${worst.percent}% of its own opening hours. '
+                      : '${worst!.facilityName} is the emptiest at '
+                            '${formatUtilisationPercent(worst.fraction)} of its own opening hours. '
                             'Sorted worst first, because the actionable '
                             'insight is the empty room.',
                   style: sans(11.5, height: 1.55, color: SR.ink4),
@@ -280,24 +458,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
             for (final row in rows)
               _UtilisationRow(
                 row: row,
-                selected: _drillFacility == row.facility.name,
+                selected: _drillFacility == row.facilityId,
                 onTap: () => setState(
-                  () => _drillFacility = _drillFacility == row.facility.name
+                  () => _drillFacility = _drillFacility == row.facilityId
                       ? null
-                      : row.facility.name,
+                      : row.facilityId,
                 ),
               ),
-          if (_drillFacility != null) _drill(state),
+          if (_drillFacility != null) _drill(state, snapshot, rows),
         ],
       ),
     );
   }
 
-  Widget _drill(AppState state) {
-    final rows = [
-      for (final r in state.requests)
-        if (r.facility == _drillFacility) r,
-    ];
+  Widget _drill(
+    AppState state,
+    ReportSnapshot? snapshot,
+    List<Utilisation> utilisation,
+  ) {
+    final facility = utilisation.firstWhere(
+      (row) => row.facilityId == _drillFacility,
+    );
+    final liveRows = snapshot == null
+        ? const <ReportBookedOccurrence>[]
+        : snapshot.bookedOccurrences
+              .where((row) => row.facilityId == _drillFacility)
+              .toList();
+    final demoRows = state.usesDemoData
+        ? state.requests
+              .where((row) => row.facilityId == _drillFacility)
+              .toList()
+        : const <ReservationRequest>[];
+    final rowCount = state.usesDemoData ? demoRows.length : liveRows.length;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.only(top: 12),
@@ -311,8 +503,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             children: [
               Expanded(
                 child: Text(
-                  '$_drillFacility · ${rows.length} '
-                  'request${rows.length == 1 ? '' : 's'} on record',
+                  '${facility.facilityName} · $rowCount '
+                  'booked occurrence${rowCount == 1 ? '' : 's'} in range',
                   style: sans(12, w: 600),
                 ),
               ),
@@ -325,60 +517,125 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          if (rows.isEmpty)
+          if (rowCount == 0)
             Text(
               'No reservations in this period.',
               style: sans(11.5, color: SR.muted),
             )
+          else if (!state.usesDemoData)
+            for (final row in liveRows) _bookedOccurrenceRow(row)
           else
-            for (final r in rows)
+            for (final r in demoRows)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: SR.dividerSoft)),
                 ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 150,
-                      child: Text(
-                        r.whenLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: mono(11, w: 500, color: SR.ink3),
+                child: SR.isCompact(MediaQuery.sizeOf(context).width)
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  r.whenLabel,
+                                  style: mono(11, w: 500, color: SR.ink3),
+                                ),
+                              ),
+                              SrPill(
+                                label: r.status.label,
+                                background: r.status.background,
+                                foreground: r.status.foreground,
+                                fontSize: 10,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            r.purpose,
+                            style: sans(11.5, height: 1.45, color: SR.ink2),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(r.requester, style: sans(11, color: SR.muted)),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          SizedBox(
+                            width: 150,
+                            child: Text(
+                              r.whenLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: mono(11, w: 500, color: SR.ink3),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              r.purpose,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: sans(11.5, color: SR.ink2),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(r.requester, style: sans(11, color: SR.muted)),
+                          const SizedBox(width: 10),
+                          SrPill(
+                            label: r.status.label,
+                            background: r.status.background,
+                            foreground: r.status.foreground,
+                            fontSize: 10,
+                          ),
+                        ],
                       ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        r.purpose,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: sans(11.5, color: SR.ink2),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(r.requester, style: sans(11, color: SR.muted)),
-                    const SizedBox(width: 10),
-                    SrPill(
-                      label: r.status.label,
-                      background: r.status.background,
-                      foreground: r.status.foreground,
-                      fontSize: 10,
-                    ),
-                  ],
-                ),
               ),
         ],
       ),
     );
   }
 
-  Widget _demand(DemandHeatmap heatmap, AppState state) {
+  Widget _bookedOccurrenceRow(ReportBookedOccurrence row) {
+    final starts = campusWallTime(row.startsAt);
+    final ends = campusWallTime(row.endsAt);
+    final startMinute = starts.minute.toString().padLeft(2, '0');
+    final endMinute = ends.minute.toString().padLeft(2, '0');
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: SR.dividerSoft)),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 5,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '${formatCampusDate(starts)} · ${starts.hour}:$startMinute–${ends.hour}:$endMinute',
+            style: mono(11, w: 500, color: SR.ink3),
+          ),
+          Text(row.purpose, style: sans(11.5, color: SR.ink2)),
+          Text(row.requester, style: sans(11, color: SR.muted)),
+          Text(
+            '${row.bookedHours.toStringAsFixed(2)} h in range',
+            style: mono(10.5, color: SR.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _demand(
+    DemandHeatmap heatmap,
+    AppState state,
+    ReportSnapshot? snapshot,
+  ) {
     final declined =
-        state.reportSnapshot?.performance.declined ??
+        snapshot?.performance.declined ??
         state.requests.where((r) => r.status == RequestStatus.declined).length;
     final unmet =
-        state.reportSnapshot?.performance.overCapacity ??
+        snapshot?.performance.overCapacity ??
         state.requests.where((r) => r.heads > r.capacity).length;
 
     return _section(
@@ -620,7 +877,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     label: 'Fix location',
                     dense: true,
                     fontSize: 11,
-                    onPressed: () => widget.onFixLocation(issue.facility),
+                    onPressed: widget.onFixLocation == null
+                        ? null
+                        : () => widget.onFixLocation!(issue.facility),
                   ),
                 ],
               ),
@@ -648,86 +907,147 @@ class _UtilisationRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Hoverable(
-    builder: (context, hovered) => GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected
-              ? SR.blueTint
-              : (hovered ? SR.surfaceSubtle : Colors.transparent),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 200,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    row.facility.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: sans(12, w: 500),
-                  ),
-                  Text(
-                    row.facility.building,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: sans(10, color: SR.muted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(5),
-                child: Stack(
+  Widget build(BuildContext context) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    return Hoverable(
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected
+                ? SR.blueTint
+                : (hovered ? SR.surfaceSubtle : Colors.transparent),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(height: 9, color: SR.divider),
-                    AnimatedFractionallySizedBox(
-                      duration: const Duration(milliseconds: 400),
-                      curve: SR.easing,
-                      widthFactor: row.fraction.clamp(0.0, 1.0),
-                      child: Container(
-                        height: 9,
-                        color: row.fraction < .25
-                            ? SR.orange
-                            : (row.fraction < .6 ? SR.blueBright : SR.blue),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                row.facilityName,
+                                style: sans(12.5, w: 600, height: 1.35),
+                              ),
+                              Text(
+                                row.building,
+                                style: sans(10.5, color: SR.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          formatUtilisationPercent(row.fraction),
+                          style: mono(13, w: 600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 9),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: Stack(
+                        children: [
+                          Container(height: 9, color: SR.divider),
+                          AnimatedFractionallySizedBox(
+                            duration: const Duration(milliseconds: 400),
+                            curve: SR.easing,
+                            widthFactor: row.fraction.clamp(0.0, 1.0),
+                            child: Container(
+                              height: 9,
+                              color: row.fraction < .25
+                                  ? SR.orange
+                                  : (row.fraction < .6
+                                        ? SR.blueBright
+                                        : SR.blue),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${row.bookedHours.round()} of ${row.availableHours.round()} available hours booked',
+                      style: mono(10, color: SR.muted),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    SizedBox(
+                      width: 200,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            row.facilityName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: sans(12, w: 500),
+                          ),
+                          Text(
+                            row.building,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: sans(10, color: SR.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(5),
+                        child: Stack(
+                          children: [
+                            Container(height: 9, color: SR.divider),
+                            AnimatedFractionallySizedBox(
+                              duration: const Duration(milliseconds: 400),
+                              curve: SR.easing,
+                              widthFactor: row.fraction.clamp(0.0, 1.0),
+                              child: Container(
+                                height: 9,
+                                color: row.fraction < .25
+                                    ? SR.orange
+                                    : (row.fraction < .6
+                                          ? SR.blueBright
+                                          : SR.blue),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 44,
+                      child: Text(
+                        formatUtilisationPercent(row.fraction),
+                        textAlign: TextAlign.right,
+                        style: mono(12, w: 500),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 86,
+                      child: Text(
+                        '${row.bookedHours.round()} / ${row.availableHours.round()} h',
+                        textAlign: TextAlign.right,
+                        style: mono(10.5, color: SR.muted),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 44,
-              child: Text(
-                '${row.percent}%',
-                textAlign: TextAlign.right,
-                style: mono(12, w: 500),
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 86,
-              child: Text(
-                '${row.bookedHours.round()} / ${row.availableHours.round()} h',
-                textAlign: TextAlign.right,
-                style: mono(10.5, color: SR.muted),
-              ),
-            ),
-          ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _HeatCell extends StatelessWidget {

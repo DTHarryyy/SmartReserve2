@@ -45,10 +45,7 @@ enum AccountStatus {
 }
 
 enum AccountRole {
-  student('Student'),
-  faculty('Faculty'),
-  staff('University staff'),
-  guest('Guest'),
+  user('User'),
   internalAdmin('Internal admin'),
   externalAdmin('External admin');
 
@@ -60,12 +57,9 @@ enum AccountRole {
       this == AccountRole.internalAdmin || this == AccountRole.externalAdmin;
 
   String get privileges => switch (this) {
-    AccountRole.student || AccountRole.faculty || AccountRole.staff =>
-      'Reserves free once verified · needs approval · may book a recurring '
-          'series · gets priority when two requests collide.',
-    AccountRole.guest =>
-      'Reserves at the published external rate · pays before the slot is held '
-          '· no recurring series · longer advance-booking window for planning.',
+    AccountRole.user =>
+      'Books facilities · reserves free only while verified · otherwise uses '
+          'the published external rate.',
     AccountRole.internalAdmin =>
       'Manages facilities, decides reservations, approves campus '
           'verifications, and manages accounts. Sees student documents.',
@@ -76,16 +70,14 @@ enum AccountRole {
 
   static AccountRole fromLabel(String label) => values.firstWhere(
     (r) => r.label == label,
-    orElse: () => AccountRole.guest,
+    orElse: () => throw ArgumentError.value(label, 'label', 'Unknown role'),
   );
 
   static AccountRole fromRaw(String raw) => switch (raw) {
-    'student' => AccountRole.student,
-    'faculty' => AccountRole.faculty,
-    'staff' => AccountRole.staff,
+    'user' => AccountRole.user,
     'internal_admin' => AccountRole.internalAdmin,
     'external_admin' => AccountRole.externalAdmin,
-    _ => AccountRole.guest,
+    _ => throw ArgumentError.value(raw, 'raw', 'Unknown account role'),
   };
 }
 
@@ -152,7 +144,7 @@ class Account {
   bool get isInvited => status == AccountStatus.invited;
 
   bool get reservesFree =>
-      !role.isAdmin &&
-      (verification == VerificationState.verified ||
-          verification == VerificationState.pending);
+      role == AccountRole.user &&
+      status == AccountStatus.active &&
+      verification == VerificationState.verified;
 }

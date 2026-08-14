@@ -12,12 +12,7 @@ class NotesScreen extends StatelessWidget {
     final stacked = width < SR.tabletMin;
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          stacked ? 14 : 24,
-          stacked ? 14 : 20,
-          stacked ? 14 : 24,
-          40,
-        ),
+        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
         child: Align(
           alignment: Alignment.topLeft,
           child: ConstrainedBox(

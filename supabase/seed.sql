@@ -122,7 +122,7 @@ begin
     user_email,
     'CSU User',
     'none',
-    'guest',
+    'user',
     'active',
     'none',
     true

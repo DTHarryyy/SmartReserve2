@@ -180,26 +180,34 @@ void main() {
       expect(account.verification, VerificationState.pending);
 
       final held = state.requests.firstWhere((r) => r.id == 'r3')
-        ..heldForVerification = true;
+        ..heldForVerification = true
+        ..paymentAmountCentavos = 50000
+        ..paymentStatus = PaymentTrackingStatus.quoted;
 
       state.decideVerification('v3', VerificationDecision.approved);
 
       expect(account.verification, VerificationState.verified);
       expect(held.heldForVerification, isFalse);
+      expect(held.paymentAmountCentavos, 0);
+      expect(held.paymentStatus, PaymentTrackingStatus.notRequired);
       expect(state.audit.first.diff.join(), contains('released'));
     });
 
-    test('rejecting marks the account rejected and releases nothing', () {
+    test('rejecting releases a held request into the paid queue', () {
       final state = AppState();
+      final account = state.accounts.firstWhere((a) => a.id == 'u4');
+      final held = state.requests.firstWhere(
+        (request) => request.requester == account.name,
+      )..heldForVerification = true;
       state.decideVerification(
         'v4',
         VerificationDecision.rejected,
         reason: 'Send a readable photo.',
       );
-      expect(
-        state.accounts.firstWhere((a) => a.id == 'u4').verification,
-        VerificationState.rejected,
-      );
+      expect(account.verification, VerificationState.rejected);
+      expect(held.heldForVerification, isFalse);
+      expect(held.paymentStatus, PaymentTrackingStatus.quoted);
+      expect(held.paymentAmountCentavos, greaterThan(0));
     });
   });
 
@@ -209,7 +217,7 @@ void main() {
       final self = state.currentAdmin;
       expect(state.roleChangeBlockedReason(self), contains('their own role'));
 
-      await state.changeRole(self, AccountRole.guest, 'try it');
+      await state.changeRole(self, AccountRole.user);
       expect(self.role, AccountRole.internalAdmin, reason: 'refused');
     });
 
@@ -219,8 +227,8 @@ void main() {
 
       expect(state.roleChangeBlockedReason(santos), isNull);
 
-      await state.changeRole(santos, AccountRole.guest, 'reassigned');
-      expect(santos.role, AccountRole.guest);
+      await state.changeRole(santos, AccountRole.user);
+      expect(santos.role, AccountRole.user);
 
       final registrar = state.currentAdmin;
       expect(state.isLastInternalAdmin(registrar), isTrue);
@@ -256,17 +264,48 @@ void main() {
     test(
       'backend report snapshots preserve metrics and administrator access data',
       () {
+        final scope = ReportScope.forRange(
+          ReportRange.month,
+          now: DateTime(2026, 8, 13, 12),
+        );
         final snapshot = ReportSnapshot.fromJson({
+          'from': scope.from.toIso8601String(),
+          'to': scope.to.toIso8601String(),
+          'category': null,
+          'generated_at': scope.to.toIso8601String(),
+          'summary': {'booked_hours': 8, 'available_hours': 20, 'fraction': .4},
           'utilisation': [
             {
               'facility_id': 'f1',
+              'facility_name': 'Room 1',
+              'building': 'Main Building',
+              'category': 'Classroom',
               'booked_hours': 8,
               'available_hours': 20,
               'fraction': .4,
             },
           ],
+          'booked_occurrences': [
+            {
+              'occurrence_id': 'o1',
+              'request_id': 'r1',
+              'facility_id': 'f1',
+              'requester': 'Student',
+              'purpose': 'Class',
+              'request_status': 'approved',
+              'starts_at': '2026-08-10T01:00:00Z',
+              'ends_at': '2026-08-10T09:00:00Z',
+              'booked_hours': 8,
+            },
+          ],
           'demand': [
-            {'day': 1, 'hour': 7, 'count': 3},
+            for (var day = 1; day <= 7; day++)
+              for (var hour = 7; hour <= 19; hour += 2)
+                {
+                  'day': day,
+                  'hour': hour,
+                  'count': day == 1 && hour == 7 ? 3 : 0,
+                },
           ],
           'performance': {
             'median_hours': 12,
@@ -275,12 +314,22 @@ void main() {
             'declined': 2,
             'over_capacity': 3,
             'per_admin': [
-              {'name': 'Registrar', 'decisions': 4, 'median_hours': 12},
+              {
+                'admin_id': 'admin-1',
+                'name': 'Registrar',
+                'decisions': 4,
+                'median_hours': 12,
+              },
             ],
           },
-        });
+        }, expectedScope: scope);
         expect(snapshot.utilisation.single.bookedHours, 8);
-        expect(snapshot.demand.single.count, 3);
+        expect(
+          snapshot.demand
+              .singleWhere((cell) => cell.day == 1 && cell.hour == 7)
+              .count,
+          3,
+        );
         expect(snapshot.performance.perAdmin.single.who, 'Registrar');
       },
     );
@@ -312,7 +361,7 @@ void main() {
         category: 'Auditorium',
       );
       expect(rows, hasLength(1));
-      expect(rows.single.facility.name, 'University Auditorium');
+      expect(rows.single.facilityName, 'University Auditorium');
     });
 
     test('relative timestamps parse into hours', () {
@@ -395,7 +444,7 @@ void main() {
     });
 
     test('a pending member request is held, not refused', () {
-      final state = AppState()..signInAsStudent('u3');
+      final state = AppState()..signInAsUser('u3');
       final facility = state.facilityNamed('Reading Hall B')!;
 
       state.submitBooking(
@@ -410,14 +459,14 @@ void main() {
       expect(state.requests.first.heldForVerification, isTrue);
     });
 
-    test('guests are quoted, members are not', () {
+    test('unverified users are quoted, verified users are not', () {
       final state = AppState();
       final auditorium = state.facilityNamed('University Auditorium')!;
       expect(state.quoteFor(auditorium, 2), greaterThan(0));
-      expect(state.studentAccount.reservesFree, isTrue);
+      expect(state.userAccount.reservesFree, isTrue);
 
-      state.signInAsStudent('u5');
-      expect(state.studentAccount.reservesFree, isFalse);
+      state.signInAsUser('u5');
+      expect(state.userAccount.reservesFree, isFalse);
     });
   });
 

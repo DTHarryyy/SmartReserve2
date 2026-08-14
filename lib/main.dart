@@ -6,6 +6,7 @@ import 'app/app_shell.dart';
 import 'app/app_state.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
+import 'widgets/toast_host.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,13 +34,18 @@ class SmartReserveApp extends StatefulWidget {
 }
 
 class _SmartReserveAppState extends State<SmartReserveApp> {
-  late final Future<void> _bootstrap;
+  late Future<void> _bootstrap;
 
   @override
   void initState() {
     super.initState();
-    _bootstrap = widget.state.initializeBackend();
+    _bootstrap = _boot();
   }
+
+  Future<void> _boot() =>
+      widget.state.initializeBackend().timeout(const Duration(seconds: 20));
+
+  void _retryBoot() => setState(() => _bootstrap = _boot());
 
   @override
   Widget build(BuildContext context) => FutureBuilder<void>(
@@ -58,7 +64,6 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
             primary: SR.blue,
             surface: SR.surface,
           ),
-
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
           textSelectionTheme: const TextSelectionThemeData(
@@ -79,9 +84,41 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
             radius: const Radius.circular(6),
           ),
         ),
-        home: snapshot.connectionState == ConnectionState.waiting
-            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-            : const AppShell(),
+        builder: (context, child) =>
+            AppToastHost(child: child ?? const SizedBox.shrink()),
+        home: switch (snapshot.connectionState) {
+          ConnectionState.waiting => const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          ),
+          _ when snapshot.hasError => Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Could not connect',
+                      style: sans(15, w: 600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Check your connection and try again.',
+                      textAlign: TextAlign.center,
+                      style: sans(12, color: SR.muted),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _retryBoot,
+                      child: const Text('Try again'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          _ => const AppShell(),
+        },
       ),
     ),
   );

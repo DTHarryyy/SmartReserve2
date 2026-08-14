@@ -79,7 +79,41 @@ abstract final class SR {
 
   static const desktopMin = 1180.0;
 
-  static const tabletMin = 768.0;
+  /// Start of the medium/tablet window class.
+  static const mediumMin = 600.0;
+
+  /// Backwards-compatible alias while feature layouts migrate to
+  /// content-driven constraints.
+  static const tabletMin = mediumMin;
+
+  /// A phone-sized viewport where dense desktop presentation should switch
+  /// to purpose-built compact controls and record cards.
+  static const compactMax = mediumMin;
+
+  static bool isCompact(double width) => width < compactMax;
+
+  static bool isMedium(double width) =>
+      width >= compactMax && width < desktopMin;
+
+  /// Viewports where vertical chrome and previews must yield to scrollable
+  /// task content (for example, phones and tablets in landscape).
+  static bool isShort(double height) => height < 520;
+
+  static double pageGutter(double width) => switch (width) {
+    < 360 => 12,
+    < tabletMin => 14,
+    < desktopMin => 20,
+    _ => 24,
+  };
+
+  static EdgeInsets pageInsets(
+    double width, {
+    double? top,
+    double bottom = 40,
+  }) {
+    final gutter = pageGutter(width);
+    return EdgeInsets.fromLTRB(gutter, top ?? gutter, gutter, bottom);
+  }
 }
 
 const _sans = 'IBM Plex Sans';

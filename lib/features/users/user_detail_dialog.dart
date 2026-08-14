@@ -2,27 +2,44 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
 import '../../model/account.dart';
+import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/decision_widgets.dart';
+import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
 
 Future<void> showUserDetail(
   BuildContext context, {
   required AppState state,
   required Account account,
-}) => showDialog<void>(
-  context: context,
-  barrierColor: const Color(0x7010141A),
-  builder: (_) => _UserDetailDialog(state: state, account: account),
-);
+}) {
+  if (SR.isCompact(MediaQuery.sizeOf(context).width)) {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _UserDetailPage(state: state, account: account),
+      ),
+    );
+  }
+
+  return showDialog<void>(
+    context: context,
+    barrierColor: const Color(0x7010141A),
+    builder: (_) => _UserDetailDialog(state: state, account: account),
+  );
+}
 
 enum _Action { none, role, suspend }
 
 class _UserDetailDialog extends StatefulWidget {
-  const _UserDetailDialog({required this.state, required this.account});
+  const _UserDetailDialog({
+    required this.state,
+    required this.account,
+    this.embedded = false,
+  });
 
   final AppState state;
   final Account account;
+  final bool embedded;
 
   @override
   State<_UserDetailDialog> createState() => _UserDetailDialogState();
@@ -32,7 +49,9 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
   _Action _action = _Action.none;
   final _reason = TextEditingController();
   final _until = TextEditingController();
-  AccountRole _roleDraft = AccountRole.student;
+  final _scrollController = ScrollController();
+  final _feedbackKey = GlobalKey();
+  AccountRole _roleDraft = AccountRole.user;
   bool _attempted = false;
   bool _busy = false;
   String? _operationError;
@@ -48,6 +67,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
   void dispose() {
     _reason.dispose();
     _until.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -58,16 +78,56 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
       _busy = true;
       _operationError = null;
     });
-    final error = await action();
+    String? error;
+    try {
+      error = await action();
+    } catch (_) {
+      error = 'SmartReserve could not complete this account action. Try again.';
+      widget.state.showToast(
+        const ToastMessage(
+          'Account action wasn’t completed.',
+          tone: AdvisoryTone.block,
+        ),
+        duration: const Duration(seconds: 6),
+      );
+    }
     if (!mounted) return;
     if (error != null) {
       setState(() {
         _busy = false;
         _operationError = error;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final feedbackContext = _feedbackKey.currentContext;
+        if (!mounted || feedbackContext == null) return;
+        Scrollable.ensureVisible(
+          feedbackContext,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          alignment: .85,
+        );
+      });
       return;
     }
     Navigator.of(context).pop();
+  }
+
+  void _openAction(_Action action) {
+    setState(() {
+      _action = action;
+      _attempted = false;
+      _operationError = null;
+      _reason.clear();
+      if (action == _Action.role) _roleDraft = _account.role;
+      if (action == _Action.suspend) {
+        _untilDate = null;
+        _until.clear();
+      }
+    });
+  }
+
+  void _clearOperationError() {
+    if (_operationError != null) _operationError = null;
   }
 
   Future<void> _pickUntil() async {
@@ -83,6 +143,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     setState(() {
       _untilDate = picked;
       _until.text = _dateLabel(picked);
+      _clearOperationError();
     });
   }
 
@@ -115,173 +176,174 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
   Widget build(BuildContext context) {
     final blocked = widget.state.roleChangeBlockedReason(_account);
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.all(20),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 760),
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: SR.surface,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: SR.dialogShadow,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+    final content = SingleChildScrollView(
+      controller: _scrollController,
+      padding: widget.embedded ? const EdgeInsets.all(16) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Initials(text: _account.initials, size: 42, fontSize: 13),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _account.name,
-                          style: sans(16, w: 600, tracking: -.015),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _account.email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: mono(11, color: SR.muted),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(_account.unit, style: sans(11, color: SR.ink4)),
-                      ],
+              Initials(text: _account.initials, size: 42, fontSize: 13),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _account.name,
+                      style: sans(16, w: 600, tracking: -.015),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      SrPill(
-                        label: _account.status.label,
-                        background: _account.status.background,
-                        foreground: _account.status.foreground,
-                      ),
-                      const SizedBox(height: 5),
-                      SrPill(
-                        label: _account.verification.label,
-                        background: _account.verification.background,
-                        foreground: _account.verification.foreground,
-                        fontSize: 10,
-                      ),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      _account.email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: mono(11, color: SR.muted),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(_account.unit, style: sans(11, color: SR.ink4)),
+                  ],
+                ),
               ),
-
-              const SizedBox(height: 14),
-              _Note(
-                text: _account.role.privileges,
-                background: SR.blueTint2,
-                border: SR.blueLine,
-                foreground: SR.blueInk,
-              ),
-              if (_account.role == AccountRole.externalAdmin)
-                _Note(
-                  text:
-                      'Cannot see student or faculty documents, the '
-                      'verification queue, or campus reservations. External '
-                      'clients, rates and invoices only.',
-                  background: SR.surfaceSubtle,
-                  border: SR.hairline,
-                  foreground: SR.ink4,
-                ),
-              if (_account.isInvited)
-                _Note(
-                  text: _invitationNote,
-                  background: SR.amberTint,
-                  border: SR.amberLine,
-                  foreground: SR.amberTitle,
-                ),
-              if (_account.status == AccountStatus.suspended)
-                _Note(
-                  text:
-                      '${_account.suspendReason ?? 'Suspended.'}'
-                      '${_account.suspendUntil == null ? '' : ' Lifts on ${_account.suspendUntil}.'}',
-                  background: SR.redTint,
-                  border: SR.redLine,
-                  foreground: const Color(0xFF912018),
-                ),
-
-              const SizedBox(height: 12),
-              SrCellGrid(
-                // Keep these related details paired on phones as well:
-                // role/ID, activity metrics, and joined/last active.
-                columns: 2,
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  SrKeyCell(label: 'ROLE', value: _account.role.label),
-                  SrKeyCell(
-                    label: 'ID NUMBER',
-                    value: _account.idNumber,
-                    valueMono: true,
+                  SrPill(
+                    label: _account.status.label,
+                    background: _account.status.background,
+                    foreground: _account.status.foreground,
                   ),
-                  SrKeyCell(
-                    label: 'RESERVATIONS',
-                    value: _account.activityMetricsAvailable
-                        ? '${_account.reservations} on record'
-                        : '—',
+                  const SizedBox(height: 5),
+                  SrPill(
+                    label: _account.verification.label,
+                    background: _account.verification.background,
+                    foreground: _account.verification.foreground,
+                    fontSize: 10,
                   ),
-                  SrKeyCell(
-                    label: 'NO-SHOWS',
-                    value: _account.activityMetricsAvailable
-                        ? '${_account.noShows}'
-                        : '—',
-                    valueColor:
-                        _account.activityMetricsAvailable &&
-                            _account.noShows > 0
-                        ? SR.amber
-                        : SR.ink,
-                  ),
-                  SrKeyCell(label: 'JOINED', value: _account.joined),
-                  SrKeyCell(label: 'LAST ACTIVE', value: _account.lastActive),
                 ],
-              ),
-
-              if (blocked != null) ...[
-                const SizedBox(height: 12),
-                _Note(
-                  text: blocked,
-                  background: SR.surfaceSubtle,
-                  border: SR.hairline,
-                  foreground: SR.ink4,
-                ),
-              ],
-
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.only(top: 14),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: SR.divider)),
-                ),
-                child: _account.isInvited
-                    ? _inviteActions()
-                    : _normalActions(blocked),
-              ),
-
-              if (_action == _Action.role) _roleForm(),
-              if (_action == _Action.suspend) _suspendForm(),
-              SrErrorText(_operationError),
-
-              const SizedBox(height: 12),
-              SrButton(
-                label: 'Close',
-                expand: true,
-                minHeight: 40,
-                onPressed: _busy ? null : () => Navigator.of(context).pop(),
               ),
             ],
           ),
-        ),
+
+          const SizedBox(height: 14),
+          _Note(
+            text: _account.role.privileges,
+            background: SR.blueTint2,
+            border: SR.blueLine,
+            foreground: SR.blueInk,
+          ),
+          if (_account.role == AccountRole.externalAdmin)
+            _Note(
+              text:
+                  'Cannot see student or faculty documents, the '
+                  'verification queue, or campus reservations. External '
+                  'clients, rates and invoices only.',
+              background: SR.surfaceSubtle,
+              border: SR.hairline,
+              foreground: SR.ink4,
+            ),
+          if (_account.isInvited)
+            _Note(
+              text: _invitationNote,
+              background: SR.amberTint,
+              border: SR.amberLine,
+              foreground: SR.amberTitle,
+            ),
+          if (_account.status == AccountStatus.suspended)
+            _Note(
+              text:
+                  '${_account.suspendReason ?? 'Suspended.'}'
+                  '${_account.suspendUntil == null ? '' : ' Lifts on ${_account.suspendUntil}.'}',
+              background: SR.redTint,
+              border: SR.redLine,
+              foreground: const Color(0xFF912018),
+            ),
+
+          const SizedBox(height: 12),
+          SrCellGrid(
+            // Keep these related details paired on phones as well:
+            // role/ID, activity metrics, and joined/last active.
+            columns: 2,
+            children: [
+              SrKeyCell(label: 'ROLE', value: _account.role.label),
+              SrKeyCell(
+                label: 'ID NUMBER',
+                value: _account.idNumber,
+                valueMono: true,
+              ),
+              SrKeyCell(
+                label: 'RESERVATIONS',
+                value: _account.activityMetricsAvailable
+                    ? '${_account.reservations} on record'
+                    : '—',
+              ),
+              SrKeyCell(
+                label: 'NO-SHOWS',
+                value: _account.activityMetricsAvailable
+                    ? '${_account.noShows}'
+                    : '—',
+                valueColor:
+                    _account.activityMetricsAvailable && _account.noShows > 0
+                    ? SR.amber
+                    : SR.ink,
+              ),
+              SrKeyCell(label: 'JOINED', value: _account.joined),
+              SrKeyCell(label: 'LAST ACTIVE', value: _account.lastActive),
+            ],
+          ),
+
+          if (blocked != null) ...[
+            const SizedBox(height: 12),
+            _Note(
+              text: blocked,
+              background: SR.surfaceSubtle,
+              border: SR.hairline,
+              foreground: SR.ink4,
+            ),
+          ],
+
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.only(top: 14),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: SR.divider)),
+            ),
+            child: _account.isInvited
+                ? _inviteActions()
+                : _normalActions(blocked),
+          ),
+
+          if (_action == _Action.role) _roleForm(),
+          if (_action == _Action.suspend) _suspendForm(),
+          if (_operationError != null)
+            KeyedSubtree(
+              key: _feedbackKey,
+              child: SrErrorText(_operationError),
+            ),
+
+          if (!widget.embedded) ...[
+            const SizedBox(height: 12),
+            SrButton(
+              label: 'Close',
+              expand: true,
+              minHeight: 40,
+              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            ),
+          ],
+        ],
       ),
+    );
+
+    if (widget.embedded) return content;
+    return SrAdaptiveDialog(
+      maxWidth: 560,
+      maxHeight: 760,
+      padding: const EdgeInsets.all(22),
+      child: content,
     );
   }
 
@@ -308,46 +370,44 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     ],
   );
 
-  Widget _normalActions(String? blocked) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
+  Widget _normalActions(String? blocked) => Row(
     children: [
-      SrButton(
-        label: 'Change role',
-        fontSize: 12.5,
-        minHeight: 40,
-        onPressed: blocked != null || _busy
-            ? null
-            : () => setState(() => _action = _Action.role),
-      ),
-      SrButton(
-        label: 'Request re-verification',
-        fontSize: 12.5,
-        minHeight: 40,
-        onPressed: _account.role.isAdmin || _busy
-            ? null
-            : () => _perform(() => widget.state.rerunVerification(_account)),
-      ),
-      if (_account.status == AccountStatus.suspended)
-        SrButton(
-          label: 'Lift suspension',
-          kind: SrButtonKind.primary,
+      Expanded(
+        child: SrButton(
+          label: 'Change role',
+          expand: true,
           fontSize: 12.5,
           minHeight: 40,
-          onPressed: _busy
+          onPressed: blocked != null || _busy
               ? null
-              : () => _perform(() => widget.state.liftSuspension(_account)),
-        )
-      else
-        SrButton(
-          label: 'Suspend account',
-          kind: SrButtonKind.danger,
-          fontSize: 12.5,
-          minHeight: 40,
-          onPressed: _account.isSelf || _busy
-              ? null
-              : () => setState(() => _action = _Action.suspend),
+              : () => _openAction(_Action.role),
         ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: _account.status == AccountStatus.suspended
+            ? SrButton(
+                label: 'Lift suspension',
+                kind: SrButtonKind.primary,
+                expand: true,
+                fontSize: 12.5,
+                minHeight: 40,
+                onPressed: _busy
+                    ? null
+                    : () =>
+                          _perform(() => widget.state.liftSuspension(_account)),
+              )
+            : SrButton(
+                label: 'Suspend account',
+                kind: SrButtonKind.danger,
+                expand: true,
+                fontSize: 12.5,
+                minHeight: 40,
+                onPressed: _account.isSelf || _busy
+                    ? null
+                    : () => _openAction(_Action.suspend),
+              ),
+      ),
     ],
   );
 
@@ -370,29 +430,22 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           fontSize: 12.5,
           labelOf: (r) => r.label,
           onChanged: (r) {
-            if (r != null) setState(() => _roleDraft = r);
+            if (r != null) {
+              setState(() {
+                _roleDraft = r;
+                _clearOperationError();
+              });
+            }
           },
         ),
+        if (_attempted && _roleDraft == _account.role)
+          const SrErrorText('Choose a different role.'),
         const SizedBox(height: 7),
         Text(
           _roleDraft.privileges,
           style: sans(11, height: 1.55, color: SR.ink4),
         ),
         const SizedBox(height: 12),
-        const SrLabel('Reason', required: true),
-        SrTextField(
-          controller: _reason,
-          placeholder: 'Recorded in the audit trail alongside your name.',
-          fontSize: 12.5,
-          minLines: 2,
-          maxLines: 4,
-          hasError: _attempted && _reason.text.trim().isEmpty,
-          keyboardType: TextInputType.multiline,
-          onChanged: (_) => setState(() {}),
-        ),
-        if (_attempted && _reason.text.trim().isEmpty)
-          const SrErrorText('A privilege change without a reason is not one.'),
-        const SizedBox(height: 10),
         Row(
           children: [
             SrButton(
@@ -401,16 +454,12 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
               onPressed: _busy
                   ? null
                   : () async {
-                      if (_reason.text.trim().isEmpty) {
+                      if (_roleDraft == _account.role) {
                         setState(() => _attempted = true);
                         return;
                       }
                       await _perform(
-                        () => widget.state.changeRole(
-                          _account,
-                          _roleDraft,
-                          _reason.text.trim(),
-                        ),
+                        () => widget.state.changeRole(_account, _roleDraft),
                       );
                     },
             ),
@@ -422,6 +471,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                   : () => setState(() {
                       _action = _Action.none;
                       _attempted = false;
+                      _operationError = null;
                     }),
             ),
           ],
@@ -461,7 +511,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           maxLines: 4,
           hasError: _attempted && _reason.text.trim().isEmpty,
           keyboardType: TextInputType.multiline,
-          onChanged: (_) => setState(() {}),
+          onChanged: (_) => setState(_clearOperationError),
         ),
         if (_attempted && _reason.text.trim().isEmpty)
           const SrErrorText('The person sees this — say what happened.'),
@@ -492,6 +542,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                       : () => setState(() {
                           _untilDate = null;
                           _until.clear();
+                          _clearOperationError();
                         }),
                   icon: const Icon(Icons.close_rounded, size: 16),
                 ),
@@ -529,6 +580,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                   : () => setState(() {
                       _action = _Action.none;
                       _attempted = false;
+                      _operationError = null;
                     }),
             ),
           ],
@@ -540,27 +592,46 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
   Future<void> _confirmRevoke() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Revoke this invitation?'),
+      builder: (dialogContext) => SrConfirmDialog(
+        title: 'Revoke this invitation?',
         content: Text(
           '${_account.email} will no longer be able to use the invitation link.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep invitation'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Revoke'),
-          ),
-        ],
+        cancelLabel: 'Keep invitation',
+        confirmLabel: 'Revoke',
+        destructive: true,
+        onCancel: () => Navigator.of(dialogContext).pop(false),
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
       ),
     );
     if (confirmed == true && mounted) {
       await _perform(() => widget.state.revokeInvite(_account));
     }
   }
+}
+
+class _UserDetailPage extends StatelessWidget {
+  const _UserDetailPage({required this.state, required this.account});
+
+  final AppState state;
+  final Account account;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      backgroundColor: SR.surface,
+      foregroundColor: SR.ink,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      title: Text('Account details', style: sans(16, w: 600)),
+      leading: IconButton(
+        tooltip: 'Back',
+        onPressed: () => Navigator.of(context).pop(),
+        icon: const Icon(Icons.arrow_back_rounded),
+      ),
+    ),
+    body: _UserDetailDialog(state: state, account: account, embedded: true),
+  );
 }
 
 class _Note extends StatelessWidget {

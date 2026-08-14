@@ -10,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 SessionProfile widgetProfile({
   String verificationStatus = 'verified',
-  String role = 'student',
+  String role = 'user',
 }) => SessionProfile(
   id: '00000000-0000-0000-0000-000000000100',
   email: 'roel@example.com',
@@ -102,6 +102,9 @@ void main() {
     expect(find.text('Browse'), findsOneWidget);
     expect(find.text('Mine'), findsOneWidget);
     expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Filters'), findsOneWidget);
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
     final category = find.byWidgetPredicate(
       (widget) =>
           widget is FilterSelect &&
@@ -114,19 +117,19 @@ void main() {
     );
     expect(category, findsOneWidget);
     expect(capacity, findsOneWidget);
-    final categoryRect = tester.getRect(category);
-    final capacityRect = tester.getRect(capacity);
-    final amenitiesRect = tester.getRect(find.text('Amenities'));
-    expect(categoryRect.top, capacityRect.top);
-    expect(categoryRect.center.dy, closeTo(amenitiesRect.center.dy, 2));
-    expect(categoryRect.width, closeTo(capacityRect.width, 1));
+    expect(
+      tester.getSize(category).width,
+      closeTo(tester.getSize(capacity).width, 1),
+    );
+    expect(find.text('Amenities'), findsOneWidget);
+    expect(find.text('Filter facilities'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('external users do not see a membership banner', (tester) async {
     final state = AppState();
     await state.applyBackendProfile(
-      widgetProfile(verificationStatus: 'none', role: 'guest'),
+      widgetProfile(verificationStatus: 'none', role: 'user'),
     );
     await pumpStudentApp(tester, state: state);
 

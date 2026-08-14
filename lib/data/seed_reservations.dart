@@ -8,7 +8,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'CICS-201',
     capacity: 40,
     requester: 'Jomar Padilla',
-    role: 'Student · BSIT 4A',
+    role: 'User · BSIT 4A',
     org: 'Junior Philippine Computer Society',
     purpose:
         'Hands-on workshop on network configuration for 32 members, ahead of '
@@ -30,7 +30,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'ADM-G01',
     capacity: 420,
     requester: 'Prof. Elena Sarmiento',
-    role: 'Faculty · College of Education',
+    role: 'User · College of Education',
     org: 'College of Education',
     purpose:
         'Departmental convocation and awarding ceremony for graduating '
@@ -52,7 +52,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'LIB-202',
     capacity: 80,
     requester: 'Maria Angeles Tan',
-    role: 'Student · BSED 3B',
+    role: 'User · BSED 3B',
     org: 'Student Council',
     purpose:
         'Weekly peer tutoring session for first-year students in mathematics.',
@@ -74,7 +74,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'GYM-001',
     capacity: 900,
     requester: 'Karl Mendoza',
-    role: 'Student · BSCrim 2A',
+    role: 'User · BSCrim 2A',
     org: 'Intramurals Committee',
     purpose: 'Elimination round for the inter-college basketball tournament.',
     date: 'Tue 28 Jul',
@@ -94,7 +94,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'CFMS-105',
     capacity: 24,
     requester: 'Dr. Rowena Castillo',
-    role: 'Faculty · College of Fisheries',
+    role: 'User · College of Fisheries',
     org: 'Research Office',
     purpose:
         'Sample preparation for the coastal water quality study. Requires '
@@ -116,7 +116,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'ADM-304',
     capacity: 18,
     requester: 'Atty. Ferdinand Uy',
-    role: 'Staff · Legal Office',
+    role: 'User · Legal Office',
     org: 'Administration',
     purpose: 'Closed-door hearing for a student disciplinary case.',
     date: 'Wed 29 Jul',
@@ -136,7 +136,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'CICS-201',
     capacity: 40,
     requester: 'Prof. Noel Bautista',
-    role: 'Faculty · CICS',
+    role: 'User · CICS',
     org: 'CICS',
     purpose: 'Make-up laboratory session for IT 3A.',
     date: 'Thu 30 Jul',
@@ -158,7 +158,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'ADM-G01',
     capacity: 420,
     requester: 'Bianca Lorenzo',
-    role: 'Student · BSBA 1C',
+    role: 'User · BSBA 1C',
     org: 'Junior Marketing Association',
     purpose: 'Product launch simulation with an outside sponsor booth.',
     date: 'Fri 31 Jul',

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
+import '../util/campus_calendar.dart' show formatStamp;
+import 'account.dart';
+import 'audit_change.dart';
+import 'audit_diff.dart';
 
 enum AuditKind {
   facility('facility', 'FACILITY', SR.blueTint, SR.blueDark),
   reservation('reservation', 'RESERVATION', SR.greenTint, SR.greenDark),
-  account('account', 'ACCOUNT', SR.dividerSoft, SR.ink4);
+  account('account', 'ACCOUNT', SR.dividerSoft, SR.ink4),
+  system('system', 'SYSTEM', SR.hairline, SR.muted);
 
   const AuditKind(this.raw, this.label, this.background, this.foreground);
 
@@ -34,6 +39,12 @@ class AuditEntry {
     this.reason = '',
     this.revertable = false,
     this.recordId,
+    this.createdAt,
+    this.changes = const [],
+    this.actorEmail = '',
+    this.rawBefore = const {},
+    this.rawAfter = const {},
+    this.rawDetails = const {},
   });
 
   factory AuditEntry.now({
@@ -49,21 +60,6 @@ class AuditEntry {
     String? recordId,
   }) {
     final at = DateTime.now();
-    String two(int v) => v.toString().padLeft(2, '0');
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
     return AuditEntry(
       id: 'a-${at.microsecondsSinceEpoch}',
       actor: actor,
@@ -72,14 +68,13 @@ class AuditEntry {
       target: target,
       kind: kind,
       when: 'Just now',
-      absolute:
-          '${at.day} ${months[at.month - 1]} ${at.year}, '
-          '${two(at.hour)}:${two(at.minute)}',
+      absolute: formatStamp(at),
       material: material,
       diff: diff,
       reason: reason,
       revertable: revertable,
       recordId: recordId,
+      createdAt: at,
     );
   }
 
@@ -103,6 +98,37 @@ class AuditEntry {
 
   final String? recordId;
 
+  /// The pagination cursor. Populated for both demo and remote entries;
+  /// `absolute` is for display only and must never be re-parsed for paging.
+  final DateTime? createdAt;
+
+  /// Humanised, structured changes — the preferred way to render an
+  /// entry's detail. Falls back to [diff] when empty (demo entries keep
+  /// their hand-written diff strings).
+  final List<AuditChange> changes;
+
+  final String actorEmail;
+
+  /// Untrimmed payloads, kept for the "show technical details" disclosure.
+  /// The audit trail must never lose information — only the default view
+  /// hides noise.
+  final Map<String, dynamic> rawBefore;
+  final Map<String, dynamic> rawAfter;
+  final Map<String, dynamic> rawDetails;
+
+  /// The actor's role as a typed [AccountRole], when it maps to one.
+  /// `system`-role entries and any future role slugs return null rather
+  /// than throwing.
+  AccountRole? get actorRoleValue {
+    try {
+      return AccountRole.fromRaw(actorRole);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  bool get isSystemActor => actorRole == 'system';
+
   factory AuditEntry.fromJson(Map<String, dynamic> json) {
     final createdAt =
         DateTime.tryParse('${json['created_at'] ?? ''}')?.toLocal() ??
@@ -116,28 +142,42 @@ class AuditEntry {
     final after = Map<String, dynamic>.from(
       (json['after_values'] as Map?) ?? const {},
     );
-    final changes = <String>[
+    final legacyDiff = <String>[
       ...details.entries.map((entry) => '${entry.key}: ${entry.value}'),
     ];
     for (final key in {...before.keys, ...after.keys}) {
       if (before[key] != after[key]) {
-        changes.add('$key: ${before[key] ?? '—'} → ${after[key] ?? '—'}');
+        legacyDiff.add('$key: ${before[key] ?? '—'} → ${after[key] ?? '—'}');
       }
     }
+    final entityType = '${json['entity_type'] ?? 'facility'}';
+    final action = '${json['action'] ?? ''}';
     return AuditEntry(
       id: '${json['id']}',
       actor: '${json['actor_name'] ?? 'System'}',
       actorRole: '${json['actor_role'] ?? 'system'}',
-      action: '${json['action'] ?? ''}',
+      action: action,
       target: '${json['target_label'] ?? ''}',
-      kind: AuditKind.fromRaw('${json['entity_type'] ?? 'facility'}'),
+      kind: AuditKind.fromRaw(entityType),
       when: _relative(createdAt),
-      absolute: createdAt.toString(),
+      absolute: formatStamp(createdAt),
       material: json['material'] as bool? ?? true,
-      diff: changes,
+      diff: legacyDiff,
       reason: '${json['reason'] ?? ''}',
       revertable: json['revertable'] as bool? ?? false,
       recordId: json['entity_id'] as String?,
+      createdAt: createdAt,
+      changes: humanizeAuditPayload(
+        entityType: entityType,
+        action: action,
+        details: details,
+        before: before,
+        after: after,
+      ),
+      actorEmail: '${json['actor_email'] ?? ''}',
+      rawBefore: before,
+      rawAfter: after,
+      rawDetails: details,
     );
   }
 
@@ -159,18 +199,29 @@ class AuditEntry {
 
   String toCsvRow() {
     String cell(String v) => '"${v.replaceAll('"', '""')}"';
+    final changeText = changes.isNotEmpty
+        ? changes.map(_csvChangeLine).join(' | ')
+        : diff.join(' | ');
     return [
-      cell(absolute),
+      cell(createdAt?.toUtc().toIso8601String() ?? absolute),
       cell(actor),
+      cell(actorEmail),
       cell(actorRole),
       cell('$action $target'),
       cell(kind.label),
       cell(material ? 'material' : 'routine'),
-      cell(diff.join(' | ')),
+      cell(changeText),
       cell(reason),
     ].join(',');
   }
 
+  static String _csvChangeLine(AuditChange change) {
+    if (change.isNote) return change.note!;
+    if (change.before == null) return '${change.label}: ${change.after}';
+    return '${change.label}: ${change.before} → ${change.after}';
+  }
+
   static const csvHeader =
-      'timestamp,actor,role,action,record_type,significance,change,reason';
+      'timestamp,actor,actor_email,role,action,record_type,significance,'
+      'change,reason';
 }

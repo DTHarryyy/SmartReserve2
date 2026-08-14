@@ -47,7 +47,7 @@ void _users(AppState s) => s.goTo(AppView.users);
 void _audit(AppState s) => s.goTo(AppView.audit);
 void _reports(AppState s) => s.goTo(AppView.reports);
 void _notes(AppState s) => s.goTo(AppView.notes);
-void _student(AppState s) => s.goTo(AppView.studentApp);
+void _student(AppState s) => s.goTo(AppView.userApp);
 void _auth(AppState s) => s.goTo(AppView.auth);
 
 class DemoStatesMenu extends StatelessWidget {
@@ -91,7 +91,12 @@ class DemoStatesMenu extends StatelessWidget {
             ),
           ),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 420),
+            constraints: BoxConstraints(
+              maxHeight: (MediaQuery.sizeOf(context).height - 110).clamp(
+                160.0,
+                420.0,
+              ),
+            ),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

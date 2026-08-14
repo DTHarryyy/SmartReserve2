@@ -7,7 +7,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../app/app_state.dart';
 import '../../model/account.dart';
+import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
+import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
 
 Future<void> showInviteDialog(BuildContext context, AppState state) =>
@@ -73,28 +75,42 @@ class _InviteDialogState extends State<_InviteDialog> {
     });
   }
 
-  Future<void> _saveCredentials() => _export(() async {
-    await FileSaver.instance.saveAs(
-      name: 'smartreserve-admin-credentials',
-      bytes: Uint8List.fromList(utf8.encode(_credentials!.exportText)),
-      fileExtension: 'txt',
-      mimeType: MimeType.text,
-    );
-    _notice = 'Credentials file saved. Keep it in a secure location.';
-  });
+  Future<void> _saveCredentials() => _export(
+    () async {
+      await FileSaver.instance.saveAs(
+        name: 'smartreserve-admin-credentials',
+        bytes: Uint8List.fromList(utf8.encode(_credentials!.exportText)),
+        fileExtension: 'txt',
+        mimeType: MimeType.text,
+      );
+      _notice = 'Credentials file saved. Keep it in a secure location.';
+    },
+    toast: 'Credentials file wasn’t saved.',
+    detail:
+        'Credentials could not be saved. Check download permissions and try again.',
+  );
 
-  Future<void> _shareCredentials() => _export(() async {
-    await SharePlus.instance.share(
-      ShareParams(
-        title: 'SmartReserve administrator credentials',
-        subject: 'SmartReserve administrator credentials',
-        text: _credentials!.exportText,
-      ),
-    );
-    _notice = 'Credentials were sent to the share sheet.';
-  });
+  Future<void> _shareCredentials() => _export(
+    () async {
+      await SharePlus.instance.share(
+        ShareParams(
+          title: 'SmartReserve administrator credentials',
+          subject: 'SmartReserve administrator credentials',
+          text: _credentials!.exportText,
+        ),
+      );
+      _notice = 'Credentials were sent to the share sheet.';
+    },
+    toast: 'Credentials weren’t shared.',
+    detail:
+        'Credentials could not be shared. Check sharing permissions and try again.',
+  );
 
-  Future<void> _export(Future<void> Function() action) async {
+  Future<void> _export(
+    Future<void> Function() action, {
+    required String toast,
+    required String detail,
+  }) async {
     setState(() {
       _busy = true;
       _error = null;
@@ -107,28 +123,25 @@ class _InviteDialogState extends State<_InviteDialog> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = 'Credentials could not be exported. Please try again.';
+          _error = detail;
         });
+        widget.state.showToast(
+          ToastMessage(toast, tone: AdvisoryTone.block),
+          duration: const Duration(seconds: 6),
+        );
       }
     }
   }
 
   @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: Colors.transparent,
-    elevation: 0,
-    insetPadding: const EdgeInsets.all(20),
-    child: Container(
-      constraints: const BoxConstraints(maxWidth: 460, maxHeight: 720),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: SR.surface,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: SR.dialogShadow,
-      ),
-      child: SingleChildScrollView(
-        child: _credentials == null ? _createForm() : _credentialsForm(),
-      ),
+  Widget build(BuildContext context) => SrAdaptiveDialog(
+    maxWidth: 460,
+    maxHeight: 720,
+    padding: EdgeInsets.all(
+      SR.isCompact(MediaQuery.sizeOf(context).width) ? 16 : 22,
+    ),
+    child: SingleChildScrollView(
+      child: _credentials == null ? _createForm() : _credentialsForm(),
     ),
   );
 
@@ -165,7 +178,10 @@ class _InviteDialogState extends State<_InviteDialog> {
         _RoleOption(
           role: role,
           selected: _role == role,
-          onTap: () => setState(() => _role = role),
+          onTap: () => setState(() {
+            _role = role;
+            _error = null;
+          }),
         ),
       const SizedBox(height: 12),
       SrLabel(
@@ -181,6 +197,9 @@ class _InviteDialogState extends State<_InviteDialog> {
         minLines: 2,
         maxLines: 4,
         keyboardType: TextInputType.multiline,
+        onChanged: (_) {
+          if (!_busy && _error != null) setState(() => _error = null);
+        },
       ),
       const SizedBox(height: 16),
       Row(

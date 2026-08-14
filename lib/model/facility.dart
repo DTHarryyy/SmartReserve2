@@ -151,4 +151,15 @@ class Facility {
     'Mon–Fri' => 5,
     _ => days.split(',').length,
   };
+
+  /// Whether this facility is open on the given weekday, per [days]
+  /// (`"Mon–Sun"`, `"Mon–Sat"`, `"Mon–Fri"`, or a comma list like `"Mon, Wed, Fri"`).
+  bool opensOn(DateTime date) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final day = names[date.weekday - 1];
+    if (days == 'Mon–Sun') return true;
+    if (days == 'Mon–Sat') return date.weekday <= DateTime.saturday;
+    if (days == 'Mon–Fri') return date.weekday <= DateTime.friday;
+    return days.split(',').map((part) => part.trim()).contains(day);
+  }
 }

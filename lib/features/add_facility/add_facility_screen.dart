@@ -91,26 +91,35 @@ class AddFacilityBody extends StatelessWidget {
       ],
     ),
 
-    Layout.tablet => Column(
-      children: [
-        MapPane(
-          controller: controller,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          compact: true,
-          strip: true,
-          showFooter: false,
-        ),
-        Expanded(
-          child: FormRail(
-            controller: controller,
-            stacked: false,
-            dense: true,
-            photoColumns: 3,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-          ),
-        ),
-      ],
-    ),
+    Layout.tablet =>
+      SR.isShort(MediaQuery.sizeOf(context).height)
+          ? FormRail(
+              controller: controller,
+              stacked: false,
+              dense: true,
+              photoColumns: 3,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+            )
+          : Column(
+              children: [
+                MapPane(
+                  controller: controller,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  compact: true,
+                  strip: true,
+                  showFooter: false,
+                ),
+                Expanded(
+                  child: FormRail(
+                    controller: controller,
+                    stacked: false,
+                    dense: true,
+                    photoColumns: 3,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                  ),
+                ),
+              ],
+            ),
 
     Layout.mobile => FormRail(
       controller: controller,

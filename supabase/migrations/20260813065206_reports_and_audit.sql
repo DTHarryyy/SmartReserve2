@@ -184,6 +184,8 @@ as $$
 declare
   actor_role_value text;
   utilisation_value jsonb;
+  utilisation_summary_value jsonb;
+  occurrences_value jsonb;
   demand_value jsonb;
   performance_value jsonb;
 begin
@@ -201,6 +203,7 @@ begin
     select f.*
     from public.facilities f
     where f.archived_at is null
+      and f.status = 'active'
       and (p_category is null or f.category = p_category)
   ), open_hours as (
     select f.id,
@@ -219,6 +222,7 @@ begin
     select o.facility_id,
       sum(extract(epoch from (least(o.ends_at, p_to) - greatest(o.starts_at, p_from))) / 3600) as booked_hours
     from public.reservation_occurrences o
+    join facility_scope f on f.id = o.facility_id
     where o.booking_state = 'booked'
       and o.starts_at < p_to and o.ends_at > p_from
     group by o.facility_id
@@ -239,20 +243,73 @@ begin
   left join open_hours h on h.id = f.id
   left join booked b on b.facility_id = f.id;
 
+  select jsonb_build_object(
+    'booked_hours', coalesce(sum((elem->>'booked_hours')::numeric), 0),
+    'available_hours', coalesce(sum((elem->>'available_hours')::numeric), 0),
+    'fraction', case
+      when coalesce(sum((elem->>'available_hours')::numeric), 0) = 0 then 0
+      else least(1, coalesce(sum((elem->>'booked_hours')::numeric), 0) /
+        sum((elem->>'available_hours')::numeric))
+    end
+  ) into utilisation_summary_value
+  from jsonb_array_elements(utilisation_value) elem;
+
+  with facility_scope as (
+    select f.id
+    from public.facilities f
+    where f.archived_at is null
+      and f.status = 'active'
+      and (p_category is null or f.category = p_category)
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'occurrence_id', o.id,
+    'request_id', r.id,
+    'facility_id', o.facility_id,
+    'requester', r.requester_name,
+    'purpose', r.purpose,
+    'request_status', r.status,
+    'starts_at', o.starts_at,
+    'ends_at', o.ends_at,
+    'booked_hours', round((extract(epoch from (
+      least(o.ends_at, p_to) - greatest(o.starts_at, p_from)
+    )) / 3600)::numeric, 2)
+  ) order by o.starts_at, o.id), '[]'::jsonb)
+  into occurrences_value
+  from public.reservation_occurrences o
+  join public.reservation_requests r on r.id = o.request_id
+  join facility_scope f on f.id = o.facility_id
+  where o.booking_state = 'booked'
+    and o.starts_at < p_to and o.ends_at > p_from;
+
   with blocks as (
     select day_number, hour_value
     from generate_series(1, 7) day_number
     cross join generate_series(7, 19, 2) hour_value
-  ), counts as (
-    select extract(isodow from o.starts_at at time zone 'Asia/Manila')::integer as day_number,
-      (7 + floor((extract(hour from o.starts_at at time zone 'Asia/Manila') - 7) / 2) * 2)::integer as hour_value,
-      count(*)::integer as request_count
+  ), clipped_occurrences as (
+    select o.id,
+      greatest(o.starts_at, p_from) at time zone 'Asia/Manila' as local_start,
+      least(o.ends_at, p_to) at time zone 'Asia/Manila' as local_end
     from public.reservation_occurrences o
-    join public.reservation_requests r on r.id = o.request_id
     join public.facilities f on f.id = o.facility_id
-    where o.starts_at >= p_from and o.starts_at < p_to
+    where o.starts_at < p_to and o.ends_at > p_from
       and (p_category is null or f.category = p_category)
-    group by 1, 2
+  ), occupied_blocks as (
+    select distinct o.id,
+      extract(isodow from d)::integer as day_number,
+      h.hour_value
+    from clipped_occurrences o
+    cross join lateral generate_series(
+      o.local_start::date,
+      (o.local_end - interval '1 microsecond')::date,
+      interval '1 day'
+    ) d
+    cross join lateral generate_series(7, 19, 2) h(hour_value)
+    where o.local_start < d::date + make_interval(hours => h.hour_value + 2)
+      and o.local_end > d::date + make_interval(hours => h.hour_value)
+  ), counts as (
+    select day_number, hour_value, count(*)::integer as request_count
+    from occupied_blocks
+    group by day_number, hour_value
   )
   select coalesce(jsonb_agg(jsonb_build_object(
     'day', b.day_number, 'hour', b.hour_value,
@@ -271,11 +328,12 @@ begin
   ), decided as (
     select * from decisions where decided_at is not null and latency_hours >= 0
   ), admins as (
-    select decided_by_name as name, count(*)::integer as decisions,
+    select decided_by as admin_id,
+      coalesce(nullif(decided_by_name, ''), 'Unattributed') as name,
+      count(*)::integer as decisions,
       percentile_cont(0.5) within group (order by latency_hours) as median_hours
     from decided
-    where decided_by_name is not null
-    group by decided_by_name
+    group by decided_by, coalesce(nullif(decided_by_name, ''), 'Unattributed')
   )
   select jsonb_build_object(
     'declined', (select count(*) from decisions where status = 'declined'),
@@ -285,7 +343,8 @@ begin
     'within_48', (select case when count(*) = 0 then null else count(*) filter (where latency_hours <= 48)::double precision / count(*) end from decided),
     'per_admin', case when actor_role_value = 'internal_admin' then
       (select coalesce(jsonb_agg(jsonb_build_object(
-        'name', name, 'decisions', decisions, 'median_hours', median_hours
+        'admin_id', admin_id, 'name', name, 'decisions', decisions,
+        'median_hours', median_hours
       ) order by decisions desc, name), '[]'::jsonb) from admins)
       else '[]'::jsonb end
   ) into performance_value;
@@ -295,7 +354,9 @@ begin
     'to', p_to,
     'category', p_category,
     'generated_at', now(),
+    'summary', utilisation_summary_value,
     'utilisation', utilisation_value,
+    'booked_occurrences', occurrences_value,
     'demand', demand_value,
     'performance', performance_value
   );
@@ -421,6 +482,7 @@ begin
 end;
 $$;
 
+revoke all on function public.get_admin_report(timestamptz,timestamptz,text) from public, anon;
 grant execute on function public.get_admin_report(timestamptz,timestamptz,text) to authenticated;
 grant execute on function public.get_audit_entries(text,text,text,boolean,timestamptz,timestamptz,timestamptz,uuid,integer) to authenticated;
 grant execute on function public.record_audit_export(integer,jsonb) to authenticated;
@@ -437,3 +499,5 @@ begin
     alter publication supabase_realtime add table public.audit_entries;
   end if;
 end $$;
+
+notify pgrst, 'reload schema';

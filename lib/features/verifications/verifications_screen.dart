@@ -6,6 +6,7 @@ import '../../model/verification.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/queue_shell.dart';
+import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
 
 class VerificationsScreen extends StatelessWidget {
@@ -41,20 +42,22 @@ class VerificationsScreen extends StatelessWidget {
       list: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final (decision, label) in _tabs)
-                QueueTab(
-                  label: label,
-                  count: state.verifications
-                      .where((v) => v.decision == decision)
-                      .length,
-                  selected: state.verificationTab == decision,
-                  onTap: () => state.setVerificationTab(decision),
-                ),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              spacing: 6,
+              children: [
+                for (final (decision, label) in _tabs)
+                  QueueTab(
+                    label: label,
+                    count: state.verifications
+                        .where((v) => v.decision == decision)
+                        .length,
+                    selected: state.verificationTab == decision,
+                    onTap: () => state.setVerificationTab(decision),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -458,22 +461,15 @@ class _VerificationPanelState extends State<_VerificationPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierColor: const Color(0x8010141A),
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Verify this campus member?'),
+      builder: (dialogContext) => SrConfirmDialog(
+        title: 'Verify this campus member?',
         content: Text(
           '${submission.name} will be marked verified. The submitted private '
           'document is permanently deleted after this decision.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Verify member'),
-          ),
-        ],
+        confirmLabel: 'Verify member',
+        onCancel: () => Navigator.of(dialogContext).pop(false),
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
       ),
     );
     if (confirmed ?? false) {

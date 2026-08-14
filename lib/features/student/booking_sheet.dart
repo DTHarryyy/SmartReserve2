@@ -133,18 +133,9 @@ class _BookingSheetState extends State<_BookingSheet> {
     final values = <DateTime>[];
     for (var offset = 0; offset <= facility.advanceBookingDays; offset++) {
       final date = start.add(Duration(days: offset));
-      if (_facilityOpenOn(date)) values.add(date);
+      if (facility.opensOn(date)) values.add(date);
     }
     return values.isEmpty ? [start] : values;
-  }
-
-  bool _facilityOpenOn(DateTime date) {
-    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final day = names[date.weekday - 1];
-    if (facility.days == 'Mon–Sun') return true;
-    if (facility.days == 'Mon–Sat') return date.weekday <= DateTime.saturday;
-    if (facility.days == 'Mon–Fri') return date.weekday <= DateTime.friday;
-    return facility.days.split(',').map((part) => part.trim()).contains(day);
   }
 
   static String _dateLabel(DateTime date) {
@@ -199,8 +190,8 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   String? get _error {
     if (!_attempted) return null;
-    if (widget.state.studentAccount.status == AccountStatus.suspended) {
-      return widget.state.studentAccount.suspendReason ??
+    if (widget.state.userAccount.status == AccountStatus.suspended) {
+      return widget.state.userAccount.suspendReason ??
           'This account is suspended and cannot submit new requests.';
     }
     if (_duration <= 0) return 'The end time has to be after the start time.';
@@ -284,9 +275,9 @@ class _BookingSheetState extends State<_BookingSheet> {
                     final wide = constraints.maxWidth >= 760;
                     final overview = _FacilityOverview(facility: facility);
                     final booking = _BookingForm(
-                      account: widget.state.studentAccount,
+                      account: widget.state.userAccount,
                       facility: facility,
-                      free: widget.state.studentAccount.reservesFree,
+                      free: widget.state.userAccount.reservesFree,
                       quote: widget.state.quoteFor(
                         facility,
                         _duration <= 0 ? 0 : _duration,
@@ -1096,8 +1087,10 @@ class _BookingForm extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Payment status is tracked only; no real charge is made. '
-                  'Approval marks it authorised and check-in marks it captured.',
+                  account.verification == VerificationState.pending
+                      ? 'This server-calculated quote is kept while your verification is reviewed. The request stays held; approval makes it free, while rejection releases it as a paid request.'
+                      : 'Payment status is tracked only; no real charge is made. '
+                            'Approval marks it authorised and check-in marks it captured.',
                   style: sans(10.5, height: 1.6, color: SR.muted),
                 ),
               ],

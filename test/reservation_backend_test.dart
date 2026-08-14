@@ -32,7 +32,7 @@ void main() {
       'requester_id': '10000000-0000-0000-0000-000000000002',
       'facility_id': '10000000-0000-0000-0000-000000000003',
       'requester_name': 'Roel Dela Cruz',
-      'requester_role': 'student',
+      'requester_role': 'user',
       'requester_unit': 'BSIT',
       'facility_name': 'Computer Laboratory 1',
       'facility_building': 'ICT Building',

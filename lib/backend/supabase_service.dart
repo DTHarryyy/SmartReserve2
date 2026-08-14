@@ -1,6 +1,7 @@
 // ignore_for_file: annotate_overrides
 
 import 'dart:math';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:latlong2/latlong.dart';
@@ -13,6 +14,86 @@ import '../model/facility_photo.dart';
 import '../features/reports/reports_data.dart';
 import '../model/audit_entry.dart';
 import '../util/geo.dart';
+
+class AccountManagementException implements Exception {
+  const AccountManagementException({
+    required this.code,
+    required this.message,
+    required this.status,
+    this.requestId,
+  });
+
+  factory AccountManagementException.fromFunctionException(
+    FunctionException error,
+  ) {
+    final details = _accountErrorDetails(error.details);
+    final rawCode = details['code'];
+    final code = rawCode is String ? rawCode : _accountErrorCode(error.status);
+    final rawMessage = details['error'];
+    final message = rawMessage is String
+        ? rawMessage
+        : _accountErrorMessage(code, error.status);
+    final rawRequestId = details['request_id'];
+    return AccountManagementException(
+      code: code,
+      message: message,
+      status: error.status,
+      requestId: rawRequestId is String ? rawRequestId : null,
+    );
+  }
+
+  const AccountManagementException.invalidResponse({this.status = 0})
+    : code = 'invalid_response',
+      message = 'User management returned an invalid response.',
+      requestId = null;
+
+  final String code;
+  final String message;
+  final int status;
+  final String? requestId;
+
+  bool get isRetryable =>
+      code == 'network' || code == 'rate_limited' || code == 'server_error';
+
+  @override
+  String toString() => message;
+}
+
+Map<String, dynamic> _accountErrorDetails(dynamic details) {
+  if (details is Map) return Map<String, dynamic>.from(details);
+  if (details is String) {
+    try {
+      final decoded = jsonDecode(details);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } on FormatException {
+      // A non-JSON relay or transport response is classified by status below.
+    }
+  }
+  return const {};
+}
+
+String _accountErrorCode(int status) => switch (status) {
+  0 => 'network',
+  400 => 'invalid_request',
+  401 => 'unauthorized',
+  403 => 'forbidden',
+  404 => 'not_found',
+  409 => 'conflict',
+  429 => 'rate_limited',
+  >= 500 => 'server_error',
+  _ => 'request_failed',
+};
+
+String _accountErrorMessage(String code, int status) => switch (code) {
+  'network' => 'SmartReserve could not be reached.',
+  'unauthorized' => 'Your session is no longer valid.',
+  'forbidden' => 'You do not have permission to manage accounts.',
+  'not_found' => 'Account not found.',
+  'rate_limited' => 'Too many requests. Wait a moment and try again.',
+  'server_error' => 'User management is temporarily unavailable.',
+  'invalid_request' => 'The account action was not valid.',
+  _ => 'User management request failed (HTTP $status).',
+};
 
 class SessionProfile {
   const SessionProfile({
@@ -54,7 +135,7 @@ class SessionProfile {
     id: json['id'] as String,
     email: (json['email'] as String?) ?? '',
     fullName: (json['full_name'] as String?) ?? '',
-    role: (json['role'] as String?) ?? 'guest',
+    role: _accountRole(json['role']),
     campusClaim: json['campus_claim'] as String?,
     campusId: json['campus_id'] as String?,
     unit: json['unit'] as String?,
@@ -87,6 +168,8 @@ class BackendAccount {
     required this.suspendedUntil,
     required this.isSelf,
     required this.activityMetricsAvailable,
+    this.reservationCount = 0,
+    this.lastReservationAt,
   });
 
   final String id;
@@ -105,12 +188,14 @@ class BackendAccount {
   final DateTime? suspendedUntil;
   final bool isSelf;
   final bool activityMetricsAvailable;
+  final int reservationCount;
+  final DateTime? lastReservationAt;
 
   factory BackendAccount.fromJson(Map<String, dynamic> json) => BackendAccount(
     id: json['id'] as String,
     email: (json['email'] as String?) ?? '',
     fullName: (json['full_name'] as String?) ?? '',
-    role: (json['role'] as String?) ?? 'guest',
+    role: _accountRole(json['role']),
     unit: (json['unit'] as String?) ?? '',
     campusId: (json['campus_id'] as String?) ?? '',
     verificationStatus: (json['verification_status'] as String?) ?? 'none',
@@ -124,10 +209,26 @@ class BackendAccount {
     isSelf: (json['is_self'] as bool?) ?? false,
     activityMetricsAvailable:
         (json['activity_metrics_available'] as bool?) ?? false,
+    reservationCount: (json['reservation_count'] as num?)?.toInt() ?? 0,
+    lastReservationAt: _date(json['last_reservation_at']),
   );
 
   static DateTime? _date(Object? value) =>
       value is String ? DateTime.tryParse(value)?.toLocal() : null;
+}
+
+String _accountRole(Object? value) {
+  return switch (value) {
+    'user' => 'user',
+    'internal_admin' => 'internal_admin',
+    'external_admin' => 'external_admin',
+    // Read compatibility for profiles returned while the three-role database
+    // migration is rolling out. These values never regain distinct access.
+    'student' || 'faculty' || 'staff' || 'guest' => 'user',
+    _ => throw const FormatException(
+      'Account response contains an invalid role.',
+    ),
+  };
 }
 
 /// Returned only once when an internal administrator creates a direct account.
@@ -328,6 +429,30 @@ class BackendReservationEvent {
       );
 }
 
+/// One anonymised busy interval returned by the `facility_busy_windows`
+/// RPC — a facility id and two timestamps, nothing that identifies the
+/// requester or the reservation. Used by the booking assistant to answer
+/// "is this room free?" for students, who cannot read other people's
+/// reservation rows under RLS.
+class BackendBusyWindow {
+  const BackendBusyWindow({
+    required this.facilityId,
+    required this.startsAt,
+    required this.endsAt,
+  });
+
+  final String facilityId;
+  final DateTime startsAt;
+  final DateTime endsAt;
+
+  factory BackendBusyWindow.fromJson(Map<String, dynamic> json) =>
+      BackendBusyWindow(
+        facilityId: '${json['facility_id']}',
+        startsAt: DateTime.parse('${json['starts_at']}').toUtc(),
+        endsAt: DateTime.parse('${json['ends_at']}').toUtc(),
+      );
+}
+
 class BackendReservation {
   const BackendReservation({
     required this.id,
@@ -522,18 +647,24 @@ class AuditQuery {
     bool clearEntityType = false,
     bool? materialOnly,
     DateTime? from,
+    bool clearFrom = false,
     DateTime? to,
+    bool clearTo = false,
     DateTime? beforeCreatedAt,
     String? beforeId,
+    // Any filter change invalidates a keyset cursor built for the old
+    // filter set — pass true whenever search/actor/type/range/material
+    // changes, so "load more" doesn't resume mid-way through a stale query.
+    bool resetPage = false,
   }) => AuditQuery(
     search: search ?? this.search,
     actor: clearActor ? null : actor ?? this.actor,
     entityType: clearEntityType ? null : entityType ?? this.entityType,
     materialOnly: materialOnly ?? this.materialOnly,
-    from: from ?? this.from,
-    to: to ?? this.to,
-    beforeCreatedAt: beforeCreatedAt ?? this.beforeCreatedAt,
-    beforeId: beforeId ?? this.beforeId,
+    from: clearFrom ? null : from ?? this.from,
+    to: clearTo ? null : to ?? this.to,
+    beforeCreatedAt: resetPage ? null : beforeCreatedAt ?? this.beforeCreatedAt,
+    beforeId: resetPage ? null : beforeId ?? this.beforeId,
     limit: limit,
   );
   Map<String, dynamic> get filters => {
@@ -603,6 +734,11 @@ abstract interface class SmartReserveBackend {
   });
   Future<List<BackendReservation>> reservations();
   Stream<List<BackendReservation>> reservationStream();
+  Future<List<BackendBusyWindow>> facilityBusyWindows({
+    required List<String> facilityIds,
+    required DateTime from,
+    required DateTime to,
+  });
   Future<BackendReservation> submitReservation(ReservationDraft draft);
   Future<ReservationActionResult> performReservationAction(
     ReservationActionCommand command,
@@ -623,6 +759,7 @@ abstract interface class SmartReserveBackend {
     String? note,
   });
   Future<List<BackendAccount>> accounts();
+  Future<List<BackendAccount>> externalClients();
   Stream<List<BackendAccount>> accountStream();
   Future<BackendAccount> inviteAccountAdmin({
     required String email,
@@ -639,7 +776,6 @@ abstract interface class SmartReserveBackend {
   Future<BackendAccount> changeAccountRole({
     required String accountId,
     required String role,
-    required String reason,
   });
   Future<BackendAccount> suspendUserAccount({
     required String accountId,
@@ -1106,6 +1242,27 @@ class SupabaseService implements SmartReserveBackend {
       .from('reservation_requests')
       .stream(primaryKey: ['id'])
       .asyncMap((_) => reservations());
+
+  @override
+  Future<List<BackendBusyWindow>> facilityBusyWindows({
+    required List<String> facilityIds,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (facilityIds.isEmpty) return const [];
+    final data = await _client.rpc(
+      'facility_busy_windows',
+      params: {
+        'p_facility_ids': facilityIds,
+        'p_from': from.toUtc().toIso8601String(),
+        'p_to': to.toUtc().toIso8601String(),
+      },
+    );
+    return [
+      for (final row in (data as List? ?? const []))
+        BackendBusyWindow.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
 
   @override
   Future<BackendReservation> submitReservation(ReservationDraft draft) async {
@@ -1580,7 +1737,13 @@ class SupabaseService implements SmartReserveBackend {
         'p_category': scope.category,
       },
     );
-    return ReportSnapshot.fromJson(Map<String, dynamic>.from(data as Map));
+    if (data is! Map) {
+      throw const FormatException('Reporting returned an invalid response.');
+    }
+    return ReportSnapshot.fromJson(
+      Map<String, dynamic>.from(data),
+      expectedScope: scope,
+    );
   }
 
   @override
@@ -1633,27 +1796,39 @@ class SupabaseService implements SmartReserveBackend {
         body: {'action': action, ...fields},
       );
     } on FunctionException catch (error) {
-      final details = error.details;
-      if (details is Map && details['error'] is String) {
-        throw StateError(details['error'] as String);
-      }
-      throw StateError(error.reasonPhrase ?? 'User management request failed.');
+      throw AccountManagementException.fromFunctionException(error);
     }
     final data = response.data;
     if (data is! Map) {
-      throw StateError('User management returned an invalid response.');
+      throw AccountManagementException.invalidResponse(status: response.status);
     }
     final json = Map<String, dynamic>.from(data);
-    if (json['error'] != null) throw StateError(json['error'] as String);
+    if (json['error'] != null) {
+      final rawCode = json['code'];
+      final rawMessage = json['error'];
+      final rawRequestId = json['request_id'];
+      throw AccountManagementException(
+        code: rawCode is String ? rawCode : _accountErrorCode(response.status),
+        message: rawMessage is String
+            ? rawMessage
+            : _accountErrorMessage('request_failed', response.status),
+        status: response.status,
+        requestId: rawRequestId is String ? rawRequestId : null,
+      );
+    }
     return json;
   }
 
   BackendAccount _accountResult(Map<String, dynamic> response) {
     final value = response['account'];
     if (value is! Map) {
-      throw StateError('User management did not return an account.');
+      throw const AccountManagementException.invalidResponse();
     }
-    return BackendAccount.fromJson(Map<String, dynamic>.from(value));
+    try {
+      return BackendAccount.fromJson(Map<String, dynamic>.from(value));
+    } on FormatException {
+      throw const AccountManagementException.invalidResponse();
+    }
   }
 
   @override
@@ -1661,10 +1836,26 @@ class SupabaseService implements SmartReserveBackend {
     final response = await _manageUsers('list');
     final rows = response['accounts'];
     if (rows is! List) {
-      throw StateError('User management did not return an account list.');
+      throw const AccountManagementException.invalidResponse();
+    }
+    try {
+      return [
+        for (final row in rows)
+          BackendAccount.fromJson(Map<String, dynamic>.from(row as Map)),
+      ];
+    } on Object {
+      throw const AccountManagementException.invalidResponse();
+    }
+  }
+
+  @override
+  Future<List<BackendAccount>> externalClients() async {
+    final response = await _client.rpc('get_external_clients');
+    if (response is! List) {
+      throw StateError('Client directory returned an invalid response.');
     }
     return [
-      for (final row in rows)
+      for (final row in response)
         BackendAccount.fromJson(Map<String, dynamic>.from(row as Map)),
     ];
   }
@@ -1734,11 +1925,10 @@ class SupabaseService implements SmartReserveBackend {
   Future<BackendAccount> changeAccountRole({
     required String accountId,
     required String role,
-    required String reason,
   }) async => _accountResult(
     await _manageUsers(
       'change_role',
-      fields: {'target_id': accountId, 'role': role, 'reason': reason},
+      fields: {'target_id': accountId, 'role': role},
     ),
   );
 

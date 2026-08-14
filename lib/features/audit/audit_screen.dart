@@ -6,11 +6,49 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
+import '../../backend/supabase_service.dart';
+import '../../model/audit_change.dart';
 import '../../model/audit_entry.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
+import '../../widgets/decision_widgets.dart';
 import '../../widgets/filter_bar.dart';
+import '../../widgets/record_table.dart';
 import '../../widgets/sr_controls.dart';
+
+const _kinds = ['All records', 'FACILITY', 'RESERVATION', 'ACCOUNT', 'SYSTEM'];
+
+const _columns = [
+  ColSpec('WHEN', width: 106),
+  ColSpec('PERSON', flex: 3),
+  ColSpec('ACTION', flex: 5),
+  ColSpec('TYPE', width: 100, hide: ColumnHide.medium),
+  ColSpec('', width: 22, alignRight: true),
+];
+
+enum _AuditRange {
+  today('Today'),
+  week('Last 7 days'),
+  month('Last 30 days'),
+  quarter('Last 90 days'),
+  all('All time');
+
+  const _AuditRange(this.label);
+  final String label;
+
+  DateTime? from(DateTime now) => switch (this) {
+    _AuditRange.today => DateTime(now.year, now.month, now.day),
+    _AuditRange.week => now.subtract(const Duration(days: 7)),
+    _AuditRange.month => now.subtract(const Duration(days: 30)),
+    _AuditRange.quarter => now.subtract(const Duration(days: 90)),
+    _AuditRange.all => null,
+  };
+
+  static _AuditRange fromLabel(String label) => values.firstWhere(
+    (r) => r.label == label,
+    orElse: () => _AuditRange.all,
+  );
+}
 
 class AuditScreen extends StatefulWidget {
   const AuditScreen({super.key});
@@ -24,7 +62,9 @@ class _AuditScreenState extends State<AuditScreen> {
   String _query = '';
   String _actor = 'All people';
   String _kind = 'All records';
+  _AuditRange _range = _AuditRange.all;
   bool _materialOnly = false;
+  bool _showRetention = false;
   final Set<String> _expanded = {};
 
   @override
@@ -33,6 +73,10 @@ class _AuditScreenState extends State<AuditScreen> {
     super.dispose();
   }
 
+  // Only applied to the demo/local list. Backend rows arrive already
+  // filtered by the server — re-filtering them here would make the visible
+  // count disagree with `auditTotal` and let "Load more" append rows this
+  // filter then hides.
   List<AuditEntry> _visible(List<AuditEntry> entries) {
     final q = _query.trim().toLowerCase();
     return [
@@ -50,122 +94,102 @@ class _AuditScreenState extends State<AuditScreen> {
     ];
   }
 
+  bool get _hasActiveFilter =>
+      _query.isNotEmpty ||
+      _actor != 'All people' ||
+      _kind != 'All records' ||
+      _range != _AuditRange.all ||
+      _materialOnly;
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final entries = state.backend == null ? state.audit : state.remoteAudit;
-    final rows = _visible(entries);
-    final stacked = MediaQuery.sizeOf(context).width < SR.tabletMin;
-    final actors = <String>{'All people', ...state.auditActors, for (final e in entries) e.actor};
+    final isDemo = state.backend == null;
+    final source = isDemo ? state.audit : state.remoteAudit;
+    final rows = isDemo ? _visible(source) : source;
+    final width = MediaQuery.sizeOf(context).width;
+    final stacked = width < SR.tabletMin;
+    final total = isDemo ? state.audit.length : state.auditTotal;
+    final actors = <String>{
+      'All people',
+      ...state.auditActors,
+      for (final e in source) e.actor,
+    };
 
     return Scrollbar(
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          stacked ? 14 : 24,
-          stacked ? 14 : 20,
-          stacked ? 14 : 24,
-          40,
-        ),
+        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
         child: Align(
           alignment: Alignment.topLeft,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 940),
+            constraints: const BoxConstraints(maxWidth: 1180),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FilterBar(
-                  count: '${rows.length} of ${state.backend == null ? state.audit.length : state.auditTotal}',
-                  trailing: [
-                    SrButton(
-                      label: 'Export CSV',
-                      onPressed: () => _export(state, rows),
-                    ),
-                  ],
-                  children: [
-                    FilterSearch(
-                      controller: _search,
-                      placeholder: 'Search people, records or reasons',
-                      width: stacked ? 220 : 280,
-                      onChanged: (v) {
-                        setState(() => _query = v);
-                        state.refreshAudit(query: state.auditQuery.copyWith(search: v));
-                      },
-                    ),
-                    FilterSelect(
-                      value: _actor,
-                      items: actors.toList(),
-                      semanticLabel: 'Filter by person',
-                      onChanged: (v) {
-                        setState(() => _actor = v);
-                        state.refreshAudit(query: state.auditQuery.copyWith(actor: v == 'All people' ? null : v, clearActor: v == 'All people'));
-                      },
-                    ),
-                    FilterSelect(
-                      value: _kind,
-                      items: const [
-                        'All records',
-                        'FACILITY',
-                        'RESERVATION',
-                        'ACCOUNT',
-                      ],
-                      semanticLabel: 'Filter by record type',
-                      onChanged: (v) {
-                        setState(() => _kind = v);
-                        state.refreshAudit(query: state.auditQuery.copyWith(entityType: v == 'All records' ? null : v.toLowerCase(), clearEntityType: v == 'All records'));
-                      },
-                    ),
-                    FilterPill(
-                      label: 'Material changes only',
-                      selected: _materialOnly,
-                      onTap: () {
-                        setState(() => _materialOnly = !_materialOnly);
-                        state.refreshAudit(query: state.auditQuery.copyWith(materialOnly: _materialOnly));
-                      },
-                    ),
-                  ],
-                ),
+                if (SR.isCompact(width))
+                  _compactFilters(state, actors.toList(), rows.length, total)
+                else
+                  _desktopToolbar(state, actors.toList(), rows.length, total),
 
-                if (state.auditLoading) const Padding(padding: EdgeInsets.only(bottom: 10), child: LinearProgressIndicator()),
-                if (state.auditError case final error?) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error, style: sans(11.5, color: SR.red))),
-                Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: SR.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: SR.border),
+                if (state.auditLoading && rows.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 10),
+                    child: LinearProgressIndicator(),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: rows.isEmpty
-                        ? [_empty()]
-                        : [
-                            for (final entry in rows)
-                              _EntryRow(
-                                entry: entry,
-                                expanded: _expanded.contains(entry.id),
-                                onToggle: () => setState(() {
-                                  if (!_expanded.remove(entry.id)) {
-                                    _expanded.add(entry.id);
-                                  }
-                                }),
-                                onRevert: () => state.revertAudit(entry),
-                              ),
-                          ],
+                if (state.auditError case final error?)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(error, style: sans(11.5, color: SR.red)),
                   ),
+
+                RecordTable(
+                  columns: _columns,
+                  children: state.auditLoading && rows.isEmpty
+                      ? [
+                          for (final leadWidth in const [.6, .45, .7, .5, .55])
+                            SkeletonRow(columns: _columns, leadWidth: leadWidth),
+                        ]
+                      : rows.isEmpty
+                      ? [
+                          ListEmptyState(
+                            glyph: '∅',
+                            title: 'No entries match',
+                            body:
+                                'Clear a filter, or turn off "material '
+                                'changes only".',
+                            action: _hasActiveFilter
+                                ? SrButton(
+                                    label: 'Clear filters',
+                                    onPressed: () => _clearAll(state),
+                                  )
+                                : null,
+                          ),
+                        ]
+                      : [
+                          for (final entry in rows)
+                            _AuditRow(
+                              key: ValueKey(entry.id),
+                              entry: entry,
+                              expanded: _expanded.contains(entry.id),
+                              onToggle: () => _toggle(entry.id),
+                              onRevert: () => state.revertAudit(entry),
+                            ),
+                        ],
                 ),
 
                 if (state.backend != null && rows.length < state.auditTotal)
-                  Padding(padding: const EdgeInsets.only(top: 12), child: SrButton(label: state.auditLoadingMore ? 'Loading…' : 'Load more', onPressed: state.auditLoadingMore ? null : state.loadMoreAudit)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SrButton(
+                      label: state.auditLoadingMore ? 'Loading…' : 'Load more',
+                      onPressed: state.auditLoadingMore
+                          ? null
+                          : state.loadMoreAudit,
+                    ),
+                  ),
 
                 const SizedBox(height: 12),
-                Text(
-                  'Append-only: reverting writes a new entry and keeps the '
-                  'original. Full detail is kept for 24 months, then '
-                  'summarised. Account and role entries are visible to '
-                  'internal admins only, and an export records who exported '
-                  'it.',
-                  style: sans(11, height: 1.6, color: SR.muted),
-                ),
+                _retentionDisclosure(),
               ],
             ),
           ),
@@ -174,37 +198,462 @@ class _AuditScreenState extends State<AuditScreen> {
     );
   }
 
-  Future<void> _export(AppState state, List<AuditEntry> rows) async {
+  Widget _desktopToolbar(
+    AppState state,
+    List<String> actors,
+    int visible,
+    int total,
+  ) => Container(
+    margin: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: BoxDecoration(
+      color: SR.surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: SR.border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FilterSearch(
+                controller: _search,
+                placeholder: 'Search people, records or reasons',
+                width: double.infinity,
+                onChanged: (v) {
+                  setState(() => _query = v);
+                  state.refreshAudit(
+                    query: state.auditQuery.copyWith(search: v, resetPage: true),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            SrButton(label: 'Export CSV', onPressed: () => _export(state)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            for (final k in _kinds)
+              _TypeChip(
+                label: k == 'All records' ? 'All' : _titleCase(k),
+                selected: _kind == k,
+                onTap: () => _applyKind(state, k),
+              ),
+            const SizedBox(width: 2),
+            FilterSelect(
+              value: _actor,
+              items: actors,
+              width: 190,
+              semanticLabel: 'Filter by person',
+              onChanged: (v) => _applyActor(state, v),
+            ),
+            FilterSelect(
+              value: _range.label,
+              items: [for (final r in _AuditRange.values) r.label],
+              width: 160,
+              semanticLabel: 'Date range',
+              onChanged: (v) => _applyRange(state, _AuditRange.fromLabel(v)),
+            ),
+            FilterPill(
+              label: 'Material changes only',
+              selected: _materialOnly,
+              onTap: () => _applyMaterialOnly(state, !_materialOnly),
+            ),
+            if (_hasActiveFilter)
+              Hoverable(
+                builder: (context, hovered) => GestureDetector(
+                  onTap: () => _clearAll(state),
+                  child: Text(
+                    'Clear all',
+                    style: sans(
+                      11.5,
+                      w: 500,
+                      color: hovered ? SR.ink3 : SR.muted,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+            Text('$visible of $total', style: mono(10.5, color: SR.muted)),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _compactFilters(
+    AppState state,
+    List<String> actors,
+    int visible,
+    int total,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 44,
+                child: FilterSearch(
+                  controller: _search,
+                  placeholder: 'Search people, records or reasons',
+                  width: double.infinity,
+                  onChanged: (value) {
+                    setState(() => _query = value);
+                    state.refreshAudit(
+                      query: state.auditQuery.copyWith(
+                        search: value,
+                        resetPage: true,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            CompactFilterButton(
+              activeCount:
+                  (_actor == 'All people' ? 0 : 1) +
+                  (_kind == 'All records' ? 0 : 1) +
+                  (_range == _AuditRange.all ? 0 : 1) +
+                  (_materialOnly ? 1 : 0),
+              onPressed: () => _showCompactFilters(state, actors),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text('$visible of $total', style: mono(10.5, color: SR.muted)),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _showCompactFilters(AppState state, List<String> actors) =>
+      showSrFilterSheet(
+        context,
+        title: 'Filter audit log',
+        child: StatefulBuilder(
+          builder: (context, sheetSetState) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SrLabel('Person'),
+              FilterSelect(
+                value: _actor,
+                items: actors,
+                semanticLabel: 'Filter by person',
+                onChanged: (value) {
+                  _applyActor(state, value);
+                  sheetSetState(() {});
+                },
+              ),
+              const SizedBox(height: 14),
+              const SrLabel('Record type'),
+              FilterSelect(
+                value: _kind,
+                items: _kinds,
+                semanticLabel: 'Filter by record type',
+                onChanged: (value) {
+                  _applyKind(state, value);
+                  sheetSetState(() {});
+                },
+              ),
+              const SizedBox(height: 14),
+              const SrLabel('Date range'),
+              FilterSelect(
+                value: _range.label,
+                items: [for (final r in _AuditRange.values) r.label],
+                semanticLabel: 'Date range',
+                onChanged: (value) {
+                  _applyRange(state, _AuditRange.fromLabel(value));
+                  sheetSetState(() {});
+                },
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Expanded(child: Text('Material changes only')),
+                  SrToggle(
+                    value: _materialOnly,
+                    label: 'Material changes only',
+                    onChanged: (value) {
+                      _applyMaterialOnly(state, value);
+                      sheetSetState(() {});
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: SrButton(
+                      label: 'Clear filters',
+                      onPressed: () {
+                        _clearAll(state);
+                        sheetSetState(() {});
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SrButton(
+                      label: 'Show entries',
+                      kind: SrButtonKind.primary,
+                      expand: true,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+
+  void _applyKind(AppState state, String kind) {
+    setState(() => _kind = kind);
+    state.refreshAudit(
+      query: state.auditQuery.copyWith(
+        entityType: kind == 'All records' ? null : kind.toLowerCase(),
+        clearEntityType: kind == 'All records',
+        resetPage: true,
+      ),
+    );
+  }
+
+  void _applyActor(AppState state, String actor) {
+    setState(() => _actor = actor);
+    state.refreshAudit(
+      query: state.auditQuery.copyWith(
+        actor: actor == 'All people' ? null : actor,
+        clearActor: actor == 'All people',
+        resetPage: true,
+      ),
+    );
+  }
+
+  void _applyRange(AppState state, _AuditRange range) {
+    setState(() => _range = range);
+    final from = range.from(DateTime.now());
+    state.refreshAudit(
+      query: state.auditQuery.copyWith(
+        from: from,
+        clearFrom: from == null,
+        resetPage: true,
+      ),
+    );
+  }
+
+  void _applyMaterialOnly(AppState state, bool value) {
+    setState(() => _materialOnly = value);
+    state.refreshAudit(
+      query: state.auditQuery.copyWith(materialOnly: value, resetPage: true),
+    );
+  }
+
+  void _clearAll(AppState state) {
+    setState(() {
+      _query = '';
+      _search.clear();
+      _actor = 'All people';
+      _kind = 'All records';
+      _range = _AuditRange.all;
+      _materialOnly = false;
+    });
+    state.refreshAudit(query: const AuditQuery());
+  }
+
+  void _toggle(String id) => setState(() {
+    if (!_expanded.remove(id)) _expanded.add(id);
+  });
+
+  Future<void> _export(AppState state) async {
     final exportedRows = await state.auditExportRows();
     final csv = state.exportAuditCsv(exportedRows);
-    await FileSaver.instance.saveAs(name: 'smartreserve-audit-log', bytes: Uint8List.fromList(utf8.encode(csv)), fileExtension: 'csv', mimeType: MimeType.text);
-    if (state.backend != null) await state.backend!.recordAuditExport(state.auditQuery, exportedRows.length);
+    await FileSaver.instance.saveAs(
+      name: 'smartreserve-audit-log',
+      bytes: Uint8List.fromList(utf8.encode(csv)),
+      fileExtension: 'csv',
+      mimeType: MimeType.text,
+    );
+    if (state.backend != null) {
+      await state.backend!.recordAuditExport(
+        state.auditQuery,
+        exportedRows.length,
+      );
+    }
     state.showToast(
       ToastMessage(
-        '${exportedRows.length} entries saved as CSV, signed with your name. The '
-        'export is itself logged.',
+        '${exportedRows.length} entries saved as CSV, signed with your name. '
+        'The export is itself logged.',
         tone: AdvisoryTone.info,
       ),
     );
   }
 
-  Widget _empty() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 48),
-    child: Column(
-      children: [
-        Text('No entries match', style: sans(13.5, w: 600)),
-        const SizedBox(height: 5),
+  Widget _retentionDisclosure() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Hoverable(
+        builder: (context, hovered) => GestureDetector(
+          onTap: () => setState(() => _showRetention = !_showRetention),
+          child: Text(
+            _showRetention ? 'Hide retention & access' : 'Retention & access',
+            style: sans(
+              11,
+              w: 500,
+              color: hovered ? SR.ink3 : SR.muted,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ),
+      if (_showRetention) ...[
+        const SizedBox(height: 6),
         Text(
-          'Clear a filter, or turn off “material changes only”.',
-          style: sans(12, height: 1.6, color: SR.ink4),
+          'Append-only: reverting writes a new entry and keeps the '
+          'original. Full detail is kept for 24 months, then '
+          'summarised. Account and role entries are visible to '
+          'internal admins only, and an export records who exported '
+          'it.',
+          style: sans(11, height: 1.6, color: SR.muted),
         ),
       ],
+    ],
+  );
+}
+
+String _titleCase(String value) =>
+    value.isEmpty ? value : value[0] + value.substring(1).toLowerCase();
+
+class _TypeChip extends StatelessWidget {
+  const _TypeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    child: Hoverable(
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: SR.stateChange,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? SR.ink : SR.surface,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: selected ? SR.ink : (hovered ? SR.borderHover : SR.border),
+            ),
+          ),
+          child: Text(
+            label,
+            style: sans(12, w: 500, color: selected ? SR.surface : SR.ink3),
+          ),
+        ),
+      ),
     ),
   );
 }
 
-class _EntryRow extends StatelessWidget {
-  const _EntryRow({
+// -- Identity -----------------------------------------------------------
+
+Widget _avatar(AuditEntry entry) => entry.isSystemActor
+    ? Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: SR.hairline,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.settings_suggest_rounded,
+          size: 14,
+          color: SR.ink4,
+        ),
+      )
+    : Initials(text: entry.initials, size: 30, fontSize: 10);
+
+String _roleLabel(AuditEntry entry) => entry.actorRoleValue?.label ?? entry.actorRole;
+
+String _identityName(AuditEntry entry) =>
+    entry.isSystemActor ? 'System' : (entry.actor.isEmpty ? 'Unknown' : entry.actor);
+
+// Role and email as one plain-text line rather than a badge next to the
+// name: a fixed-width role chip can be wider than the whole PERSON column
+// once the table squeezes it down at medium viewport widths (~90px), which
+// overflows a Row no matter how its Flexible/Expanded children are set up.
+// Text always shrinks to its given width via ellipsis, so this can't.
+String _identitySubtitle(AuditEntry entry) {
+  if (entry.isSystemActor) return 'Automatic';
+  final role = _roleLabel(entry);
+  final email = entry.actorEmail;
+  if (role.isEmpty) return email;
+  if (email.isEmpty) return role;
+  return '$role · $email';
+}
+
+Widget _personCell(AuditEntry entry) {
+  final subtitle = _identitySubtitle(entry);
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      _avatar(entry),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _identityName(entry),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: sans(12.5, w: 500),
+            ),
+            if (subtitle.isNotEmpty)
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: mono(10.5, color: SR.muted),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+String _clockOnly(DateTime value) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${two(value.hour)}:${two(value.minute)}';
+}
+
+// -- Row ------------------------------------------------------------------
+
+class _AuditRow extends StatefulWidget {
+  const _AuditRow({
+    super.key,
     required this.entry,
     required this.expanded,
     required this.onToggle,
@@ -217,160 +666,354 @@ class _EntryRow extends StatelessWidget {
   final VoidCallback onRevert;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: SR.divider)),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Hoverable(
-          builder: (context, hovered) => GestureDetector(
-            onTap: onToggle,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              color: hovered ? SR.surfaceSubtle : SR.surface,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: SR.hairline,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      entry.initials,
-                      style: mono(9.5, w: 600, color: SR.ink3),
-                    ),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: entry.actor,
-                                style: sans(12.5, w: 600, height: 1.55),
-                              ),
-                              TextSpan(text: ' ${entry.action} '),
-                              TextSpan(
-                                text: entry.target,
-                                style: sans(12.5, w: 600, height: 1.55),
-                              ),
-                            ],
-                          ),
-                          style: sans(12.5, height: 1.55, color: SR.ink2),
+  State<_AuditRow> createState() => _AuditRowState();
+}
+
+class _AuditRowState extends State<_AuditRow> {
+  bool _showTechnical = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = widget.entry;
+    final viewport = MediaQuery.sizeOf(context).width;
+    final compact = SR.isCompact(viewport);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: compact
+            ? null
+            : const Border(bottom: BorderSide(color: SR.divider)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Hoverable(
+            builder: (context, hovered) => GestureDetector(
+              onTap: widget.onToggle,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                margin: compact
+                    ? const EdgeInsets.only(bottom: 8)
+                    : EdgeInsets.zero,
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 14 : 16,
+                  vertical: compact ? 14 : 13,
+                ),
+                decoration: BoxDecoration(
+                  color: hovered ? SR.surfaceSubtle : SR.surface,
+                  borderRadius: compact ? BorderRadius.circular(12) : null,
+                  border: compact
+                      ? Border.all(color: hovered ? SR.blueSoft : SR.border)
+                      : null,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (entry.material)
+                      Container(
+                        width: 3,
+                        height: compact ? 52 : 28,
+                        margin: const EdgeInsets.only(right: 9, top: 2),
+                        decoration: BoxDecoration(
+                          color: SR.amber,
+                          borderRadius: BorderRadius.circular(2),
                         ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 5,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            SrPill(
-                              label: entry.kind.label,
-                              background: entry.kind.background,
-                              foreground: entry.kind.foreground,
-                              monospace: true,
-                              fontSize: 8.5,
+                      ),
+                    Expanded(
+                      child: compact
+                          ? _compactHeader(entry, widget.expanded)
+                          : TableRowLayout(
+                              columns: _columns,
+                              viewport: viewport,
+                              cells: [
+                                Tooltip(
+                                  message: entry.absolute,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        entry.when,
+                                        style: sans(
+                                          11.5,
+                                          w: 500,
+                                          color: SR.ink3,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        entry.createdAt != null
+                                            ? _clockOnly(entry.createdAt!)
+                                            : '',
+                                        style: mono(10, color: SR.muted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                _personCell(entry),
+                                Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      TextSpan(text: '${entry.action} '),
+                                      TextSpan(
+                                        text: entry.target,
+                                        style: sans(12.5, w: 600),
+                                      ),
+                                    ],
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: sans(
+                                    12.5,
+                                    height: 1.4,
+                                    color: SR.ink2,
+                                  ),
+                                ),
+                                SrPill(
+                                  label: entry.kind.label,
+                                  background: entry.kind.background,
+                                  foreground: entry.kind.foreground,
+                                  monospace: true,
+                                  fontSize: 8.5,
+                                ),
+                                Icon(
+                                  widget.expanded
+                                      ? Icons.keyboard_arrow_up_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 16,
+                                  color: SR.mutedLight,
+                                ),
+                              ],
                             ),
-                            if (entry.material)
-                              const SrPill(
-                                label: 'MATERIAL',
-                                background: SR.redTint,
-                                foreground: Color(0xFF912018),
-                                monospace: true,
-                                fontSize: 8.5,
-                              ),
-                            Text(
-                              '${entry.when} · ${entry.absolute}',
-                              style: mono(10.5, color: SR.muted),
-                            ),
-                            Text(
-                              entry.actorRole,
-                              style: sans(10.5, color: SR.mutedLight),
-                            ),
-                          ],
-                        ),
-                      ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Icon(
-                      expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: SR.mutedLight,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        if (expanded)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(55, 0, 16, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (widget.expanded) _detail(context, entry, compact),
+        ],
+      ),
+    );
+  }
+
+  Widget _compactHeader(AuditEntry entry, bool expanded) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _personCell(entry),
+            const SizedBox(height: 6),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: '${entry.action} '),
+                  TextSpan(text: entry.target, style: sans(12.5, w: 600)),
+                ],
+              ),
+              style: sans(12.5, height: 1.5, color: SR.ink2),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 5,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 13,
-                    vertical: 11,
-                  ),
-                  decoration: BoxDecoration(
-                    color: SR.surfaceSubtle,
-                    borderRadius: BorderRadius.circular(9),
-                    border: Border.all(color: SR.hairline),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final line in entry.diff)
-                        Text(
-                          line,
-                          style: mono(
-                            11.5,
-                            w: 500,
-                            height: 1.7,
-                            color: SR.ink2,
-                          ),
-                        ),
-                    ],
-                  ),
+                SrPill(
+                  label: entry.kind.label,
+                  background: entry.kind.background,
+                  foreground: entry.kind.foreground,
+                  monospace: true,
+                  fontSize: 8.5,
                 ),
-                if (entry.reason.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Reason: “${entry.reason}”',
-                    style: sans(11.5, height: 1.6, color: SR.ink4),
-                  ),
-                ],
-                if (entry.revertable) ...[
-                  const SizedBox(height: 10),
-                  SrButton(
-                    label: '↺ Revert this change',
-                    dense: true,
-                    fontSize: 11,
-                    onPressed: onRevert,
-                  ),
-                ],
+                Text(entry.when, style: mono(10.5, color: SR.muted)),
               ],
             ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: Icon(
+          expanded
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.keyboard_arrow_down_rounded,
+          size: 16,
+          color: SR.mutedLight,
+        ),
+      ),
+    ],
+  );
+
+  Widget _detail(BuildContext context, AuditEntry entry, bool compact) {
+    final hasChanges = entry.changes.isNotEmpty;
+    final hasRaw =
+        entry.rawBefore.isNotEmpty ||
+        entry.rawAfter.isNotEmpty ||
+        entry.rawDetails.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(compact ? 16 : 56, 0, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: SR.surfaceSubtle,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: SR.hairline),
+            ),
+            child: hasChanges
+                ? _changeGrid(entry.changes)
+                : _legacyDiff(entry.diff),
           ),
+          if (entry.reason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Reason: "${entry.reason}"',
+              style: sans(11.5, height: 1.6, color: SR.ink4),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'Recorded ${entry.absolute}',
+            style: sans(10.5, color: SR.muted),
+          ),
+          if (hasRaw) ...[
+            const SizedBox(height: 8),
+            _technicalDisclosure(entry),
+          ],
+          if (entry.revertable) ...[
+            const SizedBox(height: 10),
+            SrButton(
+              label: '↺ Revert this change',
+              dense: true,
+              fontSize: 11,
+              onPressed: widget.onRevert,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _changeGrid(List<AuditChange> changes) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (var i = 0; i < changes.length; i++) ...[
+        if (i > 0) const SizedBox(height: 8),
+        _changeLine(changes[i]),
       ],
-    ),
+    ],
+  );
+
+  Widget _changeLine(AuditChange change) {
+    if (change.isNote) {
+      return Text(
+        _breakable(change.note!),
+        style: mono(11.5, w: 500, height: 1.6, color: SR.ink2),
+      );
+    }
+    if (change.before == null) {
+      return Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '${change.label}: ',
+              style: mono(11.5, w: 600, color: SR.ink3),
+            ),
+            TextSpan(
+              text: _breakable(change.after ?? '—'),
+              style: mono(11.5, w: 500, color: SR.ink2),
+            ),
+          ],
+        ),
+      );
+    }
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(width: 132, child: Text(change.label, style: keyLabel)),
+        Text(_breakable(change.before!), style: mono(11.5, color: SR.muted)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text('→', style: mono(11, color: SR.mutedLight)),
+        ),
+        Text(
+          _breakable(change.after ?? '—'),
+          style: mono(11.5, w: 500, color: SR.ink2),
+        ),
+      ],
+    );
+  }
+
+  Widget _legacyDiff(List<String> diff) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (final line in diff)
+        Text(
+          _breakable(line),
+          style: mono(11.5, w: 500, height: 1.7, color: SR.ink2),
+        ),
+    ],
+  );
+
+  Widget _technicalDisclosure(AuditEntry entry) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Hoverable(
+        builder: (context, hovered) => GestureDetector(
+          onTap: () => setState(() => _showTechnical = !_showTechnical),
+          child: Text(
+            _showTechnical ? 'Hide technical details' : 'Show technical details',
+            style: sans(
+              10.5,
+              w: 500,
+              color: hovered ? SR.ink3 : SR.muted,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ),
+      if (_showTechnical) ...[
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+          decoration: BoxDecoration(
+            color: SR.ink.withValues(alpha: .03),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Text(
+            _breakable(
+              _prettyJson({
+                if (entry.rawBefore.isNotEmpty) 'before': entry.rawBefore,
+                if (entry.rawAfter.isNotEmpty) 'after': entry.rawAfter,
+                if (entry.rawDetails.isNotEmpty) 'details': entry.rawDetails,
+              }),
+            ),
+            style: mono(10, height: 1.6, color: SR.ink3),
+          ),
+        ),
+      ],
+    ],
   );
 }
+
+String _prettyJson(Map<String, dynamic> value) {
+  try {
+    return const JsonEncoder.withIndent('  ').convert(value);
+  } catch (_) {
+    return value.toString();
+  }
+}
+
+final _zeroWidthSpace = String.fromCharCode(0x200B);
+
+String _breakable(String value) => value.replaceAllMapped(
+  RegExp(r'[/._:\-]'),
+  (match) => '${match.group(0)}$_zeroWidthSpace',
+);

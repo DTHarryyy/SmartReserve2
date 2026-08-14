@@ -68,18 +68,20 @@ class ReservationsScreen extends StatelessWidget {
       list: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final tab in _tabs)
-                QueueTab(
-                  label: tab.label,
-                  count: state.requests.where((r) => r.status == tab).length,
-                  selected: state.requestTab == tab,
-                  onTap: () => state.setRequestTab(tab),
-                ),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              spacing: 6,
+              children: [
+                for (final tab in _tabs)
+                  QueueTab(
+                    label: tab.label,
+                    count: state.requests.where((r) => r.status == tab).length,
+                    selected: state.requestTab == tab,
+                    onTap: () => state.setRequestTab(tab),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -303,7 +305,6 @@ class _QueueRow extends StatelessWidget {
                         ),
                         if (_flag case final flag?)
                           Row(
-                            mainAxisSize: MainAxisSize.min,
                             children: [
                               const Icon(
                                 Icons.warning_amber_rounded,
@@ -311,9 +312,13 @@ class _QueueRow extends StatelessWidget {
                                 color: SR.amber,
                               ),
                               const SizedBox(width: 4),
-                              Text(
-                                flag,
-                                style: sans(10.5, w: 500, color: SR.amber),
+                              Expanded(
+                                child: Text(
+                                  flag,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: sans(10.5, w: 500, color: SR.amber),
+                                ),
                               ),
                             ],
                           ),

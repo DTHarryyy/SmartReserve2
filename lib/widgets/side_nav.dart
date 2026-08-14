@@ -47,6 +47,7 @@ class SideNav extends StatelessWidget {
             AppView.reservations,
             AppView.calendar,
             AppView.reports,
+            AppView.users,
             AppView.profile,
           ]
         : adminSections;
@@ -113,7 +114,9 @@ class SideNav extends StatelessWidget {
                   children: [
                     for (final section in sections)
                       _NavButton(
-                        label: section.crumb,
+                        label: state.isExternalAdmin && section == AppView.users
+                            ? 'Clients'
+                            : section.crumb,
                         count: _countFor(section),
                         current: state.view.navSection == section,
                         onTap: () => onSelect(section),
