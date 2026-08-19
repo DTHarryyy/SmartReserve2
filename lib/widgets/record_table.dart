@@ -393,14 +393,22 @@ class _MobileSkeleton extends StatelessWidget {
 class ListEmptyState extends StatelessWidget {
   const ListEmptyState({
     super.key,
-    required this.glyph,
+    this.icon,
+    @Deprecated('Pass icon instead — an IconData reads better than a glyph.')
+    this.glyph,
     required this.title,
     required this.body,
     this.action,
     this.footnote,
-  });
+  }) : assert(
+         icon != null || glyph != null,
+         'ListEmptyState needs either an icon or a glyph.',
+       );
 
-  final String glyph;
+  final IconData? icon;
+
+  @Deprecated('Pass icon instead — an IconData reads better than a glyph.')
+  final String? glyph;
   final String title;
   final String body;
   final Widget? action;
@@ -408,40 +416,50 @@ class ListEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final compact = context.isCompact;
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 18 : 24,
-        vertical: compact ? 36 : 64,
+        horizontal: compact ? SR.space20 : SR.space24,
+        vertical: compact ? SR.space32 : SR.space48 + SR.space16,
       ),
       decoration: compact
           ? BoxDecoration(
               color: SR.surface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(SR.rMd),
               border: Border.all(color: SR.border),
             )
           : null,
       child: Column(
         children: [
-          DashedBox(
-            stretch: false,
-            radius: 14,
-            padding: const EdgeInsets.all(14),
-            child: Text(glyph, style: sans(20, color: SR.muted)),
+          Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: SR.primaryTint,
+              shape: BoxShape.circle,
+            ),
+            child: icon != null
+                ? Icon(icon, size: 24, color: SR.primaryDeep)
+                // ignore: deprecated_member_use_from_same_package
+                : Text(glyph!, style: sans(20, color: SR.primaryDeep)),
           ),
-          const SizedBox(height: 16),
-          Text(title, style: sans(15, w: 600)),
-          const SizedBox(height: 6),
+          const SizedBox(height: SR.space16),
+          Text(title, style: SrType.subhead()),
+          const SizedBox(height: SR.space6),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 380),
             child: Text(
               body,
               textAlign: TextAlign.center,
-              style: sans(12.5, height: 1.6, color: SR.ink4),
+              style: SrType.bodySm(),
             ),
           ),
-          if (action != null) ...[const SizedBox(height: 18), action!],
-          if (footnote != null) ...[const SizedBox(height: 12), footnote!],
+          if (action != null) ...[const SizedBox(height: SR.space20), action!],
+          if (footnote != null) ...[
+            const SizedBox(height: SR.space12),
+            footnote!,
+          ],
         ],
       ),
     );

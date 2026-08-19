@@ -40,7 +40,6 @@ enum CalendarEventState {
   };
 }
 
-/// One drawable reservation occurrence. Times are CSU Aparri wall-clock time.
 class CalendarEvent {
   const CalendarEvent({
     required this.id,

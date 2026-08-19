@@ -1,11 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// A single humanised line in an audit entry's expanded detail.
-///
-/// Either a before/after pair (`before`/`after` set, `note` null) or a
-/// standalone note (`note` set, `before`/`after` null) — e.g. a summary line
-/// for a creation event, or a fallback when no field-level change survived
-/// humanisation.
 @immutable
 class AuditChange {
   const AuditChange({required this.label, this.before, this.after, this.note})

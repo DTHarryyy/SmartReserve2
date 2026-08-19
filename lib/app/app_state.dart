@@ -20,6 +20,7 @@ import '../model/reservation.dart';
 import '../model/verification.dart';
 import '../features/assistant/assistant_availability.dart';
 import '../features/reports/reports_data.dart';
+import '../features/reservations/conflict_engine.dart';
 import '../util/campus_calendar.dart';
 import '../util/geo.dart';
 import 'app_view.dart';
@@ -58,7 +59,7 @@ class AppState extends ChangeNotifier {
   AppState({bool useDemoData = true}) : _useDemoData = useDemoData {
     facilities = useDemoData ? seedFacilities() : [];
     requests = useDemoData ? seedRequests() : [];
-    bookings = useDemoData ? [...seedBookings, ...seriesDemoBookings] : [];
+    bookings = useDemoData ? [...seedBookings(), ...seriesDemoBookings()] : [];
     verifications = useDemoData ? seedVerifications() : [];
     accounts = useDemoData ? seedAccounts() : [];
     audit = useDemoData ? seedAudit() : [];
@@ -223,31 +224,25 @@ class AppState extends ChangeNotifier {
       rows.addAll(page.entries);
       if (rows.length >= page.total || page.entries.isEmpty) break;
       final last = page.entries.last;
-      query = query.copyWith(beforeCreatedAt: last.createdAt, beforeId: last.id);
+      query = query.copyWith(
+        beforeCreatedAt: last.createdAt,
+        beforeId: last.id,
+      );
     }
     return rows;
   }
 
   void leaveProfile() => goTo(_profileOrigin);
 
-  bool statesOpen = false;
   bool notificationsOpen = false;
-
-  void toggleStates() {
-    statesOpen = !statesOpen;
-    notificationsOpen = false;
-    notifyListeners();
-  }
 
   void toggleNotifications() {
     notificationsOpen = !notificationsOpen;
-    statesOpen = false;
     notifyListeners();
   }
 
   void closeOverlays() {
-    if (!statesOpen && !notificationsOpen) return;
-    statesOpen = false;
+    if (!notificationsOpen) return;
     notificationsOpen = false;
     notifyListeners();
   }
@@ -329,7 +324,9 @@ class AppState extends ChangeNotifier {
       _sessionAccount = null;
       facilities = [];
       requests = _useDemoData ? seedRequests() : [];
-      bookings = _useDemoData ? [...seedBookings, ...seriesDemoBookings] : [];
+      bookings = _useDemoData
+          ? [...seedBookings(), ...seriesDemoBookings()]
+          : [];
       notifications = [];
       _backendReservations.clear();
       if (!_useDemoData) accounts = [];
@@ -375,9 +372,13 @@ class AppState extends ChangeNotifier {
         },
       );
       await refreshVerifications();
-      _verificationSubscription = backend?.verificationStream().listen((_) {
-        unawaited(refreshVerifications());
-      }, onError: (Object error) => debugPrint('Verifications live refresh failed: $error'));
+      _verificationSubscription = backend?.verificationStream().listen(
+        (_) {
+          unawaited(refreshVerifications());
+        },
+        onError: (Object error) =>
+            debugPrint('Verifications live refresh failed: $error'),
+      );
       view = AppView.facilities;
     } else if (profile.isExternalAdmin) {
       if (_useDemoData) {
@@ -405,9 +406,13 @@ class AppState extends ChangeNotifier {
           ? []
           : [_toVerification(myVerification!)];
       _syncSessionAccount();
-      _verificationSubscription = backend?.verificationStream().listen((_) {
-        unawaited(refreshMyVerification());
-      }, onError: (Object error) => debugPrint('Verification live refresh failed: $error'));
+      _verificationSubscription = backend?.verificationStream().listen(
+        (_) {
+          unawaited(refreshMyVerification());
+        },
+        onError: (Object error) =>
+            debugPrint('Verification live refresh failed: $error'),
+      );
       view = myVerification != null || !profile.onboardingComplete
           ? AppView.auth
           : AppView.userApp;
@@ -706,8 +711,6 @@ class AppState extends ChangeNotifier {
       debugPrint('SmartReserve sign-out failure: $error');
       debugPrintStack(stackTrace: stackTrace);
     } finally {
-      // Never retain account data or an authenticated screen locally if the
-      // auth client reports an error after clearing its current session.
       await applyBackendProfile(null);
     }
     if (signOutError != null) {
@@ -744,20 +747,6 @@ class AppState extends ChangeNotifier {
   }
 
   bool facilitiesLoading = false;
-  bool forceMapOffline = false;
-  bool forceDraftBanner = false;
-
-  void setDemo({bool? mapOffline, bool? draftBanner}) {
-    forceMapOffline = mapOffline ?? forceMapOffline;
-    forceDraftBanner = draftBanner ?? forceDraftBanner;
-    notifyListeners();
-  }
-
-  void clearDemo() {
-    forceMapOffline = false;
-    forceDraftBanner = false;
-    notifyListeners();
-  }
 
   int get pendingRequests =>
       requests.where((r) => r.status == RequestStatus.pending).length;
@@ -872,18 +861,11 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// Facilities a student may see and book: publicly listed and not a draft.
-  /// The single source of truth for "what a student may book" — the Browse
-  /// tab and the assistant both filter through this list.
   List<Facility> get bookableFacilities => [
     for (final f in facilities)
       if (f.publicListing && f.state != FacilityState.draft) f,
   ];
 
-  /// Filters [bookableFacilities] by free-text query, category, minimum
-  /// capacity, and amenities (all requested amenities must be present).
-  /// Extracted from the Browse tab's inline filter so the assistant answers
-  /// the same question the Browse grid does.
   List<Facility> searchFacilities({
     String query = '',
     String category = 'All categories',
@@ -943,9 +925,9 @@ class AppState extends ChangeNotifier {
             Booking(
               id: occurrence.id,
               facility: row.facilityName,
-              date: formatCampusDate(campusWallTime(occurrence.startsAt)),
-              start: _clock(campusWallTime(occurrence.startsAt)),
-              end: _clock(campusWallTime(occurrence.endsAt)),
+              facilityId: row.facilityId,
+              startsAt: campusWallTime(occurrence.startsAt),
+              endsAt: campusWallTime(occurrence.endsAt),
               label: row.purpose.split('.').first,
               requester: row.requesterName,
               sourceRequestId: row.id,
@@ -1031,6 +1013,7 @@ class AppState extends ChangeNotifier {
       org: row.requesterUnit,
       purpose: row.purpose,
       date: formatCampusDate(first),
+      slotDay: dayOnly(first),
       start: _clock(first),
       end: _clock(occurrences.isEmpty ? first : occurrences.first.endsAt),
       heads: row.headcount,
@@ -1429,8 +1412,6 @@ class AppState extends ChangeNotifier {
     return names;
   }
 
-  /// The centralized calendar always works with occurrences, not request
-  /// headers. That keeps every date of a recurring reservation visible.
   late DateTime calendarAnchor;
   DateTime get calendarToday => _useDemoData ? campusToday : campusNow();
   CalendarViewMode calendarViewMode = CalendarViewMode.month;
@@ -1764,6 +1745,7 @@ class AppState extends ChangeNotifier {
       ..reason = reason.isEmpty ? null : reason
       ..decidedBy = 'You'
       ..decidedAt = 'Just now';
+    _syncHoldsForRequest(request);
 
     log(
       action: switch (outcome) {
@@ -1796,6 +1778,7 @@ class AppState extends ChangeNotifier {
             ..reason = beforeReason
             ..decidedBy = null
             ..decidedAt = null;
+          _syncHoldsForRequest(request);
           log(
             action: 'undid the decision on',
             target: '${request.purpose.split('.').first} — ${request.org}',
@@ -1838,15 +1821,47 @@ class AppState extends ChangeNotifier {
       unawaited(_runReservationAction(request, 'approve_bump', reason: reason));
       return;
     }
-    final bumped = bookings
-        .where(
-          (b) =>
-              b.facility == request.facility &&
-              b.date == request.date &&
-              b.overlaps(request.startAt, request.endAt),
-        )
-        .toList();
-    bookings.removeWhere(bumped.contains);
+    final bumped = holdsAgainst(
+      request: request,
+      bookings: bookings,
+      otherRequests: requests,
+    );
+    final bumpedRequestIds = {
+      for (final hold in bumped)
+        if (hold.sourceRequestId != null) hold.sourceRequestId!,
+    };
+    bookings.removeWhere(
+      (b) =>
+          (b.sourceRequestId != null &&
+              bumpedRequestIds.contains(b.sourceRequestId)) ||
+          bumped.any(
+            (hold) =>
+                hold.sourceRequestId == null &&
+                b.sourceRequestId == null &&
+                b.label == hold.label &&
+                b.startsAt == hold.startsAt &&
+                b.endsAt == hold.endsAt,
+          ),
+    );
+    for (final otherId in bumpedRequestIds) {
+      final other = requestById(otherId);
+      if (other == null) continue;
+      other
+        ..status = RequestStatus.changesRequested
+        ..reason =
+            'Bumped for a higher-priority booking in the same slot. '
+            'Pick a new time and it goes straight through.'
+        ..decidedBy = 'You'
+        ..decidedAt = 'Just now';
+      log(
+        action: 'bumped by a higher-priority booking',
+        target: '${other.purpose.split('.').first} — ${other.org}',
+        kind: AuditKind.reservation,
+        diff: ['${RequestStatus.approved.label}  →  ${other.status.label}'],
+        reason: reason,
+        recordId: other.id,
+      );
+    }
     decideRequest(requestId, RequestStatus.approved, reason: reason);
     log(
       action: 'bumped a confirmed booking for',
@@ -2075,13 +2090,23 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  void _syncHoldsForRequest(ReservationRequest request) {
+    final hasHold = bookings.any((b) => b.sourceRequestId == request.id);
+    if (request.status == RequestStatus.approved) {
+      if (!hasHold) _bookOccurrences(request, [request.date]);
+    } else if (hasHold) {
+      bookings.removeWhere((b) => b.sourceRequestId == request.id);
+    }
+  }
+
   void _bookOccurrences(ReservationRequest request, List<String> dates) {
     final stamp = DateTime.now().microsecondsSinceEpoch;
     for (var i = 0; i < dates.length; i++) {
       bookings.add(
-        Booking(
+        Booking.fromLabels(
           id: 'b-$stamp-$i',
           facility: request.facility,
+          facilityId: request.facilityId,
           date: dates[i],
           start: request.start,
           end: request.end,
@@ -3153,9 +3178,7 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       lastReservationError = _reservationError(error);
-      showToast(
-        ToastMessage(lastReservationError!, tone: AdvisoryTone.block),
-      );
+      showToast(ToastMessage(lastReservationError!, tone: AdvisoryTone.block));
       return false;
     } finally {
       reservationActionsPending.remove('submit');
@@ -3163,19 +3186,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// The reason the most recent [submitReservationRequest] call failed, so
-  /// the assistant can quote it instead of a generic message. Null after a
-  /// successful submit.
   String? lastReservationError;
 
   final Map<String, List<BusyWindow>> _busyCache = {};
   final Map<String, DateTime> _busyCacheAt = {};
   static const _busyCacheTtl = Duration(seconds: 60);
 
-  /// True once a [busyWindowsFor] call has fallen back to locally-visible
-  /// data because the `facility_busy_windows` RPC failed or is unavailable
-  /// (offline, demo mode). The assistant surfaces this so a "looks free"
-  /// answer is understood as opening-hours-only, not a live schedule check.
   bool busyWindowsDegraded = false;
 
   List<String> _busyKeysFor(
@@ -3196,12 +3212,6 @@ class AppState extends ChangeNotifier {
     return keys;
   }
 
-  /// Busy windows for [targets] across `[fromWall, toWall)` (campus
-  /// wall-clock), bucketed by `'<facilityId>|<yyyy-mm-dd>'` (see [dayKey]).
-  /// Calls the anonymised `facility_busy_windows` RPC when signed in
-  /// against Supabase, with a short cache so a multi-turn conversation
-  /// makes at most one call per facility-day; falls back to locally-visible
-  /// bookings and approved requests in demo mode or if the RPC fails.
   Future<Map<String, List<BusyWindow>>> busyWindowsFor(
     List<Facility> targets, {
     required DateTime fromWall,
@@ -3291,20 +3301,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Demo-mode / offline fallback: derives busy windows from the bookings
-  /// and approved requests already visible on [bookings]/[requests], the
-  /// same sources `ReservationAssessment.conflicts` uses for the admin
-  /// decision panel.
   Map<String, List<BusyWindow>> _localBusyWindows(
     List<Facility> targets,
     DateTime fromWall,
     DateTime toWall,
   ) {
     final byKey = <String, List<BusyWindow>>{};
-    final idsByName = {for (final facility in targets) facility.name: facility.id};
+    final idsByName = {
+      for (final facility in targets) facility.name: facility.id,
+    };
     final rangeStart = DateTime(fromWall.year, fromWall.month, fromWall.day);
 
+    final coveredOccurrenceIds = <String>{};
+
     for (final booking in bookings) {
+      coveredOccurrenceIds.add(booking.id);
       final facilityId = idsByName[booking.facility];
       if (facilityId == null) continue;
       final date = parseCampusDate(booking.date);
@@ -3322,6 +3333,7 @@ class AppState extends ChangeNotifier {
       if (facilityId == null) continue;
       for (final occurrence in request.occurrences) {
         if (!occurrence.isBooked) continue;
+        if (coveredOccurrenceIds.contains(occurrence.id)) continue;
         final startWall = campusWallTime(occurrence.startsAt);
         final endWall = campusWallTime(occurrence.endsAt);
         if (startWall.isBefore(rangeStart) || !startWall.isBefore(toWall)) {
@@ -3341,9 +3353,6 @@ class AppState extends ChangeNotifier {
     return byKey;
   }
 
-  /// Drops the cached busy windows for [facilityId] on [day] — called after
-  /// a successful submit and after a 23P01 "just booked" failure, so the
-  /// next availability check re-fetches instead of trusting a stale answer.
   void invalidateBusyCache(String facilityId, DateTime day) {
     final key = '$facilityId|${dayKey(day)}';
     _busyCache.remove(key);

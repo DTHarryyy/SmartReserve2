@@ -7,17 +7,19 @@ import 'audit_change.dart';
 import 'audit_diff.dart';
 
 enum AuditKind {
-  facility('facility', 'FACILITY', SR.blueTint, SR.blueDark),
-  reservation('reservation', 'RESERVATION', SR.greenTint, SR.greenDark),
-  account('account', 'ACCOUNT', SR.dividerSoft, SR.ink4),
-  system('system', 'SYSTEM', SR.hairline, SR.muted);
+  facility('facility', 'FACILITY', SrTone.info),
+  reservation('reservation', 'RESERVATION', SrTone.success),
+  account('account', 'ACCOUNT', SrTone.neutral),
+  system('system', 'SYSTEM', SrTone.neutral);
 
-  const AuditKind(this.raw, this.label, this.background, this.foreground);
+  const AuditKind(this.raw, this.label, this.tone);
 
   final String raw;
   final String label;
-  final Color background;
-  final Color foreground;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
 
   static AuditKind fromRaw(String raw) =>
       values.firstWhere((k) => k.raw == raw, orElse: () => AuditKind.facility);
@@ -98,27 +100,16 @@ class AuditEntry {
 
   final String? recordId;
 
-  /// The pagination cursor. Populated for both demo and remote entries;
-  /// `absolute` is for display only and must never be re-parsed for paging.
   final DateTime? createdAt;
 
-  /// Humanised, structured changes — the preferred way to render an
-  /// entry's detail. Falls back to [diff] when empty (demo entries keep
-  /// their hand-written diff strings).
   final List<AuditChange> changes;
 
   final String actorEmail;
 
-  /// Untrimmed payloads, kept for the "show technical details" disclosure.
-  /// The audit trail must never lose information — only the default view
-  /// hides noise.
   final Map<String, dynamic> rawBefore;
   final Map<String, dynamic> rawAfter;
   final Map<String, dynamic> rawDetails;
 
-  /// The actor's role as a typed [AccountRole], when it maps to one.
-  /// `system`-role entries and any future role slugs return null rather
-  /// than throwing.
   AccountRole? get actorRoleValue {
     try {
       return AccountRole.fromRaw(actorRole);

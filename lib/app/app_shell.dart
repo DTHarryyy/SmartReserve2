@@ -27,7 +27,6 @@ import '../widgets/sr_controls.dart';
 import 'app_scope.dart';
 import 'app_state.dart';
 import 'app_view.dart';
-import 'demo_states.dart';
 
 enum Layout {
   desktop,
@@ -36,16 +35,16 @@ enum Layout {
 
   mobile;
 
-  static Layout of(double width) {
-    if (width >= SR.desktopMin) return Layout.desktop;
-    if (width >= SR.tabletMin) return Layout.tablet;
-    return Layout.mobile;
-  }
+  static Layout of(double width) => switch (SrBreakpoint.of(width)) {
+    SrBreakpoint.large => Layout.desktop,
+    SrBreakpoint.expanded || SrBreakpoint.medium => Layout.tablet,
+    SrBreakpoint.compact => Layout.mobile,
+  };
 
   bool get isDesktop => this == Layout.desktop;
   bool get isMobile => this == Layout.mobile;
 
-  bool get compact => this != Layout.desktop;
+  bool get belowDesktop => this != Layout.desktop;
 }
 
 class AppShell extends StatefulWidget {
@@ -176,6 +175,10 @@ class _AppShellState extends State<AppShell> {
     final state = AppScope.of(context);
     final layout = Layout.of(MediaQuery.sizeOf(context).width);
 
+    return PrimaryScrollController.none(child: _scaffold(state, layout));
+  }
+
+  Widget _scaffold(AppState state, Layout layout) {
     if (!state.view.usesAdminChrome) {
       return Scaffold(
         backgroundColor: SR.bg,
@@ -237,7 +240,6 @@ class _AppShellState extends State<AppShell> {
               compact: !layout.isDesktop,
               mobile: layout.isMobile,
               avatarInitials: state.currentAdmin.initials,
-              onToggleStates: state.toggleStates,
               onOpenProfile: () => state.goTo(AppView.profile),
               onMenu: layout.isDesktop
                   ? null
@@ -255,24 +257,6 @@ class _AppShellState extends State<AppShell> {
   );
 
   List<Widget> _overlays(AppState state, Layout layout) => [
-    if (state.statesOpen) ...[
-      Positioned.fill(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: state.closeOverlays,
-        ),
-      ),
-      Positioned(
-        right: layout.isMobile ? 12 : 24,
-        left: layout.isMobile ? 12 : null,
-
-        top: layout.isDesktop ? 68 : 60,
-        child: Align(
-          alignment: Alignment.topRight,
-          child: DemoStatesMenu(state: state),
-        ),
-      ),
-    ],
     if (state.notificationsOpen) ...[
       Positioned.fill(
         child: GestureDetector(
@@ -317,7 +301,6 @@ class _AppShellState extends State<AppShell> {
           ),
         ),
       ),
-
   ];
 
   bool _editingFacility(AppState state) =>
@@ -378,7 +361,12 @@ class _AppShellState extends State<AppShell> {
       ],
       AppView.facilities when !layout.isMobile && state.isInternalAdmin => [
         SrButton(
-          label: '＋ New facility',
+          label: 'New facility',
+          icon: const Icon(
+            Icons.add_rounded,
+            size: SR.iconMd,
+            color: SR.onDark,
+          ),
           kind: SrButtonKind.primary,
           onPressed: () => _openEditor(state, null),
         ),
@@ -401,8 +389,8 @@ class _AppShellState extends State<AppShell> {
     AppView.users when state.isInternalAdmin => FloatingActionButton.extended(
       key: const Key('invite-admin-fab'),
       tooltip: 'Invite administrator',
-      backgroundColor: SR.blue,
-      foregroundColor: SR.surface,
+      backgroundColor: SR.primary,
+      foregroundColor: SR.onDark,
       onPressed: () => showInviteDialog(context, state),
       icon: const Icon(Icons.person_add_alt_1_rounded),
       label: const Text('Invite'),
@@ -465,37 +453,36 @@ class _NotificationsPanel extends StatelessWidget {
         constraints: BoxConstraints(maxHeight: availableHeight),
         decoration: BoxDecoration(
           color: SR.surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(SR.rMd),
           border: Border.all(color: SR.border),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 24,
-              offset: Offset(0, 8),
-            ),
-          ],
+          boxShadow: SR.popoverShadow,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 11),
-              child: Text('Notifications', style: sans(14, w: 600)),
+              padding: const EdgeInsets.fromLTRB(
+                SR.space16,
+                SR.space12,
+                SR.space16,
+                SR.space12,
+              ),
+              child: Text('Notifications', style: SrType.subhead()),
             ),
             const Divider(height: 1, color: SR.border),
             if (state.notificationsError case final error?)
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(error, style: sans(11.5, color: SR.red)),
+                padding: const EdgeInsets.all(SR.space16),
+                child: Text(error, style: SrType.bodySm(color: SR.red)),
               )
             else if (state.notifications.isEmpty)
               Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(SR.space24),
                 child: Text(
                   'No notifications yet.',
                   textAlign: TextAlign.center,
-                  style: sans(12, color: SR.muted),
+                  style: SrType.bodySm(color: SR.muted),
                 ),
               )
             else
@@ -513,22 +500,45 @@ class _NotificationsPanel extends StatelessWidget {
                         state.openNotification(item);
                       },
                       child: Container(
-                        color: item.unread ? SR.blueTint : SR.surface,
+                        color: item.unread ? SR.primaryTint2 : SR.surface,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                          horizontal: SR.space16,
+                          vertical: SR.space12,
                         ),
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              item.title,
-                              style: sans(12, w: item.unread ? 600 : 500),
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: SR.space6,
+                                right: SR.space8,
+                              ),
+                              child: Container(
+                                width: SR.space6,
+                                height: SR.space6,
+                                decoration: BoxDecoration(
+                                  color: item.unread
+                                      ? SR.primary
+                                      : Colors.transparent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              item.body,
-                              style: sans(11, height: 1.45, color: SR.ink4),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    style: SrType.bodySm(
+                                      w: item.unread ? 600 : 500,
+                                      color: SR.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: SR.space2),
+                                  Text(item.body, style: SrType.caption()),
+                                ],
+                              ),
                             ),
                           ],
                         ),

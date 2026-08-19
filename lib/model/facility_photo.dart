@@ -123,6 +123,35 @@ class PlaceholderStripes extends StatelessWidget {
   }
 }
 
+class FacilityCoverArt extends StatelessWidget {
+  const FacilityCoverArt({super.key, required this.hue, required this.glyph});
+
+  final int hue;
+  final IconData glyph;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = HSLColor.fromAHSL(1, hue.toDouble(), .52, .58).toColor();
+    final end = HSLColor.fromAHSL(1, (hue + 28) % 360, .58, .42).toColor();
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [start, end],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          glyph,
+          size: 46,
+          color: Colors.white.withValues(alpha: .22),
+        ),
+      ),
+    );
+  }
+}
+
 class _StripePainter extends CustomPainter {
   const _StripePainter({required this.base, required this.stripe});
 

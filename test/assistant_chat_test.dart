@@ -34,7 +34,10 @@ Future<void> pumpStudentApp(
   addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(tester.view.resetPhysicalSize);
   await tester.pumpWidget(
-    AppScope(state: state, child: const MaterialApp(home: Scaffold(body: StudentApp()))),
+    AppScope(
+      state: state,
+      child: const MaterialApp(home: Scaffold(body: StudentApp())),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -53,7 +56,9 @@ Future<void> sendMessage(WidgetTester tester, String text) async {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('Assist tab shows a greeting and suggestion chips', (tester) async {
+  testWidgets('Assist tab shows a greeting and suggestion chips', (
+    tester,
+  ) async {
     final state = AppState();
     addTearDown(state.dispose);
     await state.applyBackendProfile(widgetProfile());
@@ -67,7 +72,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the exact example phrase surfaces a matching facility', (tester) async {
+  testWidgets('the exact example phrase surfaces a matching facility', (
+    tester,
+  ) async {
     final state = AppState();
     addTearDown(state.dispose);
     await state.applyBackendProfile(widgetProfile());
@@ -79,12 +86,28 @@ void main() {
       'i want to book for 50-60 person with arcoin an and seats on auges 20',
     );
 
-    // Air-conditioned, seats 50-60+: University Auditorium qualifies.
     expect(find.text('University Auditorium'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('"what are the available facilities" lists the bookable catalogue', (
+  testWidgets(
+    '"what are the available facilities" lists the bookable catalogue',
+    (tester) async {
+      final state = AppState();
+      addTearDown(state.dispose);
+      await state.applyBackendProfile(widgetProfile());
+      await pumpStudentApp(tester, state: state);
+      await openAssistant(tester);
+
+      await sendMessage(tester, 'what are the available facilities');
+
+      expect(find.text('Computer Laboratory 1'), findsWidgets);
+      expect(find.text('Faculty Conference Room'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a full slot-filling conversation books a reservation', (
     tester,
   ) async {
     final state = AppState();
@@ -93,38 +116,17 @@ void main() {
     await pumpStudentApp(tester, state: state);
     await openAssistant(tester);
 
-    await sendMessage(tester, 'what are the available facilities');
-
-    // Bookable = publicListing && not draft. f6 (draft) must not appear;
-    // f1 (active, public) must.
-    expect(find.text('Computer Laboratory 1'), findsWidgets);
-    expect(find.text('Faculty Conference Room'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a full slot-filling conversation books a reservation', (tester) async {
-    final state = AppState();
-    addTearDown(state.dispose);
-    await state.applyBackendProfile(widgetProfile());
-    await pumpStudentApp(tester, state: state);
-    await openAssistant(tester);
-
     expect(state.myRequests, isEmpty);
 
-    // facility + heads in one shot
     await sendMessage(tester, 'book the auditorium for 30 people');
     expect(find.textContaining('What date works'), findsOneWidget);
 
-    // date — "tomorrow" avoids depending on the real wall-clock date lining
-    // up with a literal calendar phrase.
     await sendMessage(tester, 'tomorrow');
     expect(find.textContaining("What time"), findsOneWidget);
 
-    // time
     await sendMessage(tester, '2pm to 4pm');
     expect(find.textContaining("What's it for"), findsOneWidget);
 
-    // purpose -> should now render the confirm card
     await sendMessage(tester, 'org general assembly');
     expect(find.text('Ready to send'), findsOneWidget);
     expect(find.text('Confirm request'), findsOneWidget);
@@ -137,12 +139,12 @@ void main() {
     expect(find.textContaining('Sent.'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // Drain the confirmation toast's auto-dismiss timer so it doesn't
-    // outlive the test — showToast defaults to a 4-second timer.
     await tester.pump(const Duration(seconds: 4));
   });
 
-  testWidgets('a suspended account is blocked at confirm, not before', (tester) async {
+  testWidgets('a suspended account is blocked at confirm, not before', (
+    tester,
+  ) async {
     final state = AppState();
     addTearDown(state.dispose);
     await state.applyBackendProfile(widgetProfile());
@@ -164,7 +166,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('"show my reservations" lists what the student has booked', (tester) async {
+  testWidgets('"show my reservations" lists what the student has booked', (
+    tester,
+  ) async {
     final state = AppState();
     addTearDown(state.dispose);
     await state.applyBackendProfile(widgetProfile());
@@ -182,8 +186,6 @@ void main() {
     expect(find.text('University Auditorium'), findsWidgets);
     expect(tester.takeException(), isNull);
 
-    // Drain the confirmation toast's auto-dismiss timer so it doesn't
-    // outlive the test — showToast defaults to a 4-second timer.
     await tester.pump(const Duration(seconds: 4));
   });
 

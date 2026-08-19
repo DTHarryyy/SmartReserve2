@@ -1,9 +1,3 @@
-/// A dedicated full-screen chat surface for the assistant.
-///
-/// Pushed on top of the student shell instead of living inline as a
-/// bottom-nav tab, so the AI thread reads like its own messaging screen:
-/// the app bar carries only a back button and the assistant's name — no
-/// account header, no verification pill, no bottom nav underneath.
 library;
 
 import 'dart:ui';
@@ -29,8 +23,6 @@ class AssistantChatPage extends StatelessWidget {
       surfaceTintColor: Colors.transparent,
       centerTitle: true,
       titleSpacing: 0,
-      // A frosted, translucent bar — the iOS large-title-nav feel — rather
-      // than the app's usual flat opaque header.
       flexibleSpace: ClipRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
@@ -43,7 +35,11 @@ class AssistantChatPage extends StatelessWidget {
         child: IconButton(
           tooltip: 'Back',
           onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.chevron_left_rounded, size: 30, color: SR.blue),
+          icon: const Icon(
+            Icons.chevron_left_rounded,
+            size: 30,
+            color: SR.blue,
+          ),
         ),
       ),
       title: Text('SmartReserve AI', style: sans(16, w: 600, tracking: -.01)),

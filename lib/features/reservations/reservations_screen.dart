@@ -5,7 +5,10 @@ import '../../app/app_state.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/queue_shell.dart';
+import '../../widgets/record_table.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import 'conflict_engine.dart';
 import 'decision_panel.dart';
 import 'reservation_checks.dart';
 
@@ -43,14 +46,20 @@ class ReservationsScreen extends StatelessWidget {
     final rows = state.visibleRequests;
     final selected = state.selectedRequest;
 
+    final assessments = <String, ReservationAssessment>{
+      for (final r in rows) r.id: _assess(state, r),
+    };
+    if (selected != null && !assessments.containsKey(selected.id)) {
+      assessments[selected.id] = _assess(state, selected);
+    }
+
     final selectable = [
       for (final id in state.selectedRequestIds)
         if (rows.any((r) => r.id == id)) id,
     ];
-    final blocked = selectable.where((id) {
-      final r = rows.firstWhere((r) => r.id == id);
-      return !_assess(state, r).bulkApprovable;
-    }).toList();
+    final blocked = selectable
+        .where((id) => !assessments[id]!.bulkApprovable)
+        .toList();
 
     return QueueShell(
       stacked: stacked,
@@ -60,7 +69,7 @@ class ReservationsScreen extends StatelessWidget {
           ? null
           : DecisionPanel(
               state: state,
-              assessment: _assess(state, selected),
+              assessment: assessments[selected.id]!,
 
               showBack: false,
               onBack: () => state.selectRequest(null),
@@ -68,22 +77,19 @@ class ReservationsScreen extends StatelessWidget {
       list: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              spacing: 6,
-              children: [
-                for (final tab in _tabs)
-                  QueueTab(
-                    label: tab.label,
-                    count: state.requests.where((r) => r.status == tab).length,
-                    selected: state.requestTab == tab,
-                    onTap: () => state.setRequestTab(tab),
-                  ),
-              ],
-            ),
+          SrTabs(
+            scrollable: true,
+            items: [
+              for (final tab in _tabs)
+                SrTabItem(
+                  label: tab.label,
+                  count: state.requests.where((r) => r.status == tab).length,
+                ),
+            ],
+            selectedIndex: _tabs.indexOf(state.requestTab),
+            onSelect: (i) => state.setRequestTab(_tabs[i]),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: SR.space12),
 
           if (selectable.isNotEmpty)
             BulkBar(
@@ -105,7 +111,7 @@ class ReservationsScreen extends StatelessWidget {
             for (final request in rows)
               _QueueRow(
                 request: request,
-                assessment: _assess(state, request),
+                assessment: assessments[request.id]!,
                 selected: state.selectedRequestId == request.id,
                 checked: state.selectedRequestIds.contains(request.id),
                 onOpen: () => state.selectRequest(request.id),
@@ -113,59 +119,30 @@ class ReservationsScreen extends StatelessWidget {
                     state.toggleRequestSelection(request.id, extend: extend),
               ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: SR.space12),
           Text(
             'Keyboard: J / K move · A approve · D decline · U undo. Tick a '
             'checkbox, then shift-click another to select the whole range. '
             'Decisions are reversible for a few seconds instead of asking you '
             'to confirm.',
-            style: sans(11, height: 1.6, color: SR.muted),
+            style: SrType.caption(),
           ),
         ],
       ),
     );
   }
 
-  Widget _empty(AppState state) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 52),
-    decoration: BoxDecoration(
-      color: SR.surface,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
-    ),
-    child: Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: SR.greenTint,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.check_rounded, size: 20, color: SR.greenDark),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          state.requestTab == RequestStatus.pending
-              ? 'The queue is clear'
-              : 'Nothing here yet',
-          style: sans(14, w: 600),
-        ),
-        const SizedBox(height: 5),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 300),
-          child: Text(
-            state.requestTab == RequestStatus.pending
-                ? 'Every request has a decision. New ones arrive at the top, '
-                      'oldest first.'
-                : 'Requests appear here once they reach this state.',
-            textAlign: TextAlign.center,
-            style: sans(12, height: 1.6, color: SR.ink4),
-          ),
-        ),
-      ],
-    ),
+  Widget _empty(AppState state) => ListEmptyState(
+    icon: state.requestTab == RequestStatus.pending
+        ? Icons.task_alt_rounded
+        : Icons.inbox_rounded,
+    title: state.requestTab == RequestStatus.pending
+        ? 'The queue is clear'
+        : 'Nothing here yet',
+    body: state.requestTab == RequestStatus.pending
+        ? 'Every request has a decision. New ones arrive at the top, '
+              'oldest first.'
+        : 'Requests appear here once they reach this state.',
   );
 }
 
@@ -188,7 +165,9 @@ class _QueueRow extends StatelessWidget {
   final ValueChanged<bool> onToggle;
 
   String? get _flag {
-    if (assessment.hasConflict) return 'Collides with a booking';
+    if (assessment.hasConflict) {
+      return request.isPending ? kCollidesFlag : kOverlapsFlag;
+    }
     if (request.overCapacity) return 'Over capacity';
     if (!assessment.withinOperatingHours) return 'Outside operating hours';
     if (!assessment.withinAvailableDays) return 'Not an available day';
@@ -206,10 +185,12 @@ class _QueueRow extends StatelessWidget {
           duration: SR.stateChange,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            color: selected ? SR.blueTint2 : SR.surface,
-            borderRadius: BorderRadius.circular(11),
+            color: selected ? SR.primaryTint2 : SR.surface,
+            borderRadius: BorderRadius.circular(SR.rMd - 1),
             border: Border.all(
-              color: selected ? SR.blue : (hovered ? SR.blueSoft : SR.border),
+              color: selected
+                  ? SR.primary
+                  : (hovered ? SR.primarySoft : SR.border),
             ),
           ),
           child: Row(
@@ -241,25 +222,11 @@ class _QueueRow extends StatelessWidget {
                           ),
                         ),
                         if (request.urgent) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: SR.redTint,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              'URGENT',
-                              style: mono(
-                                9,
-                                w: 600,
-                                tracking: .04,
-                                color: const Color(0xFF912018),
-                              ),
-                            ),
+                          const SizedBox(width: SR.space8),
+                          const SrStatusChip(
+                            label: 'URGENT',
+                            tone: SrTone.error,
+                            dense: true,
                           ),
                         ],
                         const Spacer(),
@@ -297,27 +264,29 @@ class _QueueRow extends StatelessWidget {
                           '${request.heads} people',
                           style: mono(10.5, color: SR.muted),
                         ),
-                        SrPill(
+                        SrStatusChip(
                           label: request.status.label,
-                          background: request.status.background,
-                          foreground: request.status.foreground,
-                          fontSize: 10,
+                          tone: request.status.tone,
+                          dense: true,
                         ),
                         if (_flag case final flag?)
                           Row(
                             children: [
                               const Icon(
                                 Icons.warning_amber_rounded,
-                                size: 12,
+                                size: SR.iconSm,
                                 color: SR.amber,
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: SR.space4),
                               Expanded(
                                 child: Text(
                                   flag,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: sans(10.5, w: 500, color: SR.amber),
+                                  style: SrType.caption(
+                                    w: 500,
+                                    color: SR.amber,
+                                  ),
                                 ),
                               ),
                             ],

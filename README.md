@@ -22,7 +22,6 @@ lib/
     app_scope.dart             InheritedNotifier over it
     app_shell.dart             nav, header, overlays, global accelerators
     app_view.dart              the surfaces
-    demo_states.dart           the prototype States menu
   theme/sr_tokens.dart         colour, type, elevation, motion, breakpoints
   data/                        campus reference data and the seeded records
   model/                       facility · reservation · verification ·
@@ -130,10 +129,6 @@ promotes its profile without overwriting its existing password.
 Map tiles come from OpenStreetMap, Esri World Imagery and CARTO, so the app
 needs network access. When tiles fail the map shows an explicit offline panel
 with retry and manual coordinate entry.
-
-The header **States** menu reaches the states normal use cannot produce on
-demand: loading skeletons, empty lists, a dead tile server, and a restorable
-draft.
 
 ## Notes for the next change
 

@@ -23,15 +23,13 @@ void main() {
       );
 
       final rendered = changes
-          .map((c) => '${c.label}:${c.before ?? ''}${c.after ?? ''}${c.note ?? ''}')
+          .map(
+            (c) =>
+                '${c.label}:${c.before ?? ''}${c.after ?? ''}${c.note ?? ''}',
+          )
           .join('\n');
 
-      // No internal id, no raw ISO-8601 string, anywhere in the output —
-      // that's the whole point of this function.
-      expect(
-        rendered,
-        isNot(contains('48b71f44-4f53-4d26-9aa3-126fec41562c')),
-      );
+      expect(rendered, isNot(contains('48b71f44-4f53-4d26-9aa3-126fec41562c')));
       expect(rendered, isNot(contains('T09:')));
       expect(rendered, isNot(contains('+00:00')));
 
@@ -45,7 +43,6 @@ void main() {
         DateTime.parse(invitationSentAt).toLocal(),
       );
       expect(changes[2].after, expectedStamp);
-      // An empty full_name must not render as its own "— →" line.
       expect(changes.any((c) => c.label == 'Name'), isFalse);
     });
 
@@ -68,7 +65,6 @@ void main() {
       final location = changes.singleWhere((c) => c.label == 'Location');
       expect(location.before, '18.353720, 121.631380');
       expect(location.after, '18.353780, 121.631420');
-      // capacity did not change, so it must not appear as a line.
       expect(changes.any((c) => c.label == 'Capacity'), isFalse);
     });
 

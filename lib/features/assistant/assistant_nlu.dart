@@ -1,7 +1,3 @@
-/// Pure, dependency-free intent + slot extraction for the student booking
-/// assistant. No network, no LLM — every rule here is deterministic and
-/// unit-testable. `nowWall` is always injected (never `DateTime.now()`
-/// internally) so date/time resolution stays reproducible in tests.
 library;
 
 import 'dart:math' as math;
@@ -84,9 +80,6 @@ class ParsedMessage {
       (facilityQuery != null && facilityQuery!.isNotEmpty);
 }
 
-/// The catalogue of amenity labels the assistant recognises, in the same
-/// order as `lib/data/campus_data.dart`'s `amenities` list. Used to tell a
-/// student what the assistant does and does not track (edge case 15).
 const List<String> knownAmenityLabels = [
   'Wi-Fi',
   'Power Outlets',
@@ -101,10 +94,6 @@ const List<String> knownAmenityLabels = [
   'Generator',
 ];
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
 ParsedMessage parseMessage(String raw, {required DateTime nowWall}) {
   final cappedRaw = raw.length > 500 ? raw.substring(0, 500) : raw;
   final normalized = _normalize(cappedRaw);
@@ -116,8 +105,6 @@ ParsedMessage parseMessage(String raw, {required DateTime nowWall}) {
     }
   }
 
-  // Fixed priority so ambiguous numbers/words resolve deterministically:
-  // time -> date -> capacity -> amenities -> category -> purpose -> leftover.
   final time = _extractTime(chars, mask);
   final date = _extractDate(chars, mask, nowWall);
   final capacity = _extractCapacity(chars, mask);
@@ -168,39 +155,160 @@ String _normalize(String raw) {
   return s;
 }
 
-// ---------------------------------------------------------------------------
-// Shared vocabulary
-// ---------------------------------------------------------------------------
-
 const _stopwords = <String>{
-  'i', 'me', 'my', 'mine', 'our', 'ours', 'we', 'you', 'your', 'it', 'this',
-  'that', 'these', 'those',
-  'a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'and', 'or',
-  'but', 'if', 'so', 'not',
-  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'do', 'does', 'did',
-  'will', 'would', 'can', 'could',
-  'should', 'have', 'has', 'having', 'had', 'need', 'needs', 'needed', 'want',
-  'wants', 'wanted',
-  'like', 'get', 'gets', 'got', 'please', 'looking', 'look', 'show', 'tell',
+  'i',
+  'me',
+  'my',
+  'mine',
+  'our',
+  'ours',
+  'we',
+  'you',
+  'your',
+  'it',
+  'this',
+  'that',
+  'these',
+  'those',
+  'a',
+  'an',
+  'the',
+  'to',
+  'of',
+  'in',
+  'on',
+  'at',
+  'for',
+  'with',
+  'and',
+  'or',
+  'but',
+  'if',
+  'so',
+  'not',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'do',
+  'does',
+  'did',
+  'will',
+  'would',
+  'can',
+  'could',
+  'should',
+  'have',
+  'has',
+  'having',
+  'had',
+  'need',
+  'needs',
+  'needed',
+  'want',
+  'wants',
+  'wanted',
+  'like',
+  'get',
+  'gets',
+  'got',
+  'please',
+  'looking',
+  'look',
+  'show',
+  'tell',
   'give',
-  'what', 'which', 'who', 'when', 'where', 'how', 'why', 'any', 'some', 'all',
-  'many', 'much', 'still',
-  'just', 'okay', 'ok', 'yes', 'no', 'next', 'coming',
-  'book', 'booking', 'bookings', 'reserve', 'reserving', 'reservation',
+  'what',
+  'which',
+  'who',
+  'when',
+  'where',
+  'how',
+  'why',
+  'any',
+  'some',
+  'all',
+  'many',
+  'much',
+  'still',
+  'just',
+  'okay',
+  'ok',
+  'yes',
+  'no',
+  'next',
+  'coming',
+  'book',
+  'booking',
+  'bookings',
+  'reserve',
+  'reserving',
+  'reservation',
   'reservations',
-  'request', 'requests', 'requested', 'cancel', 'cancelled', 'cancelling',
-  'room', 'rooms', 'facility', 'facilities', 'venue', 'venues', 'space',
-  'spaces', 'place', 'places',
-  'available', 'availability', 'free', 'open', 'vacant', 'schedule',
+  'request',
+  'requests',
+  'requested',
+  'cancel',
+  'cancelled',
+  'cancelling',
+  'room',
+  'rooms',
+  'facility',
+  'facilities',
+  'venue',
+  'venues',
+  'space',
+  'spaces',
+  'place',
+  'places',
+  'available',
+  'availability',
+  'free',
+  'open',
+  'vacant',
+  'schedule',
   'scheduled',
-  'week', 'day', 'days', 'date', 'time', 'times', 'hour', 'hours',
-  'up', 'from', 'till', 'until', 'thru', 'about', 'around', 'there', 'here',
+  'week',
+  'day',
+  'days',
+  'date',
+  'time',
+  'times',
+  'hour',
+  'hours',
+  'up',
+  'from',
+  'till',
+  'until',
+  'thru',
+  'about',
+  'around',
+  'there',
+  'here',
 };
 
 const _capacityNounWords = <String>{
-  'pax', 'person', 'persons', 'people', 'ppl', 'head', 'heads', 'seat',
-  'seats', 'chair', 'chairs', 'slot', 'slots', 'capacity', 'student',
-  'students', 'attendee', 'attendees',
+  'pax',
+  'person',
+  'persons',
+  'people',
+  'ppl',
+  'head',
+  'heads',
+  'seat',
+  'seats',
+  'chair',
+  'chairs',
+  'slot',
+  'slots',
+  'capacity',
+  'student',
+  'students',
+  'attendee',
+  'attendees',
 };
 
 const _capacityNounPattern =
@@ -298,26 +406,44 @@ const Map<String, String> _categorySynonyms = {
 };
 
 const _monthAbbrev = [
-  'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct',
-  'nov', 'dec',
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
 ];
 const _monthFull = [
-  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
-  'september', 'october', 'november', 'december',
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
 ];
 const _weekdayAbbrev = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const _weekdayFull = [
-  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
   'sunday',
 ];
 
-// ---------------------------------------------------------------------------
-// Typo tolerance
-// ---------------------------------------------------------------------------
-
-/// Two-row Levenshtein distance, capped at `maxDistance + 1` once it is
-/// certain the true distance exceeds `maxDistance` — keeps this cheap even
-/// though it runs on every candidate word in a fuzzy match.
 int editDistance(String a, String b, {int maxDistance = 2}) {
   if (a == b) return 0;
   final lenDiff = (a.length - b.length).abs();
@@ -347,11 +473,6 @@ int editDistance(String a, String b, {int maxDistance = 2}) {
   return prev[b.length] <= maxDistance ? prev[b.length] : maxDistance + 1;
 }
 
-/// Whether `token` (as typed by a student) is a plausible match for
-/// `candidate` (a known word): exact, a prefix of it, or within a
-/// length-scaled edit distance of it, guarded by a matching first letter to
-/// keep short words from matching almost anything. Reused by the assistant
-/// controller for fuzzy facility-name matching.
 bool fuzzyWordMatches(String token, String candidate) {
   if (token == candidate) return true;
   if (token.length >= 3 && candidate.startsWith(token)) return true;
@@ -363,10 +484,6 @@ bool fuzzyWordMatches(String token, String candidate) {
   return editDistance(token, candidate, maxDistance: threshold + 1) <=
       threshold;
 }
-
-// ---------------------------------------------------------------------------
-// Time extraction
-// ---------------------------------------------------------------------------
 
 final _timeRangeRe = RegExp(
   r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|to|till|until|thru)\s*'
@@ -499,10 +616,6 @@ TimeSlot? _extractTime(List<String> chars, void Function(int, int) mask) {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Date extraction
-// ---------------------------------------------------------------------------
-
 final _numericDateRe = RegExp(r'\b(\d{1,2})/(\d{1,2})\b');
 
 int? _matchMonth(String token) {
@@ -591,8 +704,7 @@ DateSlot? _extractWeekday(
     final windowStart = math.max(0, m.start - 12);
     final before = text.substring(windowStart, m.start);
     final modMatch = RegExp(r'\b(next|this|coming|on)\s+$').firstMatch(before);
-    final nextModifier =
-        modMatch != null && modMatch.group(1) == 'next';
+    final nextModifier = modMatch != null && modMatch.group(1) == 'next';
     final resolved = _resolveWeekday(iso, today, nextModifier: nextModifier);
     final start = modMatch != null ? windowStart + modMatch.start : m.start;
     mask(start, m.end);
@@ -619,11 +731,15 @@ DateSlot? _extractMonthDay(
 
   final afterWindowEnd = math.min(text.length, monthMatch.end + 6);
   final after = text.substring(monthMatch.end, afterWindowEnd);
-  final afterMatch = RegExp(r'^\s*(\d{1,2})(?:st|nd|rd|th)?\b').firstMatch(after);
+  final afterMatch = RegExp(
+    r'^\s*(\d{1,2})(?:st|nd|rd|th)?\b',
+  ).firstMatch(after);
 
   final beforeWindowStart = math.max(0, monthMatch.start - 6);
   final before = text.substring(beforeWindowStart, monthMatch.start);
-  final beforeMatch = RegExp(r'(\d{1,2})(?:st|nd|rd|th)?\s*$').firstMatch(before);
+  final beforeMatch = RegExp(
+    r'(\d{1,2})(?:st|nd|rd|th)?\s*$',
+  ).firstMatch(before);
 
   int? day;
   var spanStart = monthMatch.start;
@@ -718,10 +834,6 @@ DateSlot? _extractDate(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Capacity extraction
-// ---------------------------------------------------------------------------
-
 final _capacityRangeRe = RegExp(
   '(\\d{1,4})\\s*(?:-|to)\\s*(\\d{1,4})\\s*(?:$_capacityNounPattern)?',
 );
@@ -791,10 +903,6 @@ CapacityRange? _extractCapacity(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Amenity extraction
-// ---------------------------------------------------------------------------
-
 class _AmenityResult {
   _AmenityResult(this.amenities, this.unknown);
   final Set<String> amenities;
@@ -803,7 +911,7 @@ class _AmenityResult {
 
 final _acPatternRe = RegExp(r'\ba[/-]c\b');
 final _cueWordRe = RegExp(
-  r'\b(?:with|has|have|having|need|needs|w)\s+(?:a|an|the)?\s*([a-z][a-z\-]*)',
+  r'\b(?:with|has|have|having|need|needs|w)\s+(?:(?:a|an|the)\s+)?([a-z][a-z\-]*)',
 );
 final _bareWordRe = RegExp(r'\b[a-z]{2,}\b');
 
@@ -889,29 +997,22 @@ _AmenityResult _extractAmenities(
   return _AmenityResult(amenities, unknown);
 }
 
-// ---------------------------------------------------------------------------
-// Category extraction
-// ---------------------------------------------------------------------------
-
 String? _extractCategory(List<String> chars, void Function(int, int) mask) {
   final keys = _categorySynonyms.keys.toList()
     ..sort((a, b) => b.length.compareTo(a.length));
+  final text = chars.join();
   for (final key in keys) {
-    final text = chars.join();
     final m = RegExp(r'\b' + RegExp.escape(key) + r'\b').firstMatch(text);
     if (m != null) {
-      mask(m.start, m.end);
       return _categorySynonyms[key];
     }
   }
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Purpose + leftover facility query
-// ---------------------------------------------------------------------------
-
-final _purposeRe = RegExp(r'\bfor\s+(?:a|an|our|my|the)\s+([a-z][a-z\- ]{2,80})');
+final _purposeRe = RegExp(
+  r'\bfor\s+(?:a|an|our|my|the)\s+([a-z][a-z\- ]{2,80})',
+);
 
 String? _extractPurpose(List<String> chars, void Function(int, int) mask) {
   final text = chars.join();
@@ -925,7 +1026,9 @@ String? _extractPurpose(List<String> chars, void Function(int, int) mask) {
 
 String? _leftoverQuery(List<String> chars) {
   final text = chars.join();
-  final words = RegExp(r'[a-z][a-z\-]*').allMatches(text).map((m) => m.group(0)!);
+  final words = RegExp(
+    r'[a-z][a-z\-]*',
+  ).allMatches(text).map((m) => m.group(0)!);
   final kept = <String>[];
   for (final w in words) {
     if (w.length < 3) continue;
@@ -937,16 +1040,13 @@ String? _leftoverQuery(List<String> chars) {
   return kept.join(' ');
 }
 
-// ---------------------------------------------------------------------------
-// Abort / affirmation / ordinal / intent
-// ---------------------------------------------------------------------------
-
 final _mineReservationRe = RegExp(
   r'\b(my|mine)\b.{0,15}\b(reservation|reservations|booking|bookings|request|requests)\b',
 );
 
 bool _isAbort(String normalized) {
-  if (_mineReservationRe.hasMatch(normalized) && normalized.contains('cancel')) {
+  if (_mineReservationRe.hasMatch(normalized) &&
+      normalized.contains('cancel')) {
     return false;
   }
   if (RegExp(
@@ -970,13 +1070,7 @@ bool? _detectAffirmation(String normalized) {
 }
 
 int? _extractOrdinal(String normalized) {
-  const words = {
-    'first': 1,
-    'second': 2,
-    'third': 3,
-    'fourth': 4,
-    'fifth': 5,
-  };
+  const words = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5};
   final wordMatch = RegExp(
     r'\b(first|second|third|fourth|fifth)\b',
   ).firstMatch(normalized);

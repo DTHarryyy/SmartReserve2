@@ -15,7 +15,7 @@ import '../../widgets/sr_controls.dart';
 Future<void> showInviteDialog(BuildContext context, AppState state) =>
     showDialog<void>(
       context: context,
-      barrierColor: const Color(0x7010141A),
+      barrierColor: SR.scrim,
       builder: (_) => _InviteDialog(state: state),
     );
 
@@ -149,14 +149,14 @@ class _InviteDialogState extends State<_InviteDialog> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: [
-      Text('Create an administrator', style: sans(16, w: 600, tracking: -.015)),
-      const SizedBox(height: 5),
+      Text('Create an administrator', style: SrType.heading()),
+      const SizedBox(height: SR.space4 + 1),
       Text(
         'A strong temporary password is generated after the account is '
         'created. You can save or share the credentials once.',
-        style: sans(12, height: 1.6, color: SR.ink4),
+        style: SrType.bodySm(color: SR.ink4),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: SR.space16),
       const SrLabel('Email address'),
       SrTextField(
         controller: _email,
@@ -169,7 +169,7 @@ class _InviteDialogState extends State<_InviteDialog> {
         },
       ),
       SrErrorText(_error),
-      const SizedBox(height: 12),
+      const SizedBox(height: SR.space12),
       const SrLabel('Role'),
       for (final role in const [
         AccountRole.internalAdmin,
@@ -183,10 +183,10 @@ class _InviteDialogState extends State<_InviteDialog> {
             _error = null;
           }),
         ),
-      const SizedBox(height: 12),
+      const SizedBox(height: SR.space12),
       SrLabel(
         'Note in the invitation',
-        meta: Text('optional', style: sans(11, color: SR.muted)),
+        meta: Text('optional', style: SrType.caption()),
       ),
       SrTextField(
         controller: _note,
@@ -201,7 +201,7 @@ class _InviteDialogState extends State<_InviteDialog> {
           if (!_busy && _error != null) setState(() => _error = null);
         },
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: SR.space16),
       Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -211,13 +211,22 @@ class _InviteDialogState extends State<_InviteDialog> {
             minHeight: 40,
             onPressed: _busy ? null : () => Navigator.of(context).pop(),
           ),
-          const SizedBox(width: 8),
-          SrButton(
-            label: _busy ? 'Creating…' : 'Create administrator',
-            kind: SrButtonKind.primary,
-            fontSize: 12.5,
-            minHeight: 40,
-            onPressed: _busy ? null : _create,
+          const SizedBox(width: SR.space8),
+          Flexible(
+            child: SrButton(
+              label: _busy ? 'Creating…' : 'Create administrator',
+              icon: _busy
+                  ? null
+                  : const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      size: SR.iconSm,
+                      color: SR.onDark,
+                    ),
+              kind: SrButtonKind.primary,
+              fontSize: 12.5,
+              minHeight: 40,
+              onPressed: _busy ? null : _create,
+            ),
           ),
         ],
       ),
@@ -229,21 +238,43 @@ class _InviteDialogState extends State<_InviteDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Administrator created', style: sans(16, w: 600, tracking: -.015)),
-        const SizedBox(height: 5),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              margin: const EdgeInsets.only(right: SR.space8, top: 1),
+              decoration: const BoxDecoration(
+                color: SR.greenTint,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_rounded,
+                size: 16,
+                color: SR.greenDark,
+              ),
+            ),
+            Expanded(
+              child: Text('Administrator created', style: SrType.heading()),
+            ),
+          ],
+        ),
+        const SizedBox(height: SR.space4 + 1),
         Text(
           'Give these credentials directly to the administrator. The temporary '
           'password is shown only in this dialog.',
-          style: sans(12, height: 1.6, color: SR.ink4),
+          style: SrType.bodySm(color: SR.ink4),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: SR.space16),
         const SrLabel('Login email'),
         SrTextField(
           controller: _credentialEmail,
           readOnly: true,
           semanticLabel: 'Administrator login email',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: SR.space12),
         const SrLabel('Temporary password'),
         SrTextField(
           controller: _credentialPassword,
@@ -251,15 +282,22 @@ class _InviteDialogState extends State<_InviteDialog> {
           mono: true,
           semanticLabel: 'Administrator temporary password',
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: SR.space8 + 2),
         _CredentialWarning(),
-        const SizedBox(height: 14),
+        const SizedBox(height: SR.space12 + 2),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: SR.space8,
+          runSpacing: SR.space8,
           children: [
             SrButton(
               label: _busy ? 'Saving…' : 'Save credentials file',
+              icon: _busy
+                  ? null
+                  : const Icon(
+                      Icons.download_rounded,
+                      size: SR.iconSm,
+                      color: SR.onDark,
+                    ),
               kind: SrButtonKind.primary,
               fontSize: 12.5,
               minHeight: 40,
@@ -269,6 +307,13 @@ class _InviteDialogState extends State<_InviteDialog> {
               label: kIsWeb
                   ? 'Sharing unavailable on web'
                   : (_busy ? 'Working…' : 'Share credentials'),
+              icon: kIsWeb || _busy
+                  ? null
+                  : const Icon(
+                      Icons.ios_share_rounded,
+                      size: SR.iconSm,
+                      color: SR.ink3,
+                    ),
               fontSize: 12.5,
               minHeight: 40,
               onPressed: kIsWeb || _busy ? null : _shareCredentials,
@@ -277,10 +322,10 @@ class _InviteDialogState extends State<_InviteDialog> {
         ),
         SrErrorText(_error),
         if (_notice != null) ...[
-          const SizedBox(height: 8),
-          Text(_notice!, style: sans(11.5, color: SR.greenDark)),
+          const SizedBox(height: SR.space8),
+          Text(_notice!, style: SrType.bodySm(color: SR.greenDark)),
         ],
-        const SizedBox(height: 14),
+        const SizedBox(height: SR.space12 + 2),
         SrButton(
           label: 'Done',
           expand: true,
@@ -295,16 +340,30 @@ class _InviteDialogState extends State<_InviteDialog> {
 class _CredentialWarning extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(11),
+    padding: const EdgeInsets.all(SR.space12 - 1),
     decoration: BoxDecoration(
-      color: SR.amberTint,
-      borderRadius: BorderRadius.circular(9),
-      border: Border.all(color: SR.amberLine),
+      color: SrTone.warning.tint,
+      borderRadius: BorderRadius.circular(SR.rSm + 1),
+      border: Border.all(color: SrTone.warning.line),
     ),
-    child: Text(
-      'Save or share this only through a secure channel. Ask the new '
-      'administrator to change the temporary password after their first sign-in.',
-      style: sans(11, height: 1.5, color: SR.amberTitle),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.warning_amber_rounded,
+          size: SR.iconSm,
+          color: SrTone.warning.ink,
+        ),
+        const SizedBox(width: SR.space8),
+        Expanded(
+          child: Text(
+            'Save or share this only through a secure channel. Ask the new '
+            'administrator to change the temporary password after their '
+            'first sign-in.',
+            style: SrType.caption(color: SrTone.warning.ink),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -322,7 +381,7 @@ class _RoleOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.only(bottom: SR.space8),
     child: Semantics(
       button: true,
       selected: selected,
@@ -331,12 +390,17 @@ class _RoleOption extends StatelessWidget {
           onTap: onTap,
           child: AnimatedContainer(
             duration: SR.stateChange,
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: SR.space12 + 1,
+              vertical: SR.space12,
+            ),
             decoration: BoxDecoration(
-              color: selected ? SR.blueTint : SR.surface,
-              borderRadius: BorderRadius.circular(10),
+              color: selected ? SR.primaryTint : SR.surface,
+              borderRadius: BorderRadius.circular(SR.rMd - 2),
               border: Border.all(
-                color: selected ? SR.blue : (hovered ? SR.blueSoft : SR.border),
+                color: selected
+                    ? SR.primary
+                    : (hovered ? SR.primarySoft : SR.border),
               ),
             ),
             child: Row(
@@ -350,29 +414,26 @@ class _RoleOption extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: selected ? SR.blue : SR.borderField,
+                      color: selected ? SR.primary : SR.borderField,
                     ),
                   ),
                   child: Container(
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: selected ? SR.blue : Colors.transparent,
+                      color: selected ? SR.primary : Colors.transparent,
                       shape: BoxShape.circle,
                     ),
                   ),
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: SR.space8 + 3),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(role.label, style: sans(12.5, w: 600)),
-                      const SizedBox(height: 2),
-                      Text(
-                        role.privileges,
-                        style: sans(11, height: 1.55, color: SR.ink4),
-                      ),
+                      Text(role.label, style: SrType.body(w: 600, color: SR.ink)),
+                      const SizedBox(height: SR.space2),
+                      Text(role.privileges, style: SrType.caption()),
                     ],
                   ),
                 ),

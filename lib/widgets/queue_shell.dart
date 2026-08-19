@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../theme/sr_tokens.dart';
 import 'notices.dart';
 import 'sr_controls.dart';
+import 'sr_scroll_view.dart';
 
 class QueueShell extends StatelessWidget {
   const QueueShell({
@@ -39,9 +40,7 @@ class QueueShell extends StatelessWidget {
         compact && panelPadding == const EdgeInsets.fromLTRB(16, 16, 20, 24)
         ? const EdgeInsets.fromLTRB(14, 14, 14, 28)
         : panelPadding;
-    final listPane = Scrollbar(
-      child: SingleChildScrollView(padding: effectiveListPadding, child: list),
-    );
+    final listPane = SrScrollView(padding: effectiveListPadding, child: list);
 
     if (stacked) {
       return Stack(
@@ -91,11 +90,9 @@ class QueueShell extends StatelessWidget {
                         ),
                       ),
                       Expanded(
-                        child: Scrollbar(
-                          child: SingleChildScrollView(
-                            padding: effectivePanelPadding,
-                            child: panel!,
-                          ),
+                        child: SrScrollView(
+                          padding: effectivePanelPadding,
+                          child: panel!,
                         ),
                       ),
                     ],
@@ -122,11 +119,9 @@ class QueueShell extends StatelessWidget {
         ),
         Expanded(
           flex: 5,
-          child: Scrollbar(
-            child: SingleChildScrollView(
-              padding: effectivePanelPadding,
-              child: panel ?? const _NothingSelected(),
-            ),
+          child: SrScrollView(
+            padding: effectivePanelPadding,
+            child: panel ?? const _NothingSelected(),
           ),
         ),
       ],

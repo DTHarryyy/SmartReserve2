@@ -12,6 +12,7 @@ import '../../theme/sr_tokens.dart';
 import '../../util/geo.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 
 Future<void> showBookingSheet(
   BuildContext context, {
@@ -211,8 +212,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     if (file == null) return;
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty || bytes.lengthInBytes > 10 * 1024 * 1024) return;
-    final extension = file.extension?.toLowerCase();
-    final mime = switch (extension) {
+    final mime = switch (file.name.split('.').last.toLowerCase()) {
       'jpg' || 'jpeg' => 'image/jpeg',
       'png' => 'image/png',
       'pdf' => 'application/pdf',
@@ -250,94 +250,87 @@ class _BookingSheetState extends State<_BookingSheet> {
     final mobile = widget.fullPage || screen.width < 600;
     final content = ColoredBox(
       color: SR.surface,
-      child: Scrollbar(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _FacilityGallery(
-                facility: facility,
-                selected: _selectedPhoto,
-                mobile: mobile,
-                showClose: !widget.fullPage,
-                onSelected: (index) => setState(() => _selectedPhoto = index),
-                onClose: () => Navigator.of(context).pop(),
+      child: SrScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _FacilityGallery(
+              facility: facility,
+              selected: _selectedPhoto,
+              mobile: mobile,
+              showClose: !widget.fullPage,
+              onSelected: (index) => setState(() => _selectedPhoto = index),
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                mobile ? 16 : 24,
+                mobile ? 18 : 22,
+                mobile ? 16 : 24,
+                mobile ? 24 : 24,
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  mobile ? 16 : 24,
-                  mobile ? 18 : 22,
-                  mobile ? 16 : 24,
-                  mobile ? 24 : 24,
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final wide = constraints.maxWidth >= 760;
-                    final overview = _FacilityOverview(facility: facility);
-                    final booking = _BookingForm(
-                      account: widget.state.userAccount,
-                      facility: facility,
-                      free: widget.state.userAccount.reservesFree,
-                      quote: widget.state.quoteFor(
-                        facility,
-                        _duration <= 0 ? 0 : _duration,
-                      ),
-                      narrow: widget.fullPage ? false : mobile || !wide,
-                      date: _date,
-                      dates: _dates,
-                      start: _start,
-                      end: _end,
-                      times: _times,
-                      heads: _heads,
-                      purpose: _purpose,
-                      duration: _duration,
-                      clashes: _clashes,
-                      overCapacity: _overCapacity,
-                      headcount: _headcount,
-                      attempted: _attempted,
-                      error: _error,
-                      weekly: _weekly,
-                      occurrenceCount: _occurrenceCount,
-                      attachments: _attachments,
-                      submitting: _submitting,
-                      onDateChanged: (value) => setState(() => _date = value),
-                      onStartChanged: (value) => setState(() => _start = value),
-                      onEndChanged: (value) => setState(() => _end = value),
-                      onFieldChanged: () => setState(() {}),
-                      onWeeklyChanged: (value) =>
-                          setState(() => _weekly = value),
-                      onOccurrenceCountChanged: (value) =>
-                          setState(() => _occurrenceCount = value),
-                      onChooseAttachments: _chooseAttachments,
-                      onRemoveAttachment: (index) =>
-                          setState(() => _attachments.removeAt(index)),
-                      onSubmit: _submit,
-                    );
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 760;
+                  final overview = _FacilityOverview(facility: facility);
+                  final booking = _BookingForm(
+                    account: widget.state.userAccount,
+                    facility: facility,
+                    free: widget.state.userAccount.reservesFree,
+                    quote: widget.state.quoteFor(
+                      facility,
+                      _duration <= 0 ? 0 : _duration,
+                    ),
+                    narrow: widget.fullPage ? false : mobile || !wide,
+                    date: _date,
+                    dates: _dates,
+                    start: _start,
+                    end: _end,
+                    times: _times,
+                    heads: _heads,
+                    purpose: _purpose,
+                    duration: _duration,
+                    clashes: _clashes,
+                    overCapacity: _overCapacity,
+                    headcount: _headcount,
+                    attempted: _attempted,
+                    error: _error,
+                    weekly: _weekly,
+                    occurrenceCount: _occurrenceCount,
+                    attachments: _attachments,
+                    submitting: _submitting,
+                    onDateChanged: (value) => setState(() => _date = value),
+                    onStartChanged: (value) => setState(() => _start = value),
+                    onEndChanged: (value) => setState(() => _end = value),
+                    onFieldChanged: () => setState(() {}),
+                    onWeeklyChanged: (value) => setState(() => _weekly = value),
+                    onOccurrenceCountChanged: (value) =>
+                        setState(() => _occurrenceCount = value),
+                    onChooseAttachments: _chooseAttachments,
+                    onRemoveAttachment: (index) =>
+                        setState(() => _attachments.removeAt(index)),
+                    onSubmit: _submit,
+                  );
 
-                    if (!wide) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          overview,
-                          const SizedBox(height: 24),
-                          booking,
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 5, child: overview),
-                        const SizedBox(width: 22),
-                        SizedBox(width: 330, child: booking),
-                      ],
+                  if (!wide) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [overview, const SizedBox(height: 24), booking],
                     );
-                  },
-                ),
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 5, child: overview),
+                      const SizedBox(width: 22),
+                      SizedBox(width: 330, child: booking),
+                    ],
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

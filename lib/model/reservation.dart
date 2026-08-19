@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
+import '../util/campus_calendar.dart';
 
 enum BookingStage {
   booked('Approved', 'Approved — the room is held and the requester notified.'),
@@ -20,19 +21,21 @@ enum BookingStage {
 }
 
 enum RequestStatus {
-  pending('pending', 'Needs decision', SR.amberTint, SR.amber),
-  approved('approved', 'Approved', SR.greenTint, SR.greenDark),
-  declined('declined', 'Declined', SR.redTint, SR.red),
-  changesRequested('changes', 'Changes requested', SR.blueTint, SR.blueDark),
-  cancelled('cancelled', 'Cancelled', SR.dividerSoft, SR.ink4),
-  expired('expired', 'Expired', SR.dividerSoft, SR.muted);
+  pending('pending', 'Needs decision', SrTone.warning),
+  approved('approved', 'Approved', SrTone.success),
+  declined('declined', 'Declined', SrTone.error),
+  changesRequested('changes', 'Changes requested', SrTone.info),
+  cancelled('cancelled', 'Cancelled', SrTone.neutral),
+  expired('expired', 'Expired', SrTone.neutral);
 
-  const RequestStatus(this.raw, this.label, this.background, this.foreground);
+  const RequestStatus(this.raw, this.label, this.tone);
 
   final String raw;
   final String label;
-  final Color background;
-  final Color foreground;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
 
   static RequestStatus fromRaw(String raw) => values.firstWhere(
     (s) =>
@@ -133,9 +136,11 @@ class ReservationRequest {
     this.version = 1,
     this.paymentAmountCentavos = 0,
     this.paymentStatus = PaymentTrackingStatus.notRequired,
+    DateTime? slotDay,
     List<ReservationOccurrence>? occurrences,
     List<ReservationFile>? files,
   }) : seriesExceptions = seriesExceptions ?? <String>[],
+       slotDay = slotDay ?? parseCampusDate(date),
        occurrences = occurrences ?? <ReservationOccurrence>[],
        files = files ?? <ReservationFile>[];
 
@@ -152,6 +157,8 @@ class ReservationRequest {
   final String purpose;
 
   final String date;
+
+  final DateTime? slotDay;
 
   String start;
   String end;
@@ -198,6 +205,9 @@ class ReservationRequest {
       startHour + (int.tryParse(start.split(':').last) ?? 0) / 60;
   double get endAt => endHour + (int.tryParse(end.split(':').last) ?? 0) / 60;
 
+  DateTime? get startsAtWall => atClock(slotDay, start);
+  DateTime? get endsAtWall => atClock(slotDay, end);
+
   bool get isPending => status == RequestStatus.pending;
 
   bool get overCapacity => heads > capacity;
@@ -216,33 +226,65 @@ class Booking {
   const Booking({
     required this.id,
     required this.facility,
-    required this.date,
-    required this.start,
-    required this.end,
+    required this.startsAt,
+    required this.endsAt,
     required this.label,
     required this.requester,
+    this.facilityId,
     this.sourceRequestId,
   });
 
+  factory Booking.fromLabels({
+    required String id,
+    required String facility,
+    required String date,
+    required String start,
+    required String end,
+    required String label,
+    required String requester,
+    String? facilityId,
+    String? sourceRequestId,
+  }) {
+    final day = parseCampusDate(date) ?? campusToday;
+    return Booking(
+      id: id,
+      facility: facility,
+      startsAt: atClock(day, start)!,
+      endsAt: atClock(day, end)!,
+      label: label,
+      requester: requester,
+      facilityId: facilityId,
+      sourceRequestId: sourceRequestId,
+    );
+  }
+
   final String id;
+
   final String facility;
-  final String date;
-  final String start;
-  final String end;
+
+  final String? facilityId;
+
+  final DateTime startsAt;
+  final DateTime endsAt;
   final String label;
   final String requester;
 
   final String? sourceRequestId;
 
-  double get startAt =>
-      (int.tryParse(start.split(':').first) ?? 0) +
-      (int.tryParse(start.split(':').last) ?? 0) / 60;
+  String get date => formatCampusDate(startsAt);
+  String get start => formatClock(startAt);
+  String get end => formatClock(endAt);
 
-  double get endAt =>
-      (int.tryParse(end.split(':').first) ?? 0) +
-      (int.tryParse(end.split(':').last) ?? 0) / 60;
+  DateTime get day => dayOnly(startsAt);
+
+  double get startAt => startsAt.hour + startsAt.minute / 60;
+
+  double get endAt => endsAt.hour + endsAt.minute / 60;
 
   bool overlaps(double from, double to) => startAt < to && from < endAt;
+
+  bool overlapsRange(DateTime from, DateTime to) =>
+      startsAt.isBefore(to) && from.isBefore(endsAt);
 }
 
 const dayStartHour = 7;

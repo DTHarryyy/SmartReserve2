@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/app/app_scope.dart';
@@ -12,6 +13,7 @@ import 'package:smartreserve/model/facility_photo.dart';
 import 'package:smartreserve/model/notice.dart';
 import 'package:smartreserve/widgets/app_header.dart';
 import 'package:smartreserve/widgets/notices.dart';
+import 'package:smartreserve/widgets/sr_scroll_view.dart';
 import 'package:smartreserve/widgets/toast_host.dart';
 
 const _viewports = <Size>[
@@ -316,6 +318,8 @@ void main() {
       Size(600, 900),
       Size(760, 360),
       Size(1024, 768),
+      Size(1180, 620),
+      Size(1440, 600),
       Size(1920, 1080),
     ]) {
       await _setViewport(tester, size, registerTearDown: false);
@@ -342,10 +346,6 @@ void main() {
   testWidgets('student Assistant tab renders across the viewport matrix', (
     tester,
   ) async {
-    // Student tabs get no coverage from the admin-only matrix above; this
-    // is the cheapest catch for composer/chip-row overflow at narrow and
-    // landscape sizes, where header + thread + chips + composer + bottom
-    // nav is genuinely tight.
     final state = await _studentState();
     addTearDown(state.dispose);
     await _setViewport(tester, _viewports.first);
@@ -361,10 +361,43 @@ void main() {
       expect(
         error,
         isNull,
-        reason: 'Assistant tab overflowed or threw at ${size.width}×${size.height}',
+        reason:
+            'Assistant tab overflowed or threw at ${size.width}×${size.height}',
       );
     }
   });
+
+  testWidgets(
+    'student facility detail scrolls without a Scrollbar assert on desktop',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        final state = await _studentState();
+        addTearDown(state.dispose);
+        await _setViewport(tester, const Size(1280, 900));
+        await tester.pumpWidget(_studentApp(state));
+        await tester.pumpAndSettle();
+
+        final facility = state.bookableFacilities.first;
+        await tester.tap(find.text(facility.name).first);
+        await tester.pumpAndSettle();
+
+        await tester.drag(
+          find.descendant(
+            of: find.byType(Dialog),
+            matching: find.byType(SrScrollView),
+          ),
+          const Offset(0, -200),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+
+        expect(tester.takeException(), isNull);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
 }
 
 Future<AppState> _adminState() async {

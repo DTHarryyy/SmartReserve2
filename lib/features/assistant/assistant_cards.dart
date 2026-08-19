@@ -1,6 +1,3 @@
-/// Chat bubbles and result cards for the Assistant tab, built entirely from
-/// the existing widget kit (`PanelCard`, `SrPill`, `FilterPill`,
-/// `SrCellGrid`, ...) so the thread looks native to the rest of the app.
 library;
 
 import 'package:flutter/material.dart';
@@ -19,11 +16,6 @@ import '../../widgets/sr_controls.dart';
 import 'assistant_availability.dart';
 import 'assistant_controller.dart';
 
-/// An iMessage-style bubble: filled and right-aligned for the user, a
-/// bordered "paper" bubble on the left for the assistant, both with one
-/// squared-off corner on the speaker's side to read as a speech tail.
-/// No avatars — a two-party thread doesn't need them, and dropping them
-/// gives the bubbles the full width iOS-style chat expects.
 class AssistantBubble extends StatelessWidget {
   const AssistantBubble({super.key, required this.message});
 
@@ -81,15 +73,15 @@ class AssistantBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [Flexible(child: bubble)],
       ),
     );
   }
 }
 
-/// Suggestion / free-slot chips, rendered as a continuation of the
-/// assistant's last bubble.
 class AssistantChipRow extends StatelessWidget {
   const AssistantChipRow({super.key, required this.chips, required this.state});
 
@@ -106,7 +98,11 @@ class AssistantChipRow extends StatelessWidget {
         runSpacing: 8,
         children: [
           for (final chip in chips)
-            FilterPill(label: chip.label, selected: false, onTap: () => chip.onSelect(state)),
+            FilterPill(
+              label: chip.label,
+              selected: false,
+              onTap: () => chip.onSelect(state),
+            ),
         ],
       ),
     );
@@ -132,7 +128,10 @@ class AssistantFacilityCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(facility.name, style: sans(13, w: 600, tracking: -.01)),
+                child: Text(
+                  facility.name,
+                  style: sans(13, w: 600, tracking: -.01),
+                ),
               ),
               const SizedBox(width: 8),
               SrPill(
@@ -161,9 +160,17 @@ class AssistantFacilityCard extends StatelessWidget {
                 foreground: SR.ink3,
                 monospace: true,
               ),
-              SrPill(label: facility.days, background: SR.dividerSoft, foreground: SR.ink3),
+              SrPill(
+                label: facility.days,
+                background: SR.dividerSoft,
+                foreground: SR.ink3,
+              ),
               for (final amenity in facility.amenities.take(4))
-                SrPill(label: amenity, background: SR.blueTint2, foreground: SR.blueInk),
+                SrPill(
+                  label: amenity,
+                  background: SR.blueTint2,
+                  foreground: SR.blueInk,
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -171,13 +178,16 @@ class AssistantFacilityCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  state.userAccount.reservesFree ? 'Free for your account' : '₱$quote / 2h (est.)',
+                  state.userAccount.reservesFree
+                      ? 'Free for your account'
+                      : '₱$quote / 2h (est.)',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: mono(11, color: SR.ink4),
                 ),
               ),
-              if (onBook != null && facility.state != FacilityState.maintenance) ...[
+              if (onBook != null &&
+                  facility.state != FacilityState.maintenance) ...[
                 const SizedBox(width: 8),
                 SrButton(
                   label: 'Book this',
@@ -196,7 +206,11 @@ class AssistantFacilityCard extends StatelessWidget {
 }
 
 class AssistantFacilityListView extends StatelessWidget {
-  const AssistantFacilityListView({super.key, required this.facilities, required this.controller});
+  const AssistantFacilityListView({
+    super.key,
+    required this.facilities,
+    required this.controller,
+  });
 
   final List<Facility> facilities;
   final AssistantController controller;
@@ -226,7 +240,11 @@ class AssistantFacilityListView extends StatelessWidget {
 }
 
 class AssistantReservationCard extends StatelessWidget {
-  const AssistantReservationCard({super.key, required this.request, required this.controller});
+  const AssistantReservationCard({
+    super.key,
+    required this.request,
+    required this.controller,
+  });
 
   final ReservationRequest request;
   final AssistantController controller;
@@ -263,7 +281,10 @@ class AssistantReservationCard extends StatelessWidget {
               dense: true,
               fontSize: 11,
               onPressed: () {
-                state.cancelReservation(request, reason: 'Cancelled from the assistant');
+                state.cancelReservation(
+                  request,
+                  reason: 'Cancelled from the assistant',
+                );
                 controller.noteCancelled(request);
               },
             ),
@@ -314,7 +335,9 @@ class AssistantConfirmCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final hours = draft.endHour! - draft.startHour!;
-    final quote = state.userAccount.reservesFree ? 0 : state.quoteFor(facility, hours);
+    final quote = state.userAccount.reservesFree
+        ? 0
+        : state.quoteFor(facility, hours);
     final pending = state.userAccount.verification == VerificationState.pending;
 
     return Padding(
@@ -338,7 +361,9 @@ class AssistantConfirmCard extends StatelessWidget {
                 SrKeyCell(label: 'PEOPLE', value: '${draft.heads ?? '-'}'),
                 SrKeyCell(
                   label: 'COST',
-                  value: state.userAccount.reservesFree ? 'No charge' : '₱$quote',
+                  value: state.userAccount.reservesFree
+                      ? 'No charge'
+                      : '₱$quote',
                 ),
               ],
             ),
@@ -346,7 +371,10 @@ class AssistantConfirmCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text('PURPOSE', style: keyLabel),
               const SizedBox(height: 4),
-              Text(draft.purpose!, style: sans(12.5, height: 1.5, color: SR.ink2)),
+              Text(
+                draft.purpose!,
+                style: sans(12.5, height: 1.5, color: SR.ink2),
+              ),
             ],
             if (facility.approvalRequired || pending) ...[
               const SizedBox(height: 10),

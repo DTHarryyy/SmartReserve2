@@ -5,10 +5,10 @@ import '../../app/app_state.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
 import '../../theme/sr_tokens.dart';
-import '../../widgets/filter_bar.dart';
-import '../../widgets/queue_shell.dart';
 import '../../widgets/record_table.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import 'facility_detail_dialog.dart';
 
 enum FacilityFilter {
@@ -80,59 +80,63 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final stacked = width < SR.tabletMin;
 
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            FilterBar(
-              count: state.facilitiesLoading
-                  ? null
-                  : '${rows.length} of ${state.facilities.length}',
-              children: [
-                FilterSearch(
-                  controller: _search,
-                  placeholder: 'Search facilities',
-                  width: stacked ? double.infinity : 300,
-                  onChanged: (v) => setState(() => _query = v),
+    return SrScrollView(
+      padding: SR.pageInsets(width, top: stacked ? 14 : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SrPageHeader(
+            title: 'Facilities',
+            description: state.facilitiesLoading
+                ? null
+                : '${rows.length} of ${state.facilities.length} shown',
+          ),
+          const SizedBox(height: SR.space16),
+          SrSearchField(
+            controller: _search,
+            placeholder: 'Search facilities',
+            onChanged: (v) => setState(() => _query = v),
+          ),
+          const SizedBox(height: SR.space12),
+          SrTabs(
+            scrollable: stacked,
+            items: [
+              for (final filter in FacilityFilter.values)
+                SrTabItem(
+                  label: filter.label,
+                  count: state.facilities.where(filter.matches).length,
                 ),
-                for (final filter in FacilityFilter.values)
-                  QueueTab(
-                    label: filter.label,
-                    count: state.facilities.where(filter.matches).length,
-                    selected: _filter == filter,
-                    onTap: () => setState(() => _filter = filter),
+            ],
+            selectedIndex: _filter.index,
+            onSelect: (i) => setState(() => _filter = FacilityFilter.values[i]),
+          ),
+          const SizedBox(height: SR.space16),
+          if (state.facilitiesLoading)
+            RecordTable(
+              columns: _columns,
+              children: [
+                for (var i = 0; i < 6; i++)
+                  SkeletonRow(
+                    columns: _columns,
+                    leadWidth: [.7, .5, .8, .45, .65, .55][i],
                   ),
               ],
+            )
+          else if (state.facilitiesError != null)
+            RecordTable(columns: _columns, children: [_error(state)])
+          else if (rows.isEmpty)
+            RecordTable(columns: _columns, children: [_empty(state)])
+          else
+            RecordTable(
+              columns: _columns,
+              footerNote:
+                  'Every row is a record students navigate by. A pin that is '
+                  'wrong here sends someone to the wrong building.',
+              children: [
+                for (final facility in rows) _row(context, state, facility),
+              ],
             ),
-            if (state.facilitiesLoading)
-              RecordTable(
-                columns: _columns,
-                children: [
-                  for (var i = 0; i < 6; i++)
-                    SkeletonRow(
-                      columns: _columns,
-                      leadWidth: [.7, .5, .8, .45, .65, .55][i],
-                    ),
-                ],
-              )
-            else if (state.facilitiesError != null)
-              RecordTable(columns: _columns, children: [_error(state)])
-            else if (rows.isEmpty)
-              RecordTable(columns: _columns, children: [_empty(state)])
-            else
-              RecordTable(
-                columns: _columns,
-                footerNote:
-                    'Every row is a record students navigate by. A pin that is '
-                    'wrong here sends someone to the wrong building.',
-                children: [
-                  for (final facility in rows) _row(context, state, facility),
-                ],
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -140,7 +144,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
   Widget _empty(AppState state) {
     final filtered = state.facilities.isNotEmpty;
     return ListEmptyState(
-      glyph: '⌖',
+      icon: filtered ? Icons.search_off_rounded : Icons.apartment_rounded,
       title: filtered ? 'Nothing matches' : 'No facilities yet',
       body: filtered
           ? 'Clear the search or pick a different filter.'
@@ -169,7 +173,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
   }
 
   Widget _error(AppState state) => ListEmptyState(
-    glyph: '!',
+    icon: Icons.error_outline_rounded,
     title: 'Facilities could not be loaded',
     body: state.facilitiesError ?? 'Check the connection and try again.',
     action: SrButton(
@@ -247,17 +251,20 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
             style: sans(12, color: SR.ink3),
           ),
           Text('${facility.capacity}', style: mono(12, color: SR.ink3)),
-          Text(
-            facility.pinConfidence.label,
-            maxLines: 1,
-            style: mono(10, w: 500, color: facility.pinConfidence.color),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SrStatusChip(
+              label: facility.pinConfidence.label,
+              tone: facility.pinConfidence.tone,
+              dot: true,
+              dense: true,
+            ),
           ),
           Align(
             alignment: Alignment.centerLeft,
-            child: SrPill(
+            child: SrStatusChip(
               label: facility.state.label,
-              background: facility.state.background,
-              foreground: facility.state.foreground,
+              tone: facility.state.tone,
             ),
           ),
           if (state.isInternalAdmin)
@@ -352,52 +359,17 @@ class _FacilityCompactCard extends StatelessWidget {
             ),
         ],
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: SR.space12),
       Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: SR.space8,
+        runSpacing: SR.space8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SrPill(
-            label: facility.state.label,
-            background: facility.state.background,
-            foreground: facility.state.foreground,
-          ),
-          _CompactFact(label: 'Capacity', value: '${facility.capacity}'),
-          _CompactFact(label: 'Category', value: facility.category),
+          SrStatusChip(label: facility.state.label, tone: facility.state.tone),
+          SrFactChip(label: 'Capacity', value: '${facility.capacity}'),
+          SrFactChip(label: 'Category', value: facility.category),
         ],
       ),
     ],
-  );
-}
-
-class _CompactFact extends StatelessWidget {
-  const _CompactFact({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-    decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: SR.hairline),
-    ),
-    child: Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: '$label: ',
-            style: sans(10.5, color: SR.muted),
-          ),
-          TextSpan(
-            text: value,
-            style: sans(10.5, w: 500, color: SR.ink3),
-          ),
-        ],
-      ),
-    ),
   );
 }

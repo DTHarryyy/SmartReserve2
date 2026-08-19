@@ -1,14 +1,3 @@
--- Audit log readability: stop writing internal bookkeeping columns (id,
--- created_at, updated_by, ...) into audit_entries.before_values/
--- after_values, and expose the actor's email so the UI can show a real,
--- disambiguating identity instead of a bare display name.
---
--- No table changes, no data loss: account_admin_events and the facilities
--- table still hold the untrimmed rows these triggers read from — only what
--- lands in the audit_entries display table changes. Existing audit_entries
--- rows are left as-is; the Dart-side humanizer (lib/model/audit_diff.dart)
--- already hides noise at render time regardless of what's stored.
-
 create or replace function public.capture_account_audit()
 returns trigger
 language plpgsql
@@ -47,11 +36,6 @@ declare
   action_value text;
   reason_value text := nullif(current_setting('smartreserve.audit_reason', true), '');
   material_value boolean := true;
-  -- Blacklist, not whitelist: revert_facility_audit_entry reads
-  -- before_values/after_values->>'updated_at' plus capacity, status,
-  -- latitude, longitude, accuracy and public_listing. A whitelist would
-  -- silently break revert the moment a column is added; updated_at must
-  -- stay so the optimistic-concurrency check keeps working.
   noise_keys constant text[] := array['id', 'created_at', 'updated_by', 'updated_by_name'];
 begin
   select * into actor from public.profiles where id = actor_id_value;
@@ -84,9 +68,6 @@ begin
 end;
 $$;
 
--- Same filters, same security gate, same keyset page and computed
--- `revertable` as before — only the profiles join and actor_email column
--- are new, so the UI can show who really did this instead of just a name.
 create or replace function public.get_audit_entries(
   p_search text default null,
   p_actor text default null,

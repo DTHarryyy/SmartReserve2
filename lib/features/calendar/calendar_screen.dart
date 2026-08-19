@@ -9,6 +9,7 @@ import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 
 const _minimumStartHour = 7;
 const _minimumEndHour = 20;
@@ -815,26 +816,24 @@ class _MonthView extends StatelessWidget {
     );
     final start = first.subtract(Duration(days: first.weekday - 1));
     final events = state.visibleCalendarEvents;
-    return Scrollbar(
-      child: SingleChildScrollView(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final availableWidth = constraints.maxWidth.isFinite
-                ? constraints.maxWidth
-                : 760.0;
-            final narrow = availableWidth < 760;
-            final grid = SizedBox(
-              width: narrow ? 760 : availableWidth,
-              child: _grid(start, events, narrow ? 104 : 118),
-            );
-            return narrow
-                ? SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: grid,
-                  )
-                : grid;
-          },
-        ),
+    return SrScrollView(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : 760.0;
+          final narrow = availableWidth < 760;
+          final grid = SizedBox(
+            width: narrow ? 760 : availableWidth,
+            child: _grid(start, events, narrow ? 104 : 118),
+          );
+          return narrow
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: grid,
+                )
+              : grid;
+        },
       ),
     );
   }
@@ -995,19 +994,17 @@ class _WeekView extends StatelessWidget {
       ),
     );
     final height = (range.$2 - range.$1) * _hourHeight;
-    return Scrollbar(
-      child: SingleChildScrollView(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final content = _weekGrid(days, events, range, height);
-            return constraints.maxWidth < 820
-                ? SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(width: 900, child: content),
-                  )
-                : content;
-          },
-        ),
+    return SrScrollView(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final content = _weekGrid(days, events, range, height);
+          return constraints.maxWidth < 820
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(width: 900, child: content),
+                )
+              : content;
+        },
       ),
     );
   }
@@ -1098,19 +1095,17 @@ class _DayView extends StatelessWidget {
         ? state.scheduleFacilities
         : [state.calendarFacilityFilter];
     final range = _hourRange(events);
-    return Scrollbar(
-      child: SingleChildScrollView(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final grid = _dayGrid(day, facilities, events, range);
-            return constraints.maxWidth < 760
-                ? SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(width: 760, child: grid),
-                  )
-                : grid;
-          },
-        ),
+    return SrScrollView(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final grid = _dayGrid(day, facilities, events, range);
+          return constraints.maxWidth < 760
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(width: 760, child: grid),
+                )
+              : grid;
+        },
       ),
     );
   }

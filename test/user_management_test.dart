@@ -390,6 +390,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('External admin').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Apply role change'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));

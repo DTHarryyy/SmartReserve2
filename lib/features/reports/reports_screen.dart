@@ -13,6 +13,7 @@ import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import 'reports_data.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -33,7 +34,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final width = MediaQuery.sizeOf(context).width;
-    final narrow = width < 900;
+    final narrow = !SR.fitsSplitView(width);
     final stacked = width < SR.tabletMin;
     final selectedCategory = _category == 'All categories' ? null : _category;
     final snapshot = state.reportSnapshot;
@@ -74,45 +75,43 @@ class _ReportsScreenState extends State<ReportsScreen> {
           .toList(),
     );
 
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1080),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _scopeBar(state, selectedSnapshot, utilisation),
-                if (state.reportsLoading) const LinearProgressIndicator(),
-                if (state.reportsError case final error?)
-                  _reportError(state, error, stale: selectedSnapshot != null),
-                if (state.reportsStale && selectedSnapshot != null)
-                  _staleNotice(selectedSnapshot),
-                if (utilisation != null &&
-                    heatmap != null &&
-                    performance != null) ...[
-                  _utilisation(state, utilisation, selectedSnapshot),
-                  if (narrow) ...[
-                    _demand(heatmap, state, selectedSnapshot),
-                    _performance(performance),
-                  ] else
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _demand(heatmap, state, selectedSnapshot),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(child: _performance(performance)),
-                      ],
-                    ),
-                ] else if (!state.reportsLoading && state.reportsError == null)
-                  _initialReportState(),
-                _quality(issues),
-              ],
-            ),
+    return SrScrollView(
+      padding: SR.pageInsets(width, top: stacked ? 14 : 20),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1080),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _scopeBar(state, selectedSnapshot, utilisation),
+              if (state.reportsLoading) const LinearProgressIndicator(),
+              if (state.reportsError case final error?)
+                _reportError(state, error, stale: selectedSnapshot != null),
+              if (state.reportsStale && selectedSnapshot != null)
+                _staleNotice(selectedSnapshot),
+              if (utilisation != null &&
+                  heatmap != null &&
+                  performance != null) ...[
+                _utilisation(state, utilisation, selectedSnapshot),
+                if (narrow) ...[
+                  _demand(heatmap, state, selectedSnapshot),
+                  _performance(performance),
+                ] else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _demand(heatmap, state, selectedSnapshot),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _performance(performance)),
+                    ],
+                  ),
+              ] else if (!state.reportsLoading && state.reportsError == null)
+                _initialReportState(),
+              _quality(issues),
+            ],
           ),
         ),
       ),
@@ -213,10 +212,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return null;
   }
 
-  // The dropdowns right next to this text already say the range and
-  // category — echoing them back added no information. Once a snapshot
-  // has loaded, show what the dropdowns can't: the resolved date window
-  // and how fresh the numbers are.
   String _scopeSummary(ReportSnapshot? snapshot) {
     if (snapshot == null) {
       return '${_range.label.toLowerCase()} · '

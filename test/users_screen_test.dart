@@ -18,7 +18,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('invite-admin-fab')), findsOneWidget);
-      expect(find.text('＋ Invite administrator'), findsNothing);
+      expect(find.text('Invite administrator'), findsNothing);
 
       final search = tester.getRect(find.byKey(const Key('users-search')));
       final filters = tester.getRect(
@@ -52,7 +52,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('invite-admin-fab')), findsNothing);
-    expect(find.text('＋ Invite administrator'), findsOneWidget);
+    expect(find.text('Invite administrator'), findsOneWidget);
     expect(tester.takeException(), isNull);
     state.dispose();
   });
@@ -97,7 +97,7 @@ void main() {
 
     expect(find.text('Bianca Lorenzo'), findsOneWidget);
     expect(find.text('Jomar Padilla'), findsNothing);
-    expect(find.text('1 of ${state.accounts.length}'), findsOneWidget);
+    expect(find.text('1 of ${state.accounts.length} shown'), findsOneWidget);
     expect(tester.takeException(), isNull);
     state.dispose();
   });
@@ -158,7 +158,7 @@ void main() {
     await tester.tap(find.text('Clients'));
     await tester.pumpAndSettle();
     expect(find.text('Accounts'), findsNothing);
-    expect(find.text('＋ Invite administrator'), findsNothing);
+    expect(find.text('Invite administrator'), findsNothing);
     expect(find.textContaining('Campus verification'), findsOneWidget);
     state.dispose();
   });

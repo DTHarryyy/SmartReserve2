@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/features/assistant/assistant_nlu.dart';
 
 void main() {
-  // A fixed "now" so date/time resolution is reproducible. Wednesday.
   final now = DateTime(2026, 8, 12, 9, 0);
 
   group('parseMessage — the two example phrases', () {
@@ -24,14 +23,20 @@ void main() {
       expect(p.time, isNull);
     });
 
-    test('"what are the available facilities" asks to browse, not a single slot', () {
-      final p = parseMessage('what are the available facilities', nowWall: now);
-      expect(p.intent, AssistantIntent.findFacilities);
-      expect(p.capacity, isNull);
-      expect(p.date, isNull);
-      expect(p.time, isNull);
-      expect(p.facilityQuery, anyOf(isNull, isEmpty));
-    });
+    test(
+      '"what are the available facilities" asks to browse, not a single slot',
+      () {
+        final p = parseMessage(
+          'what are the available facilities',
+          nowWall: now,
+        );
+        expect(p.intent, AssistantIntent.findFacilities);
+        expect(p.capacity, isNull);
+        expect(p.date, isNull);
+        expect(p.time, isNull);
+        expect(p.facilityQuery, anyOf(isNull, isEmpty));
+      },
+    );
   });
 
   group('parseMessage — availability check', () {
@@ -44,7 +49,10 @@ void main() {
       expect(p.facilityQuery, 'auditorium');
       expect(p.date, isNotNull);
       expect(p.date!.day!.weekday, DateTime.thursday);
-      expect(p.date!.day!.isAfter(DateTime(now.year, now.month, now.day)), isTrue);
+      expect(
+        p.date!.day!.isAfter(DateTime(now.year, now.month, now.day)),
+        isTrue,
+      );
       expect(p.time, isNotNull);
       expect(p.time!.startHour, 14.0);
       expect(p.time!.endHour, 16.0);
@@ -79,10 +87,13 @@ void main() {
       expect(p.intent, AssistantIntent.unknown);
     });
 
-    test('bare "cancel" (no reservation context) is an abort, not a cancel-intent', () {
-      final p = parseMessage('cancel', nowWall: now);
-      expect(p.abort, isTrue);
-    });
+    test(
+      'bare "cancel" (no reservation context) is an abort, not a cancel-intent',
+      () {
+        final p = parseMessage('cancel', nowWall: now);
+        expect(p.abort, isTrue);
+      },
+    );
 
     test('"never mind" aborts', () {
       final p = parseMessage('never mind', nowWall: now);
@@ -254,7 +265,10 @@ void main() {
 
     test('one substitution', () {
       expect(editDistance('tomorrow', 'tomorrow'), 0);
-      expect(editDistance('tmrow', 'tomorrow', maxDistance: 5), lessThanOrEqualTo(3));
+      expect(
+        editDistance('tmrow', 'tomorrow', maxDistance: 5),
+        lessThanOrEqualTo(3),
+      );
     });
 
     test('caps at maxDistance + 1 when the strings are very different', () {
@@ -262,7 +276,10 @@ void main() {
     });
 
     test('arcoin vs aircon is within a length-6 threshold of 2', () {
-      expect(editDistance('arcoin', 'aircon', maxDistance: 3), lessThanOrEqualTo(2));
+      expect(
+        editDistance('arcoin', 'aircon', maxDistance: 3),
+        lessThanOrEqualTo(2),
+      );
     });
   });
 

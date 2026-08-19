@@ -5,32 +5,36 @@ import '../theme/sr_tokens.dart';
 import 'facility_photo.dart';
 
 enum PinConfidence {
-  verified('verified', 'VERIFIED', SR.greenDark),
-  needsCheck('needs check', 'NEEDS CHECK', SR.amber),
-  none('no pin', 'NO PIN', SR.muted);
+  verified('verified', 'VERIFIED', SrTone.success),
+  needsCheck('needs check', 'NEEDS CHECK', SrTone.warning),
+  none('no pin', 'NO PIN', SrTone.neutral);
 
-  const PinConfidence(this.raw, this.label, this.color);
+  const PinConfidence(this.raw, this.label, this.tone);
 
   final String raw;
   final String label;
-  final Color color;
+  final SrTone tone;
+
+  Color get color => tone.ink;
 
   static PinConfidence fromRaw(String raw) =>
       values.firstWhere((p) => p.raw == raw, orElse: () => PinConfidence.none);
 }
 
 enum FacilityState {
-  active('Active', SR.greenTint, SR.greenDark, SR.green),
-  underReview('Under review', SR.blueTint, SR.blueDark, SR.blue),
-  maintenance('Maintenance', SR.amberTint, SR.amber, SR.orange),
-  draft('Draft', SR.dividerSoft, SR.ink4, SR.muted);
+  active('Active', SrTone.success),
+  underReview('Under review', SrTone.info),
+  maintenance('Maintenance', SrTone.warning),
+  draft('Draft', SrTone.neutral);
 
-  const FacilityState(this.label, this.background, this.foreground, this.dot);
+  const FacilityState(this.label, this.tone);
 
   final String label;
-  final Color background;
-  final Color foreground;
-  final Color dot;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
+  Color get dot => tone.solid;
 
   static FacilityState fromLabel(String label) => values.firstWhere(
     (s) => s.label == label,
@@ -128,6 +132,16 @@ class Facility {
 
   int get thumbHue => (name.hashCode.abs() % 360);
 
+  IconData get categoryIcon => switch (category) {
+    'Computer Laboratory' => Icons.computer_rounded,
+    'Science Laboratory' => Icons.science_rounded,
+    'Auditorium' => Icons.theater_comedy_rounded,
+    'Library Space' => Icons.menu_book_rounded,
+    'Gymnasium' => Icons.sports_basketball_rounded,
+    'Conference Room' => Icons.groups_rounded,
+    _ => Icons.apartment_rounded,
+  };
+
   String get whereLine {
     final parts = [
       if (building.isNotEmpty) building,
@@ -152,8 +166,6 @@ class Facility {
     _ => days.split(',').length,
   };
 
-  /// Whether this facility is open on the given weekday, per [days]
-  /// (`"Mon–Sun"`, `"Mon–Sat"`, `"Mon–Fri"`, or a comma list like `"Mon, Wed, Fri"`).
   bool opensOn(DateTime date) {
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final day = names[date.weekday - 1];

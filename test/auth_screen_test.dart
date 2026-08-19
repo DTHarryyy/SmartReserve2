@@ -157,6 +157,23 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('desktop centers the form card vertically in the right pane', (
+      tester,
+    ) async {
+      final state = AppState();
+      final controller = AuthController(state);
+      addTearDown(controller.dispose);
+      await pumpAt(tester, const Size(1440, 900), controller, state);
+
+      final card = find.ancestor(
+        of: find.text('Sign in to SmartReserve'),
+        matching: find.byType(AnimatedSwitcher),
+      );
+      final cardCenter = tester.getCenter(card);
+      expect(cardCenter.dy, closeTo(900 / 2, 24));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('reset flow includes code and password confirmation', (
       tester,
     ) async {

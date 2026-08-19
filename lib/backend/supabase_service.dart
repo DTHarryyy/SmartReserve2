@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/rendering.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -66,7 +67,7 @@ Map<String, dynamic> _accountErrorDetails(dynamic details) {
       final decoded = jsonDecode(details);
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     } on FormatException {
-      // A non-JSON relay or transport response is classified by status below.
+      debugPrint('Failed to decode account error details: $details');
     }
   }
   return const {};
@@ -222,8 +223,6 @@ String _accountRole(Object? value) {
     'user' => 'user',
     'internal_admin' => 'internal_admin',
     'external_admin' => 'external_admin',
-    // Read compatibility for profiles returned while the three-role database
-    // migration is rolling out. These values never regain distinct access.
     'student' || 'faculty' || 'staff' || 'guest' => 'user',
     _ => throw const FormatException(
       'Account response contains an invalid role.',
@@ -231,9 +230,6 @@ String _accountRole(Object? value) {
   };
 }
 
-/// Returned only once when an internal administrator creates a direct account.
-/// The temporary password is intentionally never persisted in the profile or
-/// included in account-administration audit values.
 class BackendCreatedAdministrator {
   const BackendCreatedAdministrator({
     required this.account,
@@ -429,11 +425,6 @@ class BackendReservationEvent {
       );
 }
 
-/// One anonymised busy interval returned by the `facility_busy_windows`
-/// RPC — a facility id and two timestamps, nothing that identifies the
-/// requester or the reservation. Used by the booking assistant to answer
-/// "is this room free?" for students, who cannot read other people's
-/// reservation rows under RLS.
 class BackendBusyWindow {
   const BackendBusyWindow({
     required this.facilityId,
@@ -652,9 +643,6 @@ class AuditQuery {
     bool clearTo = false,
     DateTime? beforeCreatedAt,
     String? beforeId,
-    // Any filter change invalidates a keyset cursor built for the old
-    // filter set — pass true whenever search/actor/type/range/material
-    // changes, so "load more" doesn't resume mid-way through a stale query.
     bool resetPage = false,
   }) => AuditQuery(
     search: search ?? this.search,
@@ -1544,10 +1532,7 @@ class SupabaseService implements SmartReserveBackend {
       if (removed.isNotEmpty) {
         try {
           await _client.storage.from('facility-photos').remove(removed);
-        } catch (_) {
-          // The database no longer exposes these paths. Orphan cleanup can be
-          // retried independently without making a successful save look lost.
-        }
+        } catch (_) {}
       }
       return BackendFacility.fromJson(Map<String, dynamic>.from(row as Map));
     } catch (_) {

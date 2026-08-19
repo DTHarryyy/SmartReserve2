@@ -6,6 +6,7 @@ import '../../app/app_view.dart';
 import '../../model/verification.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import 'auth_controller.dart';
 
 class AuthScreen extends StatelessWidget {
@@ -24,66 +25,79 @@ class AuthScreen extends StatelessWidget {
           final desktop = width >= SR.desktopMin;
           final tablet = width >= SR.tabletMin && !desktop;
           final reduceMotion = MediaQuery.disableAnimationsOf(context);
+          final pad = EdgeInsets.fromLTRB(
+            desktop
+                ? SR.space48
+                : tablet
+                ? SR.space32
+                : SR.space20,
+            desktop ? SR.space40 : SR.space24,
+            desktop
+                ? SR.space48
+                : tablet
+                ? SR.space32
+                : SR.space20,
+            SR.space24 + MediaQuery.viewInsetsOf(context).bottom,
+          );
           final content = SafeArea(
-            child: Scrollbar(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  desktop
-                      ? 48
-                      : tablet
-                      ? 32
-                      : 20,
-                  desktop ? 40 : 20,
-                  desktop
-                      ? 48
-                      : tablet
-                      ? 32
-                      : 20,
-                  24 + MediaQuery.viewInsetsOf(context).bottom,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: tablet ? 660 : 510),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (!desktop) _topBar(),
-                        if (tablet) ...[
+            child: LayoutBuilder(
+              builder: (context, box) => SrScrollView(
+                padding: pad,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (box.maxHeight - pad.vertical).clamp(
+                      0.0,
+                      double.infinity,
+                    ),
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: tablet ? 660 : 510,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (!desktop) _topBar(),
+                          if (tablet) ...[
+                            const SizedBox(height: 18),
+                            const _HeroBanner(),
+                          ],
                           const SizedBox(height: 18),
-                          const _HeroBanner(),
-                        ],
-                        const SizedBox(height: 18),
-                        if (_progressLabels.isNotEmpty) _progress(),
-                        _Card(
-                          framed: width >= SR.tabletMin,
-                          child: AnimatedSwitcher(
-                            duration: reduceMotion
-                                ? Duration.zero
-                                : SR.entrance,
-                            transitionBuilder: (child, animation) =>
-                                FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: Tween(
-                                      begin: const Offset(.025, 0),
-                                      end: Offset.zero,
-                                    ).animate(animation),
-                                    child: child,
+                          if (_progressLabels.isNotEmpty) _progress(),
+                          _Card(
+                            framed: width >= SR.tabletMin,
+                            child: AnimatedSwitcher(
+                              duration: reduceMotion
+                                  ? Duration.zero
+                                  : SR.entrance,
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: Tween(
+                                        begin: const Offset(.025, 0),
+                                        end: Offset.zero,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
                                   ),
-                                ),
-                            child: KeyedSubtree(
-                              key: ValueKey(controller.step),
-                              child: _body(context),
+                              child: KeyedSubtree(
+                                key: ValueKey(controller.step),
+                                child: _body(context),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          'Office of the Registrar · Cagayan State University, Aparri Campus',
-                          textAlign: TextAlign.center,
-                          style: sans(11.5, height: 1.5, color: SR.ink4),
-                        ),
-                      ],
+                          if (!desktop) ...[
+                            const SizedBox(height: 18),
+                            Text(
+                              'Office of the Registrar · Cagayan State University, Aparri Campus',
+                              textAlign: TextAlign.center,
+                              style: sans(11.5, height: 1.5, color: SR.ink4),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -146,7 +160,7 @@ class AuthScreen extends StatelessWidget {
                   duration: const Duration(milliseconds: 250),
                   height: 3,
                   decoration: BoxDecoration(
-                    color: i <= _progressIndex ? SR.blue : SR.border,
+                    color: i <= _progressIndex ? SR.primary : SR.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -830,8 +844,8 @@ class _BrandHeader extends StatelessWidget {
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: SR.blue,
-          borderRadius: BorderRadius.circular(12),
+          color: SR.primary,
+          borderRadius: SR.radius(SR.rMd),
         ),
         child: Text('S', style: sans(17, w: 700, color: SR.surface)),
       ),
@@ -881,7 +895,12 @@ class _HeroBanner extends StatelessWidget {
                 children: [
                   Text(
                     'CSU APARRI',
-                    style: mono(10, w: 500, tracking: .06, color: SR.blueSoft),
+                    style: mono(
+                      10,
+                      w: 500,
+                      tracking: .06,
+                      color: SR.primarySoft,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -915,7 +934,7 @@ class _FacilityMotif extends StatelessWidget {
             child: Icon(
               Icons.location_on_rounded,
               size: 42,
-              color: SR.blueBright,
+              color: SR.primaryBright,
             ),
           ),
           Positioned(
@@ -924,13 +943,13 @@ class _FacilityMotif extends StatelessWidget {
             child: Icon(
               Icons.apartment_rounded,
               size: 82,
-              color: Color(0x42FFFFFF),
+              color: SR.onDarkDim,
             ),
           ),
           Positioned(
             right: 4,
             bottom: 0,
-            child: Container(width: 122, height: 1, color: Color(0x52FFFFFF)),
+            child: Container(width: 122, height: 1, color: SR.onDarkDim),
           ),
         ],
       ),
@@ -960,106 +979,176 @@ class _Pitch extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => DecoratedBox(
     decoration: const BoxDecoration(
       gradient: LinearGradient(
-        colors: [Color(0xFF101418), Color(0xFF14283F)],
+        colors: [Color(0xFF0E1116), Color(0xFF191E3A)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
     ),
-    padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 40),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: SR.blue,
-                borderRadius: BorderRadius.circular(9),
+    child: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final short = SR.isShort(box.maxHeight);
+          final pad = EdgeInsets.symmetric(
+            horizontal: box.maxWidth >= 560 ? SR.space48 : SR.space32,
+            vertical: short ? SR.space24 : SR.space40,
+          );
+          return SrScrollView(
+            padding: pad,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (box.maxHeight - pad.vertical).clamp(
+                  0.0,
+                  double.infinity,
+                ),
               ),
-              child: Text('S', style: sans(14, w: 700, color: SR.surface)),
-            ),
-            const SizedBox(width: 11),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'SmartReserve',
-                  style: sans(15, w: 600, tracking: -.01, color: SR.surface),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: SR.contentWide),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _wordmark(),
+                    _headline(short),
+                    SizedBox(height: short ? SR.space16 : SR.space32),
+                    _pillarsAndFootnote(),
+                  ],
                 ),
-                Text(
-                  'CAGAYAN STATE UNIVERSITY — APARRI',
-                  style: mono(10, color: const Color(0x73FFFFFF)),
-                ),
-              ],
+              ),
             ),
-          ],
+          );
+        },
+      ),
+    ),
+  );
+
+  Widget _wordmark() => Row(
+    children: [
+      Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: SR.primary,
+          borderRadius: SR.radius(SR.rSm),
         ),
-        const SizedBox(height: 44),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 340),
-          child: Text(
+        child: Text('S', style: sans(14, w: 700, color: SR.onDark)),
+      ),
+      const SizedBox(width: SR.space12),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'SmartReserve',
+            style: sans(15, w: 600, tracking: -.01, color: SR.onDark),
+          ),
+          Text(
+            'CAGAYAN STATE UNIVERSITY — APARRI',
+            style: mono(10, color: SR.onDarkFaint),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  Widget _headline(bool short) => Padding(
+    padding: EdgeInsets.symmetric(vertical: short ? SR.space16 : SR.space32),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'Reserve any room on campus, and know exactly where it is.',
             style: sans(
-              30,
+              short ? 24 : 30,
               w: 600,
               height: 1.18,
               tracking: -.03,
-              color: SR.surface,
+              color: SR.onDark,
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 330),
-          child: Text(
-            'Forty-six facilities across the Aparri campus, each pinned to its '
-            'real coordinates.',
-            style: sans(13, height: 1.7, color: const Color(0x8CFFFFFF)),
+          const SizedBox(height: SR.space12),
+          Text(
+            'Forty-six facilities across the Aparri campus, each pinned to '
+            'its real coordinates.',
+            style: sans(13, height: 1.7, color: SR.onDarkMuted),
           ),
-        ),
-        const Spacer(),
-        for (final (number, title, body) in _pillars)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    number,
-                    style: mono(10, w: 500, color: SR.blueBright),
-                  ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _pillarsAndFootnote() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final (number, title, body) in _pillars) ...[
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: SR.space16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  number,
+                  style: mono(10, w: 500, color: SR.primaryBright),
                 ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: sans(12.5, w: 600, color: SR.surface)),
-                      const SizedBox(height: 2),
-                      Text(
-                        body,
-                        style: sans(
-                          11.5,
-                          height: 1.6,
-                          color: const Color(0x7AFFFFFF),
-                        ),
+              ),
+              const SizedBox(width: SR.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: sans(12.5, w: 600, color: SR.onDark),
+                    ),
+                    const SizedBox(height: SR.space2),
+                    Text(
+                      body,
+                      style: sans(
+                        11.5,
+                        height: 1.6,
+                        color: SR.onDarkFaint,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
+            ],
+          ),
+        ),
+        if (number != _pillars.last.$1)
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: SR.onDarkLine)),
             ),
+            child: SizedBox(width: double.infinity),
           ),
       ],
-    ),
+      const SizedBox(height: SR.space24),
+      const DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: SR.onDarkLine)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(top: SR.space16),
+          child: Text(
+            'Office of the Registrar · Cagayan State University, '
+            'Aparri Campus',
+            style: TextStyle(
+              fontFamily: 'IBM Plex Mono',
+              fontSize: 10,
+              color: SR.onDarkDim,
+            ),
+          ),
+        ),
+      ),
+    ],
   );
 }
 
@@ -1071,20 +1160,12 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.all(framed ? 28 : 0),
+    padding: EdgeInsets.all(framed ? SR.space24 : 0),
     decoration: BoxDecoration(
       color: SR.surface,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: SR.radius(SR.rMd),
       border: framed ? Border.all(color: SR.border) : null,
-      boxShadow: framed
-          ? const [
-              BoxShadow(
-                color: Color(0x0F10141A),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ]
-          : null,
+      boxShadow: framed ? SR.cardShadow : null,
     ),
     child: child,
   );

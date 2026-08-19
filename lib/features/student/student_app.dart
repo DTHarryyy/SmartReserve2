@@ -15,22 +15,36 @@ import '../../util/campus_calendar.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/responsive_dialog.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import '../assistant/assistant_chat_page.dart';
 import '../assistant/assistant_controller.dart';
 import 'booking_sheet.dart';
 
 enum StudentTab {
-  browse('Browse', 'Browse', Icons.grid_view_rounded),
-  mine('My reservations', 'Mine', Icons.event_note_rounded),
-  account('Account', 'Account', Icons.person_rounded);
+  browse('Browse', 'Browse', Icons.grid_view_outlined, Icons.grid_view_rounded),
+  mine(
+    'My reservations',
+    'Mine',
+    Icons.event_note_outlined,
+    Icons.event_note_rounded,
+  ),
+  account(
+    'Account',
+    'Account',
+    Icons.person_outline_rounded,
+    Icons.person_rounded,
+  );
 
-  const StudentTab(this.label, this.short, this.icon);
+  const StudentTab(this.label, this.short, this.icon, this.selectedIcon);
 
   final String label;
 
   final String short;
   final IconData icon;
+
+  final IconData selectedIcon;
 }
 
 class StudentApp extends StatefulWidget {
@@ -96,9 +110,24 @@ class _StudentAppState extends State<StudentApp> {
           _header(state, account, narrow),
           Expanded(
             child: switch (_tab) {
-              StudentTab.browse => _scrollable(_browse(state, account), width, narrow),
-              StudentTab.mine => _scrollable(_mine(state), width, narrow),
-              StudentTab.account => _scrollable(_account(state, account), width, narrow),
+              StudentTab.browse => _scrollable(
+                _browse(state, account),
+                width,
+                narrow,
+                key: const ValueKey(StudentTab.browse),
+              ),
+              StudentTab.mine => _scrollable(
+                _mine(state),
+                width,
+                narrow,
+                key: const ValueKey(StudentTab.mine),
+              ),
+              StudentTab.account => _scrollable(
+                _account(state, account),
+                width,
+                narrow,
+                key: const ValueKey(StudentTab.account),
+              ),
             },
           ),
           _BottomNav(
@@ -111,28 +140,25 @@ class _StudentAppState extends State<StudentApp> {
     );
   }
 
-  /// Opens the assistant as its own pushed screen, rather than as a tab
-  /// within this shell — it needs a bare "back + name" app bar and no
-  /// bottom nav, which only a dedicated route (not a tab body) can give it.
-  Future<void> _openAssistant(BuildContext context) => Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => AssistantChatPage(controller: _assistant)),
-  );
-
-  /// Wraps a tab's body in the shared page scroll shell. Kept out of the
-  /// Assistant tab, which needs its own bounded, auto-scrolling thread and
-  /// a bottom-pinned composer instead — see `assistant_tab.dart`.
-  Widget _scrollable(Widget child, double width, bool narrow) => Scrollbar(
-    child: SingleChildScrollView(
-      padding: SR.pageInsets(width, top: narrow ? 14 : 20),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1080),
-          child: child,
+  Future<void> _openAssistant(BuildContext context) =>
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AssistantChatPage(controller: _assistant),
         ),
-      ),
-    ),
-  );
+      );
+
+  Widget _scrollable(Widget child, double width, bool narrow, {Key? key}) =>
+      SrScrollView(
+        key: key,
+        padding: SR.pageInsets(width, top: narrow ? 14 : 20),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: child,
+          ),
+        ),
+      );
 
   Widget _header(AppState state, Account account, bool narrow) => Container(
     padding: EdgeInsets.symmetric(horizontal: narrow ? 14 : 20, vertical: 12),
@@ -324,7 +350,7 @@ class _StudentAppState extends State<StudentApp> {
         else
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns = ((constraints.maxWidth + 12) / 272).floor().clamp(
+              final columns = ((constraints.maxWidth + 12) / 300).floor().clamp(
                 1,
                 3,
               );
@@ -337,7 +363,7 @@ class _StudentAppState extends State<StudentApp> {
                   crossAxisCount: columns,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  mainAxisExtent: 232,
+                  mainAxisExtent: 296,
                 ),
                 itemBuilder: (context, index) => _FacilityCard(
                   facility: visible[index],
@@ -405,9 +431,6 @@ class _StudentAppState extends State<StudentApp> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // A fixed height, not IntrinsicHeight: both FilterSearch and
-            // CompactFilterButton build a LayoutBuilder, which cannot report
-            // intrinsic dimensions and throws during layout.
             SizedBox(
               height: 44,
               child: Row(
@@ -1547,58 +1570,77 @@ class _BottomNav extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Container(
-              height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: SR.surface,
-                borderRadius: BorderRadius.circular(29),
-                border: Border.all(color: SR.border),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x1F10141A),
-                    blurRadius: 20,
-                    offset: Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  for (final tab in _pillTabs)
-                    Expanded(
-                      child: _BottomNavItem(
-                        tab: tab,
-                        selected: tab == selected,
-                        onTap: () => onSelect(tab),
+  Widget build(BuildContext context) {
+    final index = _pillTabs.indexOf(selected);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Container(
+                height: 58,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: SR.surface,
+                  borderRadius: BorderRadius.circular(SR.rFull),
+                  border: Border.all(color: SR.border),
+                  boxShadow: SR.floatShadow,
+                ),
+                child: Stack(
+                  children: [
+                    AnimatedAlign(
+                      duration: SR.stateChange,
+                      curve: SR.easing,
+                      alignment: Alignment(
+                        -1 + index * (2 / (_pillTabs.length - 1)),
+                        0,
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: 1 / _pillTabs.length,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: SR.space6,
+                          ),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: SR.primaryTint,
+                              borderRadius: BorderRadius.circular(SR.rFull),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                ],
+                    Row(
+                      children: [
+                        for (final tab in _pillTabs)
+                          Expanded(
+                            child: _BottomNavItem(
+                              tab: tab,
+                              selected: tab == selected,
+                              onTap: () => onSelect(tab),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          _AssistantButton(
-            key: const Key('student-assistant-tab'),
-            onTap: onOpenAssistant,
-          ),
-        ],
+            const SizedBox(width: 10),
+            _AssistantButton(
+              key: const Key('student-assistant-tab'),
+              onTap: onOpenAssistant,
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-/// Opens the assistant as a pushed screen (see [AssistantChatPage]) rather
-/// than selecting a tab, so it always sits in the same tinted resting
-/// state — there is no "currently selected" state to reflect once it is
-/// its own route.
 class _AssistantButton extends StatelessWidget {
   const _AssistantButton({super.key, required this.onTap});
 
@@ -1618,20 +1660,14 @@ class _AssistantButton extends StatelessWidget {
           height: 58,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: hovered ? SR.blue : SR.blueTint,
+            color: hovered ? SR.primary : SR.primaryTint,
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: hovered ? const Color(0x3B2F6FED) : const Color(0x1F10141A),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            boxShadow: hovered ? SR.popoverShadow : SR.floatShadow,
           ),
           child: Icon(
             Icons.auto_awesome_rounded,
             size: 22,
-            color: hovered ? SR.surface : SR.blue,
+            color: hovered ? SR.surface : SR.primary,
           ),
         ),
       ),
@@ -1639,7 +1675,7 @@ class _AssistantButton extends StatelessWidget {
   );
 }
 
-class _BottomNavItem extends StatelessWidget {
+class _BottomNavItem extends StatefulWidget {
   const _BottomNavItem({
     required this.tab,
     required this.selected,
@@ -1651,22 +1687,51 @@ class _BottomNavItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_BottomNavItem> createState() => _BottomNavItemState();
+}
+
+class _BottomNavItemState extends State<_BottomNavItem> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final color = selected ? SR.blue : SR.ink4;
+    final color = widget.selected ? SR.primaryDeep : SR.ink4;
     return Semantics(
       button: true,
-      selected: selected,
-      label: tab.label,
+      selected: widget.selected,
+      label: widget.tab.label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(tab.icon, size: 21, color: color),
-            const SizedBox(height: 3),
-            Text(tab.short, style: sans(10.5, w: 600, color: color)),
-          ],
+        onTap: widget.onTap,
+        onTapDown: (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        child: AnimatedScale(
+          scale: _pressed ? .92 : 1,
+          duration: SR.stateChange,
+          curve: SR.easing,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                widget.selected ? widget.tab.selectedIcon : widget.tab.icon,
+                size: 21,
+                color: color,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                widget.tab.short,
+                style: SrType.caption(
+                  w: widget.selected ? 700 : 600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1789,87 +1854,170 @@ class _FacilityCard extends StatelessWidget {
   final int quote;
   final VoidCallback onTap;
 
+  String get _factsLine =>
+      '${facility.capacity} seats · ${facility.hours} · ${facility.days}';
+
+  String? get _amenitiesLine {
+    if (facility.amenities.isEmpty) return null;
+    final shown = facility.amenities.take(2).join(' · ');
+    final remaining = facility.amenities.length - 2;
+    return remaining > 0 ? '$shown · +$remaining' : shown;
+  }
+
   @override
-  Widget build(BuildContext context) => Hoverable(
-    builder: (context, hovered) => GestureDetector(
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: facility.name,
+    child: SrCard.bare(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: SR.stateChange,
-        clipBehavior: Clip.antiAlias,
-        transform: Matrix4.translationValues(0, hovered ? -2 : 0, 0),
-        decoration: BoxDecoration(
-          color: SR.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: hovered ? SR.blueSoft : SR.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: 118,
-              child: facility.coverPhoto == null
-                  ? const PlaceholderStripes(
-                      hue: 215,
-                      caption: 'photo pending',
-                      captionSize: 10,
-                    )
-                  : FacilityPhotoImage(photo: facility.coverPhoto!),
+      radius: SR.rMd,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(SR.rMd),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      facility.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: sans(13, w: 600, tracking: -.01),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      facility.building,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: sans(11, color: SR.muted),
-                    ),
-                    const Spacer(),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
+            child: SizedBox(
+              height: 132,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  facility.coverPhoto == null
+                      ? FacilityCoverArt(
+                          hue: facility.thumbHue,
+                          glyph: facility.categoryIcon,
+                        )
+                      : FacilityPhotoImage(photo: facility.coverPhoto!),
+                  Positioned(
+                    left: SR.space8,
+                    bottom: SR.space8,
+                    right: SR.space8,
+                    child: Row(
                       children: [
-                        Expanded(
-                          child: Text(
-                            facility.category,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: sans(11, color: SR.ink3),
+                        Flexible(child: _CoverChip(label: facility.category)),
+                        if (facility.state != FacilityState.active) ...[
+                          const SizedBox(width: SR.space6),
+                          _CoverChip(
+                            label: facility.state.label,
+                            dot: facility.state.tone.solid,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${facility.capacity} seats',
-                          style: mono(10.5, color: SR.muted),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          free ? 'Free' : '₱$quote / 2 h',
-                          style: sans(
-                            11.5,
-                            w: 600,
-                            color: free ? SR.greenDark : SR.ink,
-                          ),
-                        ),
+                        ],
                       ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SR.space16,
+              SR.space12,
+              SR.space16,
+              SR.space12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  facility.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SrType.subhead(),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  facility.whereLine,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SrType.caption(color: SR.muted),
+                ),
+                const SizedBox(height: SR.space8),
+                Text(
+                  _factsLine,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SrType.bodySm(w: 500, color: SR.ink3),
+                ),
+                if (_amenitiesLine case final amenitiesLine?) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    amenitiesLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SrType.caption(),
+                  ),
+                ],
+                const SizedBox(height: SR.space12),
+                const Divider(height: 1, color: SR.hairline),
+                const SizedBox(height: SR.space8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: SrStatusChip(
+                        label: facility.approvalRequired
+                            ? 'Approval required'
+                            : 'Books instantly',
+                        tone: facility.approvalRequired
+                            ? SrTone.warning
+                            : SrTone.success,
+                        dense: true,
+                      ),
+                    ),
+                    const SizedBox(width: SR.space8),
+                    Text(
+                      free ? 'Free' : '₱$quote / 2 h',
+                      style: SrType.subhead(
+                        color: free ? SR.greenDark : SR.ink,
+                      ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    ),
+  );
+}
+
+class _CoverChip extends StatelessWidget {
+  const _CoverChip({required this.label, this.dot});
+
+  final String label;
+  final Color? dot;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: SR.space8, vertical: 4),
+    decoration: BoxDecoration(
+      color: SR.glass,
+      borderRadius: BorderRadius.circular(SR.rFull),
+      border: Border.all(color: SR.glassLine2),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (dot case final dot?) ...[
+          Container(
+            width: SR.space6,
+            height: SR.space6,
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: SR.space6),
+        ],
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: SrType.caption(w: 600, color: SR.ink2),
+          ),
+        ),
+      ],
     ),
   );
 }

@@ -1,24 +1,9 @@
-/// Pure availability math for the student booking assistant: given a
-/// facility's rules (open hours/days, buffer, max duration, advance window)
-/// and a list of busy windows for one day, work out what is still free and
-/// whether a specific slot would actually be accepted by the server.
-///
-/// Deliberately not a generalisation of
-/// `ReservationAssessment.nextFreeSlot` (`lib/features/reservations/
-/// reservation_checks.dart`) — that helper is single-day, string-hour based,
-/// takes a `ReservationRequest`, and ignores buffer/max-duration/advance
-/// rules, so reusing it here would mean bolting all of that onto the admin
-/// decision panel. This is a fresh, narrow module instead.
 library;
 
 import 'dart:math' as math;
 
 import '../../model/facility.dart';
 
-/// A busy interval on one calendar day, in campus wall-clock hours
-/// (e.g. 9.5 == 09:30). Carries no identity — see
-/// `supabase/migrations/20260814120000_facility_busy_windows.sql` for why:
-/// the assistant only ever needs to know a window is occupied, not by whom.
 class BusyWindow {
   const BusyWindow(this.startHour, this.endHour);
   final double startHour;
@@ -35,7 +20,8 @@ class FreeSlot {
   final double startHour;
   final double endHour;
 
-  String get label => '${formatClockHour(startHour)}–${formatClockHour(endHour)}';
+  String get label =>
+      '${formatClockHour(startHour)}–${formatClockHour(endHour)}';
 }
 
 enum SlotIssue {
@@ -56,8 +42,6 @@ class SlotVerdict {
   bool get ok => issues.isEmpty;
 }
 
-/// `'yyyy-mm-dd'` — the shared key shape for busy-window maps, so
-/// `AppState`, the controller, and tests all bucket the same way.
 String dayKey(DateTime day) =>
     '${day.year.toString().padLeft(4, '0')}-'
     '${day.month.toString().padLeft(2, '0')}-'
@@ -74,12 +58,6 @@ bool _isSameDay(DateTime a, DateTime b) =>
 
 double _ceilToStep(double hour, double step) => (hour / step).ceil() * step;
 
-/// The exclusion constraint `reservation_occurrences_no_overlap` compares
-/// `blocked_window && blocked_window`, where each window is padded by the
-/// facility's buffer on both sides: `(cs-b, ce+b) ∩ (bs-b, be+b) ≠ ∅` ⟺
-/// `cs < be+2b && bs-2b < ce`. That is exactly a raw-candidate overlap test
-/// against a busy window inflated by `2 × buffer` on both sides — so that is
-/// what this does, to stay provably identical to what the server will do.
 List<BusyWindow> _inflate(List<BusyWindow> busy, int bufferMinutes) {
   final bufferHours = (2 * bufferMinutes) / 60;
   return [
@@ -88,9 +66,6 @@ List<BusyWindow> _inflate(List<BusyWindow> busy, int bufferMinutes) {
   ];
 }
 
-/// Free `durationHours`-long slots on [day], snapped to a 30-minute grid
-/// (matching `booking_sheet._times`), honouring open hours/days, buffer, and
-/// (when [nowWall] falls on the same day) not offering a slot in the past.
 List<FreeSlot> freeSlotsForDay({
   required Facility facility,
   required DateTime day,
@@ -125,10 +100,6 @@ List<FreeSlot> freeSlotsForDay({
   return slots;
 }
 
-/// Every reason [startHour, endHour) on [day] for [heads] people would be
-/// rejected — client-side, so the assistant can say why *before* submitting
-/// and pre-empt the matching server error (durations/windows), while
-/// [SlotIssue.clash] pre-empts the server's exclusion-constraint race.
 SlotVerdict checkSlot({
   required Facility facility,
   required DateTime day,
@@ -185,10 +156,6 @@ SlotVerdict checkSlot({
   return SlotVerdict(issues);
 }
 
-/// The next day (starting from [from], inclusive) [facility] is open and
-/// has room for a [duration]-hour slot, consulting [byDay] (keyed by
-/// [dayKey]) for that day's busy windows. Returns null if nothing turns up
-/// within [lookahead] days.
 DateTime? nextOpenDayWithSpace(
   Facility facility,
   DateTime from,

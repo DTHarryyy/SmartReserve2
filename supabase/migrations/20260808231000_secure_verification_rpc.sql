@@ -1,6 +1,3 @@
--- Let signed-in internal administrators decide verification submissions without
--- depending on the decide-verification Edge Function. The authenticated actor
--- is derived server-side so callers cannot impersonate another administrator.
 create or replace function public.decide_verification(
   p_submission_id uuid,
   p_decision text,

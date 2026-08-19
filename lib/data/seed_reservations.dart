@@ -178,8 +178,8 @@ List<ReservationRequest> seedRequests() => [
   ),
 ];
 
-const seedBookings = <Booking>[
-  Booking(
+List<Booking> seedBookings() => [
+  Booking.fromLabels(
     id: 'b1',
     facility: 'Computer Laboratory 1',
     date: 'Tue 28 Jul',
@@ -188,7 +188,7 @@ const seedBookings = <Booking>[
     label: 'IT 3A — Networking lab',
     requester: 'Prof. Bautista',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b2',
     facility: 'Computer Laboratory 1',
     date: 'Tue 28 Jul',
@@ -197,7 +197,7 @@ const seedBookings = <Booking>[
     label: 'BSCS 2B — Data structures',
     requester: 'Prof. Lorenzo',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b3',
     facility: 'University Auditorium',
     date: 'Tue 28 Jul',
@@ -206,7 +206,7 @@ const seedBookings = <Booking>[
     label: 'Nursing orientation',
     requester: 'Dean Villamor',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b4',
     facility: 'Reading Hall B',
     date: 'Tue 28 Jul',
@@ -215,7 +215,7 @@ const seedBookings = <Booking>[
     label: 'Thesis writing clinic',
     requester: 'Ms. Dela Cruz',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b5',
     facility: 'Main Court',
     date: 'Tue 28 Jul',
@@ -226,8 +226,8 @@ const seedBookings = <Booking>[
   ),
 ];
 
-const seriesDemoBookings = <Booking>[
-  Booking(
+List<Booking> seriesDemoBookings() => [
+  Booking.fromLabels(
     id: 'b6',
     facility: 'Reading Hall B',
     date: 'Tue 11 Aug',
@@ -236,7 +236,7 @@ const seriesDemoBookings = <Booking>[
     label: 'Faculty grading session',
     requester: 'Prof. Sarmiento',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b7',
     facility: 'Reading Hall B',
     date: 'Tue 25 Aug',

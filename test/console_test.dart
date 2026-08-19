@@ -48,7 +48,7 @@ void main() {
     });
 
     test('a booking that ends when the request starts does not clash', () {
-      const booking = Booking(
+      final booking = Booking.fromLabels(
         id: 'x',
         facility: 'Computer Laboratory 1',
         date: 'Tue 28 Jul',
@@ -131,17 +131,63 @@ void main() {
       expect(state.audit.length, before + 2);
     });
 
-    test('bumping removes the competing booking and records both', () {
-      final state = AppState();
-      final bookings = state.bookings.length;
-      state.bumpFor('r1', 'The competition is the higher priority.');
-      expect(state.bookings.length, lessThan(bookings));
-      expect(
-        state.requests.firstWhere((r) => r.id == 'r1').status,
-        RequestStatus.approved,
-      );
-      expect(state.audit.first.reason, contains('higher priority'));
-    });
+    test(
+      'bumping removes the competing booking and books the requester instead',
+      () {
+        final state = AppState();
+        state.bumpFor('r1', 'The competition is the higher priority.');
+
+        expect(
+          state.bookings.any((b) => b.label.contains('IT 3A')),
+          isFalse,
+          reason: 'the bumped booking is gone',
+        );
+        expect(
+          state.bookings.any((b) => b.sourceRequestId == 'r1'),
+          isTrue,
+          reason: 'the approved request now holds the slot it asked for',
+        );
+        expect(
+          state.requests.firstWhere((r) => r.id == 'r1').status,
+          RequestStatus.approved,
+        );
+        expect(state.audit.first.reason, contains('higher priority'));
+
+        final assessment = assess(state, 'r1');
+        expect(assessment.hasConflict, isFalse);
+      },
+    );
+
+    test(
+      'approving in demo mode books exactly one hold; undo and decline release it',
+      () {
+        final state = AppState();
+        expect(state.bookings.any((b) => b.sourceRequestId == 'r6'), isFalse);
+
+        state.decideRequest('r6', RequestStatus.approved);
+        expect(
+          state.bookings.where((b) => b.sourceRequestId == 'r6').length,
+          1,
+        );
+        expect(assess(state, 'r6').hasConflict, isFalse);
+
+        state.takeUndo();
+        expect(state.bookings.any((b) => b.sourceRequestId == 'r6'), isFalse);
+        expect(
+          state.requests.firstWhere((r) => r.id == 'r6').status,
+          RequestStatus.pending,
+        );
+
+        state.decideRequest('r6', RequestStatus.approved, announce: false);
+        expect(
+          state.bookings.where((b) => b.sourceRequestId == 'r6').length,
+          1,
+        );
+
+        state.decideRequest('r6', RequestStatus.declined, announce: false);
+        expect(state.bookings.any((b) => b.sourceRequestId == 'r6'), isFalse);
+      },
+    );
 
     test('a revert appends rather than erasing', () {
       final state = AppState();

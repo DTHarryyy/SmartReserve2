@@ -12,13 +12,17 @@ DateTime _nextWeekday(DateTime from, int targetWeekday) {
 
 void main() {
   final state = AppState();
-  final lab = state.facilityNamed('Computer Laboratory 1')!; // 07:00–19:00, Mon–Fri, cap 40
-  final auditorium = state.facilityNamed('University Auditorium')!; // 07:00–21:00, Mon–Sun
+  final lab = state.facilityNamed('Computer Laboratory 1')!;
+  final auditorium = state.facilityNamed('University Auditorium')!;
 
-  // A Monday far enough in the future to stay within every facility's
-  // 30-day advance window relative to the fixed `now` used below.
   final anchorMonday = _nextWeekday(DateTime(2026, 8, 10), DateTime.monday);
-  final now = DateTime(anchorMonday.year, anchorMonday.month, anchorMonday.day, 6, 0);
+  final now = DateTime(
+    anchorMonday.year,
+    anchorMonday.month,
+    anchorMonday.day,
+    6,
+    0,
+  );
 
   group('freeSlotsForDay', () {
     test('no busy windows -> the full grid within open hours', () {
@@ -38,26 +42,21 @@ void main() {
 
     test('a busy window is inflated by 2x the buffer on both sides', () {
       final slots = freeSlotsForDay(
-        facility: lab, // bookingBufferMinutes defaults to 15
+        facility: lab,
         day: anchorMonday,
         busy: const [BusyWindow(9, 11)],
         durationHours: 1,
         limit: 20,
       );
-      // Raw 09:00-11:00 would leave 08:00-09:00 free with no buffer, but the
-      // 2x15=30min buffer on each side (08:30-11:30) rules it out.
       expect(slots.any((s) => s.startHour == 8.0), isFalse);
-      // Everything inside the buffered window is excluded...
       expect(slots.any((s) => s.startHour == 11.0), isFalse);
-      // ...and the boundary touch at exactly 11:30 is free again (half-open,
-      // matching the server's `[)` range semantics).
       expect(slots.any((s) => s.startHour == 11.5), isTrue);
     });
 
     test('closed weekday returns nothing', () {
       final saturday = _nextWeekday(anchorMonday, DateTime.saturday);
       final slots = freeSlotsForDay(
-        facility: lab, // Mon-Fri only
+        facility: lab,
         day: saturday,
         busy: const [],
         durationHours: 1,
@@ -66,8 +65,18 @@ void main() {
     });
 
     test('today at 14:20 offers nothing before 14:30', () {
-      final today = DateTime(anchorMonday.year, anchorMonday.month, anchorMonday.day);
-      final nowMidAfternoon = DateTime(today.year, today.month, today.day, 14, 20);
+      final today = DateTime(
+        anchorMonday.year,
+        anchorMonday.month,
+        anchorMonday.day,
+      );
+      final nowMidAfternoon = DateTime(
+        today.year,
+        today.month,
+        today.day,
+        14,
+        20,
+      );
       final slots = freeSlotsForDay(
         facility: lab,
         day: today,
@@ -97,10 +106,10 @@ void main() {
 
     test('too long flags tooLong', () {
       final verdict = checkSlot(
-        facility: lab, // maxDurationMinutes defaults to 240 (4h)
+        facility: lab,
         day: anchorMonday,
         startHour: 9,
-        endHour: 14, // 5h
+        endHour: 14,
         heads: 20,
         busy: const [],
         nowWall: now,
@@ -111,7 +120,7 @@ void main() {
     test('beyond the advance window flags beyondAdvance', () {
       final farFuture = anchorMonday.add(const Duration(days: 90));
       final verdict = checkSlot(
-        facility: lab, // advanceBookingDays defaults to 30
+        facility: lab,
         day: farFuture,
         startHour: 9,
         endHour: 11,
@@ -124,7 +133,7 @@ void main() {
 
     test('over capacity flags overCapacity', () {
       final verdict = checkSlot(
-        facility: lab, // capacity 40
+        facility: lab,
         day: anchorMonday,
         startHour: 9,
         endHour: 11,
@@ -151,7 +160,7 @@ void main() {
 
     test('outside open hours flags outsideHours', () {
       final verdict = checkSlot(
-        facility: lab, // closes at 19:00
+        facility: lab,
         day: anchorMonday,
         startHour: 18,
         endHour: 20,
@@ -165,7 +174,7 @@ void main() {
     test('closed that weekday flags closedDay', () {
       final saturday = _nextWeekday(anchorMonday, DateTime.saturday);
       final verdict = checkSlot(
-        facility: lab, // Mon-Fri only
+        facility: lab,
         day: saturday,
         startHour: 9,
         endHour: 11,

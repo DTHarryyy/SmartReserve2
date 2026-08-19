@@ -1,9 +1,3 @@
-/// The Assistant tab body: a message thread over a bottom-pinned composer.
-///
-/// Lives outside the student app's shared `SingleChildScrollView` (see
-/// `student_app.dart`'s `_scrollable` helper) because a chat thread needs
-/// its own bounded, auto-scrolling `ListView` and a composer that stays
-/// pinned to the bottom — neither works nested inside an outer scroll view.
 library;
 
 import 'package:flutter/material.dart';
@@ -83,7 +77,12 @@ class _AssistantTabState extends State<AssistantTab> {
                 constraints: const BoxConstraints(maxWidth: 720),
                 child: ListView.builder(
                   controller: _scroll,
-                  padding: EdgeInsets.fromLTRB(narrow ? 14 : 20, 16, narrow ? 14 : 20, 10),
+                  padding: EdgeInsets.fromLTRB(
+                    narrow ? 14 : 20,
+                    16,
+                    narrow ? 14 : 20,
+                    10,
+                  ),
                   itemCount: controller.messages.length,
                   itemBuilder: (context, index) {
                     final message = controller.messages[index];
@@ -142,8 +141,6 @@ class _AssistantTabState extends State<AssistantTab> {
     ),
   );
 
-  // A static bubble — never a repeating AnimationController, which would
-  // keep `pumpAndSettle` spinning forever in widget tests.
   Widget _typingIndicator(bool narrow) => Center(
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 720),
@@ -201,7 +198,12 @@ class _AssistantTabState extends State<AssistantTab> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(narrow ? 12 : 20, 10, narrow ? 12 : 20, 10),
+            padding: EdgeInsets.fromLTRB(
+              narrow ? 12 : 20,
+              10,
+              narrow ? 12 : 20,
+              10,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -215,7 +217,10 @@ class _AssistantTabState extends State<AssistantTab> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _SendButton(enabled: canSend, onPressed: canSend ? _send : null),
+                _SendButton(
+                  enabled: canSend,
+                  onPressed: canSend ? _send : null,
+                ),
               ],
             ),
           ),
@@ -225,9 +230,6 @@ class _AssistantTabState extends State<AssistantTab> {
   }
 }
 
-/// A rounded, iMessage-style composer field — a pill instead of the app's
-/// usual boxy [SrTextField], since this page is a dedicated full-screen
-/// chat rather than a form embedded in a denser layout.
 class _ComposerField extends StatefulWidget {
   const _ComposerField({
     required this.controller,
@@ -303,8 +305,6 @@ class _ComposerFieldState extends State<_ComposerField> {
   );
 }
 
-/// A filled circular send button, closer to iOS Messages than the app's
-/// square [SrIconButton].
 class _SendButton extends StatelessWidget {
   const _SendButton({required this.enabled, required this.onPressed});
 
@@ -328,7 +328,9 @@ class _SendButton extends StatelessWidget {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: enabled ? (hovered ? SR.blueDark : SR.blue) : SR.dividerSoft,
+              color: enabled
+                  ? (hovered ? SR.blueDark : SR.blue)
+                  : SR.dividerSoft,
               shape: BoxShape.circle,
             ),
             child: Icon(

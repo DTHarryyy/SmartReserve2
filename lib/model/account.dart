@@ -3,22 +3,19 @@ import 'package:flutter/material.dart';
 import '../theme/sr_tokens.dart';
 
 enum VerificationState {
-  verified('verified', 'Verified', SR.greenTint, SR.greenDark),
-  pending('pending', 'Awaiting review', SR.amberTint, SR.amber),
-  rejected('rejected', 'Not verified', SR.redTint, SR.red),
-  none('none', 'Guest', SR.dividerSoft, SR.ink4);
+  verified('verified', 'Verified', SrTone.success),
+  pending('pending', 'Awaiting review', SrTone.warning),
+  rejected('rejected', 'Not verified', SrTone.error),
+  none('none', 'Guest', SrTone.neutral);
 
-  const VerificationState(
-    this.raw,
-    this.label,
-    this.background,
-    this.foreground,
-  );
+  const VerificationState(this.raw, this.label, this.tone);
 
   final String raw;
   final String label;
-  final Color background;
-  final Color foreground;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
 
   static VerificationState fromRaw(String raw) => values.firstWhere(
     (v) => v.raw == raw,
@@ -27,16 +24,18 @@ enum VerificationState {
 }
 
 enum AccountStatus {
-  active('active', 'Active', SR.greenTint, SR.greenDark),
-  suspended('suspended', 'Suspended', SR.redTint, SR.red),
-  invited('invited', 'Invited', SR.amberTint, SR.amber);
+  active('active', 'Active', SrTone.success),
+  suspended('suspended', 'Suspended', SrTone.error),
+  invited('invited', 'Invited', SrTone.warning);
 
-  const AccountStatus(this.raw, this.label, this.background, this.foreground);
+  const AccountStatus(this.raw, this.label, this.tone);
 
   final String raw;
   final String label;
-  final Color background;
-  final Color foreground;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
 
   static AccountStatus fromRaw(String raw) => values.firstWhere(
     (s) => s.raw == raw,

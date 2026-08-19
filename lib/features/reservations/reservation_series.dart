@@ -1,5 +1,6 @@
 import '../../model/reservation.dart';
 import '../../util/campus_calendar.dart';
+import 'conflict_engine.dart';
 
 class SeriesOccurrence {
   const SeriesOccurrence({
@@ -38,7 +39,7 @@ class ReservationSeries {
 
   bool get applies => request.recurring != null && start != null;
 
-  DateTime? get start => parseCampusDate(request.date);
+  DateTime? get start => request.slotDay;
 
   List<SeriesOccurrence> get occurrences {
     final from = start;
@@ -54,34 +55,23 @@ class ReservationSeries {
     return SeriesOccurrence(
       date: date,
       label: label,
-      clash: _clashOn(label),
+      clash: _clashOn(date),
       excepted: request.seriesExceptions.contains(label),
     );
   }
 
-  String? _clashOn(String date) {
-    for (final b in bookings) {
-      if (b.facility != request.facility ||
-          b.date != date ||
-          b.sourceRequestId == request.id) {
-        continue;
-      }
-      if (b.overlaps(request.startAt, request.endAt)) {
-        return '${b.label} holds ${b.start}–${b.end}.';
-      }
-    }
-    for (final r in otherRequests) {
-      if (r.id == request.id ||
-          r.status != RequestStatus.approved ||
-          r.facility != request.facility ||
-          r.date != date) {
-        continue;
-      }
-      if (r.startAt < request.endAt && request.startAt < r.endAt) {
-        return '${r.requester} is approved for ${r.start}–${r.end}.';
-      }
-    }
-    return null;
+  String? _clashOn(DateTime date) {
+    final holds = holdsAgainst(
+      request: request,
+      bookings: bookings,
+      otherRequests: otherRequests,
+      onDay: date,
+    );
+    if (holds.isEmpty) return null;
+    final hold = holds.first;
+    return hold.sourceRequestId != null
+        ? '${hold.requester} is approved for ${hold.start}–${hold.end}.'
+        : hold.note;
   }
 
   List<SeriesOccurrence> get free => [

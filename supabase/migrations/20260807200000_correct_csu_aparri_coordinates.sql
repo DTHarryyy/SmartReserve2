@@ -1,5 +1,3 @@
--- Move the deterministic imported facilities from the old west-of-campus
--- placeholder coordinates to the actual CSU Aparri grounds in Maura.
 update public.facilities as facility
 set latitude = corrected.latitude,
     longitude = corrected.longitude,

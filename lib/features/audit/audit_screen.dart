@@ -11,10 +11,11 @@ import '../../model/audit_change.dart';
 import '../../model/audit_entry.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
-import '../../widgets/decision_widgets.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 
 const _kinds = ['All records', 'FACILITY', 'RESERVATION', 'ACCOUNT', 'SYSTEM'];
 
@@ -44,10 +45,8 @@ enum _AuditRange {
     _AuditRange.all => null,
   };
 
-  static _AuditRange fromLabel(String label) => values.firstWhere(
-    (r) => r.label == label,
-    orElse: () => _AuditRange.all,
-  );
+  static _AuditRange fromLabel(String label) =>
+      values.firstWhere((r) => r.label == label, orElse: () => _AuditRange.all);
 }
 
 class AuditScreen extends StatefulWidget {
@@ -73,10 +72,6 @@ class _AuditScreenState extends State<AuditScreen> {
     super.dispose();
   }
 
-  // Only applied to the demo/local list. Backend rows arrive already
-  // filtered by the server — re-filtering them here would make the visible
-  // count disagree with `auditTotal` and let "Load more" append rows this
-  // filter then hides.
   List<AuditEntry> _visible(List<AuditEntry> entries) {
     final q = _query.trim().toLowerCase();
     return [
@@ -116,82 +111,80 @@ class _AuditScreenState extends State<AuditScreen> {
       for (final e in source) e.actor,
     };
 
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1180),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (SR.isCompact(width))
-                  _compactFilters(state, actors.toList(), rows.length, total)
-                else
-                  _desktopToolbar(state, actors.toList(), rows.length, total),
+    return SrScrollView(
+      padding: SR.pageInsets(width, top: stacked ? 14 : 20),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (SR.isCompact(width))
+                _compactFilters(state, actors.toList(), rows.length, total)
+              else
+                _desktopToolbar(state, actors.toList(), rows.length, total),
 
-                if (state.auditLoading && rows.isNotEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: LinearProgressIndicator(),
-                  ),
-                if (state.auditError case final error?)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(error, style: sans(11.5, color: SR.red)),
-                  ),
-
-                RecordTable(
-                  columns: _columns,
-                  children: state.auditLoading && rows.isEmpty
-                      ? [
-                          for (final leadWidth in const [.6, .45, .7, .5, .55])
-                            SkeletonRow(columns: _columns, leadWidth: leadWidth),
-                        ]
-                      : rows.isEmpty
-                      ? [
-                          ListEmptyState(
-                            glyph: '∅',
-                            title: 'No entries match',
-                            body:
-                                'Clear a filter, or turn off "material '
-                                'changes only".',
-                            action: _hasActiveFilter
-                                ? SrButton(
-                                    label: 'Clear filters',
-                                    onPressed: () => _clearAll(state),
-                                  )
-                                : null,
-                          ),
-                        ]
-                      : [
-                          for (final entry in rows)
-                            _AuditRow(
-                              key: ValueKey(entry.id),
-                              entry: entry,
-                              expanded: _expanded.contains(entry.id),
-                              onToggle: () => _toggle(entry.id),
-                              onRevert: () => state.revertAudit(entry),
-                            ),
-                        ],
+              if (state.auditLoading && rows.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: LinearProgressIndicator(),
+                ),
+              if (state.auditError case final error?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: SR.space8 + 2),
+                  child: Text(error, style: SrType.bodySm(color: SR.red)),
                 ),
 
-                if (state.backend != null && rows.length < state.auditTotal)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: SrButton(
-                      label: state.auditLoadingMore ? 'Loading…' : 'Load more',
-                      onPressed: state.auditLoadingMore
-                          ? null
-                          : state.loadMoreAudit,
-                    ),
-                  ),
+              RecordTable(
+                columns: _columns,
+                children: state.auditLoading && rows.isEmpty
+                    ? [
+                        for (final leadWidth in const [.6, .45, .7, .5, .55])
+                          SkeletonRow(columns: _columns, leadWidth: leadWidth),
+                      ]
+                    : rows.isEmpty
+                    ? [
+                        ListEmptyState(
+                          icon: Icons.filter_alt_off_rounded,
+                          title: 'No entries match',
+                          body:
+                              'Clear a filter, or turn off "material '
+                              'changes only".',
+                          action: _hasActiveFilter
+                              ? SrButton(
+                                  label: 'Clear filters',
+                                  onPressed: () => _clearAll(state),
+                                )
+                              : null,
+                        ),
+                      ]
+                    : [
+                        for (final entry in rows)
+                          _AuditRow(
+                            key: ValueKey(entry.id),
+                            entry: entry,
+                            expanded: _expanded.contains(entry.id),
+                            onToggle: () => _toggle(entry.id),
+                            onRevert: () => state.revertAudit(entry),
+                          ),
+                      ],
+              ),
 
-                const SizedBox(height: 12),
-                _retentionDisclosure(),
-              ],
-            ),
+              if (state.backend != null && rows.length < state.auditTotal)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: SrButton(
+                    label: state.auditLoadingMore ? 'Loading…' : 'Load more',
+                    onPressed: state.auditLoadingMore
+                        ? null
+                        : state.loadMoreAudit,
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+              _retentionDisclosure(),
+            ],
           ),
         ),
       ),
@@ -204,11 +197,14 @@ class _AuditScreenState extends State<AuditScreen> {
     int visible,
     int total,
   ) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    margin: const EdgeInsets.only(bottom: SR.space16),
+    padding: const EdgeInsets.symmetric(
+      horizontal: SR.space16,
+      vertical: SR.space12,
+    ),
     decoration: BoxDecoration(
       color: SR.surface,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(SR.rMd),
       border: Border.all(color: SR.border),
     ),
     child: Column(
@@ -224,23 +220,34 @@ class _AuditScreenState extends State<AuditScreen> {
                 onChanged: (v) {
                   setState(() => _query = v);
                   state.refreshAudit(
-                    query: state.auditQuery.copyWith(search: v, resetPage: true),
+                    query: state.auditQuery.copyWith(
+                      search: v,
+                      resetPage: true,
+                    ),
                   );
                 },
               ),
             ),
-            const SizedBox(width: 10),
-            SrButton(label: 'Export CSV', onPressed: () => _export(state)),
+            const SizedBox(width: SR.space8 + 2),
+            SrButton(
+              label: 'Export CSV',
+              icon: const Icon(
+                Icons.file_download_outlined,
+                size: SR.iconSm,
+                color: SR.ink3,
+              ),
+              onPressed: () => _export(state),
+            ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: SR.space8 + 2),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             for (final k in _kinds)
-              _TypeChip(
+              FilterPill(
                 label: k == 'All records' ? 'All' : _titleCase(k),
                 selected: _kind == k,
                 onTap: () => _applyKind(state, k),
@@ -536,46 +543,6 @@ class _AuditScreenState extends State<AuditScreen> {
 String _titleCase(String value) =>
     value.isEmpty ? value : value[0] + value.substring(1).toLowerCase();
 
-class _TypeChip extends StatelessWidget {
-  const _TypeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: selected,
-    child: Hoverable(
-      builder: (context, hovered) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: SR.stateChange,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? SR.ink : SR.surface,
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(
-              color: selected ? SR.ink : (hovered ? SR.borderHover : SR.border),
-            ),
-          ),
-          child: Text(
-            label,
-            style: sans(12, w: 500, color: selected ? SR.surface : SR.ink3),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-// -- Identity -----------------------------------------------------------
-
 Widget _avatar(AuditEntry entry) => entry.isSystemActor
     ? Container(
         width: 30,
@@ -591,18 +558,15 @@ Widget _avatar(AuditEntry entry) => entry.isSystemActor
           color: SR.ink4,
         ),
       )
-    : Initials(text: entry.initials, size: 30, fontSize: 10);
+    : SrAvatar(initials: entry.initials, size: 30, tone: SrTone.neutral);
 
-String _roleLabel(AuditEntry entry) => entry.actorRoleValue?.label ?? entry.actorRole;
+String _roleLabel(AuditEntry entry) =>
+    entry.actorRoleValue?.label ?? entry.actorRole;
 
-String _identityName(AuditEntry entry) =>
-    entry.isSystemActor ? 'System' : (entry.actor.isEmpty ? 'Unknown' : entry.actor);
+String _identityName(AuditEntry entry) => entry.isSystemActor
+    ? 'System'
+    : (entry.actor.isEmpty ? 'Unknown' : entry.actor);
 
-// Role and email as one plain-text line rather than a badge next to the
-// name: a fixed-width role chip can be wider than the whole PERSON column
-// once the table squeezes it down at medium viewport widths (~90px), which
-// overflows a Row no matter how its Flexible/Expanded children are set up.
-// Text always shrinks to its given width via ellipsis, so this can't.
 String _identitySubtitle(AuditEntry entry) {
   if (entry.isSystemActor) return 'Automatic';
   final role = _roleLabel(entry);
@@ -648,8 +612,6 @@ String _clockOnly(DateTime value) {
   String two(int v) => v.toString().padLeft(2, '0');
   return '${two(value.hour)}:${two(value.minute)}';
 }
-
-// -- Row ------------------------------------------------------------------
 
 class _AuditRow extends StatefulWidget {
   const _AuditRow({
@@ -702,7 +664,7 @@ class _AuditRowState extends State<_AuditRow> {
                   color: hovered ? SR.surfaceSubtle : SR.surface,
                   borderRadius: compact ? BorderRadius.circular(12) : null,
                   border: compact
-                      ? Border.all(color: hovered ? SR.blueSoft : SR.border)
+                      ? Border.all(color: hovered ? SR.primarySoft : SR.border)
                       : null,
                 ),
                 child: Row(
@@ -769,12 +731,10 @@ class _AuditRowState extends State<_AuditRow> {
                                     color: SR.ink2,
                                   ),
                                 ),
-                                SrPill(
+                                SrStatusChip(
                                   label: entry.kind.label,
-                                  background: entry.kind.background,
-                                  foreground: entry.kind.foreground,
-                                  monospace: true,
-                                  fontSize: 8.5,
+                                  tone: entry.kind.tone,
+                                  dense: true,
                                 ),
                                 Icon(
                                   widget.expanded
@@ -889,7 +849,12 @@ class _AuditRowState extends State<_AuditRow> {
           if (entry.revertable) ...[
             const SizedBox(height: 10),
             SrButton(
-              label: '↺ Revert this change',
+              label: 'Revert this change',
+              icon: const Icon(
+                Icons.undo_rounded,
+                size: SR.iconSm,
+                color: SR.ink3,
+              ),
               dense: true,
               fontSize: 11,
               onPressed: widget.onRevert,
@@ -968,7 +933,9 @@ class _AuditRowState extends State<_AuditRow> {
         builder: (context, hovered) => GestureDetector(
           onTap: () => setState(() => _showTechnical = !_showTechnical),
           child: Text(
-            _showTechnical ? 'Hide technical details' : 'Show technical details',
+            _showTechnical
+                ? 'Hide technical details'
+                : 'Show technical details',
             style: sans(
               10.5,
               w: 500,

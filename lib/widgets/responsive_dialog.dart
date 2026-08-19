@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 
-/// Shared dialog surface that becomes a safe, full-screen page on phones.
 class SrAdaptiveDialog extends StatelessWidget {
   const SrAdaptiveDialog({
     super.key,
@@ -52,8 +51,6 @@ class SrAdaptiveDialog extends StatelessWidget {
   }
 }
 
-/// Confirmation surface with safe compact sizing and actions that never rely
-/// on a single narrow row.
 class SrConfirmDialog extends StatelessWidget {
   const SrConfirmDialog({
     super.key,

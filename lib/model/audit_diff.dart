@@ -3,14 +3,6 @@ import 'dart:convert';
 import '../util/campus_calendar.dart' show formatStamp;
 import 'audit_change.dart';
 
-/// Turns the raw `details` / `before_values` / `after_values` payload an
-/// audit trigger stored into a short, human-readable list of changes.
-///
-/// This is what stands between an administrator and a wall of
-/// `id: — → 48b71f44-4f53-4d26-9aa3-126fec41562c` — every key here is either
-/// dropped as internal bookkeeping, or reformatted into plain language.
-/// Nothing is destroyed: callers that need the untrimmed payload still have
-/// it via `AuditEntry.rawBefore` / `rawAfter` / `rawDetails`.
 List<AuditChange> humanizeAuditPayload({
   required String entityType,
   required String action,
@@ -23,8 +15,7 @@ List<AuditChange> humanizeAuditPayload({
   final changes = <AuditChange>[];
 
   final isCreation = before.isEmpty && trimmedAfter.isNotEmpty;
-  if (isCreation &&
-      (entityType == 'account' || entityType == 'facility')) {
+  if (isCreation && (entityType == 'account' || entityType == 'facility')) {
     final whitelist = entityType == 'account'
         ? _accountCreationKeys
         : _facilityCreationKeys;
@@ -89,8 +80,6 @@ List<AuditChange> humanizeAuditPayload({
   return changes;
 }
 
-// Columns and payload keys that are internal bookkeeping, not a fact an
-// administrator reading the log cares about.
 const _noiseKeys = {
   'id',
   'created_at',
@@ -120,9 +109,6 @@ const _labelOverrides = {
   'row_count': 'Rows exported',
 };
 
-// Creation events summarise instead of diffing every column against an
-// empty before-state. `invitation_sent_at` is included for accounts because
-// "when was this sent" is the one fact an admin looks for on an invite.
 const _accountCreationKeys = [
   'role',
   'account_status',
@@ -170,10 +156,9 @@ String? _formatValue(String key, Object? value) {
   return text;
 }
 
-String _formatNumber(num value) =>
-    value == value.roundToDouble()
-        ? value.toInt().toString()
-        : value.toString();
+String _formatNumber(num value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value.toString();
 
 String _formatList(String key, List<Object?> value) {
   if (value.isEmpty) return 'None';

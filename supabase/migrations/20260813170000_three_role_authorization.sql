@@ -1,6 +1,3 @@
--- Consolidate authorization to user, internal_admin and external_admin.
--- Student/faculty/staff/none remain verification claim metadata only.
-
 do $$
 declare constraint_name text;
 begin
@@ -84,7 +81,6 @@ $$;
 revoke all on function public.is_external_admin(uuid) from public,anon;
 grant execute on function public.is_external_admin(uuid) to authenticated;
 
--- External administrators may see only released requests which require payment.
 create or replace function public.can_access_reservation(p_request_id uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists(
@@ -152,7 +148,6 @@ create policy reservation_files_delete_own on storage.objects for delete to auth
 using (bucket_id='reservation-attachments' and (
   (storage.foldername(name))[1]=auth.uid()::text or public.is_internal_admin()));
 
--- The client amount remains in the signature for old clients, but is ignored.
 create or replace function public.reservation_quote_centavos(
   p_facility_id uuid, p_starts_at timestamptz[], p_ends_at timestamptz[]
 ) returns integer language plpgsql stable security definer set search_path=public as $$
@@ -203,7 +198,6 @@ revoke all on function public.submit_reservation(uuid,uuid,text,integer,timestam
 from public,anon;
 grant execute on function public.submit_reservation(uuid,uuid,text,integer,timestamptz[],timestamptz[],jsonb,integer) to authenticated;
 
--- Put an authorization gate in front of the legacy action implementation.
 alter function public.reservation_action(uuid,text,text,jsonb,integer,uuid)
 rename to reservation_action_unscoped;
 revoke all on function public.reservation_action_unscoped(uuid,text,text,jsonb,integer,uuid)
@@ -253,7 +247,6 @@ revoke all on function public.approve_and_bump_reservation(uuid,text,integer,uui
 from public,anon;
 grant execute on function public.approve_and_bump_reservation(uuid,text,integer,uuid) to authenticated;
 
--- Verification decisions route held requests to the correct operational queue.
 create or replace function public.release_verified_reservations()
 returns trigger language plpgsql security definer set search_path=public as $$
 declare request_row public.reservation_requests%rowtype; event_id uuid; quote_value integer;
@@ -302,14 +295,12 @@ begin
 end;
 $$;
 
--- SQL helper used only to raise a clean authorization error below.
 create or replace function public.raise_external_clients_forbidden()
 returns boolean language plpgsql volatile security definer set search_path=public as $$
 begin raise exception using errcode='42501',message='External administrator access required'; end;
 $$;
 revoke all on function public.raise_external_clients_forbidden() from public,anon,authenticated;
 
--- Sanitized external client directory. Verification and campus fields never leave this RPC.
 create or replace function public.get_external_clients()
 returns jsonb language plpgsql stable security definer set search_path=public as $$
 declare result_value jsonb;
@@ -338,7 +329,6 @@ $$;
 revoke all on function public.get_external_clients() from public,anon;
 grant execute on function public.get_external_clients() to authenticated;
 
--- All direct account administration remains internal-admin-only, with three valid targets.
 create or replace function public.validate_account_role_change(p_role text)
 returns boolean language sql immutable as $$
   select p_role in ('user','internal_admin','external_admin');
@@ -388,7 +378,6 @@ from public,anon,authenticated;
 grant execute on function public.admin_manage_account(uuid,uuid,text,text,text,date)
 to service_role;
 
--- External reports contain paid reservations only and never per-admin details.
 create or replace function public.get_external_admin_report(
   p_from timestamptz,p_to timestamptz,p_category text default null
 ) returns jsonb language plpgsql stable security definer set search_path=public as $$

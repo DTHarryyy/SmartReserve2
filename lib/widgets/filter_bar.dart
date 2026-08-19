@@ -70,9 +70,6 @@ class CompactFilterButton extends StatelessWidget {
   final int activeCount;
   final String label;
 
-  /// Set to `0` (or another value) to let a stretched parent (e.g. an
-  /// [IntrinsicHeight] row alongside a [FilterSearch]) dictate the actual
-  /// height instead of forcing the default touch-target minimum.
   final double minHeight;
 
   @override
@@ -303,9 +300,6 @@ class FilterSelect extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final String semanticLabel;
 
-  /// Caps the control's width so it doesn't balloon to its widest menu item
-  /// inside a [Wrap]. Self-clamps like [FilterSearch]; `null` preserves the
-  /// previous content-driven sizing.
   final double? width;
 
   @override

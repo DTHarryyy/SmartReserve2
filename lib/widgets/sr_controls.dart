@@ -681,7 +681,7 @@ class SrSelect<T> extends StatelessWidget {
   }
 }
 
-class SrToggle extends StatelessWidget {
+class SrToggle extends StatefulWidget {
   const SrToggle({
     super.key,
     required this.value,
@@ -690,59 +690,117 @@ class SrToggle extends StatelessWidget {
   });
 
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  final ValueChanged<bool>? onChanged;
   final String label;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    toggled: value,
-    label: label,
-    child: SizedBox(
-      width: 44,
-      height: 44,
-      child: GestureDetector(
-        onTap: () => onChanged(!value),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: SR.easing,
-            width: 38,
-            height: 22,
-            decoration: BoxDecoration(
-              color: value ? SR.blue : SR.border,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Stack(
-              children: [
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 200),
-                  curve: SR.easing,
-                  top: 3,
-                  left: value ? 19 : 3,
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    decoration: const BoxDecoration(
-                      color: SR.surface,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0x4710141A),
-                          blurRadius: 3,
-                          offset: Offset(0, 1),
+  State<SrToggle> createState() => _SrToggleState();
+}
+
+class _SrToggleState extends State<SrToggle> {
+  static const _trackW = 38.0;
+  static const _trackH = 22.0;
+  static const _thumb = 16.0;
+  static const _inset = 3.0;
+
+  static const _thumbShadow = [
+    BoxShadow(color: Color(0x4710141A), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
+  final FocusNode _node = FocusNode();
+  bool _focused = false;
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    _node.requestFocus();
+    widget.onChanged!(!widget.value);
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.space &&
+        event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    widget.onChanged!(!widget.value);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onChanged != null;
+    final value = widget.value;
+
+    return Semantics(
+      toggled: value,
+      enabled: enabled,
+      label: widget.label,
+      child: Hoverable(
+        enabled: enabled,
+        builder: (context, hovered) {
+          final track = switch ((enabled, value)) {
+            (false, true) => SR.primarySoft,
+            (false, false) => SR.dividerSoft,
+            (true, true) => hovered ? SR.primaryHover : SR.primary,
+            (true, false) => hovered ? SR.borderHover : SR.border,
+          };
+
+          return Focus(
+            focusNode: _node,
+            canRequestFocus: enabled,
+            onFocusChange: (focused) => setState(() => _focused = focused),
+            onKeyEvent: enabled ? _onKey : null,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: enabled ? _toggle : null,
+              child: SizedBox(
+                width: SR.tapTarget,
+                height: SR.tapTarget,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: SR.stateChange,
+                    curve: SR.easing,
+                    width: _trackW,
+                    height: _trackH,
+                    decoration: BoxDecoration(
+                      color: track,
+                      borderRadius: BorderRadius.circular(SR.rFull),
+                      boxShadow: _focused && enabled ? SR.focusRing : null,
+                    ),
+                    child: Stack(
+                      children: [
+                        AnimatedPositioned(
+                          duration: SR.stateChange,
+                          curve: SR.easing,
+                          top: _inset,
+                          left: value ? _trackW - _thumb - _inset : _inset,
+                          child: Container(
+                            width: _thumb,
+                            height: _thumb,
+                            decoration: BoxDecoration(
+                              color: SR.surface,
+                              shape: BoxShape.circle,
+                              boxShadow: enabled ? _thumbShadow : null,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
-    ),
-  );
+    );
+  }
 }
 
 class SrPill extends StatelessWidget {

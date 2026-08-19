@@ -1,10 +1,3 @@
-/// The conversation / booking state machine behind the Assistant tab.
-///
-/// Chat history and the in-progress booking draft live here, not in
-/// [AppState] — they are view state, and [AppState] is already large.
-/// [AppState] is passed as a parameter to [send]/[confirm] rather than
-/// stored, so this controller stays testable against a plain demo
-/// `AppState()` and never has to worry about `didChangeDependencies`.
 library;
 
 import 'dart:async';
@@ -74,21 +67,25 @@ class AssistantMessage {
         tone: tone,
       );
 
-  factory AssistantMessage.chips(String text, List<AssistantChipOption> chips) =>
-      AssistantMessage._(
-        speaker: AssistantSpeaker.assistant,
-        kind: AssistantMessageKind.chips,
-        text: text,
-        chips: chips,
-      );
+  factory AssistantMessage.chips(
+    String text,
+    List<AssistantChipOption> chips,
+  ) => AssistantMessage._(
+    speaker: AssistantSpeaker.assistant,
+    kind: AssistantMessageKind.chips,
+    text: text,
+    chips: chips,
+  );
 
-  factory AssistantMessage.facilityList(String text, List<Facility> facilities) =>
-      AssistantMessage._(
-        speaker: AssistantSpeaker.assistant,
-        kind: AssistantMessageKind.facilities,
-        text: text,
-        facilities: facilities,
-      );
+  factory AssistantMessage.facilityList(
+    String text,
+    List<Facility> facilities,
+  ) => AssistantMessage._(
+    speaker: AssistantSpeaker.assistant,
+    kind: AssistantMessageKind.facilities,
+    text: text,
+    facilities: facilities,
+  );
 
   factory AssistantMessage.confirmCard(String text) => AssistantMessage._(
     speaker: AssistantSpeaker.assistant,
@@ -130,10 +127,6 @@ class BookingDraft {
   }
 }
 
-/// A facility ranked by how well its name/room/building matches a
-/// free-text query. `facilityNamed` on [AppState] is exact-match only, so
-/// the assistant needs its own fuzzy resolver — built on
-/// [fuzzyWordMatches] from `assistant_nlu.dart`.
 class FacilityMatch {
   const FacilityMatch(this.facility, this.score);
   final Facility facility;
@@ -171,12 +164,13 @@ List<FacilityMatch> resolveFacilityByName(String query, List<Facility> pool) {
   return matches;
 }
 
-/// Candidates tied for the top match (within 0.08) — ambiguous, so the
-/// caller should show all of them rather than guessing.
 List<Facility> _tiedTop(List<FacilityMatch> matches) {
   if (matches.isEmpty) return const [];
   final top = matches.first.score;
-  return [for (final m in matches) if (top - m.score < 0.08) m.facility];
+  return [
+    for (final m in matches)
+      if (top - m.score < 0.08) m.facility,
+  ];
 }
 
 const _outOfScopeCues = {
@@ -198,7 +192,12 @@ final _inScopeCueRe = RegExp(
 class AssistantController extends ChangeNotifier {
   AssistantController() {
     messages.add(AssistantMessage.assistant(_greeting));
-    messages.add(AssistantMessage.chips('Try one of these, or just type:', _defaultSuggestions()));
+    messages.add(
+      AssistantMessage.chips(
+        'Try one of these, or just type:',
+        _defaultSuggestions(),
+      ),
+    );
   }
 
   static const _greeting =
@@ -224,7 +223,8 @@ class AssistantController extends ChangeNotifier {
     ),
     AssistantChipOption(
       'Is the auditorium free Thursday 2–4pm?',
-      (state) => unawaited(send('Is the auditorium free Thursday 2–4pm?', state)),
+      (state) =>
+          unawaited(send('Is the auditorium free Thursday 2–4pm?', state)),
     ),
     AssistantChipOption(
       'Show my reservations',
@@ -241,8 +241,6 @@ class AssistantController extends ChangeNotifier {
     stage = AssistantStage.idle;
   }
 
-  /// Fires an async chip/tap action, keeping [busy] accurate around it so
-  /// the composer disables itself while a background fetch is in flight.
   void _runAction(Future<void> Function() action) {
     busy = true;
     notifyListeners();
@@ -274,7 +272,10 @@ class AssistantController extends ChangeNotifier {
       _resetDraft();
       _say('Okay, dropped that. What next?');
       messages.add(
-        AssistantMessage.chips('Try one of these, or just type:', _defaultSuggestions()),
+        AssistantMessage.chips(
+          'Try one of these, or just type:',
+          _defaultSuggestions(),
+        ),
       );
       return;
     }
@@ -307,11 +308,6 @@ class AssistantController extends ChangeNotifier {
         return;
       }
     } else if (stage != AssistantStage.idle) {
-      // Whether the message filled the SPECIFIC slot this stage is waiting
-      // on — not just "parsed anything at all". A generic `hasSlots` check
-      // here is too permissive: at `needPurpose`, almost any leftover text
-      // becomes a non-empty (and useless) `facilityQuery`, which would
-      // wrongly skip the fallback that treats the raw text as the purpose.
       if (_fillsCurrentStage(p)) {
         _mergeSlots(p, state);
       } else {
@@ -382,10 +378,6 @@ class AssistantController extends ChangeNotifier {
     if (_inScopeCueRe.hasMatch(normalized)) return false;
     return _outOfScopeCues.any((cue) => normalized.contains(cue));
   }
-
-  // ---------------------------------------------------------------------
-  // Slot merging + validation
-  // ---------------------------------------------------------------------
 
   void _mergeSlots(ParsedMessage p, AppState state) {
     if (p.capacity != null) {
@@ -481,7 +473,10 @@ class AssistantController extends ChangeNotifier {
     );
 
     if (results.isEmpty && amenities.isNotEmpty) {
-      results = state.searchFacilities(minCapacity: minCapacity, category: category);
+      results = state.searchFacilities(
+        minCapacity: minCapacity,
+        category: category,
+      );
       if (results.isNotEmpty) {
         _say(
           'No bookable room has ${amenities.join(' and ')} and seats '
@@ -518,16 +513,25 @@ class AssistantController extends ChangeNotifier {
       _say('A few rooms fit — which one?');
       messages.add(AssistantMessage.facilityList('', results));
     } else {
-      _say("I couldn't find a bookable room matching that. Which facility did you mean?");
+      _say(
+        "I couldn't find a bookable room matching that. Which facility did you mean?",
+      );
     }
   }
 
   void _suggestBiggerFacilities(int minCapacity, AppState state) {
     final bigger =
-        state.bookableFacilities.where((f) => f.capacity >= minCapacity).toList()
+        state.bookableFacilities
+            .where((f) => f.capacity >= minCapacity)
+            .toList()
           ..sort((a, b) => a.capacity.compareTo(b.capacity));
     if (bigger.isNotEmpty) {
-      messages.add(AssistantMessage.facilityList('Bigger options:', bigger.take(3).toList()));
+      messages.add(
+        AssistantMessage.facilityList(
+          'Bigger options:',
+          bigger.take(3).toList(),
+        ),
+      );
     }
   }
 
@@ -555,7 +559,9 @@ class AssistantController extends ChangeNotifier {
             messages.add(AssistantMessage.facilityList('', tied));
           }
         } else {
-          _say('I still don\'t recognise that facility. Try a shorter name, like "auditorium".');
+          _say(
+            'I still don\'t recognise that facility. Try a shorter name, like "auditorium".',
+          );
         }
         break;
       case AssistantStage.needPurpose:
@@ -585,10 +591,6 @@ class AssistantController extends ChangeNotifier {
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Advancing the draft / offering chips
-  // ---------------------------------------------------------------------
-
   Future<void> _advanceDraft(AppState state) async {
     if (draft.facility == null && draft.candidates.isNotEmpty) {
       stage = AssistantStage.needFacility;
@@ -611,7 +613,9 @@ class AssistantController extends ChangeNotifier {
         _say('About how many people?');
         break;
       case AssistantStage.needPurpose:
-        _say("What's it for? One sentence is enough — the registrar reads this.");
+        _say(
+          "What's it for? One sentence is enough — the registrar reads this.",
+        );
         break;
       case AssistantStage.confirming:
         await _renderConfirmCard(state);
@@ -673,7 +677,9 @@ class AssistantController extends ChangeNotifier {
       nowWall: campusNow(),
     );
     if (slots.isEmpty) {
-      _say('${facility.name} looks fully booked that day. Want to try another date?');
+      _say(
+        '${facility.name} looks fully booked that day. Want to try another date?',
+      );
       draft.day = null;
       stage = AssistantStage.needDate;
       _offerOpenDayChips(state);
@@ -685,7 +691,8 @@ class AssistantController extends ChangeNotifier {
         for (final slot in slots)
           AssistantChipOption(
             slot.label,
-            (s) => _runAction(() => _selectSlot(slot.startHour, slot.endHour, s)),
+            (s) =>
+                _runAction(() => _selectSlot(slot.startHour, slot.endHour, s)),
           ),
       ]),
     );
@@ -706,11 +713,15 @@ class AssistantController extends ChangeNotifier {
     for (final issue in verdict.issues) {
       switch (issue) {
         case SlotIssue.closedDay:
-          _say('${facility.name} runs ${facility.days}, so ${formatCampusDate(day)} is out.');
+          _say(
+            '${facility.name} runs ${facility.days}, so ${formatCampusDate(day)} is out.',
+          );
           draft.day = null;
           break;
         case SlotIssue.outsideHours:
-          _say('${facility.name} runs ${facility.hours}. That falls outside those hours.');
+          _say(
+            '${facility.name} runs ${facility.hours}. That falls outside those hours.',
+          );
           draft.startHour = null;
           draft.endHour = null;
           break;
@@ -723,7 +734,9 @@ class AssistantController extends ChangeNotifier {
           draft.endHour = null;
           break;
         case SlotIssue.inPast:
-          _say("I can't book a time that's already passed. What's a future date or time?");
+          _say(
+            "I can't book a time that's already passed. What's a future date or time?",
+          );
           draft.day = null;
           draft.startHour = null;
           draft.endHour = null;
@@ -747,7 +760,10 @@ class AssistantController extends ChangeNotifier {
             '${facility.name} seats ${facility.capacity}'
             '${draft.heads != null ? " and you said ${draft.heads}" : ""}.',
           );
-          _suggestBiggerFacilities((draft.heads ?? facility.capacity) + 1, state);
+          _suggestBiggerFacilities(
+            (draft.heads ?? facility.capacity) + 1,
+            state,
+          );
           draft.heads = null;
           break;
         case SlotIssue.clash:
@@ -758,7 +774,9 @@ class AssistantController extends ChangeNotifier {
           draft.facility = null;
           break;
         case SlotIssue.zeroDuration:
-          _say("That end time isn't after the start — what time range did you mean?");
+          _say(
+            "That end time isn't after the start — what time range did you mean?",
+          );
           draft.startHour = null;
           draft.endHour = null;
           break;
@@ -794,12 +812,10 @@ class AssistantController extends ChangeNotifier {
     messages.add(AssistantMessage.confirmCard('Ready to send:'));
   }
 
-  // ---------------------------------------------------------------------
-  // Confirm / submit
-  // ---------------------------------------------------------------------
-
   Future<void> confirm(AppState state) async {
-    if (_submitting || state.reservationActionsPending.contains('submit')) return;
+    if (_submitting || state.reservationActionsPending.contains('submit')) {
+      return;
+    }
     final facility = draft.facility;
     final day = draft.day;
     final startHour = draft.startHour;
@@ -887,7 +903,8 @@ class AssistantController extends ChangeNotifier {
       _resetDraft();
     } else {
       _say(
-        state.lastReservationError ?? "That didn't go through — see the message above.",
+        state.lastReservationError ??
+            "That didn't go through — see the message above.",
         tone: AdvisoryTone.block,
       );
       draft.facility = facility;
@@ -902,10 +919,6 @@ class AssistantController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------
-  // Find / check / mine / cancel
-  // ---------------------------------------------------------------------
-
   void _handleFindFacilities(ParsedMessage p, AppState state) {
     final results = state.searchFacilities(
       minCapacity: p.capacity?.min ?? 0,
@@ -916,7 +929,11 @@ class AssistantController extends ChangeNotifier {
       _say('Nothing bookable matches that right now.');
       return;
     }
-    _say(results.length == 1 ? 'One match:' : '${results.length} facilities match:');
+    _say(
+      results.length == 1
+          ? 'One match:'
+          : '${results.length} facilities match:',
+    );
     messages.add(AssistantMessage.facilityList('', results.take(8).toList()));
   }
 
@@ -947,7 +964,9 @@ class AssistantController extends ChangeNotifier {
     }
     if (candidates.length > 1) {
       _say('Which one?');
-      messages.add(AssistantMessage.facilityList('', candidates.take(8).toList()));
+      messages.add(
+        AssistantMessage.facilityList('', candidates.take(8).toList()),
+      );
       return;
     }
 
@@ -986,11 +1005,14 @@ class AssistantController extends ChangeNotifier {
           AssistantMessage.chips('Want to book it?', [
             AssistantChipOption(
               'Yes, book it',
-              (s) => _runAction(() => _startBookingFromCheck(facility, day, start, end, s)),
+              (s) => _runAction(
+                () => _startBookingFromCheck(facility, day, start, end, s),
+              ),
             ),
           ]),
         );
-      } else if (verdict.issues.length == 1 && verdict.issues.contains(SlotIssue.clash)) {
+      } else if (verdict.issues.length == 1 &&
+          verdict.issues.contains(SlotIssue.clash)) {
         _say(
           '${facility.name} is taken ${formatClockHour(start)}–'
           '${formatClockHour(end)} on ${formatCampusDate(day)}.',
@@ -1010,7 +1032,13 @@ class AssistantController extends ChangeNotifier {
                 AssistantChipOption(
                   slot.label,
                   (s) => _runAction(
-                    () => _startBookingFromCheck(facility, day, slot.startHour, slot.endHour, s),
+                    () => _startBookingFromCheck(
+                      facility,
+                      day,
+                      slot.startHour,
+                      slot.endHour,
+                      s,
+                    ),
                   ),
                 ),
             ]),
@@ -1030,7 +1058,9 @@ class AssistantController extends ChangeNotifier {
       nowWall: campusNow(),
     );
     if (slots.isEmpty) {
-      _say('${facility.name} looks fully booked on ${formatCampusDate(day)}.$degradedNote');
+      _say(
+        '${facility.name} looks fully booked on ${formatCampusDate(day)}.$degradedNote',
+      );
       return;
     }
     _say('${facility.name} is open ${formatCampusDate(day)}:$degradedNote');
@@ -1040,15 +1070,19 @@ class AssistantController extends ChangeNotifier {
           AssistantChipOption(
             slot.label,
             (s) => _runAction(
-              () => _startBookingFromCheck(facility, day, slot.startHour, slot.endHour, s),
+              () => _startBookingFromCheck(
+                facility,
+                day,
+                slot.startHour,
+                slot.endHour,
+                s,
+              ),
             ),
           ),
       ]),
     );
   }
 
-  /// Called by a facility card's "Book this" button — sets the draft
-  /// facility directly and asks whatever's next.
   Future<void> chooseFacility(Facility facility, AppState state) async {
     draft.facility = facility;
     draft.candidates = const [];
@@ -1056,14 +1090,11 @@ class AssistantController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called after the UI itself cancels a reservation (via
-  /// `state.cancelReservation`), so the thread acknowledges it.
   void noteCancelled(ReservationRequest request) {
     _say('Cancelled ${request.facility} on ${request.whenLabel}.');
     notifyListeners();
   }
 
-  /// Called by the confirm card's "Cancel" button.
   void discardDraft() {
     _resetDraft();
     _say('Okay, cancelled. What next?');
@@ -1090,13 +1121,20 @@ class AssistantController extends ChangeNotifier {
       _say('Nothing booked yet. Try the Browse tab to find a room.');
       return;
     }
-    _say(mine.length == 1 ? "Here's your reservation:" : 'Here are your reservations:');
+    _say(
+      mine.length == 1
+          ? "Here's your reservation:"
+          : 'Here are your reservations:',
+    );
     messages.add(AssistantMessage.reservationList('', mine));
   }
 
   void _handleCancelRequest(AppState state) {
     final mine = state.myRequests;
-    final cancellable = [for (final r in mine) if (isCancellable(r)) r];
+    final cancellable = [
+      for (final r in mine)
+        if (isCancellable(r)) r,
+    ];
     if (cancellable.isEmpty) {
       _say(
         mine.isEmpty

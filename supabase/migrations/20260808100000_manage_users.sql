@@ -165,8 +165,6 @@ begin
     raise exception using errcode = '42501', message = 'Forbidden';
   end if;
 
-  -- Lock every internal administrator so two concurrent demotions cannot both
-  -- pass the last-admin check.
   perform id
   from public.profiles
   where role = 'internal_admin'

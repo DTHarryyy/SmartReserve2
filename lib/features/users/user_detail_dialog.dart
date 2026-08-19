@@ -265,8 +265,6 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
 
           const SizedBox(height: 12),
           SrCellGrid(
-            // Keep these related details paired on phones as well:
-            // role/ID, activity metrics, and joined/last active.
             columns: 2,
             children: [
               SrKeyCell(label: 'ROLE', value: _account.role.label),

@@ -54,7 +54,7 @@ class AddFacilityBody extends StatelessWidget {
                   child: MapPane(
                     controller: controller,
                     padding: const EdgeInsets.all(16),
-                    compact: layout.compact,
+                    compact: layout.belowDesktop,
                   ),
                 ),
               ),

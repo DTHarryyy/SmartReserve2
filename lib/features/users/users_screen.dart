@@ -7,7 +7,9 @@ import '../../theme/sr_tokens.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import 'invite_dialog.dart';
 import 'user_detail_dialog.dart';
 
@@ -83,6 +85,9 @@ class _UsersScreenState extends State<UsersScreen> {
     });
   }
 
+  bool get _hasActiveFilter =>
+      _role != 'All roles' || _status != 'All statuses';
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -91,149 +96,181 @@ class _UsersScreenState extends State<UsersScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final stacked = width < SR.tabletMin;
 
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: SR.pageInsets(width, top: stacked ? 14 : 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (stacked)
-              _mobileFilters(rows.length, state.accounts.length)
-            else
-              FilterBar(
-                count: '${rows.length} of ${state.accounts.length}',
-                trailing: state.isInternalAdmin
-                    ? [
-                        SrButton(
-                          label: '＋ Invite administrator',
-                          kind: SrButtonKind.primary,
-                          onPressed: () => showInviteDialog(context, state),
-                        ),
-                      ]
-                    : const [],
-                children: [
-                  FilterSearch(
-                    key: const Key('users-search'),
-                    controller: _search,
-                    placeholder: 'Name, email or ID number',
-                    width: 280,
-                    onChanged: (v) => setState(() => _query = v),
-                  ),
-                  if (state.isInternalAdmin)
-                    FilterSelect(
-                      value: _role,
-                      items: _roleFilters,
-                      semanticLabel: 'Filter by role',
-                      onChanged: (v) => setState(() => _role = v),
+    return SrScrollView(
+      padding: SR.pageInsets(width, top: stacked ? 14 : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!stacked) ...[
+            SrPageHeader(
+              title: state.isExternalAdmin ? 'Clients' : 'Users',
+              description: '${rows.length} of ${state.accounts.length} shown',
+              actions: [
+                if (state.isInternalAdmin)
+                  SrButton(
+                    label: 'Invite administrator',
+                    icon: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      size: SR.iconMd,
+                      color: SR.onDark,
                     ),
-                  FilterSelect(
-                    value: _status,
-                    items: _statusFilters,
-                    semanticLabel: 'Filter by status',
-                    onChanged: (v) => setState(() => _status = v),
+                    kind: SrButtonKind.primary,
+                    onPressed: () => showInviteDialog(context, state),
                   ),
-                ],
-              ),
-            RecordTable(
-              columns: columns,
-              footerNote: state.isExternalAdmin
-                  ? 'Only paying clients with released reservations are shown. Campus verification and administrator details are excluded.'
-                  : 'Only internal admins can invite. Invitation links are '
-                        'single-use and expire automatically; the last internal '
-                        'admin cannot be removed or demoted.',
-              children: state.accountsLoading && state.accounts.isEmpty
-                  ? [
-                      for (var i = 0; i < 4; i++)
-                        SkeletonRow(
-                          columns: columns,
-                          leadWidth: .45 + (i * .08),
-                        ),
-                    ]
-                  : state.accountsError != null && state.accounts.isEmpty
-                  ? [
-                      ListEmptyState(
-                        glyph: '!',
-                        title: 'Accounts could not load',
-                        body: state.accountsError!,
-                        action: SrButton(
-                          label: 'Try again',
-                          onPressed: state.refreshAccounts,
-                        ),
-                      ),
-                    ]
-                  : rows.isEmpty
-                  ? [
-                      ListEmptyState(
-                        glyph: '⌕',
-                        title: 'No accounts match',
-                        body: 'Clear a filter or search a different name.',
-                        action: SrButton(
-                          label: 'Clear filters',
-                          onPressed: () => setState(() {
-                            _query = '';
-                            _search.clear();
-                            _role = 'All roles';
-                            _status = 'All statuses';
-                          }),
-                        ),
-                      ),
-                    ]
-                  : [
-                      for (final account in rows)
-                        _row(context, state, account, columns),
-                    ],
+              ],
             ),
-          ],
-        ),
+            const SizedBox(height: SR.space16),
+            _desktopToolbar(state),
+          ] else
+            _mobileFilters(rows.length, state.accounts.length),
+          const SizedBox(height: SR.space16),
+          RecordTable(
+            columns: columns,
+            footerNote: state.isExternalAdmin
+                ? 'Only paying clients with released reservations are shown. Campus verification and administrator details are excluded.'
+                : 'Only internal admins can invite. Invitation links are '
+                      'single-use and expire automatically; the last internal '
+                      'admin cannot be removed or demoted.',
+            children: state.accountsLoading && state.accounts.isEmpty
+                ? [
+                    for (var i = 0; i < 4; i++)
+                      SkeletonRow(columns: columns, leadWidth: .45 + (i * .08)),
+                  ]
+                : state.accountsError != null && state.accounts.isEmpty
+                ? [
+                    ListEmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Accounts could not load',
+                      body: state.accountsError!,
+                      action: SrButton(
+                        label: 'Try again',
+                        onPressed: state.refreshAccounts,
+                      ),
+                    ),
+                  ]
+                : rows.isEmpty
+                ? [
+                    ListEmptyState(
+                      icon: Icons.search_off_rounded,
+                      title: 'No accounts match',
+                      body: 'Clear a filter or search a different name.',
+                      action: SrButton(
+                        label: 'Clear filters',
+                        onPressed: () => setState(() {
+                          _query = '';
+                          _search.clear();
+                          _role = 'All roles';
+                          _status = 'All statuses';
+                        }),
+                      ),
+                    ),
+                  ]
+                : [
+                    for (final account in rows)
+                      _row(context, state, account, columns),
+                  ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _mobileFilters(int visible, int total) => Padding(
-    key: const Key('users-mobile-filters'),
-    padding: const EdgeInsets.only(bottom: 14),
-    child: LayoutBuilder(
-      builder: (context, constraints) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _mobileFilters(int visible, int total) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        key: const Key('users-filter-row'),
         children: [
-          Row(
-            key: const Key('users-filter-row'),
-            children: [
-              Expanded(
-                child: SizedBox(
-                  key: const Key('users-search'),
-                  height: 44,
-                  child: FilterSearch(
-                    controller: _search,
-                    placeholder: 'Name, email or ID number',
-                    width: double.infinity,
-                    onChanged: (value) => setState(() => _query = value),
-                  ),
-                ),
+          Expanded(
+            child: SizedBox(
+              key: const Key('users-search'),
+              height: 44,
+              child: SrSearchField(
+                controller: _search,
+                placeholder: 'Name, email or ID number',
+                onChanged: (value) => setState(() => _query = value),
               ),
-              const SizedBox(width: 8),
-              SizedBox(
-                key: const Key('users-filter-button'),
-                height: 44,
-                child: CompactFilterButton(
-                  activeCount:
-                      (_role == 'All roles' ? 0 : 1) +
-                      (_status == 'All statuses' ? 0 : 1),
-                  onPressed: _showMobileFilters,
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 7),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '$visible of $total',
-              style: mono(10.5, color: SR.muted),
+          const SizedBox(width: 8),
+          SizedBox(
+            key: const Key('users-filter-button'),
+            height: 44,
+            child: CompactFilterButton(
+              activeCount:
+                  (_role == 'All roles' ? 0 : 1) +
+                  (_status == 'All statuses' ? 0 : 1),
+              onPressed: _showMobileFilters,
             ),
           ),
         ],
       ),
+      const SizedBox(height: 7),
+      Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          '$visible of $total shown',
+          style: mono(10.5, color: SR.muted),
+        ),
+      ),
+    ],
+  );
+
+  Widget _desktopToolbar(AppState state) => SrCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          key: const Key('users-search'),
+          height: 40,
+          child: SrSearchField(
+            controller: _search,
+            placeholder: 'Name, email or ID number',
+            onChanged: (v) => setState(() => _query = v),
+          ),
+        ),
+        const SizedBox(height: SR.space12),
+        Wrap(
+          spacing: SR.space8,
+          runSpacing: SR.space8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (state.isInternalAdmin)
+              FilterSelect(
+                value: _role,
+                items: _roleFilters,
+                width: 170,
+                semanticLabel: 'Filter by role',
+                onChanged: (v) => setState(() => _role = v),
+              ),
+            FilterSelect(
+              value: _status,
+              items: _statusFilters,
+              width: 170,
+              semanticLabel: 'Filter by status',
+              onChanged: (v) => setState(() => _status = v),
+            ),
+            if (_hasActiveFilter)
+              Hoverable(
+                builder: (context, hovered) => GestureDetector(
+                  onTap: () => setState(() {
+                    _role = 'All roles';
+                    _status = 'All statuses';
+                  }),
+                  child: Text(
+                    'Clear filters',
+                    style: sans(
+                      11.5,
+                      w: 500,
+                      color: hovered ? SR.ink3 : SR.muted,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
     ),
   );
 
@@ -330,15 +367,16 @@ class _UsersScreenState extends State<UsersScreen> {
                       ),
                     ),
                     if (account.role.isAdmin) ...[
-                      const SizedBox(width: 6),
+                      const SizedBox(width: SR.space6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
+                          horizontal: SR.space6,
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: SR.ink,
-                          borderRadius: BorderRadius.circular(8),
+                          color: SR.primaryTint,
+                          borderRadius: BorderRadius.circular(SR.rXs),
+                          border: Border.all(color: SR.primaryLine),
                         ),
                         child: Text(
                           'ADMIN',
@@ -346,7 +384,7 @@ class _UsersScreenState extends State<UsersScreen> {
                             8,
                             w: 600,
                             tracking: .04,
-                            color: SR.surface,
+                            color: SR.primaryDeep,
                           ),
                         ),
                       ),
@@ -385,15 +423,10 @@ class _UsersScreenState extends State<UsersScreen> {
       Align(
         alignment: Alignment.centerLeft,
         child: state.isExternalAdmin
-            ? const SrPill(
-                label: 'Paying client',
-                background: SR.amberTint,
-                foreground: SR.amber,
-              )
-            : SrPill(
+            ? const SrStatusChip(label: 'Paying client', tone: SrTone.warning)
+            : SrStatusChip(
                 label: account.verification.label,
-                background: account.verification.background,
-                foreground: account.verification.foreground,
+                tone: account.verification.tone,
               ),
       ),
       Text(
@@ -406,10 +439,12 @@ class _UsersScreenState extends State<UsersScreen> {
         overflow: TextOverflow.ellipsis,
         style: sans(11, color: SR.muted),
       ),
-      SrPill(
-        label: account.status.label,
-        background: account.status.background,
-        foreground: account.status.foreground,
+      Align(
+        alignment: Alignment.centerRight,
+        child: SrStatusChip(
+          label: account.status.label,
+          tone: account.status.tone,
+        ),
       ),
     ],
   );
@@ -447,51 +482,29 @@ class _UserCompactCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          SrPill(
-            label: account.status.label,
-            background: account.status.background,
-            foreground: account.status.foreground,
-          ),
+          const SizedBox(width: SR.space8),
+          SrStatusChip(label: account.status.label, tone: account.status.tone),
         ],
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: SR.space12),
       Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: SR.space8,
+        runSpacing: SR.space8,
         children: [
-          _UserFact(label: 'Role', value: account.role.label),
-          _UserFact(
+          SrFactChip(label: 'Role', value: account.role.label),
+          SrFactChip(
             label: external ? 'Access' : 'Verification',
             value: external ? 'Paying client' : account.verification.label,
           ),
-          _UserFact(
+          SrFactChip(
             label: 'Reservations',
             value: account.activityMetricsAvailable
                 ? '${account.reservations}'
                 : '—',
           ),
-          _UserFact(label: 'Last active', value: account.lastActive),
+          SrFactChip(label: 'Last active', value: account.lastActive),
         ],
       ),
     ],
-  );
-}
-
-class _UserFact extends StatelessWidget {
-  const _UserFact({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-    decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: SR.hairline),
-    ),
-    child: Text('$label: $value', style: sans(10.5, color: SR.ink3)),
   );
 }
