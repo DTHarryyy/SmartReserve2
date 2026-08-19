@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -6,10 +8,19 @@ import 'app/app_shell.dart';
 import 'app/app_state.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
+import 'widgets/sr_logo.dart';
 import 'widgets/toast_host.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('FLUTTER ERROR: ${details.exception}\n${details.stack}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('UNCAUGHT: $error\n$stack');
+    return true;
+  };
   final state = AppState(useDemoData: false);
   const url = String.fromEnvironment(
     'SUPABASE_URL',
@@ -224,19 +235,7 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: SR.primary,
-                      borderRadius: BorderRadius.circular(SR.rMd),
-                    ),
-                    child: Text(
-                      'S',
-                      style: sans(20, w: 700, color: SR.onDark),
-                    ),
-                  ),
+                  const SrLogo(size: 44, radius: SR.rMd),
                   const SizedBox(height: SR.space24),
                   const SizedBox(
                     width: 22,

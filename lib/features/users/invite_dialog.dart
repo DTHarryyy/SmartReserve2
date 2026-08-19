@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -9,6 +6,7 @@ import '../../app/app_state.dart';
 import '../../model/account.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/file_export.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
 
@@ -77,13 +75,13 @@ class _InviteDialogState extends State<_InviteDialog> {
 
   Future<void> _saveCredentials() => _export(
     () async {
-      await FileSaver.instance.saveAs(
-        name: 'smartreserve-admin-credentials',
-        bytes: Uint8List.fromList(utf8.encode(_credentials!.exportText)),
-        fileExtension: 'txt',
-        mimeType: MimeType.text,
+      final result = await saveTextFile(
+        baseName: 'smartreserve-admin-credentials',
+        extension: 'txt',
+        contents: _credentials!.exportText,
       );
-      _notice = 'Credentials file saved. Keep it in a secure location.';
+      if (!result.ok) throw Exception(result.error);
+      _notice = 'Credentials file saved to ${result.path}. Keep it in a secure location.';
     },
     toast: 'Credentials file wasn’t saved.',
     detail:

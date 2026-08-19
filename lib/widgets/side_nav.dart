@@ -4,6 +4,7 @@ import '../app/app_state.dart';
 import '../app/app_view.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
+import 'sr_logo.dart';
 
 const adminSections = <AppView>[
   AppView.facilities,
@@ -141,16 +142,7 @@ class _BrandMark extends StatelessWidget {
     ),
     child: Row(
       children: [
-        Container(
-          width: SR.controlSm,
-          height: SR.controlSm,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: SR.primary,
-            borderRadius: BorderRadius.circular(SR.rSm),
-          ),
-          child: Text('S', style: sans(15, w: 700, color: SR.onDark)),
-        ),
+        const SrLogo(size: SR.controlSm, radius: SR.rSm),
         const SizedBox(width: SR.space12),
         Expanded(
           child: Column(

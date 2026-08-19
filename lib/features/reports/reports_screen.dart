@@ -1,7 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -11,6 +7,7 @@ import '../../model/notice.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
+import '../../util/file_export.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
@@ -257,17 +254,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (snapshot == null || state.reportsLoading) return;
       csv = reportCsv(snapshot, exportedBy: state.currentAdmin.name);
     }
-    await FileSaver.instance.saveAs(
-      name: 'smartreserve-utilisation-report',
-      bytes: Uint8List.fromList(utf8.encode(csv)),
-      fileExtension: 'csv',
-      mimeType: MimeType.text,
+    final result = await saveTextFile(
+      baseName: 'smartreserve-utilisation-report',
+      extension: 'csv',
+      contents: csv,
     );
+    if (!mounted) return;
     state.showToast(
-      const ToastMessage(
-        'Utilisation report saved as CSV, with the scope printed in the footer.',
-        tone: AdvisoryTone.info,
-      ),
+      result.ok
+          ? ToastMessage(
+              'Utilisation report saved as CSV to ${result.path}, with the '
+              'scope printed in the footer.',
+              tone: AdvisoryTone.info,
+              action: result.revealSupported
+                  ? ToastAction(
+                      label: 'Open',
+                      onPressed: () => revealInFileExplorer(result.path!),
+                    )
+                  : null,
+            )
+          : const ToastMessage(
+              "Utilisation report couldn't be saved. Check the destination and try again.",
+              tone: AdvisoryTone.block,
+            ),
+      duration: result.ok && result.revealSupported
+          ? const Duration(seconds: 8)
+          : const Duration(seconds: 4),
     );
   }
 

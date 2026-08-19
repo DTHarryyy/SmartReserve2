@@ -169,7 +169,37 @@ class SrToast extends StatelessWidget {
                 style: sans(12, height: 1.5, color: SR.ink2),
               ),
             ),
+            if (message.action case final action?) ...[
+              const SizedBox(width: 10),
+              LightBarButton(label: action.label, onPressed: action.onPressed),
+            ],
           ],
+        ),
+      ),
+    ),
+  );
+}
+
+class LightBarButton extends StatelessWidget {
+  const LightBarButton({super.key, required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Hoverable(
+    builder: (context, hovered) => GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: hovered ? SR.primaryTint : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: SR.border),
+        ),
+        child: Text(
+          label,
+          style: sans(11, w: 600, color: SR.primaryDeep),
         ),
       ),
     ),

@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
-import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -11,6 +9,7 @@ import '../../model/audit_change.dart';
 import '../../model/audit_entry.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/file_export.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
 import '../../widgets/sr_components.dart';
@@ -487,24 +486,43 @@ class _AuditScreenState extends State<AuditScreen> {
   Future<void> _export(AppState state) async {
     final exportedRows = await state.auditExportRows();
     final csv = state.exportAuditCsv(exportedRows);
-    await FileSaver.instance.saveAs(
-      name: 'smartreserve-audit-log',
-      bytes: Uint8List.fromList(utf8.encode(csv)),
-      fileExtension: 'csv',
-      mimeType: MimeType.text,
+    final result = await saveTextFile(
+      baseName: 'smartreserve-audit-log',
+      extension: 'csv',
+      contents: csv,
     );
+    if (!result.ok) {
+      if (!mounted) return;
+      state.showToast(
+        const ToastMessage(
+          "Audit log couldn't be exported. Check the destination and try again.",
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
     if (state.backend != null) {
       await state.backend!.recordAuditExport(
         state.auditQuery,
         exportedRows.length,
       );
     }
+    if (!mounted) return;
     state.showToast(
       ToastMessage(
-        '${exportedRows.length} entries saved as CSV, signed with your name. '
-        'The export is itself logged.',
+        '${exportedRows.length} entries saved as CSV to ${result.path}, '
+        'signed with your name. The export is itself logged.',
         tone: AdvisoryTone.info,
+        action: result.revealSupported
+            ? ToastAction(
+                label: 'Open',
+                onPressed: () => revealInFileExplorer(result.path!),
+              )
+            : null,
       ),
+      duration: result.revealSupported
+          ? const Duration(seconds: 8)
+          : const Duration(seconds: 4),
     );
   }
 

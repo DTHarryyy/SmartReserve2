@@ -6,6 +6,7 @@ import '../../app/app_view.dart';
 import '../../model/verification.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_logo.dart';
 import '../../widgets/sr_scroll_view.dart';
 import 'auth_controller.dart';
 
@@ -52,9 +53,7 @@ class AuthScreen extends StatelessWidget {
                   ),
                   child: Center(
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: tablet ? 660 : 510,
-                      ),
+                      constraints: BoxConstraints(maxWidth: tablet ? 660 : 510),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -839,16 +838,7 @@ class _BrandHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: SR.primary,
-          borderRadius: SR.radius(SR.rMd),
-        ),
-        child: Text('S', style: sans(17, w: 700, color: SR.surface)),
-      ),
+      const SrLogo(size: 40, radius: SR.rMd),
       const SizedBox(width: 12),
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -940,11 +930,7 @@ class _FacilityMotif extends StatelessWidget {
           Positioned(
             right: 42,
             bottom: 3,
-            child: Icon(
-              Icons.apartment_rounded,
-              size: 82,
-              color: SR.onDarkDim,
-            ),
+            child: Icon(Icons.apartment_rounded, size: 82, color: SR.onDarkDim),
           ),
           Positioned(
             right: 4,
@@ -980,13 +966,7 @@ class _Pitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Color(0xFF0E1116), Color(0xFF191E3A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    ),
+    decoration: const BoxDecoration(color: SR.primary),
     child: SafeArea(
       child: LayoutBuilder(
         builder: (context, box) {
@@ -1026,16 +1006,7 @@ class _Pitch extends StatelessWidget {
 
   Widget _wordmark() => Row(
     children: [
-      Container(
-        width: 32,
-        height: 32,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: SR.primary,
-          borderRadius: SR.radius(SR.rSm),
-        ),
-        child: Text('S', style: sans(14, w: 700, color: SR.onDark)),
-      ),
+      const SrLogo(size: 32, radius: SR.rSm),
       const SizedBox(width: SR.space12),
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1103,18 +1074,11 @@ class _Pitch extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: sans(12.5, w: 600, color: SR.onDark),
-                    ),
+                    Text(title, style: sans(12.5, w: 600, color: SR.onDark)),
                     const SizedBox(height: SR.space2),
                     Text(
                       body,
-                      style: sans(
-                        11.5,
-                        height: 1.6,
-                        color: SR.onDarkFaint,
-                      ),
+                      style: sans(11.5, height: 1.6, color: SR.onDarkFaint),
                     ),
                   ],
                 ),

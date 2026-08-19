@@ -28,9 +28,10 @@ class AppToastHost extends StatelessWidget {
             top: media.padding.top + topInset,
             right: media.padding.right + 22,
             left: isMobile ? media.padding.left + 22 : null,
-            child: IgnorePointer(
-              child: Align(
-                alignment: Alignment.topRight,
+            child: Align(
+              alignment: Alignment.topRight,
+              child: IgnorePointer(
+                ignoring: toast.action == null,
                 child: SrToast(key: const Key('global-toast'), message: toast),
               ),
             ),

@@ -360,20 +360,18 @@ class SrLabel extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(
       children: [
-        Flexible(
-          child: Text.rich(
-            TextSpan(
-              text: text,
-              children: [
-                if (required)
-                  TextSpan(
-                    text: ' *',
-                    style: sans(11.5, w: 500, color: SR.red),
-                  ),
-              ],
-            ),
-            style: sans(11.5, w: 500, color: SR.ink2),
+        Text.rich(
+          TextSpan(
+            text: text,
+            children: [
+              if (required)
+                TextSpan(
+                  text: ' *',
+                  style: sans(11.5, w: 500, color: SR.red),
+                ),
+            ],
           ),
+          style: sans(11.5, w: 500, color: SR.ink2),
         ),
         if (meta != null) ...[const Spacer(), meta!],
       ],
