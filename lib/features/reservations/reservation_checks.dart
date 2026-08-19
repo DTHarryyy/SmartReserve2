@@ -1,28 +1,9 @@
 import '../../model/decision_check.dart';
 import '../../model/facility.dart';
 import '../../model/reservation.dart';
+import 'conflict_engine.dart';
 
-class Conflict {
-  const Conflict({
-    required this.label,
-    required this.requester,
-    required this.start,
-    required this.end,
-  });
-
-  final String label;
-  final String requester;
-  final String start;
-  final String end;
-
-  double get startAt =>
-      (int.tryParse(start.split(':').first) ?? 0) +
-      (int.tryParse(start.split(':').last) ?? 0) / 60;
-
-  double get endAt =>
-      (int.tryParse(end.split(':').first) ?? 0) +
-      (int.tryParse(end.split(':').last) ?? 0) / 60;
-}
+typedef Conflict = Hold;
 
 class ReservationAssessment {
   ReservationAssessment({
@@ -39,31 +20,18 @@ class ReservationAssessment {
 
   final List<ReservationRequest> otherRequests;
 
-  List<Conflict> get conflicts => [
-    for (final b in bookings)
-      if (b.facility == request.facility &&
-          b.date == request.date &&
-          b.overlaps(request.startAt, request.endAt))
-        Conflict(
-          label: b.label,
-          requester: b.requester,
-          start: b.start,
-          end: b.end,
-        ),
-    for (final r in otherRequests)
-      if (r.id != request.id &&
-          r.status == RequestStatus.approved &&
-          r.facility == request.facility &&
-          r.date == request.date &&
-          r.startAt < request.endAt &&
-          request.startAt < r.endAt)
-        Conflict(
-          label: r.purpose,
-          requester: r.requester,
-          start: r.start,
-          end: r.end,
-        ),
-  ];
+  late final List<Conflict> conflicts = holdsAgainst(
+    request: request,
+    bookings: bookings,
+    otherRequests: otherRequests,
+  );
+
+  late final List<Conflict> holdsThatDay = holdsAgainst(
+    request: request,
+    bookings: bookings,
+    otherRequests: otherRequests,
+    overlappingOnly: false,
+  );
 
   bool get hasConflict => conflicts.isNotEmpty;
 
@@ -89,7 +57,29 @@ class ReservationAssessment {
     return request.startAt >= f.openHour && request.endAt <= f.closeHour;
   }
 
-  List<DecisionCheck> get checks {
+  bool get _decided => !request.isPending;
+
+  bool get _holdsTheSlot => request.status == RequestStatus.approved;
+
+  String get _conflictValue {
+    final count = conflicts.length;
+    final plural = count == 1 ? 'booking' : 'bookings';
+    if (_decided) {
+      if (count > 0) {
+        return 'Overlaps $count other confirmed $plural — needs attention.';
+      }
+      return _holdsTheSlot
+          ? 'Holds ${request.start}–${request.end} — confirmed.'
+          : 'No hold on this slot.';
+    }
+    return count > 0
+        ? 'Collides with $count confirmed $plural.'
+        : 'The slot is free.';
+  }
+
+  late final List<DecisionCheck> checks = _buildChecks();
+
+  List<DecisionCheck> _buildChecks() {
     final f = facility;
     final headroom = (f?.capacity ?? request.capacity) - request.heads;
     return [
@@ -137,22 +127,27 @@ class ReservationAssessment {
       ),
       DecisionCheck(
         label: 'Conflicts',
-        value: hasConflict
-            ? 'Collides with ${conflicts.length} confirmed '
-                  '${conflicts.length == 1 ? 'booking' : 'bookings'}.'
-            : 'The slot is free.',
+        value: _conflictValue,
         outcome: hasConflict ? CheckOutcome.fail : CheckOutcome.pass,
       ),
     ];
   }
 
-  CheckSummary get summary => CheckSummary.of(
+  late final CheckSummary summary = CheckSummary.of(
     checks,
-    clear: 'Every check passed. Approving creates no conflict.',
-    caution: 'Approvable, but read the flagged checks first.',
+    clear: _decided
+        ? 'Every check passed on this booking.'
+        : 'Every check passed. Approving creates no conflict.',
+    caution: _decided
+        ? 'This booking stands, but read the flagged checks.'
+        : 'Approvable, but read the flagged checks first.',
     blocked: hasConflict
-        ? 'Approving as requested would double-book the facility.'
-        : 'This cannot be approved as requested.',
+        ? (_decided
+              ? 'This booking overlaps another confirmed hold.'
+              : 'Approving as requested would double-book the facility.')
+        : (_decided
+              ? 'This booking has a failing check.'
+              : 'This cannot be approved as requested.'),
   );
 
   bool get bulkApprovable =>

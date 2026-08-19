@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../model/audit_change.dart';
 import '../model/audit_entry.dart';
 import '../theme/sr_tokens.dart';
 import 'decision_widgets.dart';
@@ -103,7 +104,7 @@ class _ActivityRow extends StatelessWidget {
                   Text(entry.when, style: mono(10.5, color: SR.muted)),
                 ],
               ),
-              if (entry.diff.isNotEmpty) ...[
+              if (entry.changes.isNotEmpty || entry.diff.isNotEmpty) ...[
                 const SizedBox(height: 7),
                 Container(
                   width: double.infinity,
@@ -118,13 +119,25 @@ class _ActivityRow extends StatelessWidget {
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final line in entry.diff)
-                        Text(
-                          line,
-                          style: mono(11, w: 500, height: 1.65, color: SR.ink2),
-                        ),
-                    ],
+                    children: entry.changes.isNotEmpty
+                        ? [
+                            for (var i = 0; i < entry.changes.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 6),
+                              _changeLine(entry.changes[i]),
+                            ],
+                          ]
+                        : [
+                            for (final line in entry.diff)
+                              Text(
+                                line,
+                                style: mono(
+                                  11,
+                                  w: 500,
+                                  height: 1.65,
+                                  color: SR.ink2,
+                                ),
+                              ),
+                          ],
                   ),
                 ),
               ],
@@ -143,4 +156,41 @@ class _ActivityRow extends StatelessWidget {
       ],
     ),
   );
+
+  Widget _changeLine(AuditChange change) {
+    if (change.isNote) {
+      return Text(
+        change.note!,
+        style: mono(11, w: 500, height: 1.65, color: SR.ink2),
+      );
+    }
+    if (change.before == null) {
+      return Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '${change.label}: ',
+              style: mono(11, w: 600, color: SR.ink3),
+            ),
+            TextSpan(
+              text: change.after ?? '—',
+              style: mono(11, w: 500, color: SR.ink2),
+            ),
+          ],
+        ),
+      );
+    }
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(width: 116, child: Text(change.label, style: keyLabel)),
+        Text(change.before!, style: mono(11, color: SR.muted)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text('→', style: mono(10.5, color: SR.mutedLight)),
+        ),
+        Text(change.after ?? '—', style: mono(11, w: 500, color: SR.ink2)),
+      ],
+    );
+  }
 }

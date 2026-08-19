@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../model/notice.dart';
 import '../theme/sr_tokens.dart';
+import 'responsive_dialog.dart';
 import 'sr_controls.dart';
 
 class ErrorBar extends StatelessWidget {
@@ -55,14 +56,22 @@ class ErrorBar extends StatelessWidget {
           Semantics(
             button: true,
             label: 'Dismiss',
-            child: Hoverable(
-              builder: (context, hovered) => GestureDetector(
-                onTap: onDismiss,
-                child: Text(
-                  '✕',
-                  style: sans(
-                    12,
-                    color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
+            child: SizedBox.square(
+              dimension: SR.isCompact(MediaQuery.sizeOf(context).width)
+                  ? 44
+                  : 20,
+              child: Hoverable(
+                builder: (context, hovered) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onDismiss,
+                  child: Center(
+                    child: Text(
+                      '✕',
+                      style: sans(
+                        12,
+                        color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -93,6 +102,9 @@ class DarkBarButton extends StatelessWidget {
       onTap: onPressed,
       child: AnimatedContainer(
         duration: SR.stateChange,
+        constraints: BoxConstraints(
+          minHeight: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 0,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
           color: solid ? SR.surface : Color(hovered ? 0x33FFFFFF : 0x1AFFFFFF),
@@ -124,7 +136,7 @@ class SrToast extends StatelessWidget {
       builder: (context, t, child) => Opacity(
         opacity: t,
         child: Transform.translate(
-          offset: Offset(0, (1 - t) * 6),
+          offset: Offset(0, (1 - t) * -6),
           child: child,
         ),
       ),
@@ -221,14 +233,22 @@ class UndoBar extends StatelessWidget {
             Semantics(
               button: true,
               label: 'Dismiss',
-              child: Hoverable(
-                builder: (context, hovered) => GestureDetector(
-                  onTap: onDismiss,
-                  child: Text(
-                    '✕',
-                    style: sans(
-                      12,
-                      color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
+              child: SizedBox.square(
+                dimension: SR.isCompact(MediaQuery.sizeOf(context).width)
+                    ? 44
+                    : 20,
+                child: Hoverable(
+                  builder: (context, hovered) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onDismiss,
+                    child: Center(
+                      child: Text(
+                        '✕',
+                        style: sans(
+                          12,
+                          color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -256,54 +276,45 @@ class GuardDialog extends StatelessWidget {
   final VoidCallback onDiscard;
 
   @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: Colors.transparent,
-    elevation: 0,
-    insetPadding: const EdgeInsets.all(24),
-    child: Container(
-      constraints: const BoxConstraints(maxWidth: 400),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: SR.surface,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: SR.dialogShadow,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Leave without saving?',
-            style: sans(15, w: 600, tracking: -.01),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            hasStoredDraft
-                ? 'This facility is not published yet. Its fields and its map '
-                      'pin are already held in the local draft, so you can '
-                      'pick it up later.'
-                : 'This facility is not published yet. Keep the draft and '
-                      'everything, including the map pin, is waiting when you '
-                      'come back.',
-            style: sans(12.5, height: 1.65, color: SR.ink4),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              SrButton(label: 'Keep editing', onPressed: onStay),
-              SrButton(label: 'Save draft & leave', onPressed: onKeepDraft),
-              SrButton(
-                label: 'Discard',
-                kind: SrButtonKind.dangerSolid,
-                onPressed: onDiscard,
-              ),
-            ],
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => SrAdaptiveDialog(
+    maxWidth: 400,
+    maxHeight: 520,
+    fullScreenOnCompact: false,
+    padding: EdgeInsets.all(
+      SR.isCompact(MediaQuery.sizeOf(context).width) ? 18 : 22,
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Leave without saving?', style: sans(15, w: 600, tracking: -.01)),
+        const SizedBox(height: 7),
+        Text(
+          hasStoredDraft
+              ? 'This facility is not published yet. Its fields and its map '
+                    'pin are already held in the local draft, so you can '
+                    'pick it up later.'
+              : 'This facility is not published yet. Keep the draft and '
+                    'everything, including the map pin, is waiting when you '
+                    'come back.',
+          style: sans(12.5, height: 1.65, color: SR.ink4),
+        ),
+        const SizedBox(height: 18),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            SrButton(label: 'Keep editing', onPressed: onStay),
+            SrButton(label: 'Save draft & leave', onPressed: onKeepDraft),
+            SrButton(
+              label: 'Discard',
+              kind: SrButtonKind.dangerSolid,
+              onPressed: onDiscard,
+            ),
+          ],
+        ),
+      ],
     ),
   );
 }

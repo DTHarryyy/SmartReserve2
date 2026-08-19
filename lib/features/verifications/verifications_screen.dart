@@ -6,6 +6,9 @@ import '../../model/verification.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/queue_shell.dart';
+import '../../widgets/record_table.dart';
+import '../../widgets/responsive_dialog.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 
 class VerificationsScreen extends StatelessWidget {
@@ -41,22 +44,23 @@ class VerificationsScreen extends StatelessWidget {
       list: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
+          SrTabs(
+            scrollable: true,
+            items: [
               for (final (decision, label) in _tabs)
-                QueueTab(
+                SrTabItem(
                   label: label,
                   count: state.verifications
                       .where((v) => v.decision == decision)
                       .length,
-                  selected: state.verificationTab == decision,
-                  onTap: () => state.setVerificationTab(decision),
                 ),
             ],
+            selectedIndex: _tabs.indexWhere(
+              (t) => t.$1 == state.verificationTab,
+            ),
+            onSelect: (i) => state.setVerificationTab(_tabs[i].$1),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: SR.space12),
 
           if (rows.isEmpty)
             _empty(state)
@@ -73,57 +77,28 @@ class VerificationsScreen extends StatelessWidget {
                 ),
               ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: SR.space12),
           Text(
             'Nobody is blocked while they wait — a pending member can browse '
             'and prepare a request. Verifying here releases it.',
-            style: sans(11, height: 1.6, color: SR.muted),
+            style: SrType.caption(),
           ),
         ],
       ),
     );
   }
 
-  Widget _empty(AppState state) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 52),
-    decoration: BoxDecoration(
-      color: SR.surface,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
-    ),
-    child: Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: SR.greenTint,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.check_rounded, size: 20, color: SR.greenDark),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          state.verificationTab == VerificationDecision.pending
-              ? 'Nobody is waiting'
-              : 'Nothing here yet',
-          style: sans(14, w: 600),
-        ),
-        const SizedBox(height: 5),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 300),
-          child: Text(
-            state.verificationTab == VerificationDecision.pending
-                ? 'Every campus claim has been decided. Documents are reviewed '
-                      'each morning, within one business day.'
-                : 'Submissions appear here once they reach this state.',
-            textAlign: TextAlign.center,
-            style: sans(12, height: 1.6, color: SR.ink4),
-          ),
-        ),
-      ],
-    ),
+  Widget _empty(AppState state) => ListEmptyState(
+    icon: state.verificationTab == VerificationDecision.pending
+        ? Icons.task_alt_rounded
+        : Icons.inbox_rounded,
+    title: state.verificationTab == VerificationDecision.pending
+        ? 'Nobody is waiting'
+        : 'Nothing here yet',
+    body: state.verificationTab == VerificationDecision.pending
+        ? 'Every campus claim has been decided. Documents are reviewed '
+              'each morning, within one business day.'
+        : 'Submissions appear here once they reach this state.',
   );
 }
 
@@ -153,10 +128,12 @@ class _QueueRow extends StatelessWidget {
           duration: SR.stateChange,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            color: selected ? SR.blueTint2 : SR.surface,
-            borderRadius: BorderRadius.circular(11),
+            color: selected ? SR.primaryTint2 : SR.surface,
+            borderRadius: BorderRadius.circular(SR.rMd - 1),
             border: Border.all(
-              color: selected ? SR.blue : (hovered ? SR.blueSoft : SR.border),
+              color: selected
+                  ? SR.primary
+                  : (hovered ? SR.primarySoft : SR.border),
             ),
           ),
           child: Row(
@@ -211,17 +188,14 @@ class _QueueRow extends StatelessWidget {
                           submission.idNumber,
                           style: mono(11, w: 500, color: SR.ink3),
                         ),
-                        SrPill(
+                        SrStatusChip(
                           label: submission.documentPath == null
                               ? 'Document deleted'
                               : 'Document submitted',
-                          background: submission.documentPath == null
-                              ? SR.surfaceSubtle
-                              : SR.blueTint,
-                          foreground: submission.documentPath == null
-                              ? SR.ink4
-                              : SR.blueDark,
-                          fontSize: 10,
+                          tone: submission.documentPath == null
+                              ? SrTone.neutral
+                              : SrTone.info,
+                          dense: true,
                         ),
                       ],
                     ),
@@ -267,7 +241,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
   @override
   Widget build(BuildContext context) {
     final submission = widget.submission;
-    final narrow = MediaQuery.sizeOf(context).width < 900;
+    final narrow = !context.fitsSplitView;
     final deciding = widget.state.verificationDecisionPending(submission.id);
 
     return Column(
@@ -458,22 +432,15 @@ class _VerificationPanelState extends State<_VerificationPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierColor: const Color(0x8010141A),
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Verify this campus member?'),
+      builder: (dialogContext) => SrConfirmDialog(
+        title: 'Verify this campus member?',
         content: Text(
           '${submission.name} will be marked verified. The submitted private '
           'document is permanently deleted after this decision.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Verify member'),
-          ),
-        ],
+        confirmLabel: 'Verify member',
+        onCancel: () => Navigator.of(dialogContext).pop(false),
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
       ),
     );
     if (confirmed ?? false) {

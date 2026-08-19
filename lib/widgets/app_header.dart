@@ -8,18 +8,17 @@ class AppHeader extends StatelessWidget {
     super.key,
     required this.crumbs,
     required this.title,
-    required this.onToggleStates,
     required this.onOpenProfile,
     required this.avatarInitials,
     this.actions = const [],
     this.chip,
     this.compact = false,
+    this.mobile = false,
     this.onMenu,
   });
 
   final List<String> crumbs;
   final String title;
-  final VoidCallback onToggleStates;
   final VoidCallback onOpenProfile;
   final String avatarInitials;
 
@@ -27,85 +26,96 @@ class AppHeader extends StatelessWidget {
 
   final Widget? chip;
   final bool compact;
+  final bool mobile;
   final VoidCallback? onMenu;
 
   @override
   Widget build(BuildContext context) => Container(
     padding: EdgeInsets.symmetric(
-      horizontal: compact ? 16 : 24,
-      vertical: compact ? 10 : 12,
+      horizontal: compact ? SR.space16 : SR.space24,
+      vertical: compact ? SR.space8 : SR.space12,
     ),
     decoration: const BoxDecoration(
-      color: SR.bg,
+      color: SR.surface,
       border: Border(bottom: BorderSide(color: SR.border)),
     ),
     child: Row(
       children: [
         if (onMenu != null) ...[
           SrIconButton(
-            glyph: '☰',
+            icon: Icons.menu_rounded,
             tooltip: 'Sections',
-            size: 36,
-            fontSize: 13,
+            size: SR.controlMd,
+            fontSize: 15,
             onPressed: onMenu,
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: SR.space12),
         ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  for (var i = 0; i < crumbs.length; i++) ...[
-                    if (i > 0)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                        child: Text('/', style: sans(11, color: SR.mutedLight)),
-                      ),
-                    Flexible(
-                      child: Text(
-                        crumbs[i],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: i == crumbs.length - 1
-                            ? sans(11, w: 500)
-                            : sans(11, color: SR.ink4),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 2),
+              if (!compact) ...[
+                _Breadcrumbs(crumbs: crumbs),
+                const SizedBox(height: SR.space2),
+              ],
               Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(
-                  compact ? 15 : 17,
-                  w: 600,
-                  height: 1.25,
-                  tracking: -.015,
-                ),
+                style: compact ? SrType.subhead() : SrType.heading(),
               ),
             ],
           ),
         ),
-        if (chip != null && !compact) ...[const SizedBox(width: 14), chip!],
-        const SizedBox(width: 12),
-        SrButton(
-          label: 'States',
-          dense: true,
-          fontSize: 12,
-          onPressed: onToggleStates,
-        ),
+        if (chip != null && !compact) ...[
+          const SizedBox(width: SR.space12),
+          chip!,
+        ],
         if (!compact) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: SR.space8),
           _Avatar(initials: avatarInitials, onTap: onOpenProfile),
         ],
-        for (final action in actions) ...[const SizedBox(width: 8), action],
+        for (final action in actions) ...[
+          const SizedBox(width: SR.space8),
+          action,
+        ],
       ],
     ),
+  );
+}
+
+class _Breadcrumbs extends StatelessWidget {
+  const _Breadcrumbs({required this.crumbs});
+
+  final List<String> crumbs;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      for (var i = 0; i < crumbs.length; i++) ...[
+        if (i > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: SR.space2),
+            child: Icon(
+              Icons.chevron_right_rounded,
+              size: SR.iconSm,
+              color: SR.mutedLight,
+            ),
+          ),
+        Flexible(
+          child: Text(
+            crumbs[i],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: i == crumbs.length - 1
+                ? SrType.caption(w: 500, color: SR.ink3)
+                : SrType.caption(),
+          ),
+        ),
+      ],
+    ],
   );
 }
 
@@ -130,11 +140,16 @@ class _Avatar extends StatelessWidget {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: hovered ? SR.blueTint2 : SR.surface,
+              color: SR.primaryTint,
               shape: BoxShape.circle,
-              border: Border.all(color: hovered ? SR.blueSoft : SR.border),
+              border: Border.all(
+                color: hovered ? SR.primarySoft : SR.primaryLine,
+              ),
             ),
-            child: Text(initials, style: mono(11, w: 600, color: SR.blueDark)),
+            child: Text(
+              initials,
+              style: mono(11, w: 600, color: SR.primaryDeep),
+            ),
           ),
         ),
       ),
@@ -150,22 +165,25 @@ class HeaderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    padding: const EdgeInsets.symmetric(
+      horizontal: SR.space12,
+      vertical: SR.space6,
+    ),
     decoration: BoxDecoration(
-      color: SR.surface,
-      borderRadius: BorderRadius.circular(20),
+      color: SR.surfaceSubtle,
+      borderRadius: BorderRadius.circular(SR.rFull),
       border: Border.all(color: SR.border),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 5,
-          height: 5,
+          width: SR.space6,
+          height: SR.space6,
           decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 6),
-        Text(label, style: sans(11, color: SR.ink4)),
+        const SizedBox(width: SR.space6),
+        Text(label, style: SrType.caption(w: 500, color: SR.ink3)),
       ],
     ),
   );

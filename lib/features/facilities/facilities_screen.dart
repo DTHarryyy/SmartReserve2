@@ -5,9 +5,10 @@ import '../../app/app_state.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
 import '../../theme/sr_tokens.dart';
-import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import 'facility_detail_dialog.dart';
 
 enum FacilityFilter {
@@ -76,65 +77,66 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final rows = _visible(state);
-    final stacked = MediaQuery.sizeOf(context).width < SR.tabletMin;
+    final width = MediaQuery.sizeOf(context).width;
+    final stacked = width < SR.tabletMin;
 
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          stacked ? 14 : 24,
-          stacked ? 14 : 20,
-          stacked ? 14 : 24,
-          40,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            FilterBar(
-              count: state.facilitiesLoading
-                  ? null
-                  : '${rows.length} of ${state.facilities.length}',
-              children: [
-                FilterSearch(
-                  controller: _search,
-                  placeholder: 'Search facilities',
-                  width: stacked ? 220 : 300,
-                  onChanged: (v) => setState(() => _query = v),
+    return SrScrollView(
+      padding: SR.pageInsets(width, top: stacked ? 14 : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SrPageHeader(
+            title: 'Facilities',
+            description: state.facilitiesLoading
+                ? null
+                : '${rows.length} of ${state.facilities.length} shown',
+          ),
+          const SizedBox(height: SR.space16),
+          SrSearchField(
+            controller: _search,
+            placeholder: 'Search facilities',
+            onChanged: (v) => setState(() => _query = v),
+          ),
+          const SizedBox(height: SR.space12),
+          SrTabs(
+            scrollable: stacked,
+            items: [
+              for (final filter in FacilityFilter.values)
+                SrTabItem(
+                  label: filter.label,
+                  count: state.facilities.where(filter.matches).length,
                 ),
-                for (final filter in FacilityFilter.values)
-                  FilterPill(
-                    label: filter.label,
-                    selected: _filter == filter,
-                    onTap: () => setState(() => _filter = filter),
+            ],
+            selectedIndex: _filter.index,
+            onSelect: (i) => setState(() => _filter = FacilityFilter.values[i]),
+          ),
+          const SizedBox(height: SR.space16),
+          if (state.facilitiesLoading)
+            RecordTable(
+              columns: _columns,
+              children: [
+                for (var i = 0; i < 6; i++)
+                  SkeletonRow(
+                    columns: _columns,
+                    leadWidth: [.7, .5, .8, .45, .65, .55][i],
                   ),
               ],
+            )
+          else if (state.facilitiesError != null)
+            RecordTable(columns: _columns, children: [_error(state)])
+          else if (rows.isEmpty)
+            RecordTable(columns: _columns, children: [_empty(state)])
+          else
+            RecordTable(
+              columns: _columns,
+              footerNote:
+                  'Every row is a record students navigate by. A pin that is '
+                  'wrong here sends someone to the wrong building.',
+              children: [
+                for (final facility in rows) _row(context, state, facility),
+              ],
             ),
-            if (state.facilitiesLoading)
-              RecordTable(
-                columns: _columns,
-                children: [
-                  for (var i = 0; i < 6; i++)
-                    SkeletonRow(
-                      columns: _columns,
-                      leadWidth: [.7, .5, .8, .45, .65, .55][i],
-                    ),
-                ],
-              )
-            else if (state.facilitiesError != null)
-              RecordTable(columns: _columns, children: [_error(state)])
-            else if (rows.isEmpty)
-              RecordTable(columns: _columns, children: [_empty(state)])
-            else
-              RecordTable(
-                columns: _columns,
-                footerNote:
-                    'Every row is a record students navigate by. A pin that is '
-                    'wrong here sends someone to the wrong building.',
-                children: [
-                  for (final facility in rows) _row(context, state, facility),
-                ],
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -142,7 +144,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
   Widget _empty(AppState state) {
     final filtered = state.facilities.isNotEmpty;
     return ListEmptyState(
-      glyph: '⌖',
+      icon: filtered ? Icons.search_off_rounded : Icons.apartment_rounded,
       title: filtered ? 'Nothing matches' : 'No facilities yet',
       body: filtered
           ? 'Clear the search or pick a different filter.'
@@ -158,18 +160,20 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                 _filter = FacilityFilter.all;
               }),
             )
-          : SrButton(
+          : state.isInternalAdmin
+          ? SrButton(
               label: 'Add the first facility',
               kind: SrButtonKind.primary,
               onPressed: () {
                 widget.onEdit(null);
               },
-            ),
+            )
+          : null,
     );
   }
 
   Widget _error(AppState state) => ListEmptyState(
-    glyph: '!',
+    icon: Icons.error_outline_rounded,
     title: 'Facilities could not be loaded',
     body: state.facilitiesError ?? 'Check the connection and try again.',
     action: SrButton(
@@ -182,6 +186,14 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
   Widget _row(BuildContext context, AppState state, Facility facility) =>
       RecordRow(
         columns: _columns,
+        compactChild: _FacilityCompactCard(
+          key: ValueKey('facility-compact-${facility.id}'),
+          facility: facility,
+          canEdit: state.isInternalAdmin,
+          onEdit: () => widget.onEdit(facility),
+          onDelete: () =>
+              confirmDeleteFacility(context, state: state, facility: facility),
+        ),
         onTap: () => showFacilityDetail(
           context,
           state: state,
@@ -239,47 +251,125 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
             style: sans(12, color: SR.ink3),
           ),
           Text('${facility.capacity}', style: mono(12, color: SR.ink3)),
-          Text(
-            facility.pinConfidence.label,
-            maxLines: 1,
-            style: mono(10, w: 500, color: facility.pinConfidence.color),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SrStatusChip(
+              label: facility.pinConfidence.label,
+              tone: facility.pinConfidence.tone,
+              dot: true,
+              dense: true,
+            ),
           ),
           Align(
             alignment: Alignment.centerLeft,
-            child: SrPill(
+            child: SrStatusChip(
               label: facility.state.label,
-              background: facility.state.background,
-              foreground: facility.state.foreground,
+              tone: facility.state.tone,
             ),
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SrIconButton(
-                icon: Icons.edit_outlined,
-                tooltip: 'Edit ${facility.name}',
-                size: 28,
-                fontSize: 11,
-                radius: 7,
-                onPressed: () => widget.onEdit(facility),
-              ),
-              const SizedBox(width: 5),
-              SrIconButton(
-                icon: Icons.delete_outline_rounded,
-                tooltip: 'Delete ${facility.name}',
-                size: 28,
-                fontSize: 11,
-                radius: 7,
-                foreground: SR.red,
-                hoverForeground: SR.red,
-                onPressed: () => confirmDeleteFacility(
-                  context,
-                  state: state,
-                  facility: facility,
+          if (state.isInternalAdmin)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SrIconButton(
+                  icon: Icons.edit_outlined,
+                  tooltip: 'Edit ${facility.name}',
+                  size: 28,
+                  fontSize: 11,
+                  radius: 7,
+                  onPressed: () => widget.onEdit(facility),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 5),
+                SrIconButton(
+                  icon: Icons.delete_outline_rounded,
+                  tooltip: 'Delete ${facility.name}',
+                  size: 28,
+                  fontSize: 11,
+                  radius: 7,
+                  foreground: SR.red,
+                  hoverForeground: SR.red,
+                  onPressed: () => confirmDeleteFacility(
+                    context,
+                    state: state,
+                    facility: facility,
+                  ),
+                ),
+              ],
+            )
+          else
+            const SizedBox.shrink(),
         ],
       );
+}
+
+class _FacilityCompactCard extends StatelessWidget {
+  const _FacilityCompactCard({
+    super.key,
+    required this.facility,
+    required this.canEdit,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final Facility facility;
+  final bool canEdit;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: facility.coverPhoto == null
+                  ? const ColoredBox(color: SR.hairline)
+                  : FacilityPhotoImage(photo: facility.coverPhoto!),
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(facility.name, style: sans(13.5, w: 600, height: 1.3)),
+                const SizedBox(height: 2),
+                Text(
+                  '${facility.room} · ${facility.building}',
+                  style: sans(11.5, height: 1.45, color: SR.ink4),
+                ),
+              ],
+            ),
+          ),
+          if (canEdit)
+            PopupMenuButton<String>(
+              tooltip: 'Actions for ${facility.name}',
+              onSelected: (value) => value == 'edit' ? onEdit() : onDelete(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Edit facility')),
+                PopupMenuItem(value: 'delete', child: Text('Delete facility')),
+              ],
+              icon: const Icon(Icons.more_vert_rounded, color: SR.ink4),
+            ),
+        ],
+      ),
+      const SizedBox(height: SR.space12),
+      Wrap(
+        spacing: SR.space8,
+        runSpacing: SR.space8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SrStatusChip(label: facility.state.label, tone: facility.state.tone),
+          SrFactChip(label: 'Capacity', value: '${facility.capacity}'),
+          SrFactChip(label: 'Category', value: facility.category),
+        ],
+      ),
+    ],
+  );
 }

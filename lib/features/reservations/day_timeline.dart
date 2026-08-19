@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
+import 'conflict_engine.dart';
 import 'reservation_checks.dart';
 
 class DayTimeline extends StatelessWidget {
@@ -13,7 +14,7 @@ class DayTimeline extends StatelessWidget {
 
   final ReservationAssessment assessment;
 
-  final List<Booking> confirmed;
+  final List<Hold> confirmed;
 
   @override
   Widget build(BuildContext context) {

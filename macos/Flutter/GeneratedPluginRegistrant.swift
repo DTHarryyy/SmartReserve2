@@ -7,7 +7,7 @@ import Foundation
 
 import app_links
 import desktop_drop
-import file_picker
+import file_picker_darwin
 import file_saver
 import file_selector_macos
 import geolocator_apple

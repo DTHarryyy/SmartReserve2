@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_view.dart';
 import '../../theme/sr_tokens.dart';
-import '../../widgets/decision_widgets.dart';
+import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -13,144 +14,161 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final admin = state.currentAdmin;
+    final width = MediaQuery.sizeOf(context).width;
 
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: SrButton(
-                    label: '← Back',
-                    dense: true,
-                    fontSize: 11.5,
-                    onPressed: state.leaveProfile,
+    return SrScrollView(
+      padding: SR.pageInsets(width, bottom: SR.space32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SrButton(
+                  label: 'Back',
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    size: SR.iconSm,
+                    color: SR.ink3,
                   ),
+                  kind: SrButtonKind.ghost,
+                  dense: true,
+                  fontSize: 11.5,
+                  onPressed: state.leaveProfile,
                 ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: SR.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: SR.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Initials(
-                            text: admin.initials,
-                            size: 46,
-                            fontSize: 14,
+              ),
+              const SizedBox(height: SR.space12),
+              SrCard(
+                padding: EdgeInsets.all(context.isCompact ? 16 : SR.space20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        SrAvatar(initials: admin.initials, size: 46),
+                        const SizedBox(width: SR.space12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(admin.name, style: SrType.heading()),
+                              const SizedBox(height: SR.space2),
+                              Text(
+                                admin.email,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: SrType.code(color: SR.muted),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(admin.unit, style: SrType.caption()),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  admin.name,
-                                  style: sans(16, w: 600, tracking: -.015),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  admin.email,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: mono(11, color: SR.muted),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  admin.unit,
-                                  style: sans(11, color: SR.ink4),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      SrCellGrid(
-                        columns: 1,
-                        children: [
-                          SrKeyCell(label: 'ROLE', value: admin.role.label),
-                          SrKeyCell(
-                            label: 'EMPLOYEE NUMBER',
-                            value: admin.idNumber,
-                            valueMono: true,
-                          ),
-                          SrKeyCell(label: 'JOINED', value: admin.joined),
-                          SrKeyCell(
-                            label: 'SESSION',
-                            value: 'Admin sessions expire after 12 hours',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 12,
                         ),
-                        decoration: BoxDecoration(
-                          color: SR.blueTint2,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: SR.blueLine),
+                      ],
+                    ),
+                    const SizedBox(height: SR.space16),
+                    SrCellGrid(
+                      columns: 1,
+                      children: [
+                        SrKeyCell(label: 'ROLE', value: admin.role.label),
+                        SrKeyCell(
+                          label: 'EMPLOYEE NUMBER',
+                          value: admin.idNumber,
+                          valueMono: true,
                         ),
-                        child: Text(
-                          admin.role.privileges,
-                          style: sans(11.5, height: 1.6, color: SR.blueInk),
+                        SrKeyCell(label: 'JOINED', value: admin.joined),
+                        SrKeyCell(
+                          label: 'SESSION',
+                          value: 'Admin sessions expire after 12 hours',
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: SR.space12 + 2),
+                    _InfoBanner(
+                      icon: Icons.shield_outlined,
+                      tone: SrTone.info,
+                      text: admin.role.privileges,
+                    ),
+                    const SizedBox(height: SR.space8),
+                    _InfoBanner(
+                      icon: Icons.info_outline_rounded,
+                      tone: SrTone.neutral,
+                      text:
+                          'Nobody can change their own role. To alter '
+                          'yours, ask another internal admin from the '
+                          'Users page.',
+                    ),
+                    const SizedBox(height: SR.space12 + 2),
+                    SrButton(
+                      label: 'Open my record in Users',
+                      icon: const Icon(
+                        Icons.badge_outlined,
+                        size: SR.iconSm,
+                        color: SR.ink3,
                       ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: SR.surfaceSubtle,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: SR.hairline),
-                        ),
-                        child: Text(
-                          'Nobody can change their own role. To alter yours, '
-                          'ask another internal admin from the Users page.',
-                          style: sans(11.5, height: 1.6, color: SR.ink4),
-                        ),
+                      expand: true,
+                      minHeight: 42,
+                      fontSize: 12.5,
+                      onPressed: () => state.goTo(AppView.users),
+                    ),
+                    const SizedBox(height: SR.space8),
+                    SrButton(
+                      label: 'Sign out',
+                      icon: const Icon(
+                        Icons.logout_rounded,
+                        size: SR.iconSm,
+                        color: SR.red,
                       ),
-                      const SizedBox(height: 14),
-                      SrButton(
-                        label: 'Open my record in Users',
-                        expand: true,
-                        minHeight: 42,
-                        fontSize: 12.5,
-                        onPressed: () => state.goTo(AppView.users),
-                      ),
-                      const SizedBox(height: 8),
-                      SrButton(
-                        label: 'Sign out',
-                        kind: SrButtonKind.danger,
-                        expand: true,
-                        minHeight: 42,
-                        fontSize: 12.5,
-                        onPressed: () => state.signOut(),
-                      ),
-                    ],
-                  ),
+                      kind: SrButtonKind.danger,
+                      expand: true,
+                      minHeight: 42,
+                      fontSize: 12.5,
+                      onPressed: () => state.signOut(),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({
+    required this.icon,
+    required this.tone,
+    required this.text,
+  });
+
+  final IconData icon;
+  final SrTone tone;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: SR.space12 + 1,
+      vertical: SR.space12,
+    ),
+    decoration: BoxDecoration(
+      color: tone.tint,
+      borderRadius: BorderRadius.circular(SR.rMd - 2),
+      border: Border.all(color: tone.line),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: SR.iconSm, color: tone.ink),
+        const SizedBox(width: SR.space8),
+        Expanded(
+          child: Text(text, style: SrType.bodySm(color: tone.ink)),
+        ),
+      ],
+    ),
+  );
 }

@@ -544,9 +544,11 @@ const designNotes = <DesignNote>[
     ),
     NoteItem(
       'One list, not four',
-      'Students, faculty, staff, guests and admins are all rows in the same '
-          'table, separated by filters rather than by tabs. Splitting them into '
-          'separate pages would mean guessing which page a name is on.',
+      'Users and administrators are rows in the same account table. Student, '
+          'faculty, staff and outside-user labels belong to the verification '
+          'claim, never the authorization role. Internal admins see the full '
+          'directory; external admins receive a separate sanitized list of '
+          'paying clients.',
     ),
     NoteItem(
       'Actions on a user',

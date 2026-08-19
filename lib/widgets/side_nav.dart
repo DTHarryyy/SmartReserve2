@@ -15,6 +15,35 @@ const adminSections = <AppView>[
   AppView.audit,
 ];
 
+typedef NavGroup = ({String label, List<AppView> items});
+
+const _internalGroups = <NavGroup>[
+  (
+    label: 'Operations',
+    items: [
+      AppView.facilities,
+      AppView.reservations,
+      AppView.calendar,
+      AppView.verifications,
+    ],
+  ),
+  (
+    label: 'Administration',
+    items: [AppView.users, AppView.reports, AppView.audit],
+  ),
+];
+
+const _externalGroups = <NavGroup>[
+  (
+    label: 'Operations',
+    items: [AppView.facilities, AppView.reservations, AppView.calendar],
+  ),
+  (
+    label: 'Administration',
+    items: [AppView.reports, AppView.users, AppView.profile],
+  ),
+];
+
 class SideNav extends StatelessWidget {
   const SideNav({
     super.key,
@@ -27,97 +56,61 @@ class SideNav extends StatelessWidget {
   final ValueChanged<AppView> onSelect;
   final bool showStats;
 
-  static const width = 232.0;
+  static const width = 248.0;
 
-  String? _countFor(AppView section) => switch (section) {
+  String? _totalFor(AppView section) => switch (section) {
     AppView.facilities => '${state.facilities.length}',
-    AppView.reservations =>
-      state.pendingRequests == 0 ? null : '${state.pendingRequests}',
-    AppView.verifications =>
-      state.pendingVerifications == 0 ? null : '${state.pendingVerifications}',
     AppView.users => '${state.accounts.length}',
     _ => null,
   };
 
+  int _pendingFor(AppView section) => switch (section) {
+    AppView.reservations => state.pendingRequests,
+    AppView.verifications => state.pendingVerifications,
+    _ => 0,
+  };
+
   @override
   Widget build(BuildContext context) {
-    final sections = state.isExternalAdmin
-        ? const [
-            AppView.facilities,
-            AppView.reservations,
-            AppView.calendar,
-            AppView.reports,
-            AppView.profile,
-          ]
-        : adminSections;
+    final groups = state.isExternalAdmin ? _externalGroups : _internalGroups;
     return Container(
       width: width,
-      color: SR.navBg,
+      decoration: const BoxDecoration(
+        color: SR.navBg,
+        border: Border(right: BorderSide(color: SR.navBorder)),
+      ),
       child: SafeArea(
         right: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-              child: Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: SR.blue,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'S',
-                      style: sans(13, w: 700, color: SR.surface),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'SmartReserve',
-                          style: sans(
-                            14,
-                            w: 600,
-                            height: 1.1,
-                            tracking: -.01,
-                            color: SR.surface,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'CSU APARRI',
-                          style: mono(
-                            10,
-                            height: 1.4,
-                            color: const Color(0x6BFFFFFF),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const _BrandMark(),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.fromLTRB(
+                  SR.space12,
+                  0,
+                  SR.space12,
+                  SR.space12,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final section in sections)
-                      _NavButton(
-                        label: section.crumb,
-                        count: _countFor(section),
-                        current: state.view.navSection == section,
-                        onTap: () => onSelect(section),
-                      ),
+                    for (final group in groups) ...[
+                      _GroupLabel(group.label),
+                      for (final section in group.items)
+                        _NavButton(
+                          icon: section.icon,
+                          label:
+                              state.isExternalAdmin && section == AppView.users
+                              ? 'Clients'
+                              : section.crumb,
+                          total: _totalFor(section),
+                          pending: _pendingFor(section),
+                          current: state.view.navSection == section,
+                          onTap: () => onSelect(section),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -135,70 +128,187 @@ class SideNav extends StatelessWidget {
   }
 }
 
+class _BrandMark extends StatelessWidget {
+  const _BrandMark();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(
+      SR.space20,
+      SR.space20,
+      SR.space20,
+      SR.space16,
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: SR.controlSm,
+          height: SR.controlSm,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: SR.primary,
+            borderRadius: BorderRadius.circular(SR.rSm),
+          ),
+          child: Text('S', style: sans(15, w: 700, color: SR.onDark)),
+        ),
+        const SizedBox(width: SR.space12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SmartReserve',
+                style: sans(15, w: 600, height: 1.1, tracking: -.015),
+              ),
+              const SizedBox(height: SR.space2),
+              Text('CSU APARRI', style: SrType.overline()),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _GroupLabel extends StatelessWidget {
+  const _GroupLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(
+      SR.space12,
+      SR.space12,
+      SR.space12,
+      SR.space6,
+    ),
+    child: Text(label.toUpperCase(), style: SrType.overline()),
+  );
+}
+
 class _NavButton extends StatelessWidget {
   const _NavButton({
+    required this.icon,
     required this.label,
     required this.current,
     required this.onTap,
-    this.count,
+    required this.pending,
+    this.total,
   });
 
+  final IconData icon;
   final String label;
-  final String? count;
+  final String? total;
+  final int pending;
   final bool current;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: current,
-    child: Hoverable(
-      builder: (context, hovered) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: SR.stateChange,
-          margin: const EdgeInsets.only(bottom: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          decoration: BoxDecoration(
-            color: current
-                ? const Color(0x1FFFFFFF)
-                : (hovered ? const Color(0x12FFFFFF) : Colors.transparent),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
+  Widget build(BuildContext context) {
+    final compact = context.isCompact;
+    return Semantics(
+      button: true,
+      selected: current,
+      child: Hoverable(
+        builder: (context, hovered) => GestureDetector(
+          onTap: onTap,
+          child: Stack(
             children: [
-              Container(
-                width: 6,
-                height: 6,
+              AnimatedContainer(
+                duration: SR.stateChange,
+                curve: SR.easing,
+                margin: const EdgeInsets.only(bottom: SR.space2),
+                constraints: BoxConstraints(
+                  minHeight: compact ? SR.tapTarget : 38,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SR.space12,
+                  vertical: SR.space8,
+                ),
                 decoration: BoxDecoration(
-                  color: current ? SR.blueBright : const Color(0x40FFFFFF),
-                  borderRadius: BorderRadius.circular(2),
+                  color: current
+                      ? SR.primaryTint
+                      : (hovered ? SR.surfaceSubtle : Colors.transparent),
+                  borderRadius: BorderRadius.circular(SR.rSm),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      icon,
+                      size: SR.iconMd,
+                      color: current
+                          ? SR.primary
+                          : (hovered ? SR.ink3 : SR.ink4),
+                    ),
+                    const SizedBox(width: SR.space12),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: sans(
+                          13,
+                          w: current ? 600 : 500,
+                          color: current
+                              ? SR.primaryDeep
+                              : (hovered ? SR.ink : SR.ink2),
+                        ),
+                      ),
+                    ),
+                    if (pending > 0)
+                      _PendingBadge(count: pending, current: current)
+                    else if (total != null)
+                      Text(
+                        total!,
+                        style: mono(10, w: 500, color: SR.mutedLight),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: sans(
-                    13,
-                    w: 500,
-                    color: current || hovered
-                        ? SR.surface
-                        : const Color(0x9EFFFFFF),
+              Positioned(
+                left: 0,
+                top: SR.space8,
+                bottom: SR.space12,
+                child: AnimatedContainer(
+                  duration: SR.stateChange,
+                  curve: SR.easing,
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: current ? SR.primary : Colors.transparent,
+                    borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(3),
+                    ),
                   ),
                 ),
               ),
-              if (count != null)
-                Text(
-                  count!,
-                  style: mono(10, w: 500, color: const Color(0x4DFFFFFF)),
-                ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PendingBadge extends StatelessWidget {
+  const _PendingBadge({required this.count, required this.current});
+
+  final int count;
+  final bool current;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: SR.space6, vertical: 1),
+    constraints: const BoxConstraints(minWidth: 20),
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: current ? SR.primary : SR.primaryTint,
+      borderRadius: BorderRadius.circular(SR.rFull),
+      border: current ? null : Border.all(color: SR.primaryLine),
+    ),
+    child: Text(
+      '$count',
+      style: mono(10, w: 600, color: current ? SR.onDark : SR.primaryDeep),
     ),
   );
 }
@@ -212,61 +322,71 @@ class _MappedStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final outstanding = (total - mapped).clamp(0, total);
+    final complete = outstanding == 0;
     return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(SR.space12, 0, SR.space12, SR.space12),
+      padding: const EdgeInsets.all(SR.space12),
       decoration: BoxDecoration(
-        color: const Color(0x0DFFFFFF),
-        borderRadius: BorderRadius.circular(10),
+        color: complete ? SR.greenTint : SR.surfaceSubtle,
+        borderRadius: BorderRadius.circular(SR.rMd),
+        border: Border.all(color: complete ? SR.greenLine : SR.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Mapped facilities',
-            style: sans(
-              11,
-              w: 500,
-              height: 1.4,
-              color: const Color(0x80FFFFFF),
-            ),
+            style: SrType.caption(w: 500, color: SR.ink3),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: SR.space4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
                 '$mapped',
-                style: sans(20, w: 600, tracking: -.02, color: SR.surface),
+                style: sans(
+                  20,
+                  w: 600,
+                  tracking: -.02,
+                  color: complete ? SR.greenDark : SR.ink,
+                ),
               ),
-              const SizedBox(width: 6),
-              Text('/ $total', style: mono(11, color: const Color(0x66FFFFFF))),
+              const SizedBox(width: SR.space6),
+              Text('/ $total', style: mono(11, color: SR.muted)),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: SR.space8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(SR.rXs),
             child: Stack(
               children: [
-                Container(height: 4, color: const Color(0x1FFFFFFF)),
-                FractionallySizedBox(
+                Container(
+                  height: 5,
+                  color: complete ? SR.greenLine : SR.surfaceSunken,
+                ),
+                AnimatedFractionallySizedBox(
+                  duration: SR.progressSweep,
+                  curve: SR.easing,
                   widthFactor: total == 0
                       ? 0
                       : (mapped / total).clamp(0.0, 1.0),
-                  child: Container(height: 4, color: SR.blueBright),
+                  child: Container(
+                    height: 5,
+                    color: complete ? SR.green : SR.primary,
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: SR.space8),
           Text(
-            outstanding == 0
+            complete
                 ? 'Every facility has a verified pin.'
                 : '$outstanding ${outstanding == 1 ? 'facility' : 'facilities'} '
                       'still ${outstanding == 1 ? 'needs' : 'need'} a verified '
                       'pin.',
-            style: sans(10, height: 1.5, color: const Color(0x61FFFFFF)),
+            style: SrType.caption(color: complete ? SR.greenDark : SR.ink4),
           ),
         ],
       ),
@@ -284,53 +404,66 @@ class _AdminFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final admin = state.currentAdmin;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0x14FFFFFF))),
+        border: Border(top: BorderSide(color: SR.navBorder)),
       ),
-      child: Hoverable(
-        builder: (context, hovered) => GestureDetector(
-          onTap: () => onSelect(AppView.profile),
-          child: Row(
-            children: [
-              Container(
-                width: 26,
-                height: 26,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: SR.navAvatar,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  admin.initials,
-                  style: mono(10, w: 600, color: SR.navAvatarFg),
-                ),
+      padding: const EdgeInsets.all(SR.space8),
+      child: Semantics(
+        button: true,
+        label: 'Your profile',
+        child: Hoverable(
+          builder: (context, hovered) => GestureDetector(
+            onTap: () => onSelect(AppView.profile),
+            child: AnimatedContainer(
+              duration: SR.stateChange,
+              padding: const EdgeInsets.all(SR.space8),
+              decoration: BoxDecoration(
+                color: hovered ? SR.surfaceSubtle : Colors.transparent,
+                borderRadius: BorderRadius.circular(SR.rSm),
               ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      admin.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: sans(
-                        12,
-                        w: 500,
-                        color: hovered ? SR.surface : const Color(0xE6FFFFFF),
-                      ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: SR.navAvatar,
+                      shape: BoxShape.circle,
                     ),
-                    Text(
-                      'Registrar · ${admin.role.label}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: sans(10, color: const Color(0x66FFFFFF)),
+                    child: Text(
+                      admin.initials,
+                      style: mono(10, w: 600, color: SR.navAvatarFg),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: SR.space8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          admin.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: sans(12, w: 600, color: SR.ink),
+                        ),
+                        Text(
+                          'Registrar · ${admin.role.label}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: SrType.caption(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: SR.iconMd,
+                    color: hovered ? SR.ink3 : SR.mutedLight,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

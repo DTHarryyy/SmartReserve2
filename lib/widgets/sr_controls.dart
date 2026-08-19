@@ -81,6 +81,8 @@ class _SrButtonState extends State<SrButton> {
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
     final primary = widget.kind == SrButtonKind.primary;
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final effectiveMinHeight = widget.minHeight ?? (compact ? 44.0 : 0.0);
 
     Widget content(bool hovered) {
       final (Color bg, Color fg, Color? bd) = switch (widget.kind) {
@@ -120,11 +122,13 @@ class _SrButtonState extends State<SrButton> {
       return AnimatedContainer(
         duration: SR.stateChange,
         curve: SR.easing,
-        constraints: BoxConstraints(minHeight: widget.minHeight ?? 0),
+        constraints: BoxConstraints(minHeight: effectiveMinHeight),
         transform: Matrix4.translationValues(0, primary && _pressed ? 1 : 0, 0),
         padding: EdgeInsets.symmetric(
           horizontal: widget.dense ? 11 : 15,
-          vertical: widget.minHeight != null ? 0 : (widget.dense ? 6 : 8),
+          vertical: widget.minHeight != null || compact
+              ? 0
+              : (widget.dense ? 6 : 8),
         ),
         decoration: BoxDecoration(
           color: enabled ? bg : SR.dividerSoft,
@@ -222,41 +226,45 @@ class SrIconButton extends StatelessWidget {
   final List<BoxShadow>? shadow;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: Semantics(
-      button: true,
-      label: tooltip,
-      child: Hoverable(
-        enabled: onPressed != null,
-        builder: (context, hovered) => GestureDetector(
-          onTap: onPressed,
-          child: AnimatedContainer(
-            duration: SR.stateChange,
-            width: size,
-            height: size,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: hovered ? SR.dividerSoft : background,
-              borderRadius: BorderRadius.circular(radius),
-              border: border == null ? null : Border.all(color: border!),
-              boxShadow: shadow,
-            ),
-            child: Builder(
-              builder: (context) {
-                final tint = onPressed == null
-                    ? SR.mutedLight
-                    : (hovered ? hoverForeground : foreground);
-                return icon != null
-                    ? Icon(icon, size: fontSize + 3, color: tint)
-                    : Text(glyph ?? '', style: sans(fontSize, color: tint));
-              },
+  Widget build(BuildContext context) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final effectiveSize = compact && size < 44 ? 44.0 : size;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: Hoverable(
+          enabled: onPressed != null,
+          builder: (context, hovered) => GestureDetector(
+            onTap: onPressed,
+            child: AnimatedContainer(
+              duration: SR.stateChange,
+              width: effectiveSize,
+              height: effectiveSize,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: hovered ? SR.dividerSoft : background,
+                borderRadius: BorderRadius.circular(radius),
+                border: border == null ? null : Border.all(color: border!),
+                boxShadow: shadow,
+              ),
+              child: Builder(
+                builder: (context) {
+                  final tint = onPressed == null
+                      ? SR.mutedLight
+                      : (hovered ? hoverForeground : foreground);
+                  return icon != null
+                      ? Icon(icon, size: fontSize + 3, color: tint)
+                      : Text(glyph ?? '', style: sans(fontSize, color: tint));
+                },
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class DashedBox extends StatelessWidget {
@@ -352,18 +360,20 @@ class SrLabel extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(
       children: [
-        Text.rich(
-          TextSpan(
-            text: text,
-            children: [
-              if (required)
-                TextSpan(
-                  text: ' *',
-                  style: sans(11.5, w: 500, color: SR.red),
-                ),
-            ],
+        Flexible(
+          child: Text.rich(
+            TextSpan(
+              text: text,
+              children: [
+                if (required)
+                  TextSpan(
+                    text: ' *',
+                    style: sans(11.5, w: 500, color: SR.red),
+                  ),
+              ],
+            ),
+            style: sans(11.5, w: 500, color: SR.ink2),
           ),
-          style: sans(11.5, w: 500, color: SR.ink2),
         ),
         if (meta != null) ...[const Spacer(), meta!],
       ],
@@ -386,7 +396,7 @@ class SrErrorText extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 1, right: 5),
-            child: Text('⚠', style: sans(10, color: SR.red)),
+            child: Icon(Icons.error_outline_rounded, size: 11, color: SR.red),
           ),
           Expanded(
             child: Text(message!, style: sans(11, height: 1.45, color: SR.red)),
@@ -418,6 +428,13 @@ class SrTextField extends StatefulWidget {
     this.autofocus = false,
     this.readOnly = false,
     this.onTap,
+    this.obscureText = false,
+    this.textInputAction,
+    this.autofillHints,
+    this.autocorrect = true,
+    this.enableSuggestions = true,
+    this.textCapitalization = TextCapitalization.none,
+    this.prefix,
   });
 
   final TextEditingController controller;
@@ -438,6 +455,13 @@ class SrTextField extends StatefulWidget {
   final bool autofocus;
   final bool readOnly;
   final VoidCallback? onTap;
+  final bool obscureText;
+  final TextInputAction? textInputAction;
+  final Iterable<String>? autofillHints;
+  final bool autocorrect;
+  final bool enableSuggestions;
+  final TextCapitalization textCapitalization;
+  final Widget? prefix;
 
   @override
   State<SrTextField> createState() => _SrTextFieldState();
@@ -469,9 +493,20 @@ class _SrTextFieldState extends State<SrTextField> {
     final style = widget.mono
         ? mono(widget.fontSize, color: SR.ink)
         : sans(widget.fontSize, height: widget.maxLines == 1 ? null : 1.6);
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final effectivePadding =
+        compact &&
+            widget.maxLines == 1 &&
+            widget.padding ==
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10)
+        ? const EdgeInsets.symmetric(horizontal: 12)
+        : widget.padding;
     return AnimatedContainer(
       duration: SR.stateChange,
-      padding: widget.padding,
+      constraints: compact && widget.maxLines == 1
+          ? const BoxConstraints(minHeight: 46)
+          : null,
+      padding: effectivePadding,
       decoration: BoxDecoration(
         color: SR.surface,
         borderRadius: BorderRadius.circular(9),
@@ -494,29 +529,43 @@ class _SrTextFieldState extends State<SrTextField> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (widget.prefix != null) ...[
+            widget.prefix!,
+            const SizedBox(width: 9),
+          ],
           Expanded(
-            child: TextField(
-              controller: widget.controller,
-              focusNode: _node,
-              autofocus: widget.autofocus,
-              readOnly: widget.readOnly,
-              onTap: widget.onTap,
-              onChanged: widget.onChanged,
-              onSubmitted: widget.onSubmitted,
-              minLines: widget.minLines,
-              maxLines: widget.maxLines,
-              keyboardType: widget.keyboardType,
-              inputFormatters: widget.inputFormatters,
-              cursorColor: SR.blue,
-              cursorWidth: 1.5,
-              style: style,
-              decoration: InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                hintText: widget.placeholder,
-                hintStyle: style.copyWith(color: SR.mutedLight),
-                labelText: null,
+            child: Semantics(
+              textField: true,
+              label: widget.semanticLabel,
+              child: TextField(
+                controller: widget.controller,
+                focusNode: _node,
+                autofocus: widget.autofocus,
+                readOnly: widget.readOnly,
+                onTap: widget.onTap,
+                onChanged: widget.onChanged,
+                onSubmitted: widget.onSubmitted,
+                minLines: widget.minLines,
+                maxLines: widget.maxLines,
+                keyboardType: widget.keyboardType,
+                inputFormatters: widget.inputFormatters,
+                obscureText: widget.obscureText,
+                textInputAction: widget.textInputAction,
+                autofillHints: widget.autofillHints,
+                autocorrect: widget.autocorrect,
+                enableSuggestions: widget.enableSuggestions,
+                textCapitalization: widget.textCapitalization,
+                cursorColor: SR.blue,
+                cursorWidth: 1.5,
+                style: style,
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  hintText: widget.placeholder,
+                  hintStyle: style.copyWith(color: SR.mutedLight),
+                  labelText: null,
+                ),
               ),
             ),
           ),
@@ -553,78 +602,86 @@ class SrSelect<T> extends StatelessWidget {
   final double fontSize;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: semanticLabel,
-    child: Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: SR.surface,
-        borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: hasError ? SR.red : SR.borderField),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          isExpanded: true,
-          isDense: true,
-          borderRadius: BorderRadius.circular(10),
-          dropdownColor: SR.surface,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 16,
-            color: SR.muted,
-          ),
-          hint: Text(
-            placeholder ?? '',
-            style: sans(fontSize, color: SR.mutedLight),
-          ),
-          style: sans(fontSize),
-          onChanged: onChanged,
-          selectedItemBuilder: (context) => [
-            for (final item in items)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  labelOf(item),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: sans(fontSize),
+  Widget build(BuildContext context) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    return Semantics(
+      label: semanticLabel,
+      child: Container(
+        height: compact ? 44 : 40,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: SR.surface,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: hasError ? SR.red : SR.borderField),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<T>(
+            value: value,
+            isExpanded: true,
+            isDense: true,
+            borderRadius: BorderRadius.circular(10),
+            dropdownColor: SR.surface,
+            icon: const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: SR.muted,
+            ),
+            hint: Text(
+              placeholder ?? '',
+              style: sans(fontSize, color: SR.mutedLight),
+            ),
+            style: sans(fontSize),
+            onChanged: onChanged,
+            selectedItemBuilder: (context) => [
+              for (final item in items)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    labelOf(item),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: sans(fontSize),
+                  ),
                 ),
-              ),
-          ],
-          items: [
-            for (final item in items)
-              DropdownMenuItem<T>(
-                value: item,
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        labelOf(item),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: sans(fontSize),
+            ],
+            items: [
+              for (final item in items)
+                DropdownMenuItem<T>(
+                  value: item,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          labelOf(item),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: sans(fontSize),
+                        ),
                       ),
-                    ),
-                    if (subtitleOf?.call(item) != null) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        subtitleOf!(item)!,
-                        style: mono(9, w: 500, tracking: .04, color: SR.amber),
-                      ),
+                      if (subtitleOf?.call(item) != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          subtitleOf!(item)!,
+                          style: mono(
+                            9,
+                            w: 500,
+                            tracking: .04,
+                            color: SR.amber,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-class SrToggle extends StatelessWidget {
+class SrToggle extends StatefulWidget {
   const SrToggle({
     super.key,
     required this.value,
@@ -633,55 +690,117 @@ class SrToggle extends StatelessWidget {
   });
 
   final bool value;
-  final ValueChanged<bool> onChanged;
+
+  final ValueChanged<bool>? onChanged;
   final String label;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    toggled: value,
-    label: label,
-    child: GestureDetector(
-      onTap: () => onChanged(!value),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: SR.easing,
-          width: 38,
-          height: 22,
-          decoration: BoxDecoration(
-            color: value ? SR.blue : SR.border,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Stack(
-            children: [
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 200),
-                curve: SR.easing,
-                top: 3,
-                left: value ? 19 : 3,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: const BoxDecoration(
-                    color: SR.surface,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0x4710141A),
-                        blurRadius: 3,
-                        offset: Offset(0, 1),
-                      ),
-                    ],
+  State<SrToggle> createState() => _SrToggleState();
+}
+
+class _SrToggleState extends State<SrToggle> {
+  static const _trackW = 38.0;
+  static const _trackH = 22.0;
+  static const _thumb = 16.0;
+  static const _inset = 3.0;
+
+  static const _thumbShadow = [
+    BoxShadow(color: Color(0x4710141A), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
+  final FocusNode _node = FocusNode();
+  bool _focused = false;
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    _node.requestFocus();
+    widget.onChanged!(!widget.value);
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.space &&
+        event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    widget.onChanged!(!widget.value);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onChanged != null;
+    final value = widget.value;
+
+    return Semantics(
+      toggled: value,
+      enabled: enabled,
+      label: widget.label,
+      child: Hoverable(
+        enabled: enabled,
+        builder: (context, hovered) {
+          final track = switch ((enabled, value)) {
+            (false, true) => SR.primarySoft,
+            (false, false) => SR.dividerSoft,
+            (true, true) => hovered ? SR.primaryHover : SR.primary,
+            (true, false) => hovered ? SR.borderHover : SR.border,
+          };
+
+          return Focus(
+            focusNode: _node,
+            canRequestFocus: enabled,
+            onFocusChange: (focused) => setState(() => _focused = focused),
+            onKeyEvent: enabled ? _onKey : null,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: enabled ? _toggle : null,
+              child: SizedBox(
+                width: SR.tapTarget,
+                height: SR.tapTarget,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: SR.stateChange,
+                    curve: SR.easing,
+                    width: _trackW,
+                    height: _trackH,
+                    decoration: BoxDecoration(
+                      color: track,
+                      borderRadius: BorderRadius.circular(SR.rFull),
+                      boxShadow: _focused && enabled ? SR.focusRing : null,
+                    ),
+                    child: Stack(
+                      children: [
+                        AnimatedPositioned(
+                          duration: SR.stateChange,
+                          curve: SR.easing,
+                          top: _inset,
+                          left: value ? _trackW - _thumb - _inset : _inset,
+                          child: Container(
+                            width: _thumb,
+                            height: _thumb,
+                            decoration: BoxDecoration(
+                              color: SR.surface,
+                              shape: BoxShape.circle,
+                              boxShadow: enabled ? _thumbShadow : null,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
-    ),
-  );
+    );
+  }
 }
 
 class SrPill extends StatelessWidget {
@@ -779,40 +898,49 @@ class SrCellGrid extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    final rows = <Widget>[];
-    for (var i = 0; i < children.length; i += columns) {
-      final slice = children.sublist(
-        i,
-        (i + columns).clamp(0, children.length),
-      );
-      rows.add(
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var c = 0; c < columns; c++) ...[
-                if (c > 0) const SizedBox(width: 1),
-                Expanded(
-                  child: c < slice.length
-                      ? slice[c]
-                      : const ColoredBox(color: SR.surface),
-                ),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final effectiveColumns = constraints.maxWidth < 240
+          ? 1
+          : constraints.maxWidth < 520
+          ? columns.clamp(1, 2)
+          : columns;
+      final rows = <Widget>[];
+      for (var i = 0; i < children.length; i += effectiveColumns) {
+        final slice = children.sublist(
+          i,
+          (i + effectiveColumns).clamp(0, children.length),
+        );
+        rows.add(
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var c = 0; c < effectiveColumns; c++) ...[
+                  if (c > 0) const SizedBox(width: 1),
+                  Expanded(
+                    child: c < slice.length
+                        ? slice[c]
+                        : const ColoredBox(color: SR.surface),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
+        );
+        if (i + effectiveColumns < children.length) {
+          rows.add(const SizedBox(height: 1));
+        }
+      }
+      return Container(
+        decoration: BoxDecoration(
+          color: SR.hairline,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: SR.hairline),
         ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(mainAxisSize: MainAxisSize.min, children: rows),
       );
-      if (i + columns < children.length) rows.add(const SizedBox(height: 1));
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: SR.hairline,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SR.hairline),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(mainAxisSize: MainAxisSize.min, children: rows),
-    );
-  }
+    },
+  );
 }

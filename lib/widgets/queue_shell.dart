@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../theme/sr_tokens.dart';
 import 'notices.dart';
 import 'sr_controls.dart';
+import 'sr_scroll_view.dart';
 
 class QueueShell extends StatelessWidget {
   const QueueShell({
@@ -30,9 +31,16 @@ class QueueShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final listPane = Scrollbar(
-      child: SingleChildScrollView(padding: listPadding, child: list),
-    );
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final effectiveListPadding =
+        compact && listPadding == const EdgeInsets.fromLTRB(20, 16, 20, 32)
+        ? const EdgeInsets.fromLTRB(14, 14, 14, 28)
+        : listPadding;
+    final effectivePanelPadding =
+        compact && panelPadding == const EdgeInsets.fromLTRB(16, 16, 20, 24)
+        ? const EdgeInsets.fromLTRB(14, 14, 14, 28)
+        : panelPadding;
+    final listPane = SrScrollView(padding: effectiveListPadding, child: list);
 
     if (stacked) {
       return Stack(
@@ -49,7 +57,7 @@ class QueueShell extends StatelessWidget {
               left: 0,
               right: 0,
               bottom: 0,
-              top: 40,
+              top: compact ? 0 : 40,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(16),
@@ -82,11 +90,9 @@ class QueueShell extends StatelessWidget {
                         ),
                       ),
                       Expanded(
-                        child: Scrollbar(
-                          child: SingleChildScrollView(
-                            padding: panelPadding,
-                            child: panel!,
-                          ),
+                        child: SrScrollView(
+                          padding: effectivePanelPadding,
+                          child: panel!,
                         ),
                       ),
                     ],
@@ -113,11 +119,9 @@ class QueueShell extends StatelessWidget {
         ),
         Expanded(
           flex: 5,
-          child: Scrollbar(
-            child: SingleChildScrollView(
-              padding: panelPadding,
-              child: panel ?? const _NothingSelected(),
-            ),
+          child: SrScrollView(
+            padding: effectivePanelPadding,
+            child: panel ?? const _NothingSelected(),
           ),
         ),
       ],
@@ -166,46 +170,58 @@ class QueueTab extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: selected,
-    child: Hoverable(
-      builder: (context, hovered) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: SR.stateChange,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? SR.ink : SR.surface,
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(
-              color: selected ? SR.ink : (hovered ? SR.borderHover : SR.border),
+  Widget build(BuildContext context) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Hoverable(
+        builder: (context, hovered) => GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: SR.stateChange,
+            padding: EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: compact ? 11 : 8,
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: sans(12, w: 500, color: selected ? SR.surface : SR.ink3),
+            decoration: BoxDecoration(
+              color: selected ? SR.ink : SR.surface,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: selected
+                    ? SR.ink
+                    : (hovered ? SR.borderHover : SR.border),
               ),
-              const SizedBox(width: 7),
-              Text(
-                '$count',
-                style: mono(
-                  10.5,
-                  w: 500,
-                  color: selected
-                      ? SR.surface.withValues(alpha: .65)
-                      : SR.muted,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: sans(
+                    12,
+                    w: 500,
+                    color: selected ? SR.surface : SR.ink3,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 7),
+                Text(
+                  '$count',
+                  style: mono(
+                    10.5,
+                    w: 500,
+                    color: selected
+                        ? SR.surface.withValues(alpha: .65)
+                        : SR.muted,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class BulkBar extends StatelessWidget {
@@ -226,51 +242,62 @@ class BulkBar extends StatelessWidget {
   final String? blockedNote;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(
-      color: SR.ink,
-      borderRadius: BorderRadius.circular(10),
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: sans(12, w: 500, color: SR.surface)),
-              if (blockedNote != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  blockedNote!,
-                  style: sans(
-                    10.5,
-                    height: 1.4,
-                    color: const Color(0x99FFFFFF),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        if (onAction != null)
-          DarkBarButton(label: actionLabel, onPressed: onAction!, solid: true)
-        else
-          Opacity(
-            opacity: .4,
-            child: DarkBarButton(
-              label: actionLabel,
-              onPressed: () {},
-              solid: true,
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final compact = constraints.maxWidth < SR.compactMax;
+      final summary = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: sans(12, w: 500, color: SR.surface)),
+          if (blockedNote != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              blockedNote!,
+              style: sans(10.5, height: 1.4, color: const Color(0x99FFFFFF)),
             ),
-          ),
-        const SizedBox(width: 8),
-        DarkBarButton(label: 'Clear', onPressed: onClear),
-      ],
-    ),
+          ],
+        ],
+      );
+      final actions = Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (onAction != null)
+            DarkBarButton(label: actionLabel, onPressed: onAction!, solid: true)
+          else
+            Opacity(
+              opacity: .4,
+              child: DarkBarButton(
+                label: actionLabel,
+                onPressed: () {},
+                solid: true,
+              ),
+            ),
+          DarkBarButton(label: 'Clear', onPressed: onClear),
+        ],
+      );
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: SR.ink,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [summary, const SizedBox(height: 10), actions],
+              )
+            : Row(
+                children: [
+                  Expanded(child: summary),
+                  const SizedBox(width: 10),
+                  actions,
+                ],
+              ),
+      );
+    },
   );
 }
 
@@ -290,25 +317,31 @@ class SelectBox extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     checked: selected,
     label: semanticLabel,
-    child: Hoverable(
-      builder: (context, hovered) => GestureDetector(
-        onTap: () => onTap(HardwareKeyboard.instance.isShiftPressed),
-        child: Container(
-          width: 17,
-          height: 17,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? SR.blue : SR.surface,
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: selected
-                  ? SR.blue
-                  : (hovered ? SR.blueSoft : SR.borderField),
+    child: SizedBox.square(
+      dimension: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 17,
+      child: Hoverable(
+        builder: (context, hovered) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onTap(HardwareKeyboard.instance.isShiftPressed),
+          child: Center(
+            child: Container(
+              width: 17,
+              height: 17,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? SR.blue : SR.surface,
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(
+                  color: selected
+                      ? SR.blue
+                      : (hovered ? SR.blueSoft : SR.borderField),
+                ),
+              ),
+              child: selected
+                  ? const Icon(Icons.check_rounded, size: 11, color: SR.surface)
+                  : null,
             ),
           ),
-          child: selected
-              ? const Icon(Icons.check_rounded, size: 11, color: SR.surface)
-              : null,
         ),
       ),
     ),

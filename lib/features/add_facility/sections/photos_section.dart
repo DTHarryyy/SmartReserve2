@@ -103,23 +103,31 @@ class PhotosSection extends StatelessWidget {
     );
   }
 
-  Widget _grid(List<FacilityPhoto> photos) => GridView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    padding: EdgeInsets.zero,
-    itemCount: photos.length,
-    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: columns,
-      crossAxisSpacing: 9,
-      mainAxisSpacing: 9,
-      childAspectRatio: 4 / 3,
-    ),
-    itemBuilder: (context, index) => _PhotoTile(
-      controller: controller,
-      photo: photos[index],
-      index: index,
-      total: photos.length,
-    ),
+  Widget _grid(List<FacilityPhoto> photos) => LayoutBuilder(
+    builder: (context, constraints) {
+      final derived = ((constraints.maxWidth + 9) / 129).floor().clamp(
+        1,
+        columns,
+      );
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        itemCount: photos.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: derived,
+          crossAxisSpacing: 9,
+          mainAxisSpacing: 9,
+          childAspectRatio: 4 / 3,
+        ),
+        itemBuilder: (context, index) => _PhotoTile(
+          controller: controller,
+          photo: photos[index],
+          index: index,
+          total: photos.length,
+        ),
+      );
+    },
   );
 }
 

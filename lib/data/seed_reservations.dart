@@ -8,7 +8,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'CICS-201',
     capacity: 40,
     requester: 'Jomar Padilla',
-    role: 'Student · BSIT 4A',
+    role: 'User · BSIT 4A',
     org: 'Junior Philippine Computer Society',
     purpose:
         'Hands-on workshop on network configuration for 32 members, ahead of '
@@ -30,7 +30,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'ADM-G01',
     capacity: 420,
     requester: 'Prof. Elena Sarmiento',
-    role: 'Faculty · College of Education',
+    role: 'User · College of Education',
     org: 'College of Education',
     purpose:
         'Departmental convocation and awarding ceremony for graduating '
@@ -52,7 +52,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'LIB-202',
     capacity: 80,
     requester: 'Maria Angeles Tan',
-    role: 'Student · BSED 3B',
+    role: 'User · BSED 3B',
     org: 'Student Council',
     purpose:
         'Weekly peer tutoring session for first-year students in mathematics.',
@@ -74,7 +74,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'GYM-001',
     capacity: 900,
     requester: 'Karl Mendoza',
-    role: 'Student · BSCrim 2A',
+    role: 'User · BSCrim 2A',
     org: 'Intramurals Committee',
     purpose: 'Elimination round for the inter-college basketball tournament.',
     date: 'Tue 28 Jul',
@@ -94,7 +94,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'CFMS-105',
     capacity: 24,
     requester: 'Dr. Rowena Castillo',
-    role: 'Faculty · College of Fisheries',
+    role: 'User · College of Fisheries',
     org: 'Research Office',
     purpose:
         'Sample preparation for the coastal water quality study. Requires '
@@ -116,7 +116,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'ADM-304',
     capacity: 18,
     requester: 'Atty. Ferdinand Uy',
-    role: 'Staff · Legal Office',
+    role: 'User · Legal Office',
     org: 'Administration',
     purpose: 'Closed-door hearing for a student disciplinary case.',
     date: 'Wed 29 Jul',
@@ -136,7 +136,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'CICS-201',
     capacity: 40,
     requester: 'Prof. Noel Bautista',
-    role: 'Faculty · CICS',
+    role: 'User · CICS',
     org: 'CICS',
     purpose: 'Make-up laboratory session for IT 3A.',
     date: 'Thu 30 Jul',
@@ -158,7 +158,7 @@ List<ReservationRequest> seedRequests() => [
     room: 'ADM-G01',
     capacity: 420,
     requester: 'Bianca Lorenzo',
-    role: 'Student · BSBA 1C',
+    role: 'User · BSBA 1C',
     org: 'Junior Marketing Association',
     purpose: 'Product launch simulation with an outside sponsor booth.',
     date: 'Fri 31 Jul',
@@ -178,8 +178,8 @@ List<ReservationRequest> seedRequests() => [
   ),
 ];
 
-const seedBookings = <Booking>[
-  Booking(
+List<Booking> seedBookings() => [
+  Booking.fromLabels(
     id: 'b1',
     facility: 'Computer Laboratory 1',
     date: 'Tue 28 Jul',
@@ -188,7 +188,7 @@ const seedBookings = <Booking>[
     label: 'IT 3A — Networking lab',
     requester: 'Prof. Bautista',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b2',
     facility: 'Computer Laboratory 1',
     date: 'Tue 28 Jul',
@@ -197,7 +197,7 @@ const seedBookings = <Booking>[
     label: 'BSCS 2B — Data structures',
     requester: 'Prof. Lorenzo',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b3',
     facility: 'University Auditorium',
     date: 'Tue 28 Jul',
@@ -206,7 +206,7 @@ const seedBookings = <Booking>[
     label: 'Nursing orientation',
     requester: 'Dean Villamor',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b4',
     facility: 'Reading Hall B',
     date: 'Tue 28 Jul',
@@ -215,7 +215,7 @@ const seedBookings = <Booking>[
     label: 'Thesis writing clinic',
     requester: 'Ms. Dela Cruz',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b5',
     facility: 'Main Court',
     date: 'Tue 28 Jul',
@@ -226,8 +226,8 @@ const seedBookings = <Booking>[
   ),
 ];
 
-const seriesDemoBookings = <Booking>[
-  Booking(
+List<Booking> seriesDemoBookings() => [
+  Booking.fromLabels(
     id: 'b6',
     facility: 'Reading Hall B',
     date: 'Tue 11 Aug',
@@ -236,7 +236,7 @@ const seriesDemoBookings = <Booking>[
     label: 'Faculty grading session',
     requester: 'Prof. Sarmiento',
   ),
-  Booking(
+  Booking.fromLabels(
     id: 'b7',
     facility: 'Reading Hall B',
     date: 'Tue 25 Aug',

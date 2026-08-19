@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/design_notes.dart';
 import '../../theme/sr_tokens.dart';
+import '../../widgets/sr_scroll_view.dart';
 
 class NotesScreen extends StatelessWidget {
   const NotesScreen({super.key});
@@ -10,25 +11,18 @@ class NotesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final stacked = width < SR.tabletMin;
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          stacked ? 14 : 24,
-          stacked ? 14 : 20,
-          stacked ? 14 : 24,
-          40,
-        ),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 940),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final note in designNotes)
-                  _NoteCard(note: note, stacked: stacked),
-              ],
-            ),
+    return SrScrollView(
+      padding: SR.pageInsets(width, top: stacked ? 14 : 20),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 940),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final note in designNotes)
+                _NoteCard(note: note, stacked: stacked),
+            ],
           ),
         ),
       ),

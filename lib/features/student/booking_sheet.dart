@@ -12,6 +12,7 @@ import '../../theme/sr_tokens.dart';
 import '../../util/geo.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 
 Future<void> showBookingSheet(
   BuildContext context, {
@@ -133,25 +134,26 @@ class _BookingSheetState extends State<_BookingSheet> {
     final values = <DateTime>[];
     for (var offset = 0; offset <= facility.advanceBookingDays; offset++) {
       final date = start.add(Duration(days: offset));
-      if (_facilityOpenOn(date)) values.add(date);
+      if (facility.opensOn(date)) values.add(date);
     }
     return values.isEmpty ? [start] : values;
-  }
-
-  bool _facilityOpenOn(DateTime date) {
-    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final day = names[date.weekday - 1];
-    if (facility.days == 'Mon–Sun') return true;
-    if (facility.days == 'Mon–Sat') return date.weekday <= DateTime.saturday;
-    if (facility.days == 'Mon–Fri') return date.weekday <= DateTime.friday;
-    return facility.days.split(',').map((part) => part.trim()).contains(day);
   }
 
   static String _dateLabel(DateTime date) {
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${weekdays[date.weekday - 1]} ${date.day} '
         '${months[date.month - 1]}';
@@ -189,8 +191,8 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   String? get _error {
     if (!_attempted) return null;
-    if (widget.state.studentAccount.status == AccountStatus.suspended) {
-      return widget.state.studentAccount.suspendReason ??
+    if (widget.state.userAccount.status == AccountStatus.suspended) {
+      return widget.state.userAccount.suspendReason ??
           'This account is suspended and cannot submit new requests.';
     }
     if (_duration <= 0) return 'The end time has to be after the start time.';
@@ -210,8 +212,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     if (file == null) return;
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty || bytes.lengthInBytes > 10 * 1024 * 1024) return;
-    final extension = file.extension?.toLowerCase();
-    final mime = switch (extension) {
+    final mime = switch (file.name.split('.').last.toLowerCase()) {
       'jpg' || 'jpeg' => 'image/jpeg',
       'png' => 'image/png',
       'pdf' => 'application/pdf',
@@ -249,94 +250,87 @@ class _BookingSheetState extends State<_BookingSheet> {
     final mobile = widget.fullPage || screen.width < 600;
     final content = ColoredBox(
       color: SR.surface,
-      child: Scrollbar(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _FacilityGallery(
-                facility: facility,
-                selected: _selectedPhoto,
-                mobile: mobile,
-                showClose: !widget.fullPage,
-                onSelected: (index) => setState(() => _selectedPhoto = index),
-                onClose: () => Navigator.of(context).pop(),
+      child: SrScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _FacilityGallery(
+              facility: facility,
+              selected: _selectedPhoto,
+              mobile: mobile,
+              showClose: !widget.fullPage,
+              onSelected: (index) => setState(() => _selectedPhoto = index),
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                mobile ? 16 : 24,
+                mobile ? 18 : 22,
+                mobile ? 16 : 24,
+                mobile ? 24 : 24,
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  mobile ? 16 : 24,
-                  mobile ? 18 : 22,
-                  mobile ? 16 : 24,
-                  mobile ? 24 : 24,
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final wide = constraints.maxWidth >= 760;
-                    final overview = _FacilityOverview(facility: facility);
-                    final booking = _BookingForm(
-                      account: widget.state.studentAccount,
-                      facility: facility,
-                      free: widget.state.studentAccount.reservesFree,
-                      quote: widget.state.quoteFor(
-                        facility,
-                        _duration <= 0 ? 0 : _duration,
-                      ),
-                      narrow: widget.fullPage ? false : mobile || !wide,
-                      date: _date,
-                      dates: _dates,
-                      start: _start,
-                      end: _end,
-                      times: _times,
-                      heads: _heads,
-                      purpose: _purpose,
-                      duration: _duration,
-                      clashes: _clashes,
-                      overCapacity: _overCapacity,
-                      headcount: _headcount,
-                      attempted: _attempted,
-                      error: _error,
-                      weekly: _weekly,
-                      occurrenceCount: _occurrenceCount,
-                      attachments: _attachments,
-                      submitting: _submitting,
-                      onDateChanged: (value) => setState(() => _date = value),
-                      onStartChanged: (value) => setState(() => _start = value),
-                      onEndChanged: (value) => setState(() => _end = value),
-                      onFieldChanged: () => setState(() {}),
-                      onWeeklyChanged: (value) =>
-                          setState(() => _weekly = value),
-                      onOccurrenceCountChanged: (value) =>
-                          setState(() => _occurrenceCount = value),
-                      onChooseAttachments: _chooseAttachments,
-                      onRemoveAttachment: (index) =>
-                          setState(() => _attachments.removeAt(index)),
-                      onSubmit: _submit,
-                    );
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 760;
+                  final overview = _FacilityOverview(facility: facility);
+                  final booking = _BookingForm(
+                    account: widget.state.userAccount,
+                    facility: facility,
+                    free: widget.state.userAccount.reservesFree,
+                    quote: widget.state.quoteFor(
+                      facility,
+                      _duration <= 0 ? 0 : _duration,
+                    ),
+                    narrow: widget.fullPage ? false : mobile || !wide,
+                    date: _date,
+                    dates: _dates,
+                    start: _start,
+                    end: _end,
+                    times: _times,
+                    heads: _heads,
+                    purpose: _purpose,
+                    duration: _duration,
+                    clashes: _clashes,
+                    overCapacity: _overCapacity,
+                    headcount: _headcount,
+                    attempted: _attempted,
+                    error: _error,
+                    weekly: _weekly,
+                    occurrenceCount: _occurrenceCount,
+                    attachments: _attachments,
+                    submitting: _submitting,
+                    onDateChanged: (value) => setState(() => _date = value),
+                    onStartChanged: (value) => setState(() => _start = value),
+                    onEndChanged: (value) => setState(() => _end = value),
+                    onFieldChanged: () => setState(() {}),
+                    onWeeklyChanged: (value) => setState(() => _weekly = value),
+                    onOccurrenceCountChanged: (value) =>
+                        setState(() => _occurrenceCount = value),
+                    onChooseAttachments: _chooseAttachments,
+                    onRemoveAttachment: (index) =>
+                        setState(() => _attachments.removeAt(index)),
+                    onSubmit: _submit,
+                  );
 
-                    if (!wide) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          overview,
-                          const SizedBox(height: 24),
-                          booking,
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 5, child: overview),
-                        const SizedBox(width: 22),
-                        SizedBox(width: 330, child: booking),
-                      ],
+                  if (!wide) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [overview, const SizedBox(height: 24), booking],
                     );
-                  },
-                ),
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 5, child: overview),
+                      const SizedBox(width: 22),
+                      SizedBox(width: 330, child: booking),
+                    ],
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -999,7 +993,11 @@ class _BookingForm extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Row(
                 children: [
-                  const Icon(Icons.attach_file_rounded, size: 15, color: SR.muted),
+                  const Icon(
+                    Icons.attach_file_rounded,
+                    size: 15,
+                    color: SR.muted,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -1082,8 +1080,10 @@ class _BookingForm extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Payment status is tracked only; no real charge is made. '
-                  'Approval marks it authorised and check-in marks it captured.',
+                  account.verification == VerificationState.pending
+                      ? 'This server-calculated quote is kept while your verification is reviewed. The request stays held; approval makes it free, while rejection releases it as a paid request.'
+                      : 'Payment status is tracked only; no real charge is made. '
+                            'Approval marks it authorised and check-in marks it captured.',
                   style: sans(10.5, height: 1.6, color: SR.muted),
                 ),
               ],

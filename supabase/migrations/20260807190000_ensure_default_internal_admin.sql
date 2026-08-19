@@ -1,5 +1,3 @@
--- Keep the requested bootstrap administrator deterministic and usable even if
--- the auth user existed before the original seed migration was introduced.
 do $$
 declare
   admin_email constant text := 'admin@csu.edu.ph';

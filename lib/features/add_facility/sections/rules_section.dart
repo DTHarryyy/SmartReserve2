@@ -89,19 +89,28 @@ class RulesSection extends StatelessWidget {
 
           const SizedBox(height: 14),
           const SrLabel('Available days'),
-          Row(
-            children: [
-              for (var i = 0; i < dayLabels.length; i++) ...[
-                if (i > 0) const SizedBox(width: 5),
-                Expanded(
-                  child: _DayToggle(
-                    label: dayLabels[i],
-                    on: draft.days[i],
-                    onTap: () => controller.toggleDay(i),
-                  ),
-                ),
-              ],
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 420;
+              final dayWidth = compact
+                  ? (constraints.maxWidth - 15) / 4
+                  : (constraints.maxWidth - 30) / 7;
+              return Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: [
+                  for (var i = 0; i < dayLabels.length; i++)
+                    SizedBox(
+                      width: dayWidth,
+                      child: _DayToggle(
+                        label: dayLabels[i],
+                        on: draft.days[i],
+                        onTap: () => controller.toggleDay(i),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
 
           const SizedBox(height: 14),
@@ -213,6 +222,9 @@ class _DayToggle extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: SR.stateChange,
+          constraints: BoxConstraints(
+            minHeight: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 0,
+          ),
           padding: const EdgeInsets.symmetric(vertical: 9),
           alignment: Alignment.center,
           decoration: BoxDecoration(

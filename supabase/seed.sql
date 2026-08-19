@@ -1,5 +1,3 @@
--- Seed the standard SmartReserve user used for development and demos.
--- This is idempotent and refreshes the requested password when reapplied.
 do $$
 declare
   user_email constant text := 'user@csu.edu.ph';
@@ -122,7 +120,7 @@ begin
     user_email,
     'CSU User',
     'none',
-    'guest',
+    'user',
     'active',
     'none',
     true

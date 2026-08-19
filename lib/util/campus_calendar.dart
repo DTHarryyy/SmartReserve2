@@ -2,12 +2,9 @@ library;
 
 const campusUtcOffset = Duration(hours: 8);
 
-/// Converts an absolute instant into CSU Aparri wall-clock time without
-/// depending on the device timezone.
 DateTime campusWallTime(DateTime instant) =>
     instant.toUtc().add(campusUtcOffset);
 
-/// Converts a CSU Aparri wall-clock value into an absolute UTC instant.
 DateTime campusInstant(DateTime wallTime) => DateTime.utc(
   wallTime.year,
   wallTime.month,
@@ -39,6 +36,15 @@ const monthNames = [
   'Nov',
   'Dec',
 ];
+
+String formatStamp(DateTime value) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${value.day} ${monthNames[value.month - 1]} ${value.year}, '
+      '${two(value.hour)}:${two(value.minute)}';
+}
+
+String formatDay(DateTime value) =>
+    '${value.day} ${monthNames[value.month - 1]} ${value.year}';
 
 DateTime? parseCampusDate(String label) {
   var day = 0;
@@ -78,3 +84,18 @@ String formatClock(double hours) {
   final m = ((hours - h) * 60).round();
   return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
 }
+
+DateTime? atClock(DateTime? day, String clock) {
+  if (day == null) return null;
+  final parts = clock.split(':');
+  return DateTime.utc(
+    day.year,
+    day.month,
+    day.day,
+    int.tryParse(parts.first) ?? 0,
+    parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0,
+  );
+}
+
+DateTime dayOnly(DateTime value) =>
+    DateTime.utc(value.year, value.month, value.day);

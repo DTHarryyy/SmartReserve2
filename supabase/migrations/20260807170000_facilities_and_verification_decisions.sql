@@ -241,9 +241,6 @@ begin
 end;
 $$;
 
--- A final decision clears document_path after Storage deletion. Do not let
--- that metadata-only update run the onboarding sync and reset a verified or
--- rejected profile back to pending.
 drop trigger if exists verification_submission_profile_sync
 on public.verification_submissions;
 create trigger verification_submission_profile_sync

@@ -81,4 +81,114 @@ void main() {
     expect(find.text('Back to admin'), findsNothing);
     expect(find.text('SmartReserve'), findsOneWidget);
   });
+
+  group('responsive authentication shell', () {
+    Future<void> pumpAt(
+      WidgetTester tester,
+      Size size,
+      AuthController controller,
+      AppState state,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AuthScreen(controller: controller, state: state),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('mobile uses focused form with improved placeholders', (
+      tester,
+    ) async {
+      final state = AppState();
+      final controller = AuthController(state);
+      addTearDown(controller.dispose);
+      await pumpAt(tester, const Size(390, 844), controller, state);
+
+      expect(find.text('Sign in to SmartReserve'), findsOneWidget);
+      expect(find.text('name@example.com'), findsOneWidget);
+      expect(find.text('Enter your password'), findsOneWidget);
+      expect(find.text('Every room, pinned'), findsNothing);
+
+      final fields = find.byType(TextField);
+      final emailBox = find.ancestor(
+        of: fields.at(0),
+        matching: find.byType(AnimatedContainer),
+      );
+      final passwordBox = find.ancestor(
+        of: fields.at(1),
+        matching: find.byType(AnimatedContainer),
+      );
+      expect(
+        tester.getSize(passwordBox).height,
+        tester.getSize(emailBox).height,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tablet shows the compact campus banner', (tester) async {
+      final state = AppState();
+      final controller = AuthController(state);
+      addTearDown(controller.dispose);
+      await pumpAt(tester, const Size(800, 1280), controller, state);
+
+      expect(
+        find.text('Every campus space, easier to find and reserve.'),
+        findsOneWidget,
+      );
+      expect(find.text('Every room, pinned'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('desktop uses the full supporting panel', (tester) async {
+      final state = AppState();
+      final controller = AuthController(state);
+      addTearDown(controller.dispose);
+      await pumpAt(tester, const Size(1440, 900), controller, state);
+
+      expect(find.text('Every room, pinned'), findsOneWidget);
+      expect(find.text('Sign in to SmartReserve'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('desktop centers the form card vertically in the right pane', (
+      tester,
+    ) async {
+      final state = AppState();
+      final controller = AuthController(state);
+      addTearDown(controller.dispose);
+      await pumpAt(tester, const Size(1440, 900), controller, state);
+
+      final card = find.ancestor(
+        of: find.text('Sign in to SmartReserve'),
+        matching: find.byType(AnimatedSwitcher),
+      );
+      final cardCenter = tester.getCenter(card);
+      expect(cardCenter.dy, closeTo(900 / 2, 24));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reset flow includes code and password confirmation', (
+      tester,
+    ) async {
+      final state = AppState();
+      final controller = AuthController(state)
+        ..emailField.text = 'student@example.com'
+        ..goTo(AuthStep.reset);
+      addTearDown(controller.dispose);
+      await pumpAt(tester, const Size(390, 844), controller, state);
+
+      expect(find.text('Enter your reset code'), findsOneWidget);
+      expect(find.text('Create a new passphrase'), findsOneWidget);
+      expect(find.text('Enter the new password again'), findsOneWidget);
+      expect(find.text('Edit email address'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

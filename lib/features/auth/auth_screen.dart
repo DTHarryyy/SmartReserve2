@@ -6,6 +6,7 @@ import '../../app/app_view.dart';
 import '../../model/verification.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 import 'auth_controller.dart';
 
 class AuthScreen extends StatelessWidget {
@@ -16,40 +17,85 @@ class AuthScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 900;
     return AnimatedBuilder(
       animation: controller,
-      builder: (context, _) => ColoredBox(
-        color: SR.bg,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (wide) const Expanded(flex: 4, child: _Pitch()),
-            Expanded(
-              flex: 5,
-              child: Scrollbar(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: wide ? 40 : 16,
-                    vertical: wide ? 40 : 20,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final desktop = width >= SR.desktopMin;
+          final tablet = width >= SR.tabletMin && !desktop;
+          final reduceMotion = MediaQuery.disableAnimationsOf(context);
+          final pad = EdgeInsets.fromLTRB(
+            desktop
+                ? SR.space48
+                : tablet
+                ? SR.space32
+                : SR.space20,
+            desktop ? SR.space40 : SR.space24,
+            desktop
+                ? SR.space48
+                : tablet
+                ? SR.space32
+                : SR.space20,
+            SR.space24 + MediaQuery.viewInsetsOf(context).bottom,
+          );
+          final content = SafeArea(
+            child: LayoutBuilder(
+              builder: (context, box) => SrScrollView(
+                padding: pad,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (box.maxHeight - pad.vertical).clamp(
+                      0.0,
+                      double.infinity,
+                    ),
                   ),
                   child: Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 420),
+                      constraints: BoxConstraints(
+                        maxWidth: tablet ? 660 : 510,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _topBar(),
-                          const SizedBox(height: 12),
+                          if (!desktop) _topBar(),
+                          if (tablet) ...[
+                            const SizedBox(height: 18),
+                            const _HeroBanner(),
+                          ],
+                          const SizedBox(height: 18),
                           if (_progressLabels.isNotEmpty) _progress(),
-                          _Card(child: _body(context)),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Office of the Registrar · Cagayan State '
-                            'University, Aparri Campus',
-                            textAlign: TextAlign.center,
-                            style: sans(10.5, height: 1.6, color: SR.muted),
+                          _Card(
+                            framed: width >= SR.tabletMin,
+                            child: AnimatedSwitcher(
+                              duration: reduceMotion
+                                  ? Duration.zero
+                                  : SR.entrance,
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: Tween(
+                                        begin: const Offset(.025, 0),
+                                        end: Offset.zero,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
+                                  ),
+                              child: KeyedSubtree(
+                                key: ValueKey(controller.step),
+                                child: _body(context),
+                              ),
+                            ),
                           ),
+                          if (!desktop) ...[
+                            const SizedBox(height: 18),
+                            Text(
+                              'Office of the Registrar · Cagayan State University, Aparri Campus',
+                              textAlign: TextAlign.center,
+                              style: sans(11.5, height: 1.5, color: SR.ink4),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -57,32 +103,46 @@ class AuthScreen extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-        ),
+          );
+          return ColoredBox(
+            color: width < SR.tabletMin ? SR.surface : SR.bg,
+            child: desktop
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Expanded(flex: 45, child: _Pitch()),
+                      Expanded(flex: 55, child: content),
+                    ],
+                  )
+                : content,
+          );
+        },
       ),
     );
   }
 
-  Widget _topBar() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('SmartReserve', style: sans(13, w: 600, tracking: -.01)),
-      Text('CSU APARRI', style: mono(10, color: SR.muted)),
-    ],
-  );
+  Widget _topBar() => const _BrandHeader();
 
   List<String> get _progressLabels => switch (controller.step) {
     AuthStep.signUp ||
     AuthStep.otp ||
     AuthStep.question ||
     AuthStep.details ||
-    AuthStep.pending => const ['ACCOUNT', 'CONFIRM', 'CAMPUS STATUS'],
+    AuthStep.pending => const [
+      '1 Account',
+      '2 Confirm email',
+      '3 Campus status',
+    ],
+    AuthStep.forgot ||
+    AuthStep.reset => const ['1 Email', '2 Reset code', '3 New password'],
     _ => const [],
   };
 
   int get _progressIndex => switch (controller.step) {
     AuthStep.signUp => 0,
     AuthStep.otp => 1,
+    AuthStep.forgot => 0,
+    AuthStep.reset => 1,
     _ => 2,
   };
 
@@ -100,7 +160,7 @@ class AuthScreen extends StatelessWidget {
                   duration: const Duration(milliseconds: 250),
                   height: 3,
                   decoration: BoxDecoration(
-                    color: i <= _progressIndex ? SR.blue : SR.border,
+                    color: i <= _progressIndex ? SR.primary : SR.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -117,46 +177,55 @@ class AuthScreen extends StatelessWidget {
     ),
   );
 
-  Widget _body(BuildContext context) => switch (controller.step) {
-    AuthStep.signUp => _signUp(),
-    AuthStep.signIn => _signIn(),
-    AuthStep.otp => _otp(),
-    AuthStep.question => _question(),
-    AuthStep.details => _details(),
-    AuthStep.pending => _pending(),
-    AuthStep.forgot => _forgot(),
-    AuthStep.reset => _reset(),
-    AuthStep.guest => _guest(),
-    AuthStep.member => _member(),
-  };
+  Widget _body(BuildContext context) => AutofillGroup(
+    child: switch (controller.step) {
+      AuthStep.signUp => _signUp(),
+      AuthStep.signIn => _signIn(),
+      AuthStep.otp => _otp(),
+      AuthStep.question => _question(),
+      AuthStep.details => _details(),
+      AuthStep.pending => _pending(),
+      AuthStep.forgot => _forgot(),
+      AuthStep.reset => _reset(),
+      AuthStep.guest => _guest(),
+      AuthStep.member => _member(),
+    },
+  );
 
   Widget _signUp() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _Title('Create your account'),
-      _Lede('Any email address works. We send a six-digit code to confirm it.'),
+      _Lede(
+        'Use the same name shown on your campus document. We will email a six-digit confirmation code.',
+      ),
       const SizedBox(height: 16),
       const SrLabel('Full name'),
       SrTextField(
         controller: controller.fullNameField,
-        placeholder: 'Your name as shown on your document',
+        placeholder: 'e.g. Juan Dela Cruz',
         semanticLabel: 'Full name',
         hasError: controller.fullNameError != null,
+        textInputAction: TextInputAction.next,
+        autofillHints: const [AutofillHints.name],
+        textCapitalization: TextCapitalization.words,
       ),
       SrErrorText(controller.fullNameError),
       const SizedBox(height: 10),
       const SrLabel('Email address'),
       SrTextField(
         controller: controller.emailField,
-        placeholder: 'you@example.com',
+        placeholder: 'e.g. juan.delacruz@example.com',
         semanticLabel: 'Email address',
         keyboardType: TextInputType.emailAddress,
         hasError: controller.emailError != null,
+        textInputAction: TextInputAction.next,
+        autofillHints: const [AutofillHints.newUsername, AutofillHints.email],
+        autocorrect: false,
       ),
       SrErrorText(controller.emailError),
-      const SizedBox(height: 10),
       const SrLabel('Password'),
-      _PasswordField(controller: controller),
+      _PasswordField(controller: controller, newPassword: true),
       const SizedBox(height: 7),
       Row(
         children: [
@@ -183,13 +252,10 @@ class AuthScreen extends StatelessWidget {
       Text(controller.passwordNote, style: sans(11, color: SR.muted)),
       SrErrorText(controller.passwordError),
       const SizedBox(height: 16),
-      SrButton(
-        label: 'Send confirmation code',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy ? null : () => controller.submitSignUp(),
+      _submitButton(
+        'Send confirmation code',
+        'Creating account…',
+        controller.submitSignUp,
       ),
       SrErrorText(controller.operationError),
       const SizedBox(height: 12),
@@ -210,18 +276,23 @@ class AuthScreen extends StatelessWidget {
   Widget _signIn() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _Title('Sign in'),
-      _Lede('Use the email you registered with.'),
+      _Title('Sign in to SmartReserve'),
+      _Lede(
+        'Reserve CSU Aparri facilities and follow every request in one place.',
+      ),
       const SizedBox(height: 16),
       const SrLabel('Email address'),
       SrTextField(
         controller: controller.emailField,
+        placeholder: 'name@example.com',
         semanticLabel: 'Email address',
         keyboardType: TextInputType.emailAddress,
         hasError: controller.emailError != null,
+        textInputAction: TextInputAction.next,
+        autofillHints: const [AutofillHints.username, AutofillHints.email],
+        autocorrect: false,
       ),
       SrErrorText(controller.emailError),
-      const SizedBox(height: 10),
       SrLabel(
         'Password',
         meta: _InlineLink(
@@ -229,16 +300,13 @@ class AuthScreen extends StatelessWidget {
           onTap: () => controller.goTo(AuthStep.forgot),
         ),
       ),
-      _PasswordField(controller: controller),
-      const SizedBox(height: 16),
-      SrButton(
-        label: 'Sign in',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy ? null : () => controller.submitSignIn(),
+      _PasswordField(
+        controller: controller,
+        placeholder: 'Enter your password',
+        onSubmitted: (_) => controller.busy ? null : controller.submitSignIn(),
       ),
+      const SizedBox(height: 16),
+      _submitButton('Sign in', 'Signing in…', controller.submitSignIn),
       SrErrorText(controller.operationError),
       const SizedBox(height: 12),
       _FooterLink(
@@ -255,27 +323,34 @@ class AuthScreen extends StatelessWidget {
       _Title('Confirm your email'),
       _Lede(
         'Enter the six-digit code sent to '
-        '${controller.emailField.text.trim()}. It expires in 15 minutes.',
+        '${_maskedEmail(controller.emailField.text.trim())}. It expires in 15 minutes.',
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: _InlineLink(
+          label: 'Use another email',
+          onTap: () => controller.goTo(AuthStep.signUp),
+        ),
       ),
       const SizedBox(height: 18),
-      _OtpCells(controller: controller),
+      _OtpCells(controller: controller, label: '6-digit confirmation code'),
       SrErrorText(controller.otpError),
       const SizedBox(height: 12),
-      SrButton(
-        label: 'Confirm and continue',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy ? null : () => controller.confirmOtp(),
+      _submitButton(
+        'Confirm and continue',
+        'Confirming code…',
+        controller.confirmOtp,
       ),
       const SizedBox(height: 12),
       Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _InlineLink(
-            label: 'Resend code',
+            label: controller.resendSeconds > 0
+                ? 'Resend code in ${controller.resendSeconds}s'
+                : 'Resend code',
             onTap: () => controller.resendCode(),
+            enabled: !controller.busy && controller.resendSeconds == 0,
           ),
         ],
       ),
@@ -285,7 +360,7 @@ class AuthScreen extends StatelessWidget {
   Widget _question() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _Title('Are you a student or faculty of CSU Aparri?'),
+      _Title('How are you connected to CSU Aparri?'),
       _Lede(
         'Campus members reserve facilities free of charge after verification. '
         'Outside groups may reserve at the published rate. Answer honestly — '
@@ -299,15 +374,10 @@ class AuthScreen extends StatelessWidget {
           onTap: () => controller.chooseClaim(claim),
         ),
       const SizedBox(height: 16),
-      SrButton(
-        label: 'Continue',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy
-            ? null
-            : () => controller.continueFromQuestion(),
+      _submitButton(
+        'Continue',
+        'Saving selection…',
+        controller.continueFromQuestion,
       ),
     ],
   );
@@ -324,17 +394,23 @@ class AuthScreen extends StatelessWidget {
       SrLabel(controller.claim.idLabel),
       SrTextField(
         controller: controller.idField,
-        placeholder: 'e.g. 2022-01458',
+        placeholder: _idPlaceholder,
         semanticLabel: controller.claim.idLabel,
         mono: true,
+        hasError: controller.idError != null,
+        textInputAction: TextInputAction.next,
       ),
+      SrErrorText(controller.idError),
       const SizedBox(height: 10),
       SrLabel(controller.claim.unitLabel),
       SrTextField(
         controller: controller.unitField,
-        placeholder: 'e.g. BS Information Technology — 4th year',
+        placeholder: _unitPlaceholder,
         semanticLabel: controller.claim.unitLabel,
+        hasError: controller.unitError != null,
+        textCapitalization: TextCapitalization.words,
       ),
+      SrErrorText(controller.unitError),
       const SizedBox(height: 14),
       DashedBox(
         radius: 11,
@@ -349,7 +425,7 @@ class AuthScreen extends StatelessWidget {
             ),
             const SizedBox(height: 3),
             Text(
-              'Make sure the ID number and your name are readable',
+              'JPG, PNG, or PDF · up to 10 MB · make sure your name and ID are readable',
               textAlign: TextAlign.center,
               style: sans(10.5, color: SR.muted),
             ),
@@ -392,7 +468,13 @@ class AuthScreen extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(name, style: mono(11, color: SR.blueDark)),
+                    Flexible(
+                      child: Text(
+                        '$name · ${controller.documentSizeLabel}',
+                        overflow: TextOverflow.ellipsis,
+                        style: mono(11, color: SR.blueDark),
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Hoverable(
                       builder: (context, hovered) => GestureDetector(
@@ -415,15 +497,10 @@ class AuthScreen extends StatelessWidget {
       ),
       SrErrorText(controller.documentError),
       const SizedBox(height: 12),
-      SrButton(
-        label: 'Submit for verification',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy
-            ? null
-            : () => controller.submitVerification(),
+      _submitButton(
+        'Submit for verification',
+        'Uploading document…',
+        controller.submitVerification,
       ),
       SrErrorText(controller.operationError),
     ],
@@ -449,7 +526,7 @@ class AuthScreen extends StatelessWidget {
           expand: true,
           minHeight: 44,
           fontSize: 13,
-          onPressed: () => state.goTo(AppView.studentApp),
+          onPressed: () => state.goTo(AppView.userApp),
         ),
       ),
       VerificationDecision.changesRequested => _Outcome(
@@ -495,7 +572,7 @@ class AuthScreen extends StatelessWidget {
               expand: true,
               minHeight: 44,
               fontSize: 12.5,
-              onPressed: () => state.goTo(AppView.studentApp),
+              onPressed: () => state.goTo(AppView.userApp),
             ),
           ],
         ),
@@ -522,7 +599,7 @@ class AuthScreen extends StatelessWidget {
               expand: true,
               minHeight: 44,
               fontSize: 13,
-              onPressed: () => state.goTo(AppView.studentApp),
+              onPressed: () => state.goTo(AppView.userApp),
             ),
           ],
         ),
@@ -542,19 +619,21 @@ class AuthScreen extends StatelessWidget {
       const SrLabel('Email address'),
       SrTextField(
         controller: controller.emailField,
+        placeholder: 'name@example.com',
         semanticLabel: 'Email address',
         keyboardType: TextInputType.emailAddress,
         hasError: controller.emailError != null,
+        textInputAction: TextInputAction.done,
+        autofillHints: const [AutofillHints.email],
+        autocorrect: false,
+        onSubmitted: (_) => controller.busy ? null : controller.sendReset(),
       ),
       SrErrorText(controller.emailError),
       const SizedBox(height: 14),
-      SrButton(
-        label: 'Send reset code',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy ? null : () => controller.sendReset(),
+      _submitButton(
+        'Send reset code',
+        'Sending reset code…',
+        controller.sendReset,
       ),
       SrErrorText(controller.operationError),
       const SizedBox(height: 12),
@@ -570,35 +649,53 @@ class AuthScreen extends StatelessWidget {
   Widget _reset() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _Title('Choose a new password'),
-      _Lede('Enter the code from your email and the password you want to use.'),
-      const SizedBox(height: 14),
-      SrTextField(
-        controller: controller.otpField,
-        placeholder: '000000',
-        semanticLabel: 'Reset code',
-        mono: true,
-        fontSize: 20,
-        keyboardType: TextInputType.number,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(6),
-        ],
-        hasError: controller.otpError != null,
+      _Title('Enter your reset code'),
+      _Lede(
+        'We sent a six-digit code to ${_maskedEmail(controller.emailField.text.trim())}. Then choose a new password.',
       ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: _InlineLink(
+          label: 'Edit email address',
+          onTap: () => controller.goTo(AuthStep.forgot),
+        ),
+      ),
+      const SizedBox(height: 14),
+      _OtpCells(controller: controller, label: '6-digit reset code'),
       SrErrorText(controller.otpError),
       const SizedBox(height: 10),
       const SrLabel('New password'),
-      _PasswordField(controller: controller),
+      _PasswordField(
+        controller: controller,
+        newPassword: true,
+        placeholder: 'Create a new passphrase',
+      ),
       SrErrorText(controller.passwordError),
+      const SizedBox(height: 10),
+      const SrLabel('Confirm new password'),
+      _PasswordField(
+        controller: controller,
+        fieldController: controller.confirmPasswordField,
+        placeholder: 'Enter the new password again',
+        semanticLabel: 'Confirm new password',
+        hasError: controller.confirmPasswordError != null,
+        onSubmitted: (_) => controller.busy ? null : controller.confirmReset(),
+      ),
+      SrErrorText(controller.confirmPasswordError),
+      Center(
+        child: _InlineLink(
+          label: controller.resendSeconds > 0
+              ? 'Resend code in ${controller.resendSeconds}s'
+              : 'Resend reset code',
+          onTap: controller.resendResetCode,
+          enabled: !controller.busy && controller.resendSeconds == 0,
+        ),
+      ),
       const SizedBox(height: 14),
-      SrButton(
-        label: 'Change password',
-        kind: SrButtonKind.primary,
-        expand: true,
-        minHeight: 44,
-        fontSize: 13,
-        onPressed: controller.busy ? null : () => controller.confirmReset(),
+      _submitButton(
+        'Change password',
+        'Changing password…',
+        controller.confirmReset,
       ),
       SrErrorText(controller.operationError),
     ],
@@ -662,7 +759,7 @@ class AuthScreen extends StatelessWidget {
         expand: true,
         minHeight: 44,
         fontSize: 13,
-        onPressed: () => state.goTo(AppView.studentApp),
+        onPressed: () => state.goTo(AppView.userApp),
       ),
     ],
   );
@@ -682,7 +779,7 @@ class AuthScreen extends StatelessWidget {
         expand: true,
         minHeight: 44,
         fontSize: 13,
-        onPressed: () => state.goTo(AppView.studentApp),
+        onPressed: () => state.goTo(AppView.userApp),
       ),
       const SizedBox(height: 8),
       SrButton(
@@ -693,6 +790,170 @@ class AuthScreen extends StatelessWidget {
         onPressed: controller.restart,
       ),
     ],
+  );
+
+  String get _idPlaceholder => switch (controller.claim) {
+    CampusClaim.student => 'e.g. 2022-01458',
+    CampusClaim.faculty => 'e.g. FAC-01234',
+    CampusClaim.staff => 'e.g. EMP-01234',
+    CampusClaim.none => 'Enter your identification number',
+  };
+
+  String get _unitPlaceholder => switch (controller.claim) {
+    CampusClaim.student => 'e.g. BS Information Technology, 4th Year',
+    CampusClaim.faculty => 'e.g. College of Information and Computing Sciences',
+    CampusClaim.staff => 'e.g. Office of the Registrar',
+    CampusClaim.none => 'e.g. Office or organisation',
+  };
+
+  String _maskedEmail(String email) {
+    final parts = email.split('@');
+    if (parts.length != 2 || parts.first.length < 3) return email;
+    return '${parts.first.substring(0, 2)}${'•' * (parts.first.length - 2)}@${parts.last}';
+  }
+
+  Widget _submitButton(
+    String label,
+    String busyLabel,
+    Future<void> Function() action,
+  ) => SrButton(
+    label: controller.busy ? busyLabel : label,
+    kind: SrButtonKind.primary,
+    expand: true,
+    minHeight: 48,
+    fontSize: 13.5,
+    trailing: controller.busy
+        ? const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: SR.muted),
+          )
+        : null,
+    onPressed: controller.busy ? null : action,
+  );
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: SR.primary,
+          borderRadius: SR.radius(SR.rMd),
+        ),
+        child: Text('S', style: sans(17, w: 700, color: SR.surface)),
+      ),
+      const SizedBox(width: 12),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('SmartReserve', style: sans(15, w: 600, tracking: -.01)),
+          Text(
+            'CSU APARRI',
+            style: mono(10, w: 500, tracking: .04, color: SR.ink4),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+class _HeroBanner extends StatelessWidget {
+  const _HeroBanner();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 184,
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: SR.navBg,
+      borderRadius: BorderRadius.circular(18),
+      gradient: const LinearGradient(
+        colors: [Color(0xFF101418), Color(0xFF163D6B)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+    child: Stack(
+      children: [
+        const Positioned(right: 30, top: 28, child: _FacilityMotif()),
+        Padding(
+          padding: const EdgeInsets.all(22),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 310,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'CSU APARRI',
+                    style: mono(
+                      10,
+                      w: 500,
+                      tracking: .06,
+                      color: SR.primarySoft,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Every campus space, easier to find and reserve.',
+                    style: sans(22, w: 600, height: 1.25, color: SR.surface),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FacilityMotif extends StatelessWidget {
+  const _FacilityMotif();
+
+  @override
+  Widget build(BuildContext context) => Opacity(
+    opacity: .8,
+    child: SizedBox(
+      width: 150,
+      height: 120,
+      child: Stack(
+        children: [
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Icon(
+              Icons.location_on_rounded,
+              size: 42,
+              color: SR.primaryBright,
+            ),
+          ),
+          Positioned(
+            right: 42,
+            bottom: 3,
+            child: Icon(
+              Icons.apartment_rounded,
+              size: 82,
+              color: SR.onDarkDim,
+            ),
+          ),
+          Positioned(
+            right: 4,
+            bottom: 0,
+            child: Container(width: 122, height: 1, color: SR.onDarkDim),
+          ),
+        ],
+      ),
+    ),
   );
 }
 
@@ -718,122 +979,193 @@ class _Pitch extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => Container(
-    color: SR.navBg,
-    padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 40),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: SR.blue,
-                borderRadius: BorderRadius.circular(9),
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Color(0xFF0E1116), Color(0xFF191E3A)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+    child: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final short = SR.isShort(box.maxHeight);
+          final pad = EdgeInsets.symmetric(
+            horizontal: box.maxWidth >= 560 ? SR.space48 : SR.space32,
+            vertical: short ? SR.space24 : SR.space40,
+          );
+          return SrScrollView(
+            padding: pad,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (box.maxHeight - pad.vertical).clamp(
+                  0.0,
+                  double.infinity,
+                ),
               ),
-              child: Text('S', style: sans(14, w: 700, color: SR.surface)),
-            ),
-            const SizedBox(width: 11),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'SmartReserve',
-                  style: sans(15, w: 600, tracking: -.01, color: SR.surface),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: SR.contentWide),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _wordmark(),
+                    _headline(short),
+                    SizedBox(height: short ? SR.space16 : SR.space32),
+                    _pillarsAndFootnote(),
+                  ],
                 ),
-                Text(
-                  'CAGAYAN STATE UNIVERSITY — APARRI',
-                  style: mono(10, color: const Color(0x73FFFFFF)),
-                ),
-              ],
+              ),
             ),
-          ],
+          );
+        },
+      ),
+    ),
+  );
+
+  Widget _wordmark() => Row(
+    children: [
+      Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: SR.primary,
+          borderRadius: SR.radius(SR.rSm),
         ),
-        const SizedBox(height: 44),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 340),
-          child: Text(
+        child: Text('S', style: sans(14, w: 700, color: SR.onDark)),
+      ),
+      const SizedBox(width: SR.space12),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'SmartReserve',
+            style: sans(15, w: 600, tracking: -.01, color: SR.onDark),
+          ),
+          Text(
+            'CAGAYAN STATE UNIVERSITY — APARRI',
+            style: mono(10, color: SR.onDarkFaint),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  Widget _headline(bool short) => Padding(
+    padding: EdgeInsets.symmetric(vertical: short ? SR.space16 : SR.space32),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'Reserve any room on campus, and know exactly where it is.',
             style: sans(
-              30,
+              short ? 24 : 30,
               w: 600,
               height: 1.18,
               tracking: -.03,
-              color: SR.surface,
+              color: SR.onDark,
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 330),
-          child: Text(
-            'Forty-six facilities across the Aparri campus, each pinned to its '
-            'real coordinates.',
-            style: sans(13, height: 1.7, color: const Color(0x8CFFFFFF)),
+          const SizedBox(height: SR.space12),
+          Text(
+            'Forty-six facilities across the Aparri campus, each pinned to '
+            'its real coordinates.',
+            style: sans(13, height: 1.7, color: SR.onDarkMuted),
           ),
-        ),
-        const Spacer(),
-        for (final (number, title, body) in _pillars)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    number,
-                    style: mono(10, w: 500, color: SR.blueBright),
-                  ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _pillarsAndFootnote() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final (number, title, body) in _pillars) ...[
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: SR.space16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  number,
+                  style: mono(10, w: 500, color: SR.primaryBright),
                 ),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: sans(12.5, w: 600, color: SR.surface)),
-                      const SizedBox(height: 2),
-                      Text(
-                        body,
-                        style: sans(
-                          11.5,
-                          height: 1.6,
-                          color: const Color(0x7AFFFFFF),
-                        ),
+              ),
+              const SizedBox(width: SR.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: sans(12.5, w: 600, color: SR.onDark),
+                    ),
+                    const SizedBox(height: SR.space2),
+                    Text(
+                      body,
+                      style: sans(
+                        11.5,
+                        height: 1.6,
+                        color: SR.onDarkFaint,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
+            ],
+          ),
+        ),
+        if (number != _pillars.last.$1)
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: SR.onDarkLine)),
             ),
+            child: SizedBox(width: double.infinity),
           ),
       ],
-    ),
+      const SizedBox(height: SR.space24),
+      const DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: SR.onDarkLine)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(top: SR.space16),
+          child: Text(
+            'Office of the Registrar · Cagayan State University, '
+            'Aparri Campus',
+            style: TextStyle(
+              fontFamily: 'IBM Plex Mono',
+              fontSize: 10,
+              color: SR.onDarkDim,
+            ),
+          ),
+        ),
+      ),
+    ],
   );
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.child});
+  const _Card({required this.child, this.framed = true});
 
   final Widget child;
+  final bool framed;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(24),
+    padding: EdgeInsets.all(framed ? SR.space24 : 0),
     decoration: BoxDecoration(
       color: SR.surface,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: SR.border),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x0F10141A),
-          blurRadius: 8,
-          offset: Offset(0, 2),
-        ),
-      ],
+      borderRadius: SR.radius(SR.rMd),
+      border: framed ? Border.all(color: SR.border) : null,
+      boxShadow: framed ? SR.cardShadow : null,
     ),
     child: child,
   );
@@ -861,71 +1193,142 @@ class _Lede extends StatelessWidget {
   );
 }
 
-class _PasswordField extends StatelessWidget {
-  const _PasswordField({required this.controller});
+class _PasswordField extends StatefulWidget {
+  const _PasswordField({
+    required this.controller,
+    this.fieldController,
+    this.placeholder,
+    this.semanticLabel = 'Password',
+    this.hasError,
+    this.newPassword = false,
+    this.onSubmitted,
+  });
 
   final AuthController controller;
+  final TextEditingController? fieldController;
+  final String? placeholder;
+  final String semanticLabel;
+  final bool? hasError;
+  final bool newPassword;
+  final ValueChanged<String>? onSubmitted;
 
   @override
-  Widget build(BuildContext context) => SrTextField(
-    controller: controller.passwordField,
-    placeholder: 'A phrase you will remember',
-    semanticLabel: 'Password',
-    hasError: controller.passwordError != null,
-    onChanged: (_) => controller.refresh(),
-  );
+  State<_PasswordField> createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<_PasswordField> {
+  bool hidden = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    return SrTextField(
+      controller: widget.fieldController ?? widget.controller.passwordField,
+      placeholder:
+          widget.placeholder ??
+          (widget.newPassword
+              ? 'Create a passphrase of 10+ characters'
+              : 'Enter your password'),
+      semanticLabel: widget.semanticLabel,
+      hasError: widget.hasError ?? widget.controller.passwordError != null,
+      obscureText: hidden,
+      autocorrect: false,
+      enableSuggestions: false,
+      autofillHints: [
+        widget.newPassword ? AutofillHints.newPassword : AutofillHints.password,
+      ],
+      textInputAction: widget.onSubmitted == null
+          ? TextInputAction.next
+          : TextInputAction.done,
+      onSubmitted: widget.onSubmitted,
+      onChanged: (_) => widget.controller.refresh(),
+      suffix: Semantics(
+        button: true,
+        label: hidden ? 'Show password' : 'Hide password',
+        child: SizedBox.square(
+          dimension: compact ? 44 : 20,
+          child: IconButton(
+            tooltip: hidden ? 'Show password' : 'Hide password',
+            constraints: BoxConstraints.tightFor(
+              width: compact ? 44 : 20,
+              height: compact ? 44 : 20,
+            ),
+            padding: EdgeInsets.zero,
+            icon: Icon(
+              hidden
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              size: 19,
+              color: SR.ink4,
+            ),
+            onPressed: () => setState(() => hidden = !hidden),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _OtpCells extends StatelessWidget {
-  const _OtpCells({required this.controller});
+  const _OtpCells({required this.controller, required this.label});
 
   final AuthController controller;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     final code = controller.otpField.text;
-    return Stack(
-      children: [
-        Row(
-          children: [
-            for (var i = 0; i < 6; i++) ...[
-              if (i > 0) const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: SR.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: i < code.length ? SR.blue : SR.borderField,
+    return Semantics(
+      label: label,
+      textField: true,
+      value: code.isEmpty
+          ? 'No code entered'
+          : '${code.length} of 6 digits entered',
+      child: Stack(
+        children: [
+          Row(
+            children: [
+              for (var i = 0; i < 6; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    height: 52,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: SR.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: i < code.length ? SR.blue : SR.borderField,
+                      ),
+                    ),
+                    child: Text(
+                      i < code.length ? code[i] : '',
+                      style: mono(20, w: 500),
                     ),
                   ),
-                  child: Text(
-                    i < code.length ? code[i] : '',
-                    style: mono(20, w: 500),
-                  ),
                 ),
-              ),
-            ],
-          ],
-        ),
-        Positioned.fill(
-          child: Opacity(
-            opacity: 0,
-            child: TextField(
-              controller: controller.otpField,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(6),
               ],
-              onChanged: (_) => controller.refresh(),
-              decoration: const InputDecoration(border: InputBorder.none),
+            ],
+          ),
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0,
+              child: TextField(
+                controller: controller.otpField,
+                keyboardType: TextInputType.number,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                textInputAction: TextInputAction.done,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                onChanged: (_) => controller.refresh(),
+                decoration: const InputDecoration(border: InputBorder.none),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -948,56 +1351,62 @@ class _ClaimOption extends StatelessWidget {
       button: true,
       selected: selected,
       child: Hoverable(
-        builder: (context, hovered) => GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: SR.stateChange,
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-            decoration: BoxDecoration(
-              color: selected ? SR.blueTint : SR.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: selected ? SR.blue : (hovered ? SR.blueSoft : SR.border),
+        builder: (context, hovered) => Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: SR.stateChange,
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+              decoration: BoxDecoration(
+                color: selected ? SR.blueTint : SR.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected
+                      ? SR.blue
+                      : (hovered ? SR.blueSoft : SR.border),
+                ),
               ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 16,
-                  height: 16,
-                  margin: const EdgeInsets.only(top: 2),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: selected ? SR.blue : SR.borderField,
-                    ),
-                  ),
-                  child: Container(
-                    width: 8,
-                    height: 8,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    margin: const EdgeInsets.only(top: 2),
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: selected ? SR.blue : Colors.transparent,
                       shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected ? SR.blue : SR.borderField,
+                      ),
+                    ),
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: selected ? SR.blue : Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(claim.label, style: sans(12.5, w: 600)),
-                      const SizedBox(height: 2),
-                      Text(
-                        claim.description,
-                        style: sans(11, height: 1.5, color: SR.ink4),
-                      ),
-                    ],
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(claim.label, style: sans(12.5, w: 600)),
+                        const SizedBox(height: 2),
+                        Text(
+                          claim.description,
+                          style: sans(11, height: 1.5, color: SR.ink4),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1105,25 +1514,27 @@ class _Outcome extends StatelessWidget {
 }
 
 class _InlineLink extends StatelessWidget {
-  const _InlineLink({required this.label, required this.onTap});
+  const _InlineLink({
+    required this.label,
+    required this.onTap,
+    this.enabled = true,
+  });
 
   final String label;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
-  Widget build(BuildContext context) => Hoverable(
-    builder: (context, hovered) => GestureDetector(
-      onTap: onTap,
-      child: Text(
-        label,
-        style: sans(
-          11.5,
-          w: 500,
-          color: hovered ? SR.blueDark : SR.blue,
-          decoration: hovered ? TextDecoration.underline : null,
-        ),
-      ),
+  Widget build(BuildContext context) => TextButton(
+    onPressed: enabled ? onTap : null,
+    style: TextButton.styleFrom(
+      foregroundColor: SR.blue,
+      minimumSize: const Size(44, 44),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: sans(11.5, w: 500),
     ),
+    child: Text(label),
   );
 }
 
@@ -1139,11 +1550,12 @@ class _FooterLink extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.center,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: 5,
     children: [
       Text(prefix, style: sans(11.5, color: SR.ink4)),
-      const SizedBox(width: 5),
       _InlineLink(label: label, onTap: onTap),
     ],
   );

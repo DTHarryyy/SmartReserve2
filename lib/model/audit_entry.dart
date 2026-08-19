@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
+import '../util/campus_calendar.dart' show formatStamp;
+import 'account.dart';
+import 'audit_change.dart';
+import 'audit_diff.dart';
 
 enum AuditKind {
-  facility('facility', 'FACILITY', SR.blueTint, SR.blueDark),
-  reservation('reservation', 'RESERVATION', SR.greenTint, SR.greenDark),
-  account('account', 'ACCOUNT', SR.dividerSoft, SR.ink4);
+  facility('facility', 'FACILITY', SrTone.info),
+  reservation('reservation', 'RESERVATION', SrTone.success),
+  account('account', 'ACCOUNT', SrTone.neutral),
+  system('system', 'SYSTEM', SrTone.neutral);
 
-  const AuditKind(this.raw, this.label, this.background, this.foreground);
+  const AuditKind(this.raw, this.label, this.tone);
 
   final String raw;
   final String label;
-  final Color background;
-  final Color foreground;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
 
   static AuditKind fromRaw(String raw) =>
       values.firstWhere((k) => k.raw == raw, orElse: () => AuditKind.facility);
@@ -34,6 +41,12 @@ class AuditEntry {
     this.reason = '',
     this.revertable = false,
     this.recordId,
+    this.createdAt,
+    this.changes = const [],
+    this.actorEmail = '',
+    this.rawBefore = const {},
+    this.rawAfter = const {},
+    this.rawDetails = const {},
   });
 
   factory AuditEntry.now({
@@ -49,21 +62,6 @@ class AuditEntry {
     String? recordId,
   }) {
     final at = DateTime.now();
-    String two(int v) => v.toString().padLeft(2, '0');
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
     return AuditEntry(
       id: 'a-${at.microsecondsSinceEpoch}',
       actor: actor,
@@ -72,14 +70,13 @@ class AuditEntry {
       target: target,
       kind: kind,
       when: 'Just now',
-      absolute:
-          '${at.day} ${months[at.month - 1]} ${at.year}, '
-          '${two(at.hour)}:${two(at.minute)}',
+      absolute: formatStamp(at),
       material: material,
       diff: diff,
       reason: reason,
       revertable: revertable,
       recordId: recordId,
+      createdAt: at,
     );
   }
 
@@ -103,6 +100,86 @@ class AuditEntry {
 
   final String? recordId;
 
+  final DateTime? createdAt;
+
+  final List<AuditChange> changes;
+
+  final String actorEmail;
+
+  final Map<String, dynamic> rawBefore;
+  final Map<String, dynamic> rawAfter;
+  final Map<String, dynamic> rawDetails;
+
+  AccountRole? get actorRoleValue {
+    try {
+      return AccountRole.fromRaw(actorRole);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  bool get isSystemActor => actorRole == 'system';
+
+  factory AuditEntry.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse('${json['created_at'] ?? ''}')?.toLocal() ??
+        DateTime.now();
+    final details = Map<String, dynamic>.from(
+      (json['details'] as Map?) ?? const {},
+    );
+    final before = Map<String, dynamic>.from(
+      (json['before_values'] as Map?) ?? const {},
+    );
+    final after = Map<String, dynamic>.from(
+      (json['after_values'] as Map?) ?? const {},
+    );
+    final legacyDiff = <String>[
+      ...details.entries.map((entry) => '${entry.key}: ${entry.value}'),
+    ];
+    for (final key in {...before.keys, ...after.keys}) {
+      if (before[key] != after[key]) {
+        legacyDiff.add('$key: ${before[key] ?? '—'} → ${after[key] ?? '—'}');
+      }
+    }
+    final entityType = '${json['entity_type'] ?? 'facility'}';
+    final action = '${json['action'] ?? ''}';
+    return AuditEntry(
+      id: '${json['id']}',
+      actor: '${json['actor_name'] ?? 'System'}',
+      actorRole: '${json['actor_role'] ?? 'system'}',
+      action: action,
+      target: '${json['target_label'] ?? ''}',
+      kind: AuditKind.fromRaw(entityType),
+      when: _relative(createdAt),
+      absolute: formatStamp(createdAt),
+      material: json['material'] as bool? ?? true,
+      diff: legacyDiff,
+      reason: '${json['reason'] ?? ''}',
+      revertable: json['revertable'] as bool? ?? false,
+      recordId: json['entity_id'] as String?,
+      createdAt: createdAt,
+      changes: humanizeAuditPayload(
+        entityType: entityType,
+        action: action,
+        details: details,
+        before: before,
+        after: after,
+      ),
+      actorEmail: '${json['actor_email'] ?? ''}',
+      rawBefore: before,
+      rawAfter: after,
+      rawDetails: details,
+    );
+  }
+
+  static String _relative(DateTime value) {
+    final delta = DateTime.now().difference(value);
+    if (delta.inMinutes < 2) return 'Just now';
+    if (delta.inHours < 1) return '${delta.inMinutes} min ago';
+    if (delta.inDays < 1) return '${delta.inHours} h ago';
+    return '${delta.inDays} d ago';
+  }
+
   String get initials => actor
       .replaceAll(RegExp(r'[^A-Za-z. ]'), ' ')
       .split(RegExp(r'[\s.]+'))
@@ -113,18 +190,29 @@ class AuditEntry {
 
   String toCsvRow() {
     String cell(String v) => '"${v.replaceAll('"', '""')}"';
+    final changeText = changes.isNotEmpty
+        ? changes.map(_csvChangeLine).join(' | ')
+        : diff.join(' | ');
     return [
-      cell(absolute),
+      cell(createdAt?.toUtc().toIso8601String() ?? absolute),
       cell(actor),
+      cell(actorEmail),
       cell(actorRole),
       cell('$action $target'),
       cell(kind.label),
       cell(material ? 'material' : 'routine'),
-      cell(diff.join(' | ')),
+      cell(changeText),
       cell(reason),
     ].join(',');
   }
 
+  static String _csvChangeLine(AuditChange change) {
+    if (change.isNote) return change.note!;
+    if (change.before == null) return '${change.label}: ${change.after}';
+    return '${change.label}: ${change.before} → ${change.after}';
+  }
+
   static const csvHeader =
-      'timestamp,actor,role,action,record_type,significance,change,reason';
+      'timestamp,actor,actor_email,role,action,record_type,significance,'
+      'change,reason';
 }

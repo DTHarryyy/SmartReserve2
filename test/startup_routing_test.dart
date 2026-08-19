@@ -49,9 +49,9 @@ void main() {
     final state = AppState();
 
     await state.applyBackendProfile(
-      profile(role: 'student', onboardingComplete: true),
+      profile(role: 'user', onboardingComplete: true),
     );
 
-    expect(state.view, AppView.studentApp);
+    expect(state.view, AppView.userApp);
   });
 }

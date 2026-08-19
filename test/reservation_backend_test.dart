@@ -1,17 +1,38 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/backend/supabase_service.dart';
 import 'package:smartreserve/model/reservation.dart';
+import 'package:smartreserve/model/audit_entry.dart';
 import 'package:smartreserve/widgets/side_nav.dart';
 import 'package:smartreserve/app/app_view.dart';
 
 void main() {
+  test('audit entries parse server timestamps and structured changes', () {
+    final entry = AuditEntry.fromJson({
+      'id': 'entry-1',
+      'actor_name': 'Registrar',
+      'actor_role': 'internal_admin',
+      'action': 'updated',
+      'target_label': 'Computer Laboratory 1',
+      'entity_type': 'facility',
+      'entity_id': 'facility-1',
+      'created_at': '2026-08-09T01:00:00Z',
+      'material': true,
+      'before_values': {'capacity': 30},
+      'after_values': {'capacity': 40},
+      'revertable': true,
+    });
+    expect(entry.recordId, 'facility-1');
+    expect(entry.diff.single, 'capacity: 30 → 40');
+    expect(entry.revertable, isTrue);
+  });
+
   test('backend reservation maps occurrences, files, events, and payment', () {
     final row = BackendReservation.fromJson({
       'id': '10000000-0000-0000-0000-000000000001',
       'requester_id': '10000000-0000-0000-0000-000000000002',
       'facility_id': '10000000-0000-0000-0000-000000000003',
       'requester_name': 'Roel Dela Cruz',
-      'requester_role': 'student',
+      'requester_role': 'user',
       'requester_unit': 'BSIT',
       'facility_name': 'Computer Laboratory 1',
       'facility_building': 'ICT Building',
@@ -78,6 +99,10 @@ void main() {
 
   test('design notes are not an admin sidebar destination', () {
     expect(adminSections, isNot(contains(AppView.notes)));
-    expect(AppView.values, contains(AppView.notes), reason: 'demo route remains');
+    expect(
+      AppView.values,
+      contains(AppView.notes),
+      reason: 'demo route remains',
+    );
   });
 }

@@ -5,7 +5,7 @@ project *Campus facility mapping interface*
 (`SmartReserve Add Facility.dc.html`).
 
 Every surface in that design is built: the admin console, the auth and
-onboarding flow, the student-facing app, and the design-notes reference page.
+onboarding flow, the user-facing app, and the design-notes reference page.
 Authentication, campus-verification submissions and decisions, facilities,
 facility photos, user administration, reservations, booking occurrences,
 private supporting files, reservation events, and in-app notifications are
@@ -22,7 +22,6 @@ lib/
     app_scope.dart             InheritedNotifier over it
     app_shell.dart             nav, header, overlays, global accelerators
     app_view.dart              the surfaces
-    demo_states.dart           the prototype States menu
   theme/sr_tokens.dart         colour, type, elevation, motion, breakpoints
   data/                        campus reference data and the seeded records
   model/                       facility · reservation · verification ·
@@ -40,7 +39,7 @@ lib/
     audit/                     append-only log with diffs and revert
     reports/                   utilisation, demand, performance, data quality
     auth/                      the nine-card onboarding flow
-    student/                   browse, my reservations, account, booking
+    student/                   user browse, reservations, account, booking
     profile/ · notes/
 ```
 
@@ -50,12 +49,27 @@ lib/
   submission; the pending card then shows whatever the registrar actually
   decides, including the reason, verbatim.
 - **Verifying → held requests.** A request made while verification is pending
-  is held, not refused, and released the moment the account is approved.
+  is server-quoted and held, not refused. Approval removes the charge and
+  routes it to the internal queue; rejection releases it to the paid external
+  queue.
 - **Every decision → the audit log.** Approvals, declines, bumps, role changes,
   suspensions, invitations, pin moves. A revert appends a new entry; nothing is
   ever edited or deleted.
 - **Reports → Add Facility.** A data-quality row deep-links into the offending
   record in edit mode.
+
+## Authorization model
+
+SmartReserve has exactly three account roles: `user`, `internal_admin`, and
+`external_admin`. Student, faculty, staff, and outside-user selections are
+verification claim categories, not roles. Only a verified active `user`
+reserves without payment. Internal admins control facilities, verification,
+accounts, and audit; external admins receive read-only facility access and
+only released paid clients, reservations, calendar entries, and reports.
+
+Reservation prices are calculated in Supabase from duration and facility
+capacity. Client-provided amounts are ignored, so free access cannot be gained
+by modifying the application request.
 
 ## Notable behaviour
 
@@ -115,10 +129,6 @@ promotes its profile without overwriting its existing password.
 Map tiles come from OpenStreetMap, Esri World Imagery and CARTO, so the app
 needs network access. When tiles fail the map shows an explicit offline panel
 with retry and manual coordinate entry.
-
-The header **States** menu reaches the states normal use cannot produce on
-demand: loading skeletons, empty lists, a dead tile server, and a restorable
-draft.
 
 ## Notes for the next change
 

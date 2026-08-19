@@ -3,22 +3,20 @@ import 'package:flutter/material.dart';
 import '../theme/sr_tokens.dart';
 
 enum CheckOutcome {
-  pass(Icons.check_rounded, SR.greenTint, SR.greenDark, SR.ink3),
-  warn(Icons.priority_high_rounded, SR.amberTint, SR.amber, SR.amber),
-  fail(Icons.close_rounded, SR.redTint, SR.red, SR.red),
-  info(Icons.remove_rounded, SR.dividerSoft, SR.ink4, SR.ink3);
+  pass(Icons.check_rounded, SrTone.success, SR.ink3),
+  warn(Icons.priority_high_rounded, SrTone.warning, null),
+  fail(Icons.close_rounded, SrTone.error, null),
+  info(Icons.remove_rounded, SrTone.neutral, null);
 
-  const CheckOutcome(
-    this.mark,
-    this.background,
-    this.foreground,
-    this.valueColor,
-  );
+  const CheckOutcome(this.mark, this.tone, this._valueColorOverride);
 
   final IconData mark;
-  final Color background;
-  final Color foreground;
-  final Color valueColor;
+  final SrTone tone;
+  final Color? _valueColorOverride;
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
+  Color get valueColor => _valueColorOverride ?? tone.ink;
 }
 
 @immutable
@@ -46,26 +44,22 @@ class CheckSummary {
     required this.foreground,
   });
 
-  factory CheckSummary.clear(String text) => CheckSummary(
-    text: text,
-    background: SR.greenTint,
-    borderColor: const Color(0xFFB7E9CD),
-    foreground: SR.greenDark,
-  );
+  factory CheckSummary.clear(String text) =>
+      CheckSummary._of(text, SrTone.success);
 
-  factory CheckSummary.caution(String text) => CheckSummary(
-    text: text,
-    background: SR.amberTint,
-    borderColor: SR.amberLine,
-    foreground: SR.amber,
-  );
+  factory CheckSummary.caution(String text) =>
+      CheckSummary._of(text, SrTone.warning);
 
-  factory CheckSummary.blocked(String text) => CheckSummary(
-    text: text,
-    background: SR.redTint,
-    borderColor: SR.redLine,
-    foreground: SR.red,
-  );
+  factory CheckSummary.blocked(String text) =>
+      CheckSummary._of(text, SrTone.error);
+
+  CheckSummary._of(String text, SrTone tone)
+    : this(
+        text: text,
+        background: tone.tint,
+        borderColor: tone.line,
+        foreground: tone.ink,
+      );
 
   final String text;
   final Color background;

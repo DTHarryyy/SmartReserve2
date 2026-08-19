@@ -1,9 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../../../model/facility.dart';
 import '../../../model/facility_photo.dart';
 import '../../../theme/sr_tokens.dart';
+import '../../../widgets/sr_components.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
+
+IconData _categoryIcon(String category) => switch (category) {
+  'Computer Laboratory' => Icons.computer_rounded,
+  'Science Laboratory' => Icons.science_rounded,
+  'Auditorium' => Icons.theater_comedy_rounded,
+  'Library Space' => Icons.menu_book_rounded,
+  'Gymnasium' => Icons.sports_basketball_rounded,
+  'Conference Room' => Icons.groups_rounded,
+  _ => Icons.apartment_rounded,
+};
 
 class StudentPreview extends StatelessWidget {
   const StudentPreview({super.key, required this.controller});
@@ -51,27 +63,19 @@ class StudentPreview extends StatelessWidget {
                           if (cover != null)
                             FacilityPhotoImage(photo: cover)
                           else
-                            const PlaceholderStripes(
-                              hue: 215,
-                              caption: 'cover photo pending',
-                              captionSize: 10.5,
+                            FacilityCoverArt(
+                              hue: draft.name.hashCode.abs() % 360,
+                              glyph: _categoryIcon(draft.category),
                             ),
                           Positioned(
                             left: 11,
                             top: 11,
-                            child: SrPill(
+                            child: SrStatusChip(
                               label: draft.status.label,
-                              background: switch (draft.status.label) {
-                                'Active' => SR.greenTint,
-                                'Maintenance' => SR.amberTint,
-                                _ => SR.dividerSoft,
-                              },
-                              foreground: switch (draft.status.label) {
-                                'Active' => SR.greenDark,
-                                'Maintenance' => SR.amber,
-                                _ => SR.ink4,
-                              },
-                              fontSize: 10,
+                              tone: FacilityState.fromLabel(
+                                draft.status.label,
+                              ).tone,
+                              dense: true,
                             ),
                           ),
                         ],

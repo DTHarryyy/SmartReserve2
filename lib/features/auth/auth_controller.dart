@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -91,6 +93,7 @@ class AuthController extends ChangeNotifier {
   final fullNameField = TextEditingController();
   final emailField = TextEditingController();
   final passwordField = TextEditingController();
+  final confirmPasswordField = TextEditingController();
   final otpField = TextEditingController();
   final idField = TextEditingController();
   final unitField = TextEditingController();
@@ -100,10 +103,15 @@ class AuthController extends ChangeNotifier {
   String? fullNameError;
   String? emailError;
   String? passwordError;
+  String? confirmPasswordError;
+  String? idError;
+  String? unitError;
   String? otpError;
   String? documentError;
   String? operationError;
   bool busy = false;
+  int resendSeconds = 0;
+  Timer? _resendTimer;
 
   SmartReserveBackend? get _backend => _state.backend;
 
@@ -119,13 +127,22 @@ class AuthController extends ChangeNotifier {
   }
 
   String? get documentName => document?.name;
+  String get documentSizeLabel {
+    final bytes = document?.bytes.lengthInBytes ?? 0;
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).ceil()} KB';
+  }
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     _state.removeListener(_handleAppStateChanged);
     fullNameField.dispose();
     emailField.dispose();
     passwordField.dispose();
+    confirmPasswordField.dispose();
     otpField.dispose();
     idField.dispose();
     unitField.dispose();
@@ -139,6 +156,9 @@ class AuthController extends ChangeNotifier {
     fullNameError = null;
     emailError = null;
     passwordError = null;
+    confirmPasswordError = null;
+    idError = null;
+    unitError = null;
     otpError = null;
     documentError = null;
     operationError = null;
@@ -150,9 +170,12 @@ class AuthController extends ChangeNotifier {
   }
 
   void resetToSignIn() {
+    _resendTimer?.cancel();
+    resendSeconds = 0;
     fullNameField.clear();
     emailField.clear();
     passwordField.clear();
+    confirmPasswordField.clear();
     otpField.clear();
     idField.clear();
     unitField.clear();
@@ -223,6 +246,7 @@ class AuthController extends ChangeNotifier {
         password: passwordField.text,
       );
       goTo(AuthStep.otp);
+      _startResendCooldown();
     });
   }
 
@@ -266,11 +290,13 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> resendCode() async {
+    if (busy || resendSeconds > 0) return;
     await _perform(() async {
       final backend = _backend;
       if (backend == null) throw StateError('Supabase is not configured.');
       await backend.resendSignup(emailField.text.trim());
       _state.showToast(const ToastMessage('A new confirmation code was sent.'));
+      _startResendCooldown();
     });
   }
 
@@ -357,8 +383,13 @@ class AuthController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (idField.text.trim().isEmpty || unitField.text.trim().isEmpty) {
-      documentError = 'Enter your ID number and programme or office.';
+    idError = idField.text.trim().isEmpty
+        ? 'Enter your ${claim.idLabel.toLowerCase()}.'
+        : null;
+    unitError = unitField.text.trim().isEmpty
+        ? 'Enter your ${claim.unitLabel.toLowerCase()}.'
+        : null;
+    if (idError != null || unitError != null) {
       notifyListeners();
       return;
     }
@@ -387,6 +418,33 @@ class AuthController extends ChangeNotifier {
       if (backend == null) throw StateError('Supabase is not configured.');
       await backend.sendRecovery(emailField.text.trim());
       goTo(AuthStep.reset);
+      _startResendCooldown();
+    });
+  }
+
+  Future<void> resendResetCode() async {
+    if (busy || resendSeconds > 0) return;
+    await _perform(() async {
+      final backend = _backend;
+      if (backend == null) throw StateError('Supabase is not configured.');
+      await backend.sendRecovery(emailField.text.trim());
+      _state.showToast(const ToastMessage('A new reset code was sent.'));
+      _startResendCooldown();
+    });
+  }
+
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    resendSeconds = 30;
+    notifyListeners();
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (resendSeconds <= 1) {
+        resendSeconds = 0;
+        timer.cancel();
+      } else {
+        resendSeconds--;
+      }
+      notifyListeners();
     });
   }
 
@@ -401,6 +459,12 @@ class AuthController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (confirmPasswordField.text != passwordField.text) {
+      confirmPasswordError = 'Enter the same new password again.';
+      notifyListeners();
+      return;
+    }
+    confirmPasswordError = null;
     await _perform(() async {
       final backend = _backend;
       if (backend == null) throw StateError('Supabase is not configured.');
@@ -410,6 +474,9 @@ class AuthController extends ChangeNotifier {
         passwordField.text,
       );
       await _state.applyBackendProfile(await backend.currentProfile());
+      passwordField.clear();
+      confirmPasswordField.clear();
+      otpField.clear();
     }, otp: true);
   }
 

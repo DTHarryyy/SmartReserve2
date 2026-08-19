@@ -27,7 +27,6 @@ import '../widgets/sr_controls.dart';
 import 'app_scope.dart';
 import 'app_state.dart';
 import 'app_view.dart';
-import 'demo_states.dart';
 
 enum Layout {
   desktop,
@@ -36,16 +35,16 @@ enum Layout {
 
   mobile;
 
-  static Layout of(double width) {
-    if (width >= SR.desktopMin) return Layout.desktop;
-    if (width >= SR.tabletMin) return Layout.tablet;
-    return Layout.mobile;
-  }
+  static Layout of(double width) => switch (SrBreakpoint.of(width)) {
+    SrBreakpoint.large => Layout.desktop,
+    SrBreakpoint.expanded || SrBreakpoint.medium => Layout.tablet,
+    SrBreakpoint.compact => Layout.mobile,
+  };
 
   bool get isDesktop => this == Layout.desktop;
   bool get isMobile => this == Layout.mobile;
 
-  bool get compact => this != Layout.desktop;
+  bool get belowDesktop => this != Layout.desktop;
 }
 
 class AppShell extends StatefulWidget {
@@ -176,6 +175,10 @@ class _AppShellState extends State<AppShell> {
     final state = AppScope.of(context);
     final layout = Layout.of(MediaQuery.sizeOf(context).width);
 
+    return PrimaryScrollController.none(child: _scaffold(state, layout));
+  }
+
+  Widget _scaffold(AppState state, Layout layout) {
     if (!state.view.usesAdminChrome) {
       return Scaffold(
         backgroundColor: SR.bg,
@@ -183,7 +186,7 @@ class _AppShellState extends State<AppShell> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: state.view == AppView.studentApp
+                child: state.view == AppView.userApp
                     ? const StudentApp()
                     : AuthScreen(controller: _auth!, state: state),
               ),
@@ -204,19 +207,7 @@ class _AppShellState extends State<AppShell> {
               width: SideNav.width,
               child: SideNav(state: state, onSelect: _navSelect),
             ),
-      floatingActionButton:
-          layout.isMobile &&
-              state.view == AppView.users &&
-              state.isInternalAdmin
-          ? FloatingActionButton(
-              key: const Key('invite-admin-fab'),
-              tooltip: 'Invite administrator',
-              backgroundColor: SR.blue,
-              foregroundColor: SR.surface,
-              onPressed: () => showInviteDialog(context, state),
-              child: const Icon(Icons.add_rounded),
-            )
-          : null,
+      floatingActionButton: layout.isMobile ? _mobileAction(state) : null,
       body: SafeArea(
         child: Row(
           children: [
@@ -234,17 +225,21 @@ class _AppShellState extends State<AppShell> {
         child: Column(
           children: [
             AppHeader(
-              crumbs: _editingFacility(state)
+              crumbs: state.isExternalAdmin && state.view == AppView.users
+                  ? const ['Clients']
+                  : _editingFacility(state)
                   ? const ['Facilities', 'Edit facility']
                   : state.view.breadcrumbs,
-              title: _editingFacility(state)
+              title: state.isExternalAdmin && state.view == AppView.users
+                  ? 'Clients'
+                  : _editingFacility(state)
                   ? (_addFacility.draft.name.trim().isEmpty
                         ? 'Edit facility'
                         : _addFacility.draft.name.trim())
                   : state.view.title,
               compact: !layout.isDesktop,
+              mobile: layout.isMobile,
               avatarInitials: state.currentAdmin.initials,
-              onToggleStates: state.toggleStates,
               onOpenProfile: () => state.goTo(AppView.profile),
               onMenu: layout.isDesktop
                   ? null
@@ -262,20 +257,6 @@ class _AppShellState extends State<AppShell> {
   );
 
   List<Widget> _overlays(AppState state, Layout layout) => [
-    if (state.statesOpen) ...[
-      Positioned.fill(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: state.closeOverlays,
-        ),
-      ),
-      Positioned(
-        right: 24,
-
-        top: layout.isDesktop ? 68 : 60,
-        child: DemoStatesMenu(state: state),
-      ),
-    ],
     if (state.notificationsOpen) ...[
       Positioned.fill(
         child: GestureDetector(
@@ -284,9 +265,13 @@ class _AppShellState extends State<AppShell> {
         ),
       ),
       Positioned(
-        right: 24,
+        right: layout.isMobile ? 12 : 24,
+        left: layout.isMobile ? 12 : null,
         top: layout.isDesktop ? 68 : 60,
-        child: _NotificationsPanel(state: state),
+        child: Align(
+          alignment: Alignment.topRight,
+          child: _NotificationsPanel(state: state),
+        ),
       ),
     ],
 
@@ -294,7 +279,7 @@ class _AppShellState extends State<AppShell> {
       Positioned(
         left: 16,
         right: 16,
-        bottom: layout.isMobile ? 84 : 22,
+        bottom: layout.isMobile && state.view == AppView.addFacility ? 84 : 22,
         child: ErrorBar(
           text: _addFacility.errorBarText,
           onJumpToFirst: () => jumpToFirstIssue(_addFacility),
@@ -306,7 +291,7 @@ class _AppShellState extends State<AppShell> {
       Positioned(
         left: 22,
         right: 22,
-        bottom: layout.isMobile ? 84 : 22,
+        bottom: layout.isMobile && state.view == AppView.addFacility ? 84 : 22,
         child: Align(
           alignment: Alignment.bottomCenter,
           child: UndoBar(
@@ -314,17 +299,6 @@ class _AppShellState extends State<AppShell> {
             onUndo: state.takeUndo,
             onDismiss: state.dismissUndo,
           ),
-        ),
-      ),
-
-    if (state.toast case final toast?)
-      Positioned(
-        right: 22,
-        left: layout.isMobile ? 22 : null,
-        bottom: layout.isMobile ? 84 : (state.undo == null ? 22 : 76),
-        child: Align(
-          alignment: Alignment.bottomRight,
-          child: SrToast(message: toast),
         ),
       ),
   ];
@@ -339,13 +313,23 @@ class _AppShellState extends State<AppShell> {
   }
 
   List<Widget> _headerActions(AppState state, Layout layout) => [
-    SrButton(
-      label: state.unreadNotifications == 0
-          ? 'Notifications'
-          : 'Notifications ${state.unreadNotifications}',
-      dense: true,
-      onPressed: state.toggleNotifications,
-    ),
+    if (layout.isMobile)
+      SrIconButton(
+        icon: Icons.notifications_none_rounded,
+        tooltip: state.unreadNotifications == 0
+            ? 'Notifications'
+            : '${state.unreadNotifications} unread notifications',
+        size: 40,
+        onPressed: state.toggleNotifications,
+      )
+    else
+      SrButton(
+        label: state.unreadNotifications == 0
+            ? 'Notifications'
+            : 'Notifications ${state.unreadNotifications}',
+        dense: true,
+        onPressed: state.toggleNotifications,
+      ),
     ...switch (state.view) {
       AppView.addFacility when !layout.isMobile => [
         SrButton(
@@ -375,9 +359,14 @@ class _AppShellState extends State<AppShell> {
               : null,
         ),
       ],
-      AppView.facilities => [
+      AppView.facilities when !layout.isMobile && state.isInternalAdmin => [
         SrButton(
-          label: '＋ New facility',
+          label: 'New facility',
+          icon: const Icon(
+            Icons.add_rounded,
+            size: SR.iconMd,
+            color: SR.onDark,
+          ),
           kind: SrButtonKind.primary,
           onPressed: () => _openEditor(state, null),
         ),
@@ -385,6 +374,29 @@ class _AppShellState extends State<AppShell> {
       _ => const [],
     },
   ];
+
+  Widget? _mobileAction(AppState state) => switch (state.view) {
+    AppView.facilities when state.isInternalAdmin =>
+      FloatingActionButton.extended(
+        key: const Key('add-facility-fab'),
+        tooltip: 'Add facility',
+        backgroundColor: SR.blue,
+        foregroundColor: SR.surface,
+        onPressed: () => _openEditor(state, null),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Facility'),
+      ),
+    AppView.users when state.isInternalAdmin => FloatingActionButton.extended(
+      key: const Key('invite-admin-fab'),
+      tooltip: 'Invite administrator',
+      backgroundColor: SR.primary,
+      foregroundColor: SR.onDark,
+      onPressed: () => showInviteDialog(context, state),
+      icon: const Icon(Icons.person_add_alt_1_rounded),
+      label: const Text('Invite'),
+    ),
+    _ => null,
+  };
 
   Widget _body(AppState state, Layout layout) => switch (state.view) {
     AppView.addFacility => AddFacilityBody(
@@ -400,14 +412,16 @@ class _AppShellState extends State<AppShell> {
     AppView.calendar => const CalendarScreen(),
     AppView.verifications => const VerificationsScreen(),
     AppView.reports => ReportsScreen(
-      onFixLocation: (facility) => _openEditor(state, facility),
+      onFixLocation: state.isInternalAdmin
+          ? (facility) => _openEditor(state, facility)
+          : null,
     ),
     AppView.users => const UsersScreen(),
     AppView.audit => const AuditScreen(),
     AppView.notes => const NotesScreen(),
     AppView.profile => const ProfileScreen(),
 
-    AppView.studentApp || AppView.auth => const SizedBox.shrink(),
+    AppView.userApp || AppView.auth => const SizedBox.shrink(),
   };
 
   void _openEditor(AppState state, Facility? facility) {
@@ -427,87 +441,115 @@ class _NotificationsPanel extends StatelessWidget {
   final AppState state;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.transparent,
-    child: Container(
-      width: 360,
-      constraints: const BoxConstraints(maxHeight: 480),
-      decoration: BoxDecoration(
-        color: SR.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: SR.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x22000000),
-            blurRadius: 24,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 11),
-            child: Text('Notifications', style: sans(14, w: 600)),
-          ),
-          const Divider(height: 1, color: SR.border),
-          if (state.notificationsError case final error?)
+  Widget build(BuildContext context) {
+    final availableHeight = (MediaQuery.sizeOf(context).height - 76).clamp(
+      160.0,
+      480.0,
+    );
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: 360,
+        constraints: BoxConstraints(maxHeight: availableHeight),
+        decoration: BoxDecoration(
+          color: SR.surface,
+          borderRadius: BorderRadius.circular(SR.rMd),
+          border: Border.all(color: SR.border),
+          boxShadow: SR.popoverShadow,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(error, style: sans(11.5, color: SR.red)),
-            )
-          else if (state.notifications.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'No notifications yet.',
-                textAlign: TextAlign.center,
-                style: sans(12, color: SR.muted),
+              padding: const EdgeInsets.fromLTRB(
+                SR.space16,
+                SR.space12,
+                SR.space16,
+                SR.space12,
               ),
-            )
-          else
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: state.notifications.length,
-                separatorBuilder: (_, _) =>
-                    const Divider(height: 1, color: SR.hairline),
-                itemBuilder: (context, index) {
-                  final item = state.notifications[index];
-                  return InkWell(
-                    onTap: () {
-                      state.closeOverlays();
-                      state.openNotification(item);
-                    },
-                    child: Container(
-                      color: item.unread ? SR.blueTint : SR.surface,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.title,
-                            style: sans(12, w: item.unread ? 600 : 500),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            item.body,
-                            style: sans(11, height: 1.45, color: SR.ink4),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+              child: Text('Notifications', style: SrType.subhead()),
             ),
-        ],
+            const Divider(height: 1, color: SR.border),
+            if (state.notificationsError case final error?)
+              Padding(
+                padding: const EdgeInsets.all(SR.space16),
+                child: Text(error, style: SrType.bodySm(color: SR.red)),
+              )
+            else if (state.notifications.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(SR.space24),
+                child: Text(
+                  'No notifications yet.',
+                  textAlign: TextAlign.center,
+                  style: SrType.bodySm(color: SR.muted),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: state.notifications.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, color: SR.hairline),
+                  itemBuilder: (context, index) {
+                    final item = state.notifications[index];
+                    return InkWell(
+                      onTap: () {
+                        state.closeOverlays();
+                        state.openNotification(item);
+                      },
+                      child: Container(
+                        color: item.unread ? SR.primaryTint2 : SR.surface,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: SR.space16,
+                          vertical: SR.space12,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: SR.space6,
+                                right: SR.space8,
+                              ),
+                              child: Container(
+                                width: SR.space6,
+                                height: SR.space6,
+                                decoration: BoxDecoration(
+                                  color: item.unread
+                                      ? SR.primary
+                                      : Colors.transparent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    style: SrType.bodySm(
+                                      w: item.unread ? 600 : 500,
+                                      color: SR.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: SR.space2),
+                                  Text(item.body, style: SrType.caption()),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
