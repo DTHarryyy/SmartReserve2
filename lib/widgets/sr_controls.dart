@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
 
 class Hoverable extends StatefulWidget {
@@ -83,39 +84,40 @@ class _SrButtonState extends State<SrButton> {
     final primary = widget.kind == SrButtonKind.primary;
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
     final effectiveMinHeight = widget.minHeight ?? (compact ? 44.0 : 0.0);
+    final c = context.srColors;
 
     Widget content(bool hovered) {
       final (Color bg, Color fg, Color? bd) = switch (widget.kind) {
         SrButtonKind.primary => (
           hovered ? SR.blueDark : SR.blue,
-          SR.surface,
+          SR.onDark,
           SR.blueDark,
         ),
         SrButtonKind.secondary => (
-          hovered ? SR.surfaceSubtle : SR.surface,
-          SR.ink2,
-          hovered ? SR.borderHover : SR.border,
+          hovered ? c.surfaceSubtle : c.surface,
+          c.ink2,
+          hovered ? c.borderHover : c.border,
         ),
         SrButtonKind.ghost => (
-          hovered ? SR.dividerSoft : Colors.transparent,
-          SR.ink2,
+          hovered ? c.dividerSoft : Colors.transparent,
+          c.ink2,
           null,
         ),
         SrButtonKind.danger => (
-          hovered ? SR.redTint : SR.surface,
-          SR.red,
-          SR.redLine,
+          hovered ? c.redTint : c.surface,
+          c.red,
+          c.redLine,
         ),
-        SrButtonKind.dangerSolid => (SR.red, SR.surface, SR.red),
+        SrButtonKind.dangerSolid => (c.red, SR.onDark, c.red),
         SrButtonKind.success => (
-          hovered ? const Color(0xFF0A5C3A) : SR.greenDark,
-          SR.surface,
-          const Color(0xFF0A5C3A),
+          hovered ? c.greenDeep : c.greenDark,
+          SR.onDark,
+          c.greenDeep,
         ),
         SrButtonKind.caution => (
-          hovered ? SR.amberIcon : SR.amberTint,
-          SR.amberTitle,
-          SR.amberLine,
+          hovered ? c.amberIcon : c.amberTint,
+          c.amberTitle,
+          c.amberLine,
         ),
       };
 
@@ -131,12 +133,12 @@ class _SrButtonState extends State<SrButton> {
               : (widget.dense ? 6 : 8),
         ),
         decoration: BoxDecoration(
-          color: enabled ? bg : SR.dividerSoft,
-          borderRadius: BorderRadius.circular(8),
+          color: enabled ? bg : c.dividerSoft,
+          borderRadius: BorderRadius.circular(SR.rMd),
           border: bd == null
               ? null
-              : Border.all(color: enabled ? bd : SR.border),
-          boxShadow: primary && enabled ? SR.cardShadow : null,
+              : Border.all(color: enabled ? bd : c.border),
+          boxShadow: primary && enabled ? c.cardShadow : null,
         ),
         child: Row(
           mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
@@ -159,7 +161,7 @@ class _SrButtonState extends State<SrButton> {
                           widget.kind == SrButtonKind.danger
                       ? 600
                       : 500,
-                  color: enabled ? fg : SR.muted,
+                  color: enabled ? fg : c.muted,
                 ),
               ),
             ),
@@ -204,10 +206,10 @@ class SrIconButton extends StatelessWidget {
     required this.tooltip,
     this.size = 32,
     this.fontSize = 12,
-    this.background = SR.surface,
-    this.foreground = SR.ink2,
+    this.background,
+    this.foreground,
     this.hoverForeground = SR.blue,
-    this.border = SR.border,
+    this.border,
     this.radius = 9,
     this.shadow,
   });
@@ -218,8 +220,8 @@ class SrIconButton extends StatelessWidget {
   final String tooltip;
   final double size;
   final double fontSize;
-  final Color background;
-  final Color foreground;
+  final Color? background;
+  final Color? foreground;
   final Color hoverForeground;
   final Color? border;
   final double radius;
@@ -229,6 +231,7 @@ class SrIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
     final effectiveSize = compact && size < 44 ? 44.0 : size;
+    final c = context.srColors;
     return Tooltip(
       message: tooltip,
       child: Semantics(
@@ -244,16 +247,16 @@ class SrIconButton extends StatelessWidget {
               height: effectiveSize,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: hovered ? SR.dividerSoft : background,
+                color: hovered ? c.dividerSoft : (background ?? c.surface),
                 borderRadius: BorderRadius.circular(radius),
-                border: border == null ? null : Border.all(color: border!),
+                border: Border.all(color: border ?? c.border),
                 boxShadow: shadow,
               ),
               child: Builder(
                 builder: (context) {
                   final tint = onPressed == null
-                      ? SR.mutedLight
-                      : (hovered ? hoverForeground : foreground);
+                      ? c.mutedLight
+                      : (hovered ? hoverForeground : (foreground ?? c.ink2));
                   return icon != null
                       ? Icon(icon, size: fontSize + 3, color: tint)
                       : Text(glyph ?? '', style: sans(fontSize, color: tint));
@@ -272,7 +275,7 @@ class DashedBox extends StatelessWidget {
     super.key,
     required this.child,
     this.radius = 11,
-    this.color = SR.dashed,
+    this.color,
     this.background = Colors.transparent,
     this.padding = const EdgeInsets.all(18),
     this.dash = 5,
@@ -282,7 +285,7 @@ class DashedBox extends StatelessWidget {
 
   final Widget child;
   final double radius;
-  final Color color;
+  final Color? color;
   final Color background;
   final EdgeInsets padding;
   final double dash;
@@ -301,7 +304,7 @@ class DashedBox extends StatelessWidget {
     child: CustomPaint(
       painter: _DashedBorderPainter(
         radius: radius,
-        color: color,
+        color: color ?? context.srColors.dashed,
         dash: dash,
         gap: gap,
       ),
@@ -359,21 +362,24 @@ class SrLabel extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text.rich(
-          TextSpan(
-            text: text,
-            children: [
-              if (required)
-                TextSpan(
-                  text: ' *',
-                  style: sans(11.5, w: 500, color: SR.red),
-                ),
-            ],
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              text: text,
+              children: [
+                if (required)
+                  TextSpan(
+                    text: ' *',
+                    style: sans(11.5, w: 500, color: context.srColors.red),
+                  ),
+              ],
+            ),
+            style: sans(11.5, w: 500, color: context.srColors.ink2),
           ),
-          style: sans(11.5, w: 500, color: SR.ink2),
         ),
-        if (meta != null) ...[const Spacer(), meta!],
+        if (meta != null) ...[const SizedBox(width: 8), meta!],
       ],
     ),
   );
@@ -387,6 +393,7 @@ class SrErrorText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (message == null) return const SizedBox.shrink();
+    final c = context.srColors;
     return Padding(
       padding: const EdgeInsets.only(top: 5),
       child: Row(
@@ -394,10 +401,10 @@ class SrErrorText extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 1, right: 5),
-            child: Icon(Icons.error_outline_rounded, size: 11, color: SR.red),
+            child: Icon(Icons.error_outline_rounded, size: 11, color: c.red),
           ),
           Expanded(
-            child: Text(message!, style: sans(11, height: 1.45, color: SR.red)),
+            child: Text(message!, style: sans(11, height: 1.45, color: c.red)),
           ),
         ],
       ),
@@ -488,8 +495,9 @@ class _SrTextFieldState extends State<SrTextField> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.srColors;
     final style = widget.mono
-        ? mono(widget.fontSize, color: SR.ink)
+        ? mono(widget.fontSize, color: c.ink)
         : sans(widget.fontSize, height: widget.maxLines == 1 ? null : 1.6);
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
     final effectivePadding =
@@ -506,17 +514,17 @@ class _SrTextFieldState extends State<SrTextField> {
           : null,
       padding: effectivePadding,
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: c.surface,
         borderRadius: BorderRadius.circular(9),
         border: Border.all(
           color: widget.hasError
-              ? SR.red
-              : (_focused ? SR.blue : SR.borderField),
+              ? c.red
+              : (_focused ? SR.blue : c.borderField),
         ),
         boxShadow: _focused
             ? [
                 BoxShadow(
-                  color: (widget.hasError ? SR.red : SR.blue).withValues(
+                  color: (widget.hasError ? c.red : SR.blue).withValues(
                     alpha: .12,
                   ),
                   spreadRadius: 3,
@@ -561,7 +569,7 @@ class _SrTextFieldState extends State<SrTextField> {
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   hintText: widget.placeholder,
-                  hintStyle: style.copyWith(color: SR.mutedLight),
+                  hintStyle: style.copyWith(color: c.mutedLight),
                   labelText: null,
                 ),
               ),
@@ -602,15 +610,16 @@ class SrSelect<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final c = context.srColors;
     return Semantics(
       label: semanticLabel,
       child: Container(
         height: compact ? 44 : 40,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: c.surface,
           borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: hasError ? SR.red : SR.borderField),
+          border: Border.all(color: hasError ? c.red : c.borderField),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<T>(
@@ -618,15 +627,15 @@ class SrSelect<T> extends StatelessWidget {
             isExpanded: true,
             isDense: true,
             borderRadius: BorderRadius.circular(10),
-            dropdownColor: SR.surface,
-            icon: const Icon(
+            dropdownColor: c.surface,
+            icon: Icon(
               Icons.keyboard_arrow_down_rounded,
               size: 16,
-              color: SR.muted,
+              color: c.muted,
             ),
             hint: Text(
               placeholder ?? '',
-              style: sans(fontSize, color: SR.mutedLight),
+              style: sans(fontSize, color: c.mutedLight),
             ),
             style: sans(fontSize),
             onChanged: onChanged,
@@ -664,7 +673,7 @@ class SrSelect<T> extends StatelessWidget {
                             9,
                             w: 500,
                             tracking: .04,
-                            color: SR.amber,
+                            color: c.amber,
                           ),
                         ),
                       ],
@@ -702,10 +711,6 @@ class _SrToggleState extends State<SrToggle> {
   static const _thumb = 16.0;
   static const _inset = 3.0;
 
-  static const _thumbShadow = [
-    BoxShadow(color: Color(0x4710141A), blurRadius: 3, offset: Offset(0, 1)),
-  ];
-
   final FocusNode _node = FocusNode();
   bool _focused = false;
 
@@ -734,6 +739,7 @@ class _SrToggleState extends State<SrToggle> {
   Widget build(BuildContext context) {
     final enabled = widget.onChanged != null;
     final value = widget.value;
+    final c = context.srColors;
 
     return Semantics(
       toggled: value,
@@ -743,10 +749,10 @@ class _SrToggleState extends State<SrToggle> {
         enabled: enabled,
         builder: (context, hovered) {
           final track = switch ((enabled, value)) {
-            (false, true) => SR.primarySoft,
-            (false, false) => SR.dividerSoft,
+            (false, true) => c.primarySoft,
+            (false, false) => c.dividerSoft,
             (true, true) => hovered ? SR.primaryHover : SR.primary,
-            (true, false) => hovered ? SR.borderHover : SR.border,
+            (true, false) => hovered ? c.borderHover : c.border,
           };
 
           return Focus(
@@ -782,9 +788,9 @@ class _SrToggleState extends State<SrToggle> {
                             width: _thumb,
                             height: _thumb,
                             decoration: BoxDecoration(
-                              color: SR.surface,
+                              color: c.surface,
                               shape: BoxShape.circle,
-                              boxShadow: enabled ? _thumbShadow : null,
+                              boxShadow: enabled ? c.cardShadow : null,
                             ),
                           ),
                         ),
@@ -857,36 +863,39 @@ class SrKeyCell extends StatelessWidget {
     super.key,
     required this.label,
     required this.value,
-    this.valueColor = SR.ink,
+    this.valueColor,
     this.valueMono = false,
   });
 
   final String label;
   final String value;
-  final Color valueColor;
+  final Color? valueColor;
   final bool valueMono;
 
   @override
-  Widget build(BuildContext context) => Container(
-    color: SR.surface,
-    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: keyLabel),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: valueMono
-              ? mono(12.5, w: 500, color: valueColor)
-              : sans(12.5, w: 500, color: valueColor),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return Container(
+      color: c.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: keyLabel),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: valueMono
+                ? mono(12.5, w: 500, color: valueColor ?? c.ink)
+                : sans(12.5, w: 500, color: valueColor ?? c.ink),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SrCellGrid extends StatelessWidget {
@@ -898,6 +907,7 @@ class SrCellGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final colors = context.srColors;
       final effectiveColumns = constraints.maxWidth < 240
           ? 1
           : constraints.maxWidth < 520
@@ -919,7 +929,7 @@ class SrCellGrid extends StatelessWidget {
                   Expanded(
                     child: c < slice.length
                         ? slice[c]
-                        : const ColoredBox(color: SR.surface),
+                        : ColoredBox(color: colors.surface),
                   ),
                 ],
               ],
@@ -932,9 +942,9 @@ class SrCellGrid extends StatelessWidget {
       }
       return Container(
         decoration: BoxDecoration(
-          color: SR.hairline,
+          color: colors.hairline,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: SR.hairline),
+          border: Border.all(color: colors.hairline),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(mainAxisSize: MainAxisSize.min, children: rows),
