@@ -8,6 +8,7 @@ import 'app/app_shell.dart';
 import 'app/app_state.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
+import 'theme/sr_theme.dart';
 import 'widgets/sr_logo.dart';
 import 'widgets/toast_host.dart';
 
@@ -45,6 +46,14 @@ class SmartReserveApp extends StatefulWidget {
 }
 
 class _SmartReserveAppState extends State<SmartReserveApp> {
+  // Built once rather than on every AppState.notifyListeners() (there are
+  // 100+ call sites): ColorScheme.fromSeed() plus ~20 sub-theme
+  // constructions is not free, and rebuilding it every notify also handed
+  // MaterialApp a non-identical ThemeData each time, re-triggering its
+  // (now-disabled) theme animation for no reason.
+  static final _lightTheme = SrThemeData.light();
+  static final _darkTheme = SrThemeData.dark();
+
   late Future<void> _bootstrap;
 
   @override
@@ -59,236 +68,106 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
   void _retryBoot() => setState(() => _bootstrap = _boot());
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<void>(
-    future: _bootstrap,
-    builder: (context, snapshot) => AppScope(
-      state: widget.state,
-      child: MaterialApp(
-        title: 'SmartReserve · CSU Aparri',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          fontFamily: 'IBM Plex Sans',
-          scaffoldBackgroundColor: SR.bg,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: SR.primary,
-            primary: SR.primary,
-            secondary: SR.primaryDeep,
-            error: SR.red,
-            surface: SR.surface,
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.state,
+    builder: (context, _) => FutureBuilder<void>(
+      future: _bootstrap,
+      builder: (context, snapshot) => AppScope(
+        state: widget.state,
+        child: MaterialApp(
+          title: 'SmartReserve · CSU Aparri',
+          debugShowCheckedModeBanner: false,
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
+          themeMode: widget.state.themePreference.themeMode,
+          // MaterialApp otherwise cross-fades theme/darkTheme over
+          // kThemeAnimationDuration (200ms) via AnimatedTheme, and
+          // ThemeData.lerp resolves `brightness` as `t < 0.5 ? a : b` —
+          // mid-lerp reads (including the SrThemeBridge below) briefly see
+          // the *old* brightness. Zero duration makes the switch land in a
+          // single frame instead of fading in behind a stale value.
+          themeAnimationDuration: Duration.zero,
+          builder: (context, child) => SrThemeBridge(
+            child: AppToastHost(child: child ?? const SizedBox.shrink()),
           ),
-          splashFactory: NoSplash.splashFactory,
-          highlightColor: Colors.transparent,
-          textSelectionTheme: const TextSelectionThemeData(
-            selectionColor: SR.primaryLine,
-            cursorColor: SR.primary,
-            selectionHandleColor: SR.primary,
-          ),
-          tooltipTheme: TooltipThemeData(
-            waitDuration: const Duration(milliseconds: 400),
-            decoration: BoxDecoration(
-              color: SR.ink,
-              borderRadius: BorderRadius.circular(SR.rXs),
-            ),
-            textStyle: SrType.caption(color: SR.surface),
-          ),
-          scrollbarTheme: ScrollbarThemeData(
-            thickness: WidgetStateProperty.all(10),
-            thumbColor: WidgetStateProperty.all(SR.mutedLight),
-            radius: const Radius.circular(SR.rXs),
-          ),
-          dividerTheme: const DividerThemeData(
-            color: SR.border,
-            thickness: 1,
-            space: 1,
-          ),
-          appBarTheme: AppBarTheme(
-            backgroundColor: SR.surface,
-            foregroundColor: SR.ink,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            surfaceTintColor: Colors.transparent,
-            centerTitle: false,
-            iconTheme: const IconThemeData(color: SR.ink2),
-            titleTextStyle: SrType.heading(),
-          ),
-          iconButtonTheme: IconButtonThemeData(
-            style: IconButton.styleFrom(
-              foregroundColor: SR.ink2,
-              disabledForegroundColor: SR.mutedLight,
-            ),
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              backgroundColor: SR.primary,
-              foregroundColor: SR.onDark,
-              disabledBackgroundColor: SR.dividerSoft,
-              disabledForegroundColor: SR.muted,
-              elevation: 0,
-              minimumSize: const Size(64, SR.controlLg),
-              textStyle: SrType.button(color: SR.onDark),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SR.rSm),
-              ),
-            ),
-          ),
-          outlinedButtonTheme: OutlinedButtonThemeData(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: SR.ink2,
-              disabledForegroundColor: SR.muted,
-              side: const BorderSide(color: SR.border),
-              minimumSize: const Size(64, SR.controlLg),
-              textStyle: SrType.button(),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SR.rSm),
-              ),
-            ),
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              foregroundColor: SR.primaryDeep,
-              disabledForegroundColor: SR.muted,
-              minimumSize: const Size(48, SR.controlMd),
-              textStyle: SrType.button(color: SR.primaryDeep),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SR.rSm),
-              ),
-            ),
-          ),
-          floatingActionButtonTheme: FloatingActionButtonThemeData(
-            backgroundColor: SR.primary,
-            foregroundColor: SR.onDark,
-            elevation: 2,
-            focusElevation: 2,
-            hoverElevation: 3,
-            extendedTextStyle: SrType.button(color: SR.onDark),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SR.rMd),
-            ),
-          ),
-          dialogTheme: DialogThemeData(
-            backgroundColor: SR.surface,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SR.rLg),
-            ),
-            titleTextStyle: SrType.title(),
-            contentTextStyle: SrType.body(),
-          ),
-          bottomSheetTheme: BottomSheetThemeData(
-            backgroundColor: SR.surface,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            modalBarrierColor: SR.scrim,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(SR.rXl),
-              ),
-            ),
-          ),
-          chipTheme: ChipThemeData(
-            backgroundColor: SR.surfaceSubtle,
-            side: const BorderSide(color: SR.border),
-            labelStyle: SrType.bodySm(color: SR.ink2),
-            padding: const EdgeInsets.symmetric(
-              horizontal: SR.space8,
-              vertical: SR.space4,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SR.rFull),
-            ),
-          ),
-          navigationBarTheme: NavigationBarThemeData(
-            backgroundColor: SR.surface,
-            indicatorColor: SR.primaryTint,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            labelTextStyle: WidgetStateProperty.resolveWith(
-              (states) => SrType.caption(
-                w: 600,
-                color: states.contains(WidgetState.selected)
-                    ? SR.primaryDeep
-                    : SR.ink4,
-              ),
-            ),
-            iconTheme: WidgetStateProperty.resolveWith(
-              (states) => IconThemeData(
-                color: states.contains(WidgetState.selected)
-                    ? SR.primary
-                    : SR.ink4,
-              ),
-            ),
-          ),
-          progressIndicatorTheme: const ProgressIndicatorThemeData(
-            color: SR.primary,
-            linearTrackColor: SR.surfaceSunken,
-            circularTrackColor: SR.surfaceSunken,
-          ),
+          home: switch (snapshot.connectionState) {
+            ConnectionState.waiting => const _BootSplash(),
+            _ when snapshot.hasError => _BootError(onRetry: _retryBoot),
+            _ => const AppShell(),
+          },
         ),
-        builder: (context, child) =>
-            AppToastHost(child: child ?? const SizedBox.shrink()),
-        home: switch (snapshot.connectionState) {
-          ConnectionState.waiting => Scaffold(
-            backgroundColor: SR.bg,
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SrLogo(size: 44, radius: SR.rMd),
-                  const SizedBox(height: SR.space24),
-                  const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          _ when snapshot.hasError => Scaffold(
-            backgroundColor: SR.bg,
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(SR.space24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: SR.redTint,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.wifi_off_rounded,
-                        color: SR.red,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(height: SR.space16),
-                    Text('Could not connect', style: SrType.heading()),
-                    const SizedBox(height: SR.space6),
-                    Text(
-                      'Check your connection and try again.',
-                      textAlign: TextAlign.center,
-                      style: SrType.bodySm(),
-                    ),
-                    const SizedBox(height: SR.space20),
-                    FilledButton(
-                      onPressed: _retryBoot,
-                      child: const Text('Try again'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          _ => const AppShell(),
-        },
       ),
     ),
   );
+}
+
+class _BootSplash extends StatelessWidget {
+  const _BootSplash();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: context.srColors.canvas,
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SrLogo(size: 44, radius: SR.rMd),
+          const SizedBox(height: SR.space24),
+          const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _BootError extends StatelessWidget {
+  const _BootError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    return Scaffold(
+      backgroundColor: colors.canvas,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(SR.space24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.errorContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.wifi_off_rounded,
+                  color: colors.error,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(height: SR.space16),
+              Text('Could not connect', style: SrType.heading()),
+              const SizedBox(height: SR.space6),
+              Text(
+                'Check your connection and try again.',
+                textAlign: TextAlign.center,
+                style: SrType.bodySm(),
+              ),
+              const SizedBox(height: SR.space20),
+              FilledButton(onPressed: onRetry, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
