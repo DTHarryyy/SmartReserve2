@@ -27,13 +27,7 @@ class ErrorBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: SR.ink,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x4D10141A),
-            blurRadius: 40,
-            offset: Offset(0, 16),
-          ),
-        ],
+        boxShadow: SR.popoverShadow,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -107,13 +101,13 @@ class DarkBarButton extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
-          color: solid ? SR.surface : Color(hovered ? 0x33FFFFFF : 0x1AFFFFFF),
+          color: solid ? SR.onDark : Color(hovered ? 0x33FFFFFF : 0x1AFFFFFF),
           borderRadius: BorderRadius.circular(7),
           border: solid ? null : Border.all(color: const Color(0x33FFFFFF)),
         ),
         child: Text(
           label,
-          style: sans(11, w: 600, color: solid ? SR.ink : SR.surface),
+          style: sans(11, w: 600, color: solid ? SR.neutralDark : SR.onDark),
         ),
       ),
     ),
@@ -121,87 +115,102 @@ class DarkBarButton extends StatelessWidget {
 }
 
 class SrToast extends StatelessWidget {
-  const SrToast({super.key, required this.message});
+  const SrToast({
+    super.key,
+    required this.message,
+    required this.onDismiss,
+    required this.onAction,
+  });
 
   final ToastMessage message;
+  final VoidCallback onDismiss;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) => Semantics(
+    container: true,
     liveRegion: true,
-    child: TweenAnimationBuilder<double>(
-      key: ValueKey(message.text),
-      tween: Tween(begin: 0, end: 1),
-      duration: SR.entrance,
-      curve: SR.easing,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          offset: Offset(0, (1 - t) * -6),
-          child: child,
-        ),
+    label: '${toneLabel(message.tone)}: ${message.text}',
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: SR.surface,
+        borderRadius: BorderRadius.circular(SR.rMd),
+        border: Border.all(color: SR.border),
+        boxShadow: SR.toastShadow,
       ),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: SR.surface,
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: SR.border),
-          boxShadow: SR.toastShadow,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              margin: const EdgeInsets.only(top: 6),
-              decoration: BoxDecoration(
-                color: toneDot(message.tone),
-                shape: BoxShape.circle,
-              ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: toneTint(message.tone),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 9),
-            Flexible(
-              child: Text(
-                message.text,
-                style: sans(12, height: 1.5, color: SR.ink2),
-              ),
+            child: Icon(
+              toneIcon(message.tone),
+              size: 17,
+              color: toneDot(message.tone),
             ),
-            if (message.action case final action?) ...[
-              const SizedBox(width: 10),
-              LightBarButton(label: action.label, onPressed: action.onPressed),
-            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message.text,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: sans(12, height: 1.45, color: SR.ink2),
+            ),
+          ),
+          if (message.action case final action?) ...[
+            const SizedBox(width: 8),
+            LightBarButton(label: action.label, onPressed: onAction),
           ],
-        ),
+          Semantics(
+            button: true,
+            label: 'Dismiss notification',
+            child: SizedBox.square(
+              dimension: 44,
+              child: IconButton(
+                tooltip: 'Dismiss notification',
+                onPressed: onDismiss,
+                icon: Icon(Icons.close_rounded, size: 18, color: SR.ink3),
+              ),
+            ),
+          ),
+        ],
       ),
     ),
   );
 }
 
 class LightBarButton extends StatelessWidget {
-  const LightBarButton({super.key, required this.label, required this.onPressed});
+  const LightBarButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) => Hoverable(
-    builder: (context, hovered) => GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          color: hovered ? SR.primaryTint : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: SR.border),
-        ),
-        child: Text(
-          label,
-          style: sans(11, w: 600, color: SR.primaryDeep),
-        ),
+  Widget build(BuildContext context) => SizedBox(
+    height: 44,
+    child: TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        foregroundColor: SR.primaryDeep,
+        side: BorderSide(color: SR.border),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
+      child: Text(label, style: sans(11, w: 600, color: SR.primaryDeep)),
     ),
   );
 }
@@ -213,83 +222,26 @@ Color toneDot(AdvisoryTone tone) => switch (tone) {
   AdvisoryTone.block => SR.red,
 };
 
-class UndoBar extends StatelessWidget {
-  const UndoBar({
-    super.key,
-    required this.offer,
-    required this.onUndo,
-    required this.onDismiss,
-  });
+Color toneTint(AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => SR.greenTint,
+  AdvisoryTone.info => SR.blueTint,
+  AdvisoryTone.warn => SR.amberTint,
+  AdvisoryTone.block => SR.redTint,
+};
 
-  final UndoOffer offer;
-  final VoidCallback onUndo;
-  final VoidCallback onDismiss;
+IconData toneIcon(AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => Icons.check_rounded,
+  AdvisoryTone.info => Icons.info_outline_rounded,
+  AdvisoryTone.warn => Icons.warning_amber_rounded,
+  AdvisoryTone.block => Icons.error_outline_rounded,
+};
 
-  @override
-  Widget build(BuildContext context) => Semantics(
-    liveRegion: true,
-    child: TweenAnimationBuilder<double>(
-      key: ValueKey(offer.label),
-      tween: Tween(begin: 0, end: 1),
-      duration: SR.entrance,
-      curve: SR.easing,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          offset: Offset(0, (1 - t) * 6),
-          child: child,
-        ),
-      ),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
-        padding: const EdgeInsets.fromLTRB(15, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: SR.ink,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: SR.toastShadow,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                offer.label,
-                style: sans(12, height: 1.5, color: SR.surface),
-              ),
-            ),
-            const SizedBox(width: 14),
-            DarkBarButton(label: '↺ Undo', onPressed: onUndo, solid: true),
-            const SizedBox(width: 8),
-            Semantics(
-              button: true,
-              label: 'Dismiss',
-              child: SizedBox.square(
-                dimension: SR.isCompact(MediaQuery.sizeOf(context).width)
-                    ? 44
-                    : 20,
-                child: Hoverable(
-                  builder: (context, hovered) => GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onDismiss,
-                    child: Center(
-                      child: Text(
-                        '✕',
-                        style: sans(
-                          12,
-                          color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
+String toneLabel(AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => 'Success',
+  AdvisoryTone.info => 'Information',
+  AdvisoryTone.warn => 'Warning',
+  AdvisoryTone.block => 'Error',
+};
 
 class GuardDialog extends StatelessWidget {
   const GuardDialog({

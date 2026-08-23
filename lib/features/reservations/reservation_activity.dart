@@ -43,12 +43,12 @@ List<ReservationEvent> reservationEvents(
 
   if (request.heldForVerification)
     ReservationEvent(
-      title: 'Held for campus verification',
+      title: 'Legacy verification hold',
       meta: '${request.submitted} · automatic',
       dot: SR.amber,
       note:
-          'The request was accepted but kept out of the queue until the '
-          'requester’s campus claim is approved.',
+          'This request predates snapshotted admin lanes and requires '
+          'reconciliation.',
     ),
 
   ReservationEvent(
@@ -90,14 +90,12 @@ class ReservationActivityList extends StatelessWidget {
               Container(
                 width: 11,
                 height: 11,
-                margin: const EdgeInsets.only(top: 3),
+                margin: EdgeInsets.only(top: 3),
                 decoration: BoxDecoration(
                   color: event.dot,
                   shape: BoxShape.circle,
                   border: Border.all(color: SR.surface, width: 3),
-                  boxShadow: const [
-                    BoxShadow(color: SR.hairline, spreadRadius: 1),
-                  ],
+                  boxShadow: [BoxShadow(color: SR.hairline, spreadRadius: 1)],
                 ),
               ),
               const SizedBox(width: 11),

@@ -103,7 +103,7 @@ class _Resolving extends StatelessWidget {
     ),
     child: Row(
       children: [
-        const SizedBox(
+        SizedBox(
           width: 12,
           height: 12,
           child: CircularProgressIndicator(

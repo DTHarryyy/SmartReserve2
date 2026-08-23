@@ -85,6 +85,27 @@ String formatClock(double hours) {
   return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
 }
 
+/// The subset of [allSlots] still bookable on [date], given the campus wall
+/// clock [nowWall].
+///
+/// The backend rejects any reservation whose start is already in the past, so
+/// today's elapsed slots are dropped and past dates yield nothing.
+List<String> bookableSlots(
+  List<String> allSlots,
+  DateTime date,
+  DateTime nowWall,
+) {
+  final today = DateTime(nowWall.year, nowWall.month, nowWall.day);
+  final day = DateTime(date.year, date.month, date.day);
+  if (day.isBefore(today)) return const [];
+  if (day.isAfter(today)) return allSlots;
+  final elapsed = nowWall.hour * 60 + nowWall.minute;
+  return [
+    for (final slot in allSlots)
+      if (parseClock(slot) * 60 > elapsed) slot,
+  ];
+}
+
 DateTime? atClock(DateTime? day, String clock) {
   if (day == null) return null;
   final parts = clock.split(':');

@@ -42,13 +42,7 @@ class SuccessView extends StatelessWidget {
                 color: SR.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: SR.border),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x0D10141A),
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
+                boxShadow: SR.cardShadow,
               ),
               child: Column(
                 children: [
@@ -56,11 +50,11 @@ class SuccessView extends StatelessWidget {
                     width: 46,
                     height: 46,
                     alignment: Alignment.center,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: SR.greenTint,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.check_rounded,
                       size: 24,
                       color: SR.greenDark,

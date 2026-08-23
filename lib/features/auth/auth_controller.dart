@@ -19,8 +19,16 @@ enum AuthStep {
   pending,
   forgot,
   reset,
+  newPassword,
   guest,
   member,
+}
+
+class PasswordRequirement {
+  const PasswordRequirement(this.label, this.met);
+
+  final String label;
+  final bool met;
 }
 
 enum CampusClaim {
@@ -212,6 +220,25 @@ class AuthController extends ChangeNotifier {
     2 => 'Good password length.',
     _ => 'Strong password.',
   };
+
+  List<PasswordRequirement> get passwordRequirements {
+    final value = passwordField.text;
+    return [
+      PasswordRequirement('At least 10 characters', value.length >= 10),
+      PasswordRequirement(
+        'One uppercase letter',
+        RegExp(r'[A-Z]').hasMatch(value),
+      ),
+      PasswordRequirement(
+        'One lowercase letter',
+        RegExp(r'[a-z]').hasMatch(value),
+      ),
+      PasswordRequirement('One number', RegExp(r'[0-9]').hasMatch(value)),
+    ];
+  }
+
+  bool get passwordMeetsRequirements =>
+      passwordRequirements.every((requirement) => requirement.met);
 
   bool _validateCredentials({
     required bool requirePassword,
@@ -448,14 +475,26 @@ class AuthController extends ChangeNotifier {
     });
   }
 
-  Future<void> confirmReset() async {
+  Future<void> verifyResetCode() async {
     if (otpField.text.trim().length != 6) {
       otpError = 'Enter the six-digit code from your email.';
       notifyListeners();
       return;
     }
-    if (passwordField.text.length < 10) {
-      passwordError = 'Use at least 10 characters.';
+    await _perform(() async {
+      final backend = _backend;
+      if (backend == null) throw StateError('Supabase is not configured.');
+      await backend.verifyRecovery(
+        emailField.text.trim(),
+        otpField.text.trim(),
+      );
+      goTo(AuthStep.newPassword);
+    }, otp: true);
+  }
+
+  Future<void> submitNewPassword() async {
+    if (!passwordMeetsRequirements) {
+      passwordError = 'Your password does not meet all requirements.';
       notifyListeners();
       return;
     }
@@ -464,20 +503,17 @@ class AuthController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    passwordError = null;
     confirmPasswordError = null;
     await _perform(() async {
       final backend = _backend;
       if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.confirmRecovery(
-        emailField.text.trim(),
-        otpField.text.trim(),
-        passwordField.text,
-      );
+      await backend.updatePassword(passwordField.text);
       await _state.applyBackendProfile(await backend.currentProfile());
       passwordField.clear();
       confirmPasswordField.clear();
       otpField.clear();
-    }, otp: true);
+    });
   }
 
   Future<void> _perform(

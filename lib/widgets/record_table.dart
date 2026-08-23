@@ -91,7 +91,7 @@ class RecordTable extends StatelessWidget {
           clipBehavior: compact ? Clip.none : Clip.antiAlias,
           decoration: BoxDecoration(
             color: compact ? Colors.transparent : SR.surface,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(SR.rLg),
             border: compact ? null : Border.all(color: SR.border),
           ),
           child: Column(
@@ -104,7 +104,7 @@ class RecordTable extends StatelessWidget {
                     horizontal: 16,
                     vertical: 11,
                   ),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: SR.surfaceSubtle,
                     border: Border(bottom: BorderSide(color: SR.hairline)),
                   ),
@@ -173,10 +173,10 @@ class RecordRow extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: hovered ? SR.surfaceSubtle : SR.surface,
-            borderRadius: compact ? BorderRadius.circular(12) : null,
+            borderRadius: compact ? BorderRadius.circular(SR.rLg) : null,
             border: compact
                 ? Border.all(color: hovered ? SR.blueSoft : SR.border)
-                : const Border(bottom: BorderSide(color: SR.divider)),
+                : Border(bottom: BorderSide(color: SR.divider)),
           ),
           child: compact
               ? compactChild ??
@@ -295,7 +295,7 @@ class _SkeletonRowState extends State<SkeletonRow>
         borderRadius: compact ? BorderRadius.circular(12) : null,
         border: compact
             ? Border.all(color: SR.border)
-            : const Border(bottom: BorderSide(color: SR.divider)),
+            : Border(bottom: BorderSide(color: SR.divider)),
       ),
       child: compact
           ? _MobileSkeleton(shimmer: _shimmer)
@@ -315,9 +315,9 @@ class _SkeletonRowState extends State<SkeletonRow>
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(4),
                                 gradient: LinearGradient(
-                                  colors: const [
+                                  colors: [
                                     SR.hairline,
-                                    Color(0xFFF7F8FA),
+                                    SR.surfaceSubtle,
                                     SR.hairline,
                                   ],
                                   stops: [
@@ -435,7 +435,7 @@ class ListEmptyState extends StatelessWidget {
             width: 52,
             height: 52,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: SR.primaryTint,
               shape: BoxShape.circle,
             ),

@@ -1,7 +1,5 @@
 library;
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../theme/sr_tokens.dart';
@@ -17,16 +15,20 @@ class AssistantChatPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: SR.bg,
     appBar: AppBar(
-      backgroundColor: Colors.transparent,
+      backgroundColor: SR.primary,
+      foregroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
       centerTitle: true,
       titleSpacing: 0,
-      flexibleSpace: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-          child: Container(color: SR.surface.withValues(alpha: .78)),
+      flexibleSpace: const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1A73E8), Color(0xFF00A8EF)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
         ),
       ),
       leading: Semantics(
@@ -38,14 +40,19 @@ class AssistantChatPage extends StatelessWidget {
           icon: const Icon(
             Icons.chevron_left_rounded,
             size: 30,
-            color: SR.blue,
+            color: Colors.white,
           ),
         ),
       ),
-      title: Text('SmartReserve AI', style: sans(16, w: 600, tracking: -.01)),
+      title: Text(
+        'SmartReserve Assistant',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: sans(16, w: 600, tracking: -.01, color: Colors.white),
+      ),
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: SR.border),
+        child: Container(height: 1, color: SR.onDarkLine),
       ),
     ),
     body: AssistantTab(controller: controller),

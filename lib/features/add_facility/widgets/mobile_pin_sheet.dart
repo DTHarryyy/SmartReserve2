@@ -48,7 +48,7 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: SR.bg,
                 border: Border(bottom: BorderSide(color: SR.border)),
               ),
@@ -101,7 +101,11 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                         }),
                       ),
                       children: [
-                        srTileLayer(c.layer, c.tileGeneration),
+                        srTileLayer(
+                          c.layer,
+                          c.tileGeneration,
+                          dark: Theme.of(context).brightness == Brightness.dark,
+                        ),
                         if (c.showBoundary)
                           PolygonLayer(
                             polygons: [
@@ -120,7 +124,7 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                               horizontal: 5,
                               vertical: 2,
                             ),
-                            color: const Color(0xB8FFFFFF),
+                            color: SR.glass,
                             child: Text(
                               attributionFor(c.layer),
                               style: sans(9, color: SR.ink3),
@@ -248,7 +252,7 @@ class _ConfirmBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: SR.surface,
       border: Border(top: BorderSide(color: SR.border)),
     ),

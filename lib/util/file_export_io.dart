@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,6 +17,36 @@ Future<FileExportResult> saveTextFileImpl({
     extension: extension,
   );
   final bytes = utf8.encode(contents);
+  try {
+    final downloads = await getDownloadsDirectory();
+    if (downloads != null) {
+      final file = File('${downloads.path}${Platform.pathSeparator}$fileName');
+      await file.writeAsBytes(bytes, flush: true);
+      return FileExportResult.success(file.path, revealSupported: _isDesktop);
+    }
+  } catch (_) {}
+  try {
+    final temp = await getTemporaryDirectory();
+    final file = File('${temp.path}${Platform.pathSeparator}$fileName');
+    await file.writeAsBytes(bytes, flush: true);
+    await SharePlus.instance.share(
+      ShareParams(files: [XFile(file.path)], fileNameOverrides: [fileName]),
+    );
+    return FileExportResult.success(file.path);
+  } catch (e) {
+    return FileExportResult.failure(e.toString());
+  }
+}
+
+Future<FileExportResult> saveBinaryFileImpl({
+  required String baseName,
+  required String extension,
+  required Uint8List bytes,
+}) async {
+  final fileName = buildExportFileName(
+    baseName: baseName,
+    extension: extension,
+  );
   try {
     final downloads = await getDownloadsDirectory();
     if (downloads != null) {

@@ -47,14 +47,14 @@ class _Field extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: EdgeInsets.symmetric(horizontal: 11, vertical: compact ? 11 : 9),
     decoration: BoxDecoration(
-      color: const Color(0xF7FFFFFF),
+      color: SR.glass,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0x1410141A)),
+      border: Border.all(color: SR.glassLine),
       boxShadow: SR.floatShadow,
     ),
     child: Row(
       children: [
-        const Icon(Icons.search_rounded, size: 15, color: SR.muted),
+        Icon(Icons.search_rounded, size: 15, color: SR.muted),
         const SizedBox(width: 8),
         Expanded(
           child: TextField(
@@ -108,9 +108,9 @@ class _LayerSwitch extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(2),
     decoration: BoxDecoration(
-      color: const Color(0xF7FFFFFF),
+      color: SR.glass,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0x1410141A)),
+      border: Border.all(color: SR.glassLine),
       boxShadow: SR.floatShadow,
     ),
     child: Row(
@@ -142,7 +142,7 @@ class _LayerSwitch extends StatelessWidget {
                       style: sans(
                         11,
                         w: 500,
-                        color: controller.layer == layer ? SR.surface : SR.ink2,
+                        color: controller.layer == layer ? SR.onDark : SR.ink2,
                       ),
                     ),
                   ),
@@ -196,7 +196,7 @@ class _Results extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: hovered ? SR.blueTint2 : SR.surface,
-                        border: const Border(
+                        border: Border(
                           bottom: BorderSide(color: SR.dividerSoft),
                         ),
                       ),

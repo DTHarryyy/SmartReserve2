@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/verification.dart';
+import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_logo.dart';
@@ -103,7 +104,7 @@ class AuthScreen extends StatelessWidget {
               ),
             ),
           );
-          return ColoredBox(
+          final shell = ColoredBox(
             color: width < SR.tabletMin ? SR.surface : SR.bg,
             child: desktop
                 ? Row(
@@ -115,12 +116,41 @@ class AuthScreen extends StatelessWidget {
                   )
                 : content,
           );
+          if (!desktop) return shell;
+          return Stack(
+            children: [
+              Positioned.fill(child: shell),
+              Positioned(
+                right: SR.space24,
+                top: SR.space20,
+                child: SafeArea(
+                  child: SrThemeSelector(
+                    value: state.themePreference,
+                    compact: true,
+                    onChanged: state.setThemePreference,
+                  ),
+                ),
+              ),
+            ],
+          );
         },
       ),
     );
   }
 
-  Widget _topBar() => const _BrandHeader();
+  Widget _topBar() => LayoutBuilder(
+    builder: (context, constraints) => Row(
+      children: [
+        Expanded(child: _BrandHeader(compact: constraints.maxWidth < 400)),
+        const SizedBox(width: SR.space8),
+        SrThemeSelector(
+          value: state.themePreference,
+          compact: true,
+          onChanged: state.setThemePreference,
+        ),
+      ],
+    ),
+  );
 
   List<String> get _progressLabels => switch (controller.step) {
     AuthStep.signUp ||
@@ -133,7 +163,8 @@ class AuthScreen extends StatelessWidget {
       '3 Campus status',
     ],
     AuthStep.forgot ||
-    AuthStep.reset => const ['1 Email', '2 Reset code', '3 New password'],
+    AuthStep.reset ||
+    AuthStep.newPassword => const ['1 Email', '2 Reset code', '3 New password'],
     _ => const [],
   };
 
@@ -186,6 +217,7 @@ class AuthScreen extends StatelessWidget {
       AuthStep.pending => _pending(),
       AuthStep.forgot => _forgot(),
       AuthStep.reset => _reset(),
+      AuthStep.newPassword => _newPassword(),
       AuthStep.guest => _guest(),
       AuthStep.member => _member(),
     },
@@ -361,9 +393,9 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('How are you connected to CSU Aparri?'),
       _Lede(
-        'Campus members reserve facilities free of charge after verification. '
-        'Outside groups may reserve at the published rate. Answer honestly — '
-        'the registrar checks documents.',
+        'Facilities publish separate student, faculty, staff, and guest rates. '
+        'Verification chooses the administrator lane for each new request. '
+        'Answer honestly — the registrar checks campus documents.',
       ),
       const SizedBox(height: 16),
       for (final claim in CampusClaim.values)
@@ -516,9 +548,8 @@ class AuthScreen extends StatelessWidget {
         foreground: SR.greenDark,
         title: 'You are verified',
         body:
-            'The registrar confirmed your campus status. Reservations are now '
-            'free of charge and any request you left waiting has been '
-            'released.',
+            'Your campus status is confirmed. New reservations use the '
+            'internal-admin lane and the facility’s campus-member rate.',
         action: SrButton(
           label: 'Go to your account',
           kind: SrButtonKind.primary,
@@ -530,7 +561,7 @@ class AuthScreen extends StatelessWidget {
       ),
       VerificationDecision.changesRequested => _Outcome(
         glyph: Icons.refresh_rounded,
-        background: const Color(0xFFFFFAEB),
+        background: SR.amberTint,
         foreground: SR.amber,
         title: 'A clearer document is needed',
         body: submission?.reason ?? '',
@@ -554,7 +585,8 @@ class AuthScreen extends StatelessWidget {
         quoteBody: true,
         footnote:
             'You may appeal once with a different document. Your account still '
-            'works — you can reserve at the external rate in the meantime.',
+            'works — new reservations use the guest/unverified lane and the '
+            'facility’s guest rate in the meantime.',
         action: Column(
           children: [
             SrButton(
@@ -578,7 +610,7 @@ class AuthScreen extends StatelessWidget {
       ),
       VerificationDecision.pending => _Outcome(
         glyph: Icons.hourglass_empty_rounded,
-        background: const Color(0xFFFFFAEB),
+        background: SR.amberTint,
         foreground: SR.amber,
         title: 'Waiting for the registrar',
         body:
@@ -586,9 +618,9 @@ class AuthScreen extends StatelessWidget {
             'business day. Return here to see the decision.',
         panel:
             'Browse facilities, view them on the campus map, and prepare a '
-            'reservation. Requests you submit are held and released '
-            'automatically the moment you are verified — nothing is lost by '
-            'starting now.',
+            'reservation. A request submitted before verification stays in '
+            'the external-admin lane; requests submitted after approval use '
+            'the internal-admin lane.',
         panelTitle: 'What you can do now',
         action: Column(
           children: [
@@ -650,7 +682,7 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('Enter your reset code'),
       _Lede(
-        'We sent a six-digit code to ${_maskedEmail(controller.emailField.text.trim())}. Then choose a new password.',
+        'We sent a six-digit code to ${_maskedEmail(controller.emailField.text.trim())}.',
       ),
       Align(
         alignment: Alignment.centerLeft,
@@ -662,25 +694,7 @@ class AuthScreen extends StatelessWidget {
       const SizedBox(height: 14),
       _OtpCells(controller: controller, label: '6-digit reset code'),
       SrErrorText(controller.otpError),
-      const SizedBox(height: 10),
-      const SrLabel('New password'),
-      _PasswordField(
-        controller: controller,
-        newPassword: true,
-        placeholder: 'Create a new passphrase',
-      ),
-      SrErrorText(controller.passwordError),
-      const SizedBox(height: 10),
-      const SrLabel('Confirm new password'),
-      _PasswordField(
-        controller: controller,
-        fieldController: controller.confirmPasswordField,
-        placeholder: 'Enter the new password again',
-        semanticLabel: 'Confirm new password',
-        hasError: controller.confirmPasswordError != null,
-        onSubmitted: (_) => controller.busy ? null : controller.confirmReset(),
-      ),
-      SrErrorText(controller.confirmPasswordError),
+      const SizedBox(height: 8),
       Center(
         child: _InlineLink(
           label: controller.resendSeconds > 0
@@ -692,9 +706,49 @@ class AuthScreen extends StatelessWidget {
       ),
       const SizedBox(height: 14),
       _submitButton(
+        'Verify code',
+        'Verifying code…',
+        controller.verifyResetCode,
+      ),
+      SrErrorText(controller.operationError),
+    ],
+  );
+
+  Widget _newPassword() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title('Choose a new password'),
+      _Lede(
+        'Your code is verified. Set a new password for '
+        '${_maskedEmail(controller.emailField.text.trim())}.',
+      ),
+      const SizedBox(height: 16),
+      const SrLabel('New password'),
+      _PasswordField(
+        controller: controller,
+        newPassword: true,
+        placeholder: 'Create a new passphrase',
+      ),
+      const SizedBox(height: 8),
+      _PasswordRequirements(requirements: controller.passwordRequirements),
+      SrErrorText(controller.passwordError),
+      const SizedBox(height: 10),
+      const SrLabel('Confirm new password'),
+      _PasswordField(
+        controller: controller,
+        fieldController: controller.confirmPasswordField,
+        placeholder: 'Enter the new password again',
+        semanticLabel: 'Confirm new password',
+        hasError: controller.confirmPasswordError != null,
+        onSubmitted: (_) =>
+            controller.busy ? null : controller.submitNewPassword(),
+      ),
+      SrErrorText(controller.confirmPasswordError),
+      const SizedBox(height: 14),
+      _submitButton(
         'Change password',
         'Changing password…',
-        controller.confirmReset,
+        controller.submitNewPassword,
       ),
       SrErrorText(controller.operationError),
     ],
@@ -725,10 +779,10 @@ class AuthScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'You see the rate before you request. Payment is authorised once '
-              'the registrar approves and captured when you check in. If the '
-              'request is declined or the facility closes for maintenance, '
-              'nothing is charged.',
+              'You see the facility’s guest rate before you request. After an '
+              'assigned administrator approves it, upload the required GCash '
+              'proof before the displayed deadline. The slot is confirmed '
+              'only after that payment is verified.',
               style: sans(11.5, height: 1.7, color: SR.blueInk),
             ),
           ],
@@ -737,7 +791,7 @@ class AuthScreen extends StatelessWidget {
       const SizedBox(height: 12),
       Text.rich(
         TextSpan(
-          text: 'Students and faculty of CSU Aparri reserve free. ',
+          text: 'Campus members use the facility’s published campus rate. ',
           children: [
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
@@ -822,7 +876,7 @@ class AuthScreen extends StatelessWidget {
     minHeight: 48,
     fontSize: 13.5,
     trailing: controller.busy
-        ? const SizedBox(
+        ? SizedBox(
             width: 16,
             height: 16,
             child: CircularProgressIndicator(strokeWidth: 2, color: SR.muted),
@@ -833,23 +887,27 @@ class AuthScreen extends StatelessWidget {
 }
 
 class _BrandHeader extends StatelessWidget {
-  const _BrandHeader();
+  const _BrandHeader({this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Row(
     children: [
       const SrLogo(size: 40, radius: SR.rMd),
-      const SizedBox(width: 12),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('SmartReserve', style: sans(15, w: 600, tracking: -.01)),
-          Text(
-            'CSU APARRI',
-            style: mono(10, w: 500, tracking: .04, color: SR.ink4),
-          ),
-        ],
-      ),
+      if (!compact) ...[
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('SmartReserve', style: sans(15, w: 600, tracking: -.01)),
+            Text(
+              'CSU APARRI',
+              style: mono(10, w: 500, tracking: .04, color: SR.ink4),
+            ),
+          ],
+        ),
+      ],
     ],
   );
 }
@@ -865,7 +923,7 @@ class _HeroBanner extends StatelessWidget {
       color: SR.navBg,
       borderRadius: BorderRadius.circular(18),
       gradient: const LinearGradient(
-        colors: [Color(0xFF101418), Color(0xFF163D6B)],
+        colors: [Color(0xFF1A73E8), Color(0xFF00B4FF)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -966,7 +1024,13 @@ class _Pitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(color: SR.primary),
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Color(0xFF1A73E8), Color(0xFF00A8EF)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
     child: SafeArea(
       child: LayoutBuilder(
         builder: (context, box) {
@@ -1231,6 +1295,38 @@ class _PasswordFieldState extends State<_PasswordField> {
       ),
     );
   }
+}
+
+class _PasswordRequirements extends StatelessWidget {
+  const _PasswordRequirements({required this.requirements});
+
+  final List<PasswordRequirement> requirements;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 12,
+    runSpacing: 6,
+    children: [
+      for (final requirement in requirements)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              requirement.met
+                  ? Icons.check_circle_rounded
+                  : Icons.circle_outlined,
+              size: 13,
+              color: requirement.met ? SR.green : SR.muted,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              requirement.label,
+              style: sans(11, color: requirement.met ? SR.green : SR.muted),
+            ),
+          ],
+        ),
+    ],
+  );
 }
 
 class _OtpCells extends StatelessWidget {

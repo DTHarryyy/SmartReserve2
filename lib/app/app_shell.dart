@@ -9,6 +9,8 @@ import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/facilities/facilities_screen.dart';
+import '../features/feedback/feedback_screen.dart';
+import '../features/loyalty/loyalty_admin_screen.dart';
 import '../features/notes/notes_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -57,7 +59,8 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final AddFacilityController _addFacility = AddFacilityController();
+  late final AddFacilityController _addFacility;
+  var _facilityControllerReady = false;
 
   AuthController? _auth;
 
@@ -65,7 +68,6 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_onKey);
-    _addFacility.addListener(_onFacilityControllerChanged);
   }
 
   void _onFacilityControllerChanged() {
@@ -78,15 +80,20 @@ class _AppShellState extends State<AppShell> {
 
     final state = AppScope.read(context);
     _auth ??= AuthController(state);
-    _addFacility.toastSink = (message, duration) =>
-        state.showToast(message, duration: duration);
+    if (!_facilityControllerReady) {
+      _addFacility = AddFacilityController(toasts: state.toasts)
+        ..addListener(_onFacilityControllerChanged);
+      _facilityControllerReady = true;
+    }
   }
 
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
-    _addFacility.removeListener(_onFacilityControllerChanged);
-    _addFacility.dispose();
+    if (_facilityControllerReady) {
+      _addFacility.removeListener(_onFacilityControllerChanged);
+      _addFacility.dispose();
+    }
     _auth?.dispose();
     super.dispose();
   }
@@ -131,10 +138,6 @@ class _AppShellState extends State<AppShell> {
   }
 
   bool _onScreenKey(KeyEvent event, AppState state) {
-    if (event.logicalKey == LogicalKeyboardKey.keyU && state.undo != null) {
-      state.takeUndo();
-      return true;
-    }
     if (state.view != AppView.reservations) return false;
 
     if (event.logicalKey == LogicalKeyboardKey.keyJ) {
@@ -286,21 +289,6 @@ class _AppShellState extends State<AppShell> {
           onDismiss: _addFacility.dismissErrorBar,
         ),
       ),
-
-    if (state.undo case final offer?)
-      Positioned(
-        left: 22,
-        right: 22,
-        bottom: layout.isMobile && state.view == AppView.addFacility ? 84 : 22,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: UndoBar(
-            offer: offer,
-            onUndo: state.takeUndo,
-            onDismiss: state.dismissUndo,
-          ),
-        ),
-      ),
   ];
 
   bool _editingFacility(AppState state) =>
@@ -359,7 +347,7 @@ class _AppShellState extends State<AppShell> {
               : null,
         ),
       ],
-      AppView.facilities when !layout.isMobile && state.isInternalAdmin => [
+      AppView.facilities when !layout.isMobile && state.isAdmin => [
         SrButton(
           label: 'New facility',
           icon: const Icon(
@@ -376,16 +364,15 @@ class _AppShellState extends State<AppShell> {
   ];
 
   Widget? _mobileAction(AppState state) => switch (state.view) {
-    AppView.facilities when state.isInternalAdmin =>
-      FloatingActionButton.extended(
-        key: const Key('add-facility-fab'),
-        tooltip: 'Add facility',
-        backgroundColor: SR.blue,
-        foregroundColor: SR.surface,
-        onPressed: () => _openEditor(state, null),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Facility'),
-      ),
+    AppView.facilities when state.isAdmin => FloatingActionButton.extended(
+      key: const Key('add-facility-fab'),
+      tooltip: 'Add facility',
+      backgroundColor: SR.blue,
+      foregroundColor: SR.surface,
+      onPressed: () => _openEditor(state, null),
+      icon: const Icon(Icons.add_rounded),
+      label: const Text('Facility'),
+    ),
     AppView.users when state.isInternalAdmin => FloatingActionButton.extended(
       key: const Key('invite-admin-fab'),
       tooltip: 'Invite administrator',
@@ -412,11 +399,13 @@ class _AppShellState extends State<AppShell> {
     AppView.calendar => const CalendarScreen(),
     AppView.verifications => const VerificationsScreen(),
     AppView.reports => ReportsScreen(
-      onFixLocation: state.isInternalAdmin
+      onFixLocation: state.isAdmin
           ? (facility) => _openEditor(state, facility)
           : null,
     ),
     AppView.users => const UsersScreen(),
+    AppView.feedback => const FeedbackScreen(),
+    AppView.loyalty => const LoyaltyAdminScreen(),
     AppView.audit => const AuditScreen(),
     AppView.notes => const NotesScreen(),
     AppView.profile => const ProfileScreen(),
@@ -470,7 +459,7 @@ class _NotificationsPanel extends StatelessWidget {
               ),
               child: Text('Notifications', style: SrType.subhead()),
             ),
-            const Divider(height: 1, color: SR.border),
+            Divider(height: 1, color: SR.border),
             if (state.notificationsError case final error?)
               Padding(
                 padding: const EdgeInsets.all(SR.space16),
@@ -491,7 +480,7 @@ class _NotificationsPanel extends StatelessWidget {
                   shrinkWrap: true,
                   itemCount: state.notifications.length,
                   separatorBuilder: (_, _) =>
-                      const Divider(height: 1, color: SR.hairline),
+                      Divider(height: 1, color: SR.hairline),
                   itemBuilder: (context, index) {
                     final item = state.notifications[index];
                     return InkWell(

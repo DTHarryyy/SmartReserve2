@@ -247,13 +247,13 @@ class _TileButton extends StatelessWidget {
     required this.glyph,
     required this.tooltip,
     required this.onPressed,
-    this.foreground = SR.ink2,
+    this.foreground,
   });
 
   final String glyph;
   final String tooltip;
   final VoidCallback? onPressed;
-  final Color foreground;
+  final Color? foreground;
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -277,7 +277,9 @@ class _TileButton extends StatelessWidget {
               glyph,
               style: sans(
                 9,
-                color: onPressed == null ? SR.mutedLight : foreground,
+                color: onPressed == null
+                    ? SR.mutedLight
+                    : (foreground ?? SR.ink2),
               ),
             ),
           ),

@@ -11,7 +11,9 @@ const adminSections = <AppView>[
   AppView.reservations,
   AppView.calendar,
   AppView.verifications,
+  AppView.feedback,
   AppView.users,
+  AppView.loyalty,
   AppView.reports,
   AppView.audit,
 ];
@@ -26,18 +28,24 @@ const _internalGroups = <NavGroup>[
       AppView.reservations,
       AppView.calendar,
       AppView.verifications,
+      AppView.feedback,
     ],
   ),
   (
     label: 'Administration',
-    items: [AppView.users, AppView.reports, AppView.audit],
+    items: [AppView.users, AppView.loyalty, AppView.reports, AppView.audit],
   ),
 ];
 
 const _externalGroups = <NavGroup>[
   (
     label: 'Operations',
-    items: [AppView.facilities, AppView.reservations, AppView.calendar],
+    items: [
+      AppView.facilities,
+      AppView.reservations,
+      AppView.calendar,
+      AppView.feedback,
+    ],
   ),
   (
     label: 'Administration',
@@ -76,7 +84,7 @@ class SideNav extends StatelessWidget {
     final groups = state.isExternalAdmin ? _externalGroups : _internalGroups;
     return Container(
       width: width,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: SR.navBg,
         border: Border(right: BorderSide(color: SR.navBorder)),
       ),
@@ -396,7 +404,7 @@ class _AdminFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final admin = state.currentAdmin;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: SR.navBorder)),
       ),
       padding: const EdgeInsets.all(SR.space8),
@@ -419,7 +427,7 @@ class _AdminFooter extends StatelessWidget {
                     width: 30,
                     height: 30,
                     alignment: Alignment.center,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: SR.navAvatar,
                       shape: BoxShape.circle,
                     ),
@@ -440,7 +448,7 @@ class _AdminFooter extends StatelessWidget {
                           style: sans(12, w: 600, color: SR.ink),
                         ),
                         Text(
-                          'Registrar · ${admin.role.label}',
+                          'Administrator · ${admin.role.label}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: SrType.caption(),

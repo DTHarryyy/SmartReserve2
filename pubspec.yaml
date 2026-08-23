@@ -21,6 +21,8 @@ dependencies:
   file_saver: ^0.4.0
   share_plus: ^13.3.0
   path_provider: ^2.1.6
+  pdf: ^3.11.3
+  printing: ^5.14.2
 
 dev_dependencies:
   flutter_test:
@@ -49,6 +51,16 @@ flutter:
     - assets/smartreserve logo.png
 
   fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
     - family: IBM Plex Sans
       fonts:
         - asset: assets/fonts/IBMPlexSans-Regular.ttf

@@ -42,6 +42,8 @@ const _adminViews = <AppView>[
   AppView.calendar,
   AppView.verifications,
   AppView.users,
+  AppView.feedback,
+  AppView.loyalty,
   AppView.reports,
   AppView.audit,
   AppView.notes,
@@ -121,7 +123,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('global toasts stay at the top-right across admin layouts', (
+  testWidgets('global toasts stay at the top-center across admin layouts', (
     tester,
   ) async {
     final state = await _adminState();
@@ -145,16 +147,15 @@ void main() {
       final headerRect = tester.getRect(find.byType(AppHeader));
       expect(toastRect.top, greaterThanOrEqualTo(headerRect.bottom));
       expect(toastRect.top, lessThan(size.height / 2));
-      expect(toastRect.right, closeTo(size.width - 22, 0.1));
-      if (size.width == 390) {
-        expect(toastRect.left, closeTo(22, 0.1));
-      }
+      expect(toastRect.center.dx, closeTo(size.width / 2, 0.1));
+      expect(toastRect.width, lessThanOrEqualTo(480));
+      if (size.width == 390) expect(toastRect.left, closeTo(16, 0.1));
       expect(tester.takeException(), isNull);
     }
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('top toast and bottom undo bar remain independently visible', (
+  testWidgets('undo is presented as a single top-center toast action', (
     tester,
   ) async {
     final state = await _adminState();
@@ -162,24 +163,22 @@ void main() {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_adminApp(state));
 
-    state
-      ..offerUndo(
-        UndoOffer(label: 'Reservation updated.', onUndo: () {}),
-        window: const Duration(seconds: 1),
-      )
-      ..showToast(
-        const ToastMessage('Changes saved.'),
+    var undone = false;
+    state.toasts.show(
+      ToastMessage.success(
+        'Reservation updated.',
+        action: ToastAction(label: 'Undo', onPressed: () => undone = true),
         duration: const Duration(seconds: 1),
-      );
+      ),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.byType(SrToast), findsOneWidget);
-    expect(find.byType(UndoBar), findsOneWidget);
-    expect(
-      tester.getRect(find.byType(SrToast)).bottom,
-      lessThan(tester.getRect(find.byType(UndoBar)).top),
-    );
+    expect(find.text('Undo'), findsOneWidget);
+    await tester.tap(find.text('Undo'));
+    expect(undone, isTrue);
+    expect(state.toasts.active, isNull);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 1));
   });
@@ -200,9 +199,25 @@ void main() {
 
     final toastRect = tester.getRect(find.byType(SrToast));
     expect(toastRect.top, closeTo(22, 0.1));
-    expect(toastRect.right, closeTo(368, 0.1));
+    expect(toastRect.center.dx, closeTo(195, 0.1));
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('toast announces its tone and can be dismissed', (tester) async {
+    final state = AppState();
+    addTearDown(state.dispose);
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
+    await _setViewport(tester, const Size(390, 844));
+    await tester.pumpWidget(_adminApp(state));
+
+    state.toasts.show(const ToastMessage.error('Could not save.'));
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('Error: Could not save.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Dismiss notification'));
+    expect(state.toasts.active, isNull);
   });
 
   testWidgets('admin facility gallery swipes and exposes every photo', (

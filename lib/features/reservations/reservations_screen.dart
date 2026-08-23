@@ -213,7 +213,7 @@ class _QueueRow extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
-                        Flexible(
+                        Expanded(
                           child: Text(
                             request.requester,
                             maxLines: 1,
@@ -229,7 +229,7 @@ class _QueueRow extends StatelessWidget {
                             dense: true,
                           ),
                         ],
-                        const Spacer(),
+                        const SizedBox(width: SR.space8),
                         Text(
                           request.submitted,
                           style: mono(10.5, color: SR.muted),
@@ -264,6 +264,14 @@ class _QueueRow extends StatelessWidget {
                           '${request.heads} people',
                           style: mono(10.5, color: SR.muted),
                         ),
+                        if (request.amenities.isNotEmpty)
+                          Tooltip(
+                            message: request.amenities.join(', '),
+                            child: Text(
+                              '+${request.amenities.length} amenities',
+                              style: mono(10.5, color: SR.muted),
+                            ),
+                          ),
                         SrStatusChip(
                           label: request.status.label,
                           tone: request.status.tone,
@@ -272,7 +280,7 @@ class _QueueRow extends StatelessWidget {
                         if (_flag case final flag?)
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.warning_amber_rounded,
                                 size: SR.iconSm,
                                 color: SR.amber,

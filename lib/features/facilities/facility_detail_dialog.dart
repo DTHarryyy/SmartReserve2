@@ -9,6 +9,7 @@ import '../../util/geo.dart';
 import '../../widgets/record_activity.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
+import 'facility_configuration_dialog.dart';
 
 Future<void> showFacilityDetail(
   BuildContext context, {
@@ -16,22 +17,26 @@ Future<void> showFacilityDetail(
   required Facility facility,
   required VoidCallback onEdit,
   required VoidCallback onDelete,
-}) => showDialog<void>(
-  context: context,
-  barrierColor: const Color(0x7010141A),
-  builder: (dialogContext) => _FacilityDetailDialog(
-    state: state,
-    facility: facility,
-    onEdit: () {
-      Navigator.of(dialogContext).pop();
-      onEdit();
-    },
-    onDelete: () {
-      Navigator.of(dialogContext).pop();
-      onDelete();
-    },
-  ),
-);
+}) async {
+  await state.refreshFacilityActivity(facility);
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    barrierColor: SR.scrim,
+    builder: (dialogContext) => _FacilityDetailDialog(
+      state: state,
+      facility: facility,
+      onEdit: () {
+        Navigator.of(dialogContext).pop();
+        onEdit();
+      },
+      onDelete: () {
+        Navigator.of(dialogContext).pop();
+        onDelete();
+      },
+    ),
+  );
+}
 
 class _FacilityDetailDialog extends StatefulWidget {
   const _FacilityDetailDialog({
@@ -334,6 +339,22 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                                   label: 'BOOKINGS',
                                   value: '${facility.bookings} on record',
                                 ),
+                                SrKeyCell(
+                                  label: 'RATING',
+                                  value: facility.ratingLabel,
+                                ),
+                                SrKeyCell(
+                                  label: 'VERIFIED BOOKINGS',
+                                  value: facility.supportsInternalLane
+                                      ? 'Internal admin assigned'
+                                      : 'Unavailable — no internal admin',
+                                ),
+                                SrKeyCell(
+                                  label: 'GUEST BOOKINGS',
+                                  value: facility.supportsExternalLane
+                                      ? 'External admin assigned'
+                                      : 'Unavailable — no external admin',
+                                ),
                               ],
                             ),
 
@@ -387,8 +408,13 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
               ),
             ),
             _FacilityActionFooter(
-              canEdit: widget.state.isInternalAdmin,
+              canEdit: facility.canManage,
               onEdit: onEdit,
+              onConfigure: () => showFacilityConfigurationDialog(
+                context,
+                state: widget.state,
+                facility: facility,
+              ),
               onClose: () => Navigator.of(context).pop(),
               onDelete: onDelete,
             ),
@@ -492,7 +518,7 @@ class _AdminFacilityGallery extends StatelessWidget {
           Container(
             height: 78,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: SR.surfaceSubtle,
               border: Border(bottom: BorderSide(color: SR.hairline)),
             ),
@@ -572,12 +598,14 @@ class _FacilityActionFooter extends StatelessWidget {
   const _FacilityActionFooter({
     required this.canEdit,
     required this.onEdit,
+    required this.onConfigure,
     required this.onClose,
     required this.onDelete,
   });
 
   final bool canEdit;
   final VoidCallback onEdit;
+  final VoidCallback onConfigure;
   final VoidCallback onClose;
   final VoidCallback onDelete;
 
@@ -599,6 +627,13 @@ class _FacilityActionFooter extends StatelessWidget {
       minHeight: 44,
       onPressed: onClose,
     );
+    final configure = SrButton(
+      label: 'Rates & access',
+      expand: compact,
+      fontSize: 12.5,
+      minHeight: 44,
+      onPressed: onConfigure,
+    );
     final delete = SrButton(
       label: 'Delete',
       kind: SrButtonKind.danger,
@@ -610,7 +645,7 @@ class _FacilityActionFooter extends StatelessWidget {
 
     return Container(
       padding: EdgeInsets.all(compact ? 14 : 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: SR.surface,
         border: Border(top: BorderSide(color: SR.divider)),
       ),
@@ -619,7 +654,12 @@ class _FacilityActionFooter extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (canEdit) ...[edit, const SizedBox(height: 8)],
+                if (canEdit) ...[
+                  edit,
+                  const SizedBox(height: 8),
+                  configure,
+                  const SizedBox(height: 8),
+                ],
                 Row(
                   children: [
                     Expanded(child: close),
@@ -633,7 +673,7 @@ class _FacilityActionFooter extends StatelessWidget {
             )
           : Row(
               children: [
-                if (canEdit) edit,
+                if (canEdit) ...[edit, const SizedBox(width: 8), configure],
                 const Spacer(),
                 close,
                 if (canEdit) ...[const SizedBox(width: 8), delete],
@@ -650,7 +690,7 @@ Future<void> confirmDeleteFacility(
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
-    barrierColor: const Color(0x8010141A),
+    barrierColor: SR.scrim,
     builder: (dialogContext) => SrAdaptiveDialog(
       maxWidth: 400,
       maxHeight: 520,

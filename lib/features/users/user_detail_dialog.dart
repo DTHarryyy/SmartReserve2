@@ -23,7 +23,7 @@ Future<void> showUserDetail(
 
   return showDialog<void>(
     context: context,
-    barrierColor: const Color(0x7010141A),
+    barrierColor: SR.scrim,
     builder: (_) => _UserDetailDialog(state: state, account: account),
   );
 }
@@ -260,7 +260,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                   '${_account.suspendUntil == null ? '' : ' Lifts on ${_account.suspendUntil}.'}',
               background: SR.redTint,
               border: SR.redLine,
-              foreground: const Color(0xFF912018),
+              foreground: SR.redInk,
             ),
 
           const SizedBox(height: 12),
@@ -307,7 +307,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.only(top: 14),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: SR.divider)),
             ),
             child: _account.isInvited
@@ -489,15 +489,12 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Suspend this account',
-          style: sans(12, w: 600, color: const Color(0xFF912018)),
-        ),
+        Text('Suspend this account', style: sans(12, w: 600, color: SR.redInk)),
         const SizedBox(height: 3),
         Text(
           'New requests are blocked. Reservations already approved stay in the '
           'calendar.',
-          style: sans(11.5, height: 1.6, color: const Color(0xFFA4413A)),
+          style: sans(11.5, height: 1.6, color: SR.redInk2),
         ),
         const SizedBox(height: 12),
         const SrLabel('Reason', required: true),

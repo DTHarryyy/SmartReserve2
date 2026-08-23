@@ -127,7 +127,7 @@ class _UsersScreenState extends State<UsersScreen> {
           RecordTable(
             columns: columns,
             footerNote: state.isExternalAdmin
-                ? 'Only paying clients with released reservations are shown. Campus verification and administrator details are excluded.'
+                ? 'Only guest or unverified clients with reservations at your assigned facilities are shown. Campus documents and administrator accounts are excluded.'
                 : 'Only internal admins can invite. Invitation links are '
                       'single-use and expire automatically; the last internal '
                       'admin cannot be removed or demoted.',

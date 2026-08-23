@@ -120,9 +120,9 @@ void main() {
       );
       expect(state.audit.length, before + 1);
       expect(state.audit.first.kind, AuditKind.reservation);
-      expect(state.undo, isNotNull);
+      expect(state.toasts.active?.message.action?.label, 'Undo');
 
-      state.takeUndo();
+      state.toasts.invokeAction();
       expect(
         state.requests.firstWhere((r) => r.id == 'r5').status,
         RequestStatus.pending,
@@ -171,7 +171,7 @@ void main() {
         );
         expect(assess(state, 'r6').hasConflict, isFalse);
 
-        state.takeUndo();
+        state.toasts.invokeAction();
         expect(state.bookings.any((b) => b.sourceRequestId == 'r6'), isFalse);
         expect(
           state.requests.firstWhere((r) => r.id == 'r6').status,
@@ -220,7 +220,7 @@ void main() {
       expect(mismatch.summary.text, contains('does not belong'));
     });
 
-    test('verifying flips the account and releases its held requests', () {
+    test('verification changes identity without repricing old requests', () {
       final state = AppState();
       final account = state.accounts.firstWhere((a) => a.id == 'u3');
       expect(account.verification, VerificationState.pending);
@@ -233,13 +233,12 @@ void main() {
       state.decideVerification('v3', VerificationDecision.approved);
 
       expect(account.verification, VerificationState.verified);
-      expect(held.heldForVerification, isFalse);
-      expect(held.paymentAmountCentavos, 0);
-      expect(held.paymentStatus, PaymentTrackingStatus.notRequired);
-      expect(state.audit.first.diff.join(), contains('released'));
+      expect(held.heldForVerification, isTrue);
+      expect(held.paymentAmountCentavos, 50000);
+      expect(held.paymentStatus, PaymentTrackingStatus.quoted);
     });
 
-    test('rejecting releases a held request into the paid queue', () {
+    test('rejection does not transfer an existing reservation lane', () {
       final state = AppState();
       final account = state.accounts.firstWhere((a) => a.id == 'u4');
       final held = state.requests.firstWhere(
@@ -251,9 +250,8 @@ void main() {
         reason: 'Send a readable photo.',
       );
       expect(account.verification, VerificationState.rejected);
-      expect(held.heldForVerification, isFalse);
-      expect(held.paymentStatus, PaymentTrackingStatus.quoted);
-      expect(held.paymentAmountCentavos, greaterThan(0));
+      expect(held.heldForVerification, isTrue);
+      expect(held.adminLane, isNotEmpty);
     });
   });
 
@@ -489,7 +487,7 @@ void main() {
       expect(state.requests.first.status, RequestStatus.pending);
     });
 
-    test('a pending member request is held, not refused', () {
+    test('a pending member request enters the external lane', () {
       final state = AppState()..signInAsUser('u3');
       final facility = state.facilityNamed('Reading Hall B')!;
 
@@ -502,17 +500,18 @@ void main() {
         purpose: 'Peer tutoring',
       );
 
-      expect(state.requests.first.heldForVerification, isTrue);
+      expect(state.requests.first.heldForVerification, isFalse);
+      expect(state.requests.first.adminLane, 'external');
     });
 
-    test('unverified users are quoted, verified users are not', () {
+    test('verification derives pricing audience without authorizing price', () {
       final state = AppState();
       final auditorium = state.facilityNamed('University Auditorium')!;
       expect(state.quoteFor(auditorium, 2), greaterThan(0));
-      expect(state.userAccount.reservesFree, isTrue);
+      expect(state.userAccount.pricingAudience, isNot('guest'));
 
       state.signInAsUser('u5');
-      expect(state.userAccount.reservesFree, isFalse);
+      expect(state.userAccount.pricingAudience, 'guest');
     });
   });
 
@@ -552,7 +551,7 @@ void main() {
       state.deleteFacility(facility);
       expect(state.facilities.length, count - 1);
 
-      state.takeUndo();
+      state.toasts.invokeAction();
       expect(state.facilities.length, count);
       expect(state.facilities.first.id, facility.id);
     });

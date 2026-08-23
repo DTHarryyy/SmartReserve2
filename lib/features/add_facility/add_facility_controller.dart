@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../app/sr_toast_controller.dart';
 import '../../data/campus_data.dart';
 import '../../model/facility.dart';
 import '../../model/facility_draft.dart';
@@ -16,7 +17,7 @@ import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/geo.dart';
 
-export '../../model/notice.dart' show AdvisoryTone, ToastMessage, UndoOffer;
+export '../../model/notice.dart' show AdvisoryTone, ToastMessage;
 
 enum MapTab { map, preview }
 
@@ -56,7 +57,7 @@ class MapAdvisory {
   };
 
   Color get borderColor => switch (tone) {
-    AdvisoryTone.good => const Color(0xFFB7E9CD),
+    AdvisoryTone.good => SR.greenLine,
     AdvisoryTone.info => SR.blueLine,
     AdvisoryTone.warn => SR.amberLine,
     AdvisoryTone.block => SR.redLine,
@@ -70,10 +71,10 @@ class MapAdvisory {
   };
 
   Color get iconBackground => switch (tone) {
-    AdvisoryTone.good => const Color(0xFFD3F5E3),
+    AdvisoryTone.good => SR.greenTint,
     AdvisoryTone.info => SR.blueTint,
     AdvisoryTone.warn => SR.amberIcon,
-    AdvisoryTone.block => const Color(0xFFFBE0DD),
+    AdvisoryTone.block => SR.redTint,
   };
 
   Color get bodyForeground => switch (tone) {
@@ -111,13 +112,15 @@ class SearchHit {
 }
 
 class AddFacilityController extends ChangeNotifier {
-  AddFacilityController() {
+  AddFacilityController({required this._toasts}) {
     nameField.addListener(_syncName);
     capacityField.addListener(_syncCapacity);
     descriptionField.addListener(_syncDescription);
     roomField.addListener(_syncRoom);
     _loadStoredDraft();
   }
+
+  final SrToastController _toasts;
 
   final FacilityDraft draft = FacilityDraft();
   List<Facility> availableFacilities = const [];
@@ -146,9 +149,6 @@ class AddFacilityController extends ChangeNotifier {
 
   String searchQuery = '';
   bool searchOpen = false;
-
-  ToastMessage? toast;
-  Timer? _toastTimer;
 
   bool draftFound = false;
   String draftAge = '';
@@ -187,7 +187,6 @@ class AddFacilityController extends ChangeNotifier {
   @override
   void dispose() {
     _geoTimer?.cancel();
-    _toastTimer?.cancel();
     _autosaveTimer?.cancel();
     nameField.dispose();
     capacityField.dispose();
@@ -992,25 +991,8 @@ class AddFacilityController extends ChangeNotifier {
     );
   }
 
-  void Function(ToastMessage message, Duration duration)? toastSink;
-
-  void showToast(
-    ToastMessage message, {
-    Duration duration = const Duration(seconds: 4),
-  }) {
-    final sink = toastSink;
-    if (sink != null) {
-      sink(message, duration);
-      return;
-    }
-    _toastTimer?.cancel();
-    toast = message;
-    notifyListeners();
-    _toastTimer = Timer(duration, () {
-      toast = null;
-      notifyListeners();
-    });
-  }
+  void showToast(ToastMessage message, {Duration? duration}) =>
+      _toasts.show(message, duration: duration);
 
   void dismissErrorBar() {
     showErrorBar = false;

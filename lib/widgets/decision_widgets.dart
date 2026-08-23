@@ -35,7 +35,7 @@ class CheckList extends StatelessWidget {
       for (final check in checks)
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: SR.dividerSoft)),
           ),
           child: Row(
@@ -206,7 +206,7 @@ class Initials extends StatelessWidget {
     width: size,
     height: size,
     alignment: Alignment.center,
-    decoration: const BoxDecoration(color: SR.blueTint, shape: BoxShape.circle),
+    decoration: BoxDecoration(color: SR.blueTint, shape: BoxShape.circle),
     child: Text(text, style: mono(fontSize, w: 600, color: SR.blueDark)),
   );
 }

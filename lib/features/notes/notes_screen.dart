@@ -64,7 +64,7 @@ class _NoteCard extends StatelessWidget {
         for (final item in note.items)
           Container(
             padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: SR.divider)),
             ),
             child: stacked

@@ -92,8 +92,8 @@ void main() {
 
       expect(error, contains('support reference request-123'));
       expect(state.accounts, hasLength(before));
-      expect(state.toast?.text, 'Invitation wasn’t sent.');
-      expect(state.toast?.tone, AdvisoryTone.block);
+      expect(state.toasts.active?.message.text, 'Invitation wasn’t sent.');
+      expect(state.toasts.active?.message.tone, AdvisoryTone.block);
       state.dispose();
       await backend.close();
     });
@@ -202,7 +202,7 @@ void main() {
         expect(account.status, AccountStatus.active);
         expect(account.verification, VerificationState.verified);
         expect(state.audit, hasLength(auditCount));
-        expect(state.toast?.tone, AdvisoryTone.block);
+        expect(state.toasts.active?.message.tone, AdvisoryTone.block);
         state.dispose();
         await backend.close();
       },
@@ -220,7 +220,7 @@ void main() {
           await state.changeRole(account, account.role),
           'Choose a different role.',
         );
-        expect(state.toast, isNull);
+        expect(state.toasts.active, isNull);
         expect(backend.actions, isNot(contains('change_role')));
         state.dispose();
         await backend.close();

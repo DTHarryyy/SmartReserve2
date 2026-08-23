@@ -15,6 +15,8 @@ enum AppView {
     Icons.verified_user_rounded,
   ),
   users('Users', 'Accounts', Icons.people_alt_rounded),
+  feedback('Feedback', 'Reservation feedback', Icons.reviews_rounded),
+  loyalty('Loyalty', 'Loyalty points', Icons.stars_rounded),
   audit('Audit log', 'Audit log', Icons.history_rounded),
   reports('Reports', 'Reports', Icons.insights_rounded),
   notes('Design notes', 'Design notes', Icons.sticky_note_2_rounded),

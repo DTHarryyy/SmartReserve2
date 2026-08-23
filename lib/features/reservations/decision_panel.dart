@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
+import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/decision_widgets.dart';
+import '../../widgets/rating_display.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import 'conflict_engine.dart';
 import 'day_timeline.dart';
+import 'payment_review_panel.dart';
+import 'permit_panel.dart';
 import 'reservation_activity.dart';
 import 'reservation_checks.dart';
 import 'reservation_series.dart';
@@ -32,7 +36,7 @@ class DecisionPanel extends StatefulWidget {
   State<DecisionPanel> createState() => _DecisionPanelState();
 }
 
-enum _Prompt { none, decline, changes, bump, reopen }
+enum _Prompt { none, decline, changes, bump }
 
 enum _Tab { review, activity }
 
@@ -63,6 +67,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
     final assessment = widget.assessment;
     final facility = assessment.facility;
     final narrow = !context.fitsSplitView;
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -98,13 +103,22 @@ class _DecisionPanelState extends State<DecisionPanel> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: SR.space8),
-                  SrStatusChip(
-                    label: _request.status.label,
-                    tone: _request.status.tone,
-                  ),
+                  if (!compact) ...[
+                    const SizedBox(width: SR.space8),
+                    SrStatusChip(
+                      label: _request.lifecycleStatus.label,
+                      tone: _request.lifecycleStatus.tone,
+                    ),
+                  ],
                 ],
               ),
+              if (compact) ...[
+                const SizedBox(height: SR.space8),
+                SrStatusChip(
+                  label: _request.lifecycleStatus.label,
+                  tone: _request.lifecycleStatus.tone,
+                ),
+              ],
               const SizedBox(height: 14),
               SrCellGrid(
                 columns: narrow ? 1 : 2,
@@ -129,8 +143,24 @@ class _DecisionPanelState extends State<DecisionPanel> {
                         : '${_request.attachments} attached',
                   ),
                   SrKeyCell(
-                    label: 'PAYMENT TRACKING',
-                    value: _request.paymentStatus.label,
+                    label: 'PAYMENT',
+                    value:
+                        '${_request.aggregatePaymentStatus.label} · '
+                        '${_request.outstandingAmountCentavos == 0 ? 'settled' : '${pesoFromCentavos(_request.outstandingAmountCentavos)} remaining'}',
+                  ),
+                  SrKeyCell(
+                    label: 'AMENITIES',
+                    value: _request.amenities.isEmpty
+                        ? 'None requested'
+                        : _request.amenities.join(' · '),
+                  ),
+                  SrKeyCell(
+                    label: 'TERMS',
+                    value: _request.acceptedTerms.isEmpty
+                        ? 'No acceptance snapshot'
+                        : _request.acceptedTerms
+                              .map((term) => '${term.title} v${term.version}')
+                              .join(' · '),
                   ),
                 ],
               ),
@@ -149,7 +179,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.repeat_rounded,
                         size: SR.iconSm,
                         color: SR.primaryDeep,
@@ -176,7 +206,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                     for (final file in _request.files)
                       SrButton(
                         label: file.name,
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.attach_file_rounded,
                           size: SR.iconSm,
                           color: SR.ink3,
@@ -271,11 +301,39 @@ class _DecisionPanelState extends State<DecisionPanel> {
 
           PanelCard(child: _actions(assessment)),
 
-          if (_request.status == RequestStatus.approved) _lifecycleCard(),
+          PaymentReviewPanel(state: widget.state, request: _request),
+
+          _eligibilityCard(),
+
+          PermitPanel(state: widget.state, request: _request),
+
+          if (_request.lifecycleStatus == ReservationLifecycleStatus.confirmed)
+            _lifecycleCard(),
+
+          if (_request.feedbackRating != null) _feedbackCard(),
         ],
       ],
     );
   }
+
+  Widget _feedbackCard() => PanelCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Feedback from the requester', style: SrType.subhead()),
+        const SizedBox(height: SR.space8),
+        SrRatingStars(
+          average: _request.feedbackRating!.toDouble(),
+          count: 1,
+          showCount: false,
+        ),
+        if (_request.feedbackComment.isNotEmpty) ...[
+          const SizedBox(height: SR.space8),
+          Text(_request.feedbackComment, style: SrType.body()),
+        ],
+      ],
+    ),
+  );
 
   Widget _seriesCard() {
     final series = _series;
@@ -406,6 +464,73 @@ class _DecisionPanelState extends State<DecisionPanel> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _eligibilityCard() {
+    final r = _request;
+    final requesterType = switch (r.paymentExemption) {
+      'verified_student' => 'Verified student',
+      'verified_faculty' => 'Verified faculty',
+      _ => 'External / unverified',
+    };
+    return PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Payment and permit eligibility', style: SrType.subhead()),
+          const SizedBox(height: SR.space8),
+          Wrap(
+            spacing: SR.space8,
+            runSpacing: SR.space8,
+            children: [
+              SrFactChip(label: 'Requester type', value: requesterType),
+              SrFactChip(
+                label: 'Payment required',
+                value: r.totalAmountCentavos > 0 ? 'Yes' : 'No — exempt',
+              ),
+              SrFactChip(
+                label: 'Reservation total',
+                value: pesoFromCentavos(r.totalAmountCentavos),
+              ),
+              if (r.totalAmountCentavos > 0) ...[
+                SrFactChip(
+                  label: 'Down payment policy',
+                  value: '${r.downPaymentPercent}%',
+                ),
+                SrFactChip(
+                  label: 'Down payment amount',
+                  value: pesoFromCentavos(r.requiredDownPaymentCentavos),
+                ),
+                SrFactChip(
+                  label: 'Amount paid',
+                  value: pesoFromCentavos(r.verifiedAmountCentavos),
+                ),
+                SrFactChip(
+                  label: 'Remaining balance',
+                  value: pesoFromCentavos(r.outstandingAmountCentavos),
+                ),
+                if (r.balanceDueAt case final due?)
+                  SrFactChip(
+                    label: 'Payment deadline',
+                    value:
+                        '${_clock(campusWallTime(due))} · ${campusWallTime(due).day}/${campusWallTime(due).month}',
+                  ),
+              ],
+              SrFactChip(
+                label: 'Permit eligibility',
+                value: r.permitEligible ? 'Eligible' : 'Not yet',
+              ),
+              SrFactChip(
+                label: 'Permit status',
+                value: r.permit?.status.label ?? 'Not issued',
+              ),
+              if (r.permit case final permit?)
+                SrFactChip(label: 'Permit number', value: permit.permitNumber),
+            ],
+          ),
         ],
       ),
     );
@@ -615,7 +740,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline_rounded,
                 size: SR.iconSm,
                 color: SR.redInk,
@@ -684,7 +809,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.error_outline_rounded,
                 size: SR.iconSm,
                 color: SR.redInk,
@@ -736,36 +861,6 @@ class _DecisionPanelState extends State<DecisionPanel> {
               child: Text('“$reason”', style: SrType.bodySm(color: SR.ink4)),
             ),
           ],
-          const SizedBox(height: SR.space12),
-          SrButton(
-            label: saving ? 'Saving…' : 'Reopen for decision',
-            icon: const Icon(
-              Icons.replay_rounded,
-              size: SR.iconSm,
-              color: SR.ink3,
-            ),
-            onPressed: saving
-                ? null
-                : () => setState(() => _prompt = _Prompt.reopen),
-          ),
-          if (_prompt == _Prompt.reopen)
-            ReasonBox(
-              tone: ReasonTone.neutral,
-              title: 'Why this reservation is being reopened',
-              placeholder:
-                  'Explain what changed and what must be reviewed again.',
-              confirmLabel: 'Reopen for decision',
-              onCancel: () => setState(() => _prompt = _Prompt.none),
-              onConfirm: (reason) {
-                setState(() => _prompt = _Prompt.none);
-                widget.state.decideRequest(
-                  _request.id,
-                  RequestStatus.pending,
-                  reason: reason,
-                  announce: false,
-                );
-              },
-            ),
         ],
       );
     }
@@ -799,7 +894,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
             ),
             SrButton(
               label: 'Request changes',
-              icon: const Icon(
+              icon: Icon(
                 Icons.edit_note_rounded,
                 size: SR.iconSm,
                 color: SR.ink3,
@@ -812,11 +907,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
             ),
             SrButton(
               label: 'Decline',
-              icon: const Icon(
-                Icons.close_rounded,
-                size: SR.iconSm,
-                color: SR.red,
-              ),
+              icon: Icon(Icons.close_rounded, size: SR.iconSm, color: SR.red),
               kind: SrButtonKind.danger,
               fontSize: 12.5,
               minHeight: 42,
@@ -935,7 +1026,7 @@ class _StageDot extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: done
-            ? const Icon(Icons.check_rounded, size: 12, color: SR.greenDark)
+            ? Icon(Icons.check_rounded, size: 12, color: SR.greenDark)
             : Text('$index', style: mono(9.5, w: 600, color: SR.muted)),
       ),
       const SizedBox(width: 7),

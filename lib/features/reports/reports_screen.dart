@@ -500,7 +500,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.only(top: 12),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: SR.divider)),
       ),
       child: Column(
@@ -535,7 +535,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             for (final r in demoRows)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(top: BorderSide(color: SR.dividerSoft)),
                 ),
                 child: SR.isCompact(MediaQuery.sizeOf(context).width)
@@ -610,7 +610,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final endMinute = ends.minute.toString().padLeft(2, '0');
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 9),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: SR.dividerSoft)),
       ),
       child: Wrap(
@@ -815,7 +815,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
         const SizedBox(height: 9),
         Text(
-          'Per-admin figures are visible to the registrar role only.',
+          'Figures are limited to your assigned facilities and matching '
+          'reservation lane.',
           style: sans(10.5, height: 1.55, color: SR.muted),
         ),
       ],
@@ -842,7 +843,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           for (final issue in issues)
             Container(
               padding: const EdgeInsets.symmetric(vertical: 11),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(top: BorderSide(color: SR.dividerSoft)),
               ),
               child: Wrap(

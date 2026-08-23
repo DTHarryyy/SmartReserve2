@@ -50,7 +50,7 @@ class QueueShell extends StatelessWidget {
             Positioned.fill(
               child: GestureDetector(
                 onTap: onClosePanel,
-                child: const ColoredBox(color: Color(0x6B10141A)),
+                child: ColoredBox(color: SR.scrim),
               ),
             ),
             Positioned(
@@ -68,7 +68,7 @@ class QueueShell extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: SR.bg,
                           border: Border(bottom: BorderSide(color: SR.border)),
                         ),
@@ -111,7 +111,7 @@ class QueueShell extends StatelessWidget {
         Expanded(
           flex: 4,
           child: DecoratedBox(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(right: BorderSide(color: SR.border)),
             ),
             child: listPane,
@@ -338,7 +338,7 @@ class SelectBox extends StatelessWidget {
                 ),
               ),
               child: selected
-                  ? const Icon(Icons.check_rounded, size: 11, color: SR.surface)
+                  ? Icon(Icons.check_rounded, size: 11, color: SR.surface)
                   : null,
             ),
           ),

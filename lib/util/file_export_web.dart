@@ -12,7 +12,10 @@ Future<FileExportResult> saveTextFileImpl({
   required String extension,
   required String contents,
 }) async {
-  final fileName = buildExportFileName(baseName: baseName, extension: extension);
+  final fileName = buildExportFileName(
+    baseName: baseName,
+    extension: extension,
+  );
   try {
     await FileSaver.instance.saveAs(
       name: fileName,
@@ -27,7 +30,29 @@ Future<FileExportResult> saveTextFileImpl({
   }
 }
 
+Future<FileExportResult> saveBinaryFileImpl({
+  required String baseName,
+  required String extension,
+  required Uint8List bytes,
+}) async {
+  final fileName = buildExportFileName(
+    baseName: baseName,
+    extension: extension,
+  );
+  try {
+    await FileSaver.instance.saveAs(
+      name: fileName,
+      bytes: bytes,
+      fileExtension: '',
+      includeExtension: false,
+      mimeType: extension == 'pdf' ? MimeType.pdf : MimeType.other,
+    );
+    return FileExportResult.success(fileName);
+  } catch (e) {
+    return FileExportResult.failure(e.toString());
+  }
+}
+
 /// No-op: the browser's own download manager is the closest analogue, and
 /// there is no cross-browser API to summon it programmatically.
 Future<void> revealInFileExplorerImpl(String path) async {}
-

@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../theme/sr_tokens.dart';
 import 'facility_photo.dart';
+import 'payment.dart';
 
 enum PinConfidence {
   verified('verified', 'VERIFIED', SrTone.success),
@@ -40,6 +41,52 @@ enum FacilityState {
     (s) => s.label == label,
     orElse: () => FacilityState.draft,
   );
+}
+
+class FacilityAmenity {
+  const FacilityAmenity({
+    required this.id,
+    required this.name,
+    required this.priceCentavos,
+    this.description = '',
+    this.pricingUnit = 'per_occurrence',
+    this.enabled = true,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final int priceCentavos;
+  final String pricingUnit;
+  final bool enabled;
+}
+
+class FacilityAudienceRate {
+  const FacilityAudienceRate({
+    required this.audience,
+    required this.hourlyRateCentavos,
+    this.enabled = true,
+  });
+
+  final String audience;
+  final int hourlyRateCentavos;
+  final bool enabled;
+}
+
+class FacilityAssignmentOption {
+  const FacilityAssignmentOption({
+    required this.adminId,
+    required this.name,
+    required this.email,
+    required this.adminLane,
+    this.assignmentRole,
+  });
+
+  final String adminId;
+  final String name;
+  final String email;
+  final String adminLane;
+  final String? assignmentRole;
 }
 
 class Facility {
@@ -81,6 +128,22 @@ class Facility {
     this.maxDurationMinutes = 240,
     this.advanceBookingDays = 30,
     this.bookingBufferMinutes = 15,
+    this.amenityOptions = const [],
+    this.paymentMethods = const [],
+    this.audienceRates = const [],
+    this.canManage = true,
+    this.bookableForCurrentUser = true,
+    this.supportsInternalLane = true,
+    this.supportsExternalLane = true,
+    this.assignmentRole,
+    this.facilityClassification = 'shared',
+    this.depositWindowMinutes = 1440,
+    this.balanceDueLeadDays = 3,
+    this.balanceDueLeadMinutes = 1440,
+    this.paymentCorrectionWindowMinutes = 1440,
+    this.downPaymentPercent = 50,
+    this.ratingAverage,
+    this.ratingCount = 0,
   });
 
   final String id;
@@ -127,8 +190,42 @@ class Facility {
   int maxDurationMinutes;
   int advanceBookingDays;
   int bookingBufferMinutes;
+  List<FacilityAmenity> amenityOptions;
+  List<FacilityPaymentMethod> paymentMethods;
+  List<FacilityAudienceRate> audienceRates;
+  bool canManage;
+  bool bookableForCurrentUser;
+  bool supportsInternalLane;
+  bool supportsExternalLane;
+  String? assignmentRole;
+  String facilityClassification;
+  int depositWindowMinutes;
+  int balanceDueLeadDays;
+  int balanceDueLeadMinutes;
+  int paymentCorrectionWindowMinutes;
+  int downPaymentPercent;
+
+  /// Null when the facility has no reviews yet -- backed by
+  /// public.facility_rating_stats, never stored on the facilities row
+  /// itself (see the migration header for why).
+  double? ratingAverage;
+  int ratingCount;
+
+  bool get hasRatings => ratingCount > 0;
+  String get ratingLabel => hasRatings
+      ? '${ratingAverage!.toStringAsFixed(1)} ★ · $ratingCount ${ratingCount == 1 ? 'review' : 'reviews'}'
+      : 'No reviews yet';
 
   FacilityPhoto? get coverPhoto => photos.isEmpty ? null : photos.first;
+
+  int hourlyRateCentavosFor(String audience) {
+    for (final rate in audienceRates) {
+      if (rate.enabled && rate.audience == audience) {
+        return rate.hourlyRateCentavos;
+      }
+    }
+    return 0;
+  }
 
   int get thumbHue => (name.hashCode.abs() % 360);
 

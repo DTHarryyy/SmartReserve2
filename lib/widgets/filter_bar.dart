@@ -168,7 +168,7 @@ class FilterSearch extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.search_rounded, size: 15, color: SR.muted),
+            Icon(Icons.search_rounded, size: 15, color: SR.muted),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
@@ -320,7 +320,7 @@ class FilterSelect extends StatelessWidget {
           isExpanded: true,
           borderRadius: BorderRadius.circular(10),
           dropdownColor: SR.surface,
-          icon: const Icon(
+          icon: Icon(
             Icons.keyboard_arrow_down_rounded,
             size: 16,
             color: SR.muted,

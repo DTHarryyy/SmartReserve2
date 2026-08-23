@@ -70,7 +70,7 @@ class AddFacilityBody extends StatelessWidget {
       children: [
         Expanded(
           child: DecoratedBox(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(right: BorderSide(color: SR.border)),
             ),
             child: FormRail(
@@ -145,16 +145,10 @@ class _MobileBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: SR.surface,
       border: Border(top: BorderSide(color: SR.border)),
-      boxShadow: [
-        BoxShadow(
-          color: Color(0x1210141A),
-          blurRadius: 20,
-          offset: Offset(0, -6),
-        ),
-      ],
+      boxShadow: SR.cardShadow,
     ),
     child: SafeArea(
       top: false,

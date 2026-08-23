@@ -71,7 +71,7 @@ Future<void> cancelEdit(
 
   final choice = await showDialog<String>(
     context: context,
-    barrierColor: const Color(0x6B10141A),
+    barrierColor: SR.scrimSoft,
     builder: (dialogContext) => GuardDialog(
       hasStoredDraft: controller.draftSavedAt != null,
       onStay: () => Navigator.of(dialogContext).pop('stay'),

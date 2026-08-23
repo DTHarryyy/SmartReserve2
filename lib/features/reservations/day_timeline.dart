@@ -90,7 +90,7 @@ class DayTimeline extends StatelessWidget {
                       top: 0,
                       bottom: 0,
                       width: 1,
-                      child: const ColoredBox(color: SR.hairline),
+                      child: ColoredBox(color: SR.hairline),
                     ),
                     Positioned(
                       left: fraction(tick.toDouble()) * width + 3,

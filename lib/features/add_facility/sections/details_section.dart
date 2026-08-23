@@ -95,7 +95,7 @@ class DetailsSection extends StatelessWidget {
                       height: 40,
                       padding: const EdgeInsets.symmetric(horizontal: 11),
                       alignment: Alignment.center,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         border: Border(left: BorderSide(color: SR.hairline)),
                       ),
                       child: Text('seats', style: sans(11, color: SR.muted)),

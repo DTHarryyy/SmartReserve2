@@ -44,13 +44,7 @@ class StudentPreview extends StatelessWidget {
                   color: SR.surface,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: SR.border),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x0F10141A),
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  boxShadow: SR.cardShadow,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -142,7 +136,7 @@ class StudentPreview extends StatelessWidget {
                           const SizedBox(height: 14),
                           Container(
                             padding: const EdgeInsets.only(top: 13),
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               border: Border(
                                 top: BorderSide(color: SR.divider),
                               ),

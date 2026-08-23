@@ -136,13 +136,7 @@ class _Results extends StatelessWidget {
         color: SR.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: SR.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1710141A),
-            blurRadius: 26,
-            offset: Offset(0, 10),
-          ),
-        ],
+        boxShadow: SR.popoverShadow,
       ),
       child: controller.amenityNoResults
           ? Padding(
@@ -194,7 +188,7 @@ class _ResultRow extends StatelessWidget {
             color: hovered
                 ? SR.blueTint2
                 : (selected ? SR.surfaceSubtle : SR.surface),
-            border: const Border(bottom: BorderSide(color: SR.dividerSoft)),
+            border: Border(bottom: BorderSide(color: SR.dividerSoft)),
           ),
           child: Row(
             children: [
@@ -210,11 +204,7 @@ class _ResultRow extends StatelessWidget {
                   ),
                 ),
                 child: selected
-                    ? const Icon(
-                        Icons.check_rounded,
-                        size: 11,
-                        color: SR.surface,
-                      )
+                    ? Icon(Icons.check_rounded, size: 11, color: SR.surface)
                     : null,
               ),
               const SizedBox(width: 10),

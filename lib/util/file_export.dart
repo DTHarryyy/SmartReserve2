@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 
 import 'file_export_web.dart' if (dart.library.io) 'file_export_io.dart';
@@ -5,8 +7,10 @@ import 'file_export_web.dart' if (dart.library.io) 'file_export_io.dart';
 /// Outcome of a file export. Never throws — callers branch on [ok].
 @immutable
 class FileExportResult {
-  const FileExportResult.success(String this.path, {this.revealSupported = false})
-    : error = null;
+  const FileExportResult.success(
+    String this.path, {
+    this.revealSupported = false,
+  }) : error = null;
   const FileExportResult.failure(String this.error)
     : path = null,
       revealSupported = false;
@@ -41,10 +45,20 @@ Future<FileExportResult> saveTextFile({
   contents: contents,
 );
 
+/// Writes [bytes] out as a `<baseName>-<timestamp>.<extension>` file. Mirrors
+/// [saveTextFile]'s platform fallbacks (Downloads folder, then a share sheet)
+/// for binary content such as a rendered PDF.
+Future<FileExportResult> saveBinaryFile({
+  required String baseName,
+  required String extension,
+  required Uint8List bytes,
+}) => saveBinaryFileImpl(baseName: baseName, extension: extension, bytes: bytes);
+
 /// Opens the OS file manager with [path] pre-selected. Only call this when
 /// the [FileExportResult] that produced [path] had `revealSupported: true` —
 /// it is a best-effort no-op everywhere else.
-Future<void> revealInFileExplorer(String path) => revealInFileExplorerImpl(path);
+Future<void> revealInFileExplorer(String path) =>
+    revealInFileExplorerImpl(path);
 
 /// `<baseName>-YYYYMMDD-HHmm.<extension>`, shared by both implementations.
 String buildExportFileName({

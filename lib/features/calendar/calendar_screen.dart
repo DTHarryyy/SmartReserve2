@@ -87,7 +87,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           SizedBox(
             width: 330,
             child: DecoratedBox(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: SR.surface,
                 border: Border(left: BorderSide(color: SR.border)),
               ),
@@ -122,7 +122,7 @@ class _Toolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: EdgeInsets.fromLTRB(compact ? 14 : 20, 10, compact ? 14 : 20, 10),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: SR.surface,
       border: Border(bottom: BorderSide(color: SR.border)),
     ),
@@ -855,7 +855,7 @@ class _MonthView extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       alignment: Alignment.center,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         border: Border(bottom: BorderSide(color: SR.hairline)),
                       ),
                       child: Text(day.toUpperCase(), style: keyLabel),
@@ -917,7 +917,7 @@ class _MonthCell extends StatelessWidget {
     final shown = events.take(2).toList();
     return Container(
       padding: const EdgeInsets.all(5),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
           right: BorderSide(color: SR.divider),
           bottom: BorderSide(color: SR.divider),
@@ -1031,7 +1031,7 @@ class _WeekView extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
                       left: BorderSide(color: SR.divider),
                       bottom: BorderSide(color: SR.hairline),
@@ -1126,7 +1126,7 @@ class _DayView extends StatelessWidget {
       children: [
         Container(
           height: 36,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: SR.hairline)),
           ),
           child: Row(
@@ -1181,7 +1181,7 @@ class _TimedDayColumn extends StatelessWidget {
     final segments = _segmentsForDay(events, day, range);
     final height = (range.$2 - range.$1) * _hourHeight;
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(left: BorderSide(color: SR.divider)),
       ),
       child: LayoutBuilder(
@@ -1193,7 +1193,7 @@ class _TimedDayColumn extends StatelessWidget {
                 right: 0,
                 top: (hour - range.$1) * _hourHeight,
                 height: 1,
-                child: const ColoredBox(color: SR.dividerSoft),
+                child: ColoredBox(color: SR.dividerSoft),
               ),
             for (final segment in segments)
               Positioned(
@@ -1299,7 +1299,7 @@ class _FacilityRow extends StatelessWidget {
               height: double.infinity,
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(
                   right: BorderSide(color: SR.divider),
                   bottom: BorderSide(color: SR.dividerSoft),
@@ -1316,7 +1316,7 @@ class _FacilityRow extends StatelessWidget {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(bottom: BorderSide(color: SR.dividerSoft)),
                 ),
                 child: Stack(
@@ -1334,7 +1334,7 @@ class _FacilityRow extends StatelessWidget {
                         top: 0,
                         bottom: 0,
                         width: 1,
-                        child: const ColoredBox(color: SR.dividerSoft),
+                        child: ColoredBox(color: SR.dividerSoft),
                       ),
                     for (final segment in segments)
                       Positioned(
@@ -1501,7 +1501,7 @@ class _MobileDetails extends StatelessWidget {
       Positioned.fill(
         child: GestureDetector(
           onTap: onClose,
-          child: const ColoredBox(color: Color(0x6B10141A)),
+          child: ColoredBox(color: SR.scrim),
         ),
       ),
       Positioned(

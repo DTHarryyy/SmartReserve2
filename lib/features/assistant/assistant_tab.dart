@@ -128,7 +128,7 @@ class _AssistantTabState extends State<AssistantTab> {
     ),
     child: Row(
       children: [
-        const Icon(Icons.wifi_off_rounded, size: 14, color: SR.amberTitle),
+        Icon(Icons.wifi_off_rounded, size: 14, color: SR.amberTitle),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -190,7 +190,7 @@ class _AssistantTabState extends State<AssistantTab> {
     final canSend = !controller.busy;
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: SR.surface,
         border: Border(top: BorderSide(color: SR.hairline)),
       ),
@@ -336,7 +336,7 @@ class _SendButton extends StatelessWidget {
             child: Icon(
               Icons.arrow_upward_rounded,
               size: 18,
-              color: enabled ? SR.surface : SR.mutedLight,
+              color: enabled ? SR.onDark : SR.mutedLight,
             ),
           ),
         ),

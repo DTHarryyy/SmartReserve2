@@ -261,16 +261,10 @@ class _DropHint extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xEDFFFFFF),
+        color: SR.glass,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x1210141A)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1F10141A),
-            blurRadius: 30,
-            offset: Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: SR.glassLine),
+        boxShadow: SR.popoverShadow,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -310,9 +304,9 @@ class _MapTools extends StatelessWidget {
     final zoomPair = Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xF7FFFFFF),
+        color: SR.glass,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0x1410141A)),
+        border: Border.all(color: SR.glassLine),
         boxShadow: SR.floatShadow,
       ),
       child: Flex(
@@ -355,9 +349,9 @@ class _MapTools extends StatelessWidget {
           glyph: tool.glyph,
           tooltip: tool.tooltip,
           size: size,
-          background: tool.active ? SR.blueTint : const Color(0xF7FFFFFF),
+          background: tool.active ? SR.blueTint : SR.glass,
           foreground: tool.active ? SR.blue : SR.ink2,
-          border: const Color(0x1410141A),
+          border: SR.glassLine,
           shadow: SR.floatShadow,
           onPressed: tool.onPressed,
         ),
@@ -489,9 +483,9 @@ class _FloatingCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding,
     decoration: BoxDecoration(
-      color: const Color(0xF7FFFFFF),
+      color: SR.glass,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0x1410141A)),
+      border: Border.all(color: SR.glassLine),
       boxShadow: SR.floatShadow,
     ),
     child: child,
@@ -573,7 +567,7 @@ class _OfflinePanel extends StatelessWidget {
               borderRadius: BorderRadius.circular(11),
               border: Border.all(color: SR.border),
             ),
-            child: const Icon(Icons.wifi_off_rounded, size: 18, color: SR.red),
+            child: Icon(Icons.wifi_off_rounded, size: 18, color: SR.red),
           ),
           const SizedBox(height: 14),
           Text('Map tiles are not loading', style: sans(13.5, w: 600)),

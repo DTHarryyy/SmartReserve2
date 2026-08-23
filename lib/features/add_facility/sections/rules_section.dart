@@ -23,7 +23,7 @@ class RulesSection extends StatelessWidget {
       key: 'approval',
       label: 'Requires approval',
       hint:
-          'Every request waits for a registrar decision before the slot is '
+          'Every request waits for an assigned administrator decision before the slot is '
           'held.',
     ),
     (
@@ -58,7 +58,7 @@ class RulesSection extends StatelessWidget {
           for (final rule in _rules)
             Container(
               padding: const EdgeInsets.symmetric(vertical: 11),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: SR.dividerSoft)),
               ),
               child: Row(

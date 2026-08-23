@@ -94,9 +94,7 @@ class _ActionButton extends StatelessWidget {
         duration: SR.stateChange,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: action.primary
-              ? accent
-              : (hovered ? SR.surface : const Color(0xB3FFFFFF)),
+          color: action.primary ? accent : (hovered ? SR.surface : SR.glass),
           borderRadius: BorderRadius.circular(7),
           border: Border.all(color: accent.withValues(alpha: .45)),
         ),

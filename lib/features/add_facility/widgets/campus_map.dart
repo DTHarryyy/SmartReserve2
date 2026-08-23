@@ -10,25 +10,31 @@ import '../add_facility_controller.dart';
 TileLayer srTileLayer(
   MapLayer layer,
   int generation, {
+  bool dark = false,
   VoidCallback? onTileError,
 }) => TileLayer(
   key: ValueKey('${layer.name}-$generation'),
   urlTemplate: switch (layer) {
-    MapLayer.street => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    MapLayer.street =>
+      dark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     MapLayer.satellite =>
       'https://server.arcgisonline.com/ArcGIS/rest/services/'
           'World_Imagery/MapServer/tile/{z}/{y}/{x}',
     MapLayer.light =>
       'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
   },
-  subdomains: layer == MapLayer.light ? const ['a', 'b', 'c', 'd'] : const [],
+  subdomains: layer == MapLayer.light || (layer == MapLayer.street && dark)
+      ? const ['a', 'b', 'c', 'd']
+      : const [],
   maxNativeZoom: 19,
   userAgentPackageName: 'ph.edu.csu.smartreserve',
   errorTileCallback: onTileError == null ? null : (_, _, _) => onTileError(),
 );
 
 String attributionFor(MapLayer layer) => switch (layer) {
-  MapLayer.street => '© OpenStreetMap contributors',
+  MapLayer.street => '© OpenStreetMap · © CARTO',
   MapLayer.satellite => 'Imagery © Esri',
   MapLayer.light => '© OpenStreetMap · © CARTO',
 };
@@ -110,6 +116,7 @@ class _CampusMapState extends State<CampusMap> {
         srTileLayer(
           c.layer,
           c.tileGeneration,
+          dark: Theme.of(context).brightness == Brightness.dark,
           onTileError: () {
             _tileErrors++;
 
@@ -193,7 +200,7 @@ class _CampusMapState extends State<CampusMap> {
         Scalebar(
           alignment: Alignment.bottomRight,
           padding: const EdgeInsets.only(right: 12, bottom: 24),
-          lineColor: const Color(0xFF98A2B3),
+          lineColor: SR.muted,
           textStyle: mono(10, w: 500, color: SR.ink2),
         ),
 
@@ -201,7 +208,7 @@ class _CampusMapState extends State<CampusMap> {
           alignment: Alignment.bottomRight,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            color: const Color(0xB8FFFFFF),
+            color: SR.glass,
             child: Text(
               attributionFor(c.layer),
               style: sans(9, color: SR.ink3),
@@ -243,18 +250,16 @@ class _BuildingChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: selected ? SR.blue : const Color(0xE6FFFFFF),
+          color: selected ? SR.blue : SR.glass,
           borderRadius: BorderRadius.circular(5),
-          border: Border.all(
-            color: selected ? SR.blueDark : const Color(0x1A10141A),
-          ),
+          border: Border.all(color: selected ? SR.blueDark : SR.glassLine),
         ),
         child: Text(
           name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: sans(9, w: 500, color: selected ? SR.surface : SR.ink3),
+          style: sans(9, w: 500, color: selected ? SR.onDark : SR.ink3),
         ),
       ),
     ),

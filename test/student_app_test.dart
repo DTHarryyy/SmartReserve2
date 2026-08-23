@@ -4,6 +4,7 @@ import 'package:smartreserve/app/app_scope.dart';
 import 'package:smartreserve/app/app_state.dart';
 import 'package:smartreserve/backend/supabase_service.dart';
 import 'package:smartreserve/features/student/student_app.dart';
+import 'package:smartreserve/model/facility.dart';
 import 'package:smartreserve/model/facility_photo.dart';
 import 'package:smartreserve/widgets/filter_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,6 +30,7 @@ Future<void> pumpStudentApp(
   WidgetTester tester, {
   required AppState state,
   Size size = const Size(1200, 900),
+  bool settle = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -40,7 +42,11 @@ Future<void> pumpStudentApp(
       child: const MaterialApp(home: Scaffold(body: StudentApp())),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
 }
 
 void main() {
@@ -65,6 +71,83 @@ void main() {
     await tester.tap(find.text('Account'));
     await tester.pumpAndSettle();
     expect(find.text('Your details'), findsOneWidget);
+  });
+
+  testWidgets(
+    'unavailable public facility remains browsable but not reservable',
+    (tester) async {
+      final state = AppState();
+      addTearDown(state.dispose);
+      final facility = state.facilities.first..bookableForCurrentUser = false;
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state);
+
+      expect(find.text(facility.name), findsOneWidget);
+      expect(find.text('Unavailable · no administrator'), findsOneWidget);
+      await tester.tap(find.text(facility.name));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Reservations unavailable'), findsOneWidget);
+      expect(find.text('Send request to the registrar'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'browse distinguishes loading, load failure, and an empty catalogue',
+    (tester) async {
+      final state = AppState(useDemoData: false);
+      addTearDown(state.dispose);
+      await state.applyBackendProfile(widgetProfile());
+
+      state.facilitiesLoading = true;
+      await pumpStudentApp(tester, state: state, settle: false);
+      expect(find.text('Loading facilities'), findsOneWidget);
+
+      state
+        ..facilitiesLoading = false
+        ..facilitiesError = 'Facilities could not be loaded.';
+      state.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text('Facilities could not be loaded'), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+
+      state.facilitiesError = null;
+      state.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text('No public facilities yet'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a category removed by refresh falls back to all facilities', (
+    tester,
+  ) async {
+    final state = AppState();
+    addTearDown(state.dispose);
+    await state.applyBackendProfile(widgetProfile());
+    final removedCategory = state.browsableFacilities.first.category;
+    final remaining = state.browsableFacilities.firstWhere(
+      (facility) => facility.category != removedCategory,
+    );
+    await pumpStudentApp(tester, state: state);
+
+    await tester.tap(
+      find.bySemanticsLabel(
+        RegExp('Show ${RegExp.escape(removedCategory)} facilities'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final facility in state.facilities) {
+      if (facility.category == removedCategory) {
+        facility.state = FacilityState.draft;
+      }
+    }
+    state.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(find.text('No facilities match'), findsNothing);
+    expect(find.text(remaining.name), findsOneWidget);
   });
 
   testWidgets('verification banners can be dismissed permanently', (
@@ -240,6 +323,180 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('amenity picker', () {
+    testWidgets('opens without crashing and lists facility amenities only', (
+      tester,
+    ) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state);
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+
+      final trigger = find.byKey(const ValueKey('amenity-request-trigger'));
+      await tester.ensureVisible(trigger);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+
+      // The reported crash: RenderShrinkWrappingViewport does not support
+      // returning intrinsic dimensions, thrown by a ListView inside the
+      // popup menu's IntrinsicWidth wrapper.
+      expect(tester.takeException(), isNull);
+      expect(find.text('IN THIS ROOM'), findsOneWidget);
+      expect(find.text('OTHER'), findsNothing);
+      expect(find.byKey(const ValueKey('amenity-row-Wi-Fi')), findsOneWidget);
+      expect(find.byKey(const ValueKey('amenity-row-Generator')), findsNothing);
+    });
+
+    testWidgets('checking rows keeps the popover open and adds chips', (
+      tester,
+    ) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state);
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+
+      final trigger = find.byKey(const ValueKey('amenity-request-trigger'));
+      await tester.ensureVisible(trigger);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+
+      final wifiRow = find.byKey(const ValueKey('amenity-row-Wi-Fi'));
+      await tester.tap(wifiRow);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('amenity-chip-Wi-Fi')), findsOneWidget);
+      // The row is still present, proving the popover did not dismiss.
+      expect(wifiRow, findsOneWidget);
+
+      final acRow = find.byKey(const ValueKey('amenity-row-Air Conditioning'));
+      await tester.tap(acRow);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey('amenity-chip-Air Conditioning')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('amenity-chip-Wi-Fi')), findsOneWidget);
+    });
+
+    testWidgets('tapping a checked row again removes its chip', (tester) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state);
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+
+      final trigger = find.byKey(const ValueKey('amenity-request-trigger'));
+      await tester.ensureVisible(trigger);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+
+      final wifiRow = find.byKey(const ValueKey('amenity-row-Wi-Fi'));
+      await tester.tap(wifiRow);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('amenity-chip-Wi-Fi')), findsOneWidget);
+
+      await tester.tap(wifiRow);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('amenity-chip-Wi-Fi')), findsNothing);
+    });
+
+    testWidgets('the chip remove button clears the selection', (tester) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state);
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+
+      final trigger = find.byKey(const ValueKey('amenity-request-trigger'));
+      await tester.ensureVisible(trigger);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('amenity-row-Wi-Fi')));
+      await tester.pumpAndSettle();
+      // The popover's modal barrier absorbs pointer events over the whole
+      // screen while open, so the chip underneath can't be tapped yet.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      final chip = find.byKey(const ValueKey('amenity-chip-Wi-Fi'));
+      expect(chip, findsOneWidget);
+      final removeButton = find.descendant(
+        of: chip,
+        matching: find.byIcon(Icons.close_rounded),
+      );
+      expect(removeButton, findsOneWidget);
+
+      await tester.tap(removeButton);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(chip, findsNothing);
+    });
+
+    testWidgets('the trigger renders as the last item after the chips', (
+      tester,
+    ) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state);
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+
+      final trigger = find.byKey(const ValueKey('amenity-request-trigger'));
+      await tester.ensureVisible(trigger);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('amenity-row-Wi-Fi')));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      // Checked against the Wrap's own children order rather than screen
+      // position: a narrow column can wrap the trigger onto its own line,
+      // where it lands at the same x as the first chip.
+      final wrap = tester.widget<Wrap>(
+        find.byKey(const ValueKey('amenity-field-wrap')),
+      );
+      expect(wrap.children, isNotEmpty);
+      expect(wrap.children.last, isA<Padding>());
+      expect(
+        wrap.children.take(wrap.children.length - 1),
+        isNot(contains(isA<Padding>())),
+      );
+    });
+
+    testWidgets('opens without overflow or crash on a narrow phone', (
+      tester,
+    ) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+
+      await pumpStudentApp(tester, state: state, size: const Size(360, 760));
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+
+      final trigger = find.byKey(const ValueKey('amenity-request-trigger'));
+      await tester.ensureVisible(trigger);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('amenity-row-Wi-Fi')), findsOneWidget);
+    });
+  });
+
   testWidgets('facility opens as a back-enabled page on a small phone', (
     tester,
   ) async {
@@ -274,5 +531,79 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AppBar), findsNothing);
     expect(find.text('Computer Laboratory 1'), findsOneWidget);
+  });
+
+  group('attendee capacity', () {
+    Future<void> openBookingSheet(WidgetTester tester) async {
+      final state = AppState();
+      await state.applyBackendProfile(widgetProfile());
+      await pumpStudentApp(tester, state: state);
+      await tester.tap(find.text('Computer Laboratory 1'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a count above capacity blocks the submit and says why', (
+      tester,
+    ) async {
+      await openBookingSheet(tester);
+
+      // Computer Laboratory 1 seats 40.
+      final attendees = find.bySemanticsLabel('Attendees');
+      await tester.enterText(attendees, '120');
+      await tester.pumpAndSettle();
+
+      // The advisory appears as soon as the count goes over.
+      expect(
+        find.textContaining('120 people in a 40-seat room'),
+        findsOneWidget,
+      );
+
+      final submit = find.text('Send request to the registrar');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Computer Laboratory 1 seats 40'),
+        findsOneWidget,
+      );
+      // Still on the form — nothing was sent.
+      expect(submit, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a count within capacity clears the blocking message', (
+      tester,
+    ) async {
+      await openBookingSheet(tester);
+
+      final attendees = find.bySemanticsLabel('Attendees');
+      await tester.enterText(attendees, '120');
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('120 people in a 40-seat room'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(attendees, '30');
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('-seat room'), findsNothing);
+      expect(find.textContaining('seats 40'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the attendees field refuses non-numeric input', (
+      tester,
+    ) async {
+      await openBookingSheet(tester);
+
+      final attendees = find.bySemanticsLabel('Attendees');
+      await tester.enterText(attendees, '12abc-3');
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(TextField, '123'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

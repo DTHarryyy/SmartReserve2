@@ -431,7 +431,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
     final submission = widget.submission;
     final confirmed = await showDialog<bool>(
       context: context,
-      barrierColor: const Color(0x8010141A),
+      barrierColor: SR.scrim,
       builder: (dialogContext) => SrConfirmDialog(
         title: 'Verify this campus member?',
         content: Text(

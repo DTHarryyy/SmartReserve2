@@ -517,9 +517,7 @@ class _SrTextFieldState extends State<SrTextField> {
         color: c.surface,
         borderRadius: BorderRadius.circular(9),
         border: Border.all(
-          color: widget.hasError
-              ? c.red
-              : (_focused ? SR.blue : c.borderField),
+          color: widget.hasError ? c.red : (_focused ? SR.blue : c.borderField),
         ),
         boxShadow: _focused
             ? [
@@ -669,12 +667,7 @@ class SrSelect<T> extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           subtitleOf!(item)!,
-                          style: mono(
-                            9,
-                            w: 500,
-                            tracking: .04,
-                            color: c.amber,
-                          ),
+                          style: mono(9, w: 500, tracking: .04, color: c.amber),
                         ),
                       ],
                     ],

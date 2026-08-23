@@ -57,14 +57,14 @@ enum AccountRole {
 
   String get privileges => switch (this) {
     AccountRole.user =>
-      'Books facilities · reserves free only while verified · otherwise uses '
-          'the published external rate.',
+      'Books facilities that have an administrator for the account’s '
+          'verification lane · uses the facility’s published audience rate.',
     AccountRole.internalAdmin =>
-      'Manages facilities, decides reservations, approves campus '
-          'verifications, and manages accounts. Sees student documents.',
+      'Manages assigned facilities and verified-user reservations · reviews '
+          'campus verification and governs accounts.',
     AccountRole.externalAdmin =>
-      'Manages external clients, rates, quotes, invoices and refunds, and '
-          'their bookings only.',
+      'Manages assigned facilities, payments, schedules, and guest or '
+          'unverified-user reservations.',
   };
 
   static AccountRole fromLabel(String label) => values.firstWhere(
@@ -142,6 +142,25 @@ class Account {
 
   bool get isInvited => status == AccountStatus.invited;
 
+  String get pricingAudience {
+    if (verification != VerificationState.verified) return 'guest';
+    final normalized = unit.toLowerCase();
+    if (normalized.contains('faculty')) return 'faculty';
+    if (normalized.contains('staff')) return 'staff';
+    return 'student';
+  }
+
+  /// Verified students and faculty pay nothing (staff is not exempt). This
+  /// mirrors the authoritative database rule for the demo/offline preview
+  /// only -- production exemption always comes from the server quote.
+  bool get isPaymentExempt {
+    final audience = pricingAudience;
+    return audience == 'student' || audience == 'faculty';
+  }
+
+  /// Compatibility-only display hint for old fixtures. Production pricing and
+  /// authorization never read this value; both come from the server quote.
+  @Deprecated('Use the facility audience rate returned by the server quote.')
   bool get reservesFree =>
       role == AccountRole.user &&
       status == AccountStatus.active &&

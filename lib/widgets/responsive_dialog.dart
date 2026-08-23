@@ -105,12 +105,7 @@ class SrConfirmDialog extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: TextStyle(
-                      fontFamily: 'IBM Plex Sans',
-                      fontSize: compact ? 18 : 19,
-                      fontWeight: FontWeight.w600,
-                      color: SR.ink,
-                    ),
+                    style: sans(compact ? 18 : 19, w: 600, color: SR.ink),
                   ),
                 ),
                 IconButton(
@@ -125,22 +120,17 @@ class SrConfirmDialog extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: SR.border),
+          Divider(height: 1, color: SR.border),
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.all(compact ? 16 : 22),
               child: DefaultTextStyle(
-                style: const TextStyle(
-                  fontFamily: 'IBM Plex Sans',
-                  fontSize: 13,
-                  height: 1.55,
-                  color: SR.ink3,
-                ),
+                style: sans(13, height: 1.55, color: SR.ink3),
                 child: content,
               ),
             ),
           ),
-          const Divider(height: 1, color: SR.border),
+          Divider(height: 1, color: SR.border),
           Padding(
             padding: EdgeInsets.all(compact ? 16 : 18),
             child: compact

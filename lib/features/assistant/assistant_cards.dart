@@ -7,9 +7,11 @@ import '../../app/app_state.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
 import '../../model/notice.dart';
+import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
+import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/sr_controls.dart';
@@ -34,7 +36,7 @@ class AssistantBubble extends StatelessWidget {
     if (isUser) {
       bg = SR.blue;
       border = null;
-      ink = SR.surface;
+      ink = SR.onDark;
     } else if (message.tone == AdvisoryTone.block) {
       bg = SR.redTint;
       border = SR.redLine;
@@ -118,7 +120,6 @@ class AssistantFacilityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final quote = state.quoteFor(facility, 2);
     return PanelCard(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -178,9 +179,12 @@ class AssistantFacilityCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  state.userAccount.reservesFree
-                      ? 'Free for your account'
-                      : '₱$quote / 2h (est.)',
+                  facility.hourlyRateCentavosFor(
+                            state.userAccount.pricingAudience,
+                          ) ==
+                          0
+                      ? 'Included for your audience'
+                      : '${pesoFromCentavos(facility.hourlyRateCentavosFor(state.userAccount.pricingAudience) * 2)} / 2h',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: mono(11, color: SR.ink4),
@@ -252,7 +256,8 @@ class AssistantReservationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final cancellable = isCancellable(request);
+    final cancellable = state.canCancelReservation(request);
+    final cancelling = state.reservationActionsPending.contains(request.id);
     return PanelCard(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -273,20 +278,26 @@ class AssistantReservationCard extends StatelessWidget {
           Text(request.whenLabel, style: sans(11.5, color: SR.ink4)),
           const SizedBox(height: 3),
           Text('${request.heads} people', style: sans(11, color: SR.muted)),
+          if (request.amenities.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            AmenityPills(request.amenities, max: 4),
+          ],
           if (cancellable) ...[
             const SizedBox(height: 8),
             SrButton(
-              label: 'Cancel',
+              label: cancelling ? 'Cancelling…' : 'Cancel',
               kind: SrButtonKind.danger,
               dense: true,
               fontSize: 11,
-              onPressed: () {
-                state.cancelReservation(
-                  request,
-                  reason: 'Cancelled from the assistant',
-                );
-                controller.noteCancelled(request);
-              },
+              onPressed: cancelling
+                  ? null
+                  : () async {
+                      final cancelled = await state.cancelReservation(
+                        request,
+                        reason: 'Cancelled from the assistant',
+                      );
+                      if (cancelled) controller.noteCancelled(request);
+                    },
             ),
           ],
         ],
@@ -335,9 +346,10 @@ class AssistantConfirmCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final hours = draft.endHour! - draft.startHour!;
-    final quote = state.userAccount.reservesFree
-        ? 0
-        : state.quoteFor(facility, hours);
+    final quoteCentavos =
+        (facility.hourlyRateCentavosFor(state.userAccount.pricingAudience) *
+                hours)
+            .round();
     final pending = state.userAccount.verification == VerificationState.pending;
 
     return Padding(
@@ -361,9 +373,15 @@ class AssistantConfirmCard extends StatelessWidget {
                 SrKeyCell(label: 'PEOPLE', value: '${draft.heads ?? '-'}'),
                 SrKeyCell(
                   label: 'COST',
-                  value: state.userAccount.reservesFree
-                      ? 'No charge'
-                      : '₱$quote',
+                  value: quoteCentavos == 0
+                      ? 'Included rate'
+                      : pesoFromCentavos(quoteCentavos),
+                ),
+                SrKeyCell(
+                  label: 'AMENITIES',
+                  value: draft.amenities.isEmpty
+                      ? 'None'
+                      : draft.amenities.join(' · '),
                 ),
               ],
             ),
@@ -376,12 +394,21 @@ class AssistantConfirmCard extends StatelessWidget {
                 style: sans(12.5, height: 1.5, color: SR.ink2),
               ),
             ],
+            const SizedBox(height: 10),
+            AmenityRequestField(
+              dense: true,
+              facilityAmenities: facility.amenities,
+              amenityOptions: facility.amenityOptions,
+              selected: draft.amenities,
+              onToggle: controller.toggleDraftAmenity,
+              onRemove: controller.removeDraftAmenity,
+            ),
             if (facility.approvalRequired || pending) ...[
               const SizedBox(height: 10),
               SrPill(
                 label: pending
-                    ? 'Held until verification is approved'
-                    : 'Needs registrar approval',
+                    ? 'Uses the guest/unverified admin lane'
+                    : 'Needs facility administrator approval',
                 background: SR.amberTint,
                 foreground: SR.amberTitle,
               ),

@@ -3,6 +3,7 @@ import 'package:smartreserve/app/app_state.dart';
 import 'package:smartreserve/features/reservations/reservation_series.dart';
 import 'package:smartreserve/model/audit_entry.dart';
 import 'package:smartreserve/model/reservation.dart';
+import 'package:smartreserve/util/backend_errors.dart';
 import 'package:smartreserve/util/campus_calendar.dart';
 
 void main() {
@@ -37,6 +38,85 @@ void main() {
     test('clock values survive the round trip', () {
       expect(parseClock('13:30'), 13.5);
       expect(formatClock(9.25), '09:15');
+    });
+  });
+
+  group('bookable slots', () {
+    const slots = ['07:00', '07:30', '08:00', '08:30', '09:00'];
+    final day = DateTime(2026, 8, 20);
+
+    test('a future day keeps every slot', () {
+      final now = DateTime(2026, 8, 19, 15, 0);
+      expect(bookableSlots(slots, day, now), slots);
+    });
+
+    test('today drops the slots that have already elapsed', () {
+      final now = DateTime(2026, 8, 20, 8, 0);
+      expect(bookableSlots(slots, day, now), ['08:30', '09:00']);
+    });
+
+    test('the slot at the current minute is not offered', () {
+      // The submit round-trip would push it into the past, and the backend
+      // rejects a start that is not strictly in the future.
+      final now = DateTime(2026, 8, 20, 8, 30);
+      expect(bookableSlots(slots, day, now), ['09:00']);
+    });
+
+    test('nothing is left once the facility has closed for the day', () {
+      final now = DateTime(2026, 8, 20, 21, 0);
+      expect(bookableSlots(slots, day, now), isEmpty);
+    });
+
+    test('a past day yields nothing', () {
+      final now = DateTime(2026, 8, 21, 6, 0);
+      expect(bookableSlots(slots, day, now), isEmpty);
+    });
+
+    test('before opening, today still offers the full day', () {
+      final now = DateTime(2026, 8, 20, 5, 0);
+      expect(bookableSlots(slots, day, now), slots);
+    });
+  });
+
+  group('backend error messages', () {
+    test('a PostgrestException keeps only the human half', () {
+      const raw =
+          'PostgrestException(message: Reservation date is outside the '
+          'booking window, code: 22023, details: Bad Request, hint: null)';
+      expect(
+        friendlyBackendMessage(raw),
+        'Reservation date is outside the booking window.',
+      );
+    });
+
+    test('the machine fields never reach the user', () {
+      const raw =
+          'PostgrestException(message: Sign in required, code: 42501, '
+          'details: Bad Request, hint: null)';
+      final result = friendlyBackendMessage(raw);
+      expect(result, 'Sign in required.');
+      expect(result, isNot(contains('code:')));
+      expect(result, isNot(contains('hint:')));
+      expect(result, isNot(contains(')')));
+    });
+
+    test('existing sentence punctuation is left alone', () {
+      const raw = 'PostgrestException(message: Try again., code: 500)';
+      expect(friendlyBackendMessage(raw), 'Try again.');
+    });
+
+    test('a plain error without the wrapper is passed through', () {
+      expect(
+        friendlyBackendMessage('Connection closed'),
+        'Connection closed.',
+      );
+    });
+
+    test('an unparseable error falls back to something readable', () {
+      expect(
+        friendlyBackendMessage('PostgrestException(message: , code: 500)'),
+        'That request could not be sent. Check the details and try again.',
+      );
     });
   });
 
@@ -161,7 +241,7 @@ void main() {
       expect(state.requestById('r1')!.status, RequestStatus.expired);
       expect(state.audit.first.diff.last, contains('No decision was needed'));
 
-      state.takeUndo();
+      state.toasts.invokeAction();
       expect(state.requestById('r1')!.status, RequestStatus.pending);
     });
   });

@@ -81,7 +81,8 @@ class _InviteDialogState extends State<_InviteDialog> {
         contents: _credentials!.exportText,
       );
       if (!result.ok) throw Exception(result.error);
-      _notice = 'Credentials file saved to ${result.path}. Keep it in a secure location.';
+      _notice =
+          'Credentials file saved to ${result.path}. Keep it in a secure location.';
     },
     toast: 'Credentials file wasn’t saved.',
     detail:
@@ -244,15 +245,11 @@ class _InviteDialogState extends State<_InviteDialog> {
               height: 28,
               alignment: Alignment.center,
               margin: const EdgeInsets.only(right: SR.space8, top: 1),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: SR.greenTint,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.check_rounded,
-                size: 16,
-                color: SR.greenDark,
-              ),
+              child: Icon(Icons.check_rounded, size: 16, color: SR.greenDark),
             ),
             Expanded(
               child: Text('Administrator created', style: SrType.heading()),
@@ -307,7 +304,7 @@ class _InviteDialogState extends State<_InviteDialog> {
                   : (_busy ? 'Working…' : 'Share credentials'),
               icon: kIsWeb || _busy
                   ? null
-                  : const Icon(
+                  : Icon(
                       Icons.ios_share_rounded,
                       size: SR.iconSm,
                       color: SR.ink3,
@@ -429,7 +426,10 @@ class _RoleOption extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(role.label, style: SrType.body(w: 600, color: SR.ink)),
+                      Text(
+                        role.label,
+                        style: SrType.body(w: 600, color: SR.ink),
+                      ),
                       const SizedBox(height: SR.space2),
                       Text(role.privileges, style: SrType.caption()),
                     ],

@@ -35,7 +35,7 @@ class AppHeader extends StatelessWidget {
       horizontal: compact ? SR.space16 : SR.space24,
       vertical: compact ? SR.space8 : SR.space12,
     ),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: SR.surface,
       border: Border(bottom: BorderSide(color: SR.border)),
     ),

@@ -230,7 +230,7 @@ class _AuditScreenState extends State<AuditScreen> {
             const SizedBox(width: SR.space8 + 2),
             SrButton(
               label: 'Export CSV',
-              icon: const Icon(
+              icon: Icon(
                 Icons.file_download_outlined,
                 size: SR.iconSm,
                 color: SR.ink3,
@@ -566,15 +566,8 @@ Widget _avatar(AuditEntry entry) => entry.isSystemActor
         width: 30,
         height: 30,
         alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: SR.hairline,
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.settings_suggest_rounded,
-          size: 14,
-          color: SR.ink4,
-        ),
+        decoration: BoxDecoration(color: SR.hairline, shape: BoxShape.circle),
+        child: Icon(Icons.settings_suggest_rounded, size: 14, color: SR.ink4),
       )
     : SrAvatar(initials: entry.initials, size: 30, tone: SrTone.neutral);
 
@@ -659,9 +652,7 @@ class _AuditRowState extends State<_AuditRow> {
     final compact = SR.isCompact(viewport);
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: compact
-            ? null
-            : const Border(bottom: BorderSide(color: SR.divider)),
+        border: compact ? null : Border(bottom: BorderSide(color: SR.divider)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -868,11 +859,7 @@ class _AuditRowState extends State<_AuditRow> {
             const SizedBox(height: 10),
             SrButton(
               label: 'Revert this change',
-              icon: const Icon(
-                Icons.undo_rounded,
-                size: SR.iconSm,
-                color: SR.ink3,
-              ),
+              icon: Icon(Icons.undo_rounded, size: SR.iconSm, color: SR.ink3),
               dense: true,
               fontSize: 11,
               onPressed: widget.onRevert,
