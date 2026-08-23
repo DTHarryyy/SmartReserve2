@@ -1,49 +1,115 @@
 import 'package:flutter/material.dart';
 
+import 'sr_theme.dart';
+
 abstract final class SR {
-  static const primary = Color(0xFF6367FF);
+  static const primary = Color(0xFF1A73E8);
 
-  static const primaryHover = Color(0xFF5457E8);
+  static const primaryHover = Color(0xFF1765CC);
 
-  static const primaryPressed = Color(0xFF4548C9);
+  static const primaryPressed = Color(0xFF1254AD);
 
-  static const primaryDeep = Color(0xFF4F52D9);
+  @Deprecated('Use context.srColors.primaryDeep instead.')
+  static Color get primaryDeep =>
+      _dark ? SrColors.dark.primaryDeep : SrColors.light.primaryDeep;
 
-  static const primaryTint = Color(0xFFEEEFFF);
+  @Deprecated('Use context.srColors.primaryTint instead.')
+  static Color get primaryTint =>
+      _dark ? SrColors.dark.primaryTint : SrColors.light.primaryTint;
 
-  static const primaryTint2 = Color(0xFFF7F7FF);
+  @Deprecated('Use context.srColors.primaryTint2 instead.')
+  static Color get primaryTint2 =>
+      _dark ? SrColors.dark.primaryTint2 : SrColors.light.primaryTint2;
 
-  static const primaryLine = Color(0xFFD6D8FF);
+  @Deprecated('Use context.srColors.primaryLine instead.')
+  static Color get primaryLine =>
+      _dark ? SrColors.dark.primaryLine : SrColors.light.primaryLine;
 
-  static const primarySoft = Color(0xFFA9ABFF);
+  @Deprecated('Use context.srColors.primarySoft instead.')
+  static Color get primarySoft =>
+      _dark ? SrColors.dark.primarySoft : SrColors.light.primarySoft;
 
-  static const primaryBright = Color(0xFF8083FF);
+  static const primaryBright = Color(0xFF00B4FF);
 
-  static const bg = Color(0xFFF5F6F8);
-  static const surface = Color(0xFFFFFFFF);
-  static const surfaceSubtle = Color(0xFFFAFAFC);
-  static const surfaceSunken = Color(0xFFF0F1F4);
-  static const mapBg = Color(0xFFE8EBEF);
+  static const secondary = Color(0xFF00B4FF);
+  static const accent = Color(0xFF00E0C7);
+  static const neutralDark = Color(0xFF0B1B33);
 
-  static const navBg = Color(0xFFFFFFFF);
-  static const navBorder = Color(0xFFE9EAEE);
-  static const navAvatar = Color(0xFFEEEFFF);
-  static const navAvatarFg = Color(0xFF4F52D9);
+  static bool _dark = false;
 
-  static const border = Color(0xFFE4E7EC);
-  static const borderField = Color(0xFFDFE3E8);
-  static const borderHover = Color(0xFFC3C9D2);
-  static const hairline = Color(0xFFEFF1F4);
-  static const divider = Color(0xFFF2F4F7);
-  static const dividerSoft = Color(0xFFF4F5F7);
-  static const dashed = Color(0xFFD0D5DD);
+  /// Keeps the legacy static token API theme-aware while screens migrate to
+  /// [SrColors]. [SrThemeBridge] updates this before its descendants build.
+  static void activate(Brightness brightness) {
+    _dark = brightness == Brightness.dark;
+  }
 
-  static const ink = Color(0xFF10141A);
-  static const ink2 = Color(0xFF344054);
-  static const ink3 = Color(0xFF475467);
-  static const ink4 = Color(0xFF667085);
-  static const muted = Color(0xFF98A2B3);
-  static const mutedLight = Color(0xFFC3C9D2);
+  @Deprecated('Use context.srColors.isDark instead.')
+  static bool get isDark => _dark;
+
+  @Deprecated('Use context.srColors.bg instead.')
+  static Color get bg => _dark ? SrColors.dark.bg : SrColors.light.bg;
+  @Deprecated('Use context.srColors.surface instead.')
+  static Color get surface =>
+      _dark ? SrColors.dark.surface : SrColors.light.surface;
+  @Deprecated('Use context.srColors.surfaceSubtle instead.')
+  static Color get surfaceSubtle =>
+      _dark ? SrColors.dark.surfaceSubtle : SrColors.light.surfaceSubtle;
+  @Deprecated('Use context.srColors.surfaceSunken instead.')
+  static Color get surfaceSunken =>
+      _dark ? SrColors.dark.surfaceSunken : SrColors.light.surfaceSunken;
+  @Deprecated('Use context.srColors.mapBg instead.')
+  static Color get mapBg =>
+      _dark ? SrColors.dark.mapBg : SrColors.light.mapBg;
+
+  @Deprecated('Use context.srColors.navBg instead.')
+  static Color get navBg =>
+      _dark ? SrColors.dark.navBg : SrColors.light.navBg;
+  @Deprecated('Use context.srColors.navBorder instead.')
+  static Color get navBorder =>
+      _dark ? SrColors.dark.navBorder : SrColors.light.navBorder;
+  @Deprecated('Use context.srColors.navAvatar instead.')
+  static Color get navAvatar =>
+      _dark ? SrColors.dark.navAvatar : SrColors.light.navAvatar;
+  @Deprecated('Use context.srColors.navAvatarFg instead.')
+  static Color get navAvatarFg =>
+      _dark ? SrColors.dark.navAvatarFg : SrColors.light.navAvatarFg;
+
+  @Deprecated('Use context.srColors.border instead.')
+  static Color get border =>
+      _dark ? SrColors.dark.border : SrColors.light.border;
+  @Deprecated('Use context.srColors.borderField instead.')
+  static Color get borderField =>
+      _dark ? SrColors.dark.borderField : SrColors.light.borderField;
+  @Deprecated('Use context.srColors.borderHover instead.')
+  static Color get borderHover =>
+      _dark ? SrColors.dark.borderHover : SrColors.light.borderHover;
+  @Deprecated('Use context.srColors.hairline instead.')
+  static Color get hairline =>
+      _dark ? SrColors.dark.hairline : SrColors.light.hairline;
+  @Deprecated('Use context.srColors.divider instead.')
+  static Color get divider =>
+      _dark ? SrColors.dark.divider : SrColors.light.divider;
+  @Deprecated('Use context.srColors.dividerSoft instead.')
+  static Color get dividerSoft =>
+      _dark ? SrColors.dark.dividerSoft : SrColors.light.dividerSoft;
+  @Deprecated('Use context.srColors.dashed instead.')
+  static Color get dashed =>
+      _dark ? SrColors.dark.dashed : SrColors.light.dashed;
+
+  @Deprecated('Use context.srColors.ink instead.')
+  static Color get ink => _dark ? SrColors.dark.ink : SrColors.light.ink;
+  @Deprecated('Use context.srColors.ink2 instead.')
+  static Color get ink2 => _dark ? SrColors.dark.ink2 : SrColors.light.ink2;
+  @Deprecated('Use context.srColors.ink3 instead.')
+  static Color get ink3 => _dark ? SrColors.dark.ink3 : SrColors.light.ink3;
+  @Deprecated('Use context.srColors.ink4 instead.')
+  static Color get ink4 => _dark ? SrColors.dark.ink4 : SrColors.light.ink4;
+  @Deprecated('Use context.srColors.muted instead.')
+  static Color get muted =>
+      _dark ? SrColors.dark.muted : SrColors.light.muted;
+  @Deprecated('Use context.srColors.mutedLight instead.')
+  static Color get mutedLight =>
+      _dark ? SrColors.dark.mutedLight : SrColors.light.mutedLight;
 
   static const onDark = Color(0xFFFFFFFF);
   static const onDarkStrong = Color(0xE6FFFFFF);
@@ -54,51 +120,92 @@ abstract final class SR {
   static const onDarkFill = Color(0x12FFFFFF);
   static const onDarkFillStrong = Color(0x1FFFFFFF);
 
-  static const scrim = Color(0x7010141A);
-  static const scrimSoft = Color(0x6B10141A);
-  static const glass = Color(0xF7FFFFFF);
-  static const glassLine = Color(0x1410141A);
-  static const glassLine2 = Color(0x1F10141A);
+  @Deprecated('Use context.srColors.scrim instead.')
+  static Color get scrim => _dark ? SrColors.dark.scrim : SrColors.light.scrim;
+  @Deprecated('Use context.srColors.scrimSoft instead.')
+  static Color get scrimSoft =>
+      _dark ? SrColors.dark.scrimSoft : SrColors.light.scrimSoft;
+  @Deprecated('Use context.srColors.glass instead.')
+  static Color get glass => _dark ? SrColors.dark.glass : SrColors.light.glass;
+  @Deprecated('Use context.srColors.glassLine instead.')
+  static Color get glassLine =>
+      _dark ? SrColors.dark.glassLine : SrColors.light.glassLine;
+  @Deprecated('Use context.srColors.glassLine2 instead.')
+  static Color get glassLine2 =>
+      _dark ? SrColors.dark.glassLine2 : SrColors.light.glassLine2;
 
   static const green = Color(0xFF12B76A);
-  static const greenDark = Color(0xFF0F7A4D);
-  static const greenDeep = Color(0xFF0A5C3A);
-  static const greenTint = Color(0xFFECFDF3);
-  static const greenTint2 = Color(0xFFF2FDF7);
-  static const greenLine = Color(0xFFB7E9CD);
+  @Deprecated('Use context.srColors.greenDark instead.')
+  static Color get greenDark =>
+      _dark ? SrColors.dark.greenDark : SrColors.light.greenDark;
+  @Deprecated('Use context.srColors.greenDeep instead.')
+  static Color get greenDeep =>
+      _dark ? SrColors.dark.greenDeep : SrColors.light.greenDeep;
+  @Deprecated('Use context.srColors.greenTint instead.')
+  static Color get greenTint =>
+      _dark ? SrColors.dark.greenTint : SrColors.light.greenTint;
+  @Deprecated('Use context.srColors.greenTint2 instead.')
+  static Color get greenTint2 =>
+      _dark ? SrColors.dark.greenTint2 : SrColors.light.greenTint2;
+  @Deprecated('Use context.srColors.greenLine instead.')
+  static Color get greenLine =>
+      _dark ? SrColors.dark.greenLine : SrColors.light.greenLine;
 
-  static const amber = Color(0xFFB45309);
-  static const amberTint = Color(0xFFFFFBF2);
-  static const amberLine = Color(0xFFF0D9A8);
-  static const amberLine2 = Color(0xFFE6D5B4);
-  static const amberIcon = Color(0xFFFDF0D5);
-  static const amberInk = Color(0xFF8A6535);
-  static const amberTitle = Color(0xFF7A4A09);
+  @Deprecated('Use context.srColors.amber instead.')
+  static Color get amber =>
+      _dark ? SrColors.dark.amber : SrColors.light.amber;
+  @Deprecated('Use context.srColors.amberTint instead.')
+  static Color get amberTint =>
+      _dark ? SrColors.dark.amberTint : SrColors.light.amberTint;
+  @Deprecated('Use context.srColors.amberLine instead.')
+  static Color get amberLine =>
+      _dark ? SrColors.dark.amberLine : SrColors.light.amberLine;
+  @Deprecated('Use context.srColors.amberLine2 instead.')
+  static Color get amberLine2 =>
+      _dark ? SrColors.dark.amberLine2 : SrColors.light.amberLine2;
+  @Deprecated('Use context.srColors.amberIcon instead.')
+  static Color get amberIcon =>
+      _dark ? SrColors.dark.amberIcon : SrColors.light.amberIcon;
+  @Deprecated('Use context.srColors.amberInk instead.')
+  static Color get amberInk =>
+      _dark ? SrColors.dark.amberInk : SrColors.light.amberInk;
+  @Deprecated('Use context.srColors.amberTitle instead.')
+  static Color get amberTitle =>
+      _dark ? SrColors.dark.amberTitle : SrColors.light.amberTitle;
   static const orange = Color(0xFFF79009);
 
-  static const red = Color(0xFFB42318);
-  static const redTint = Color(0xFFFEF3F2);
-  static const redLine = Color(0xFFF2C4C0);
+  @Deprecated('Use context.srColors.red instead.')
+  static Color get red => _dark ? SrColors.dark.red : SrColors.light.red;
+  @Deprecated('Use context.srColors.redTint instead.')
+  static Color get redTint =>
+      _dark ? SrColors.dark.redTint : SrColors.light.redTint;
+  @Deprecated('Use context.srColors.redLine instead.')
+  static Color get redLine =>
+      _dark ? SrColors.dark.redLine : SrColors.light.redLine;
   static const redBright = Color(0xFFF97066);
-  static const redInk = Color(0xFF912018);
-  static const redInk2 = Color(0xFFA4413A);
+  @Deprecated('Use context.srColors.redInk instead.')
+  static Color get redInk =>
+      _dark ? SrColors.dark.redInk : SrColors.light.redInk;
+  @Deprecated('Use context.srColors.redInk2 instead.')
+  static Color get redInk2 =>
+      _dark ? SrColors.dark.redInk2 : SrColors.light.redInk2;
 
   @Deprecated('Use SR.primary')
   static const blue = primary;
   @Deprecated('Use SR.primaryHover')
   static const blueDark = primaryHover;
   @Deprecated('Use SR.primaryDeep')
-  static const blueInk = primaryDeep;
+  static Color get blueInk => primaryDeep;
   @Deprecated('Use SR.primaryTint')
-  static const blueTint = primaryTint;
+  static Color get blueTint => primaryTint;
   @Deprecated('Use SR.primaryTint2')
-  static const blueTint2 = primaryTint2;
+  static Color get blueTint2 => primaryTint2;
   @Deprecated('Use SR.primaryLine')
-  static const blueLine = primaryLine;
+  static Color get blueLine => primaryLine;
   @Deprecated('Use SR.primarySoft')
-  static const blueSoft = primarySoft;
+  static Color get blueSoft => primarySoft;
   @Deprecated('Use SR.primaryDeep')
-  static const blueToken = primaryDeep;
+  static Color get blueToken => primaryDeep;
   @Deprecated('Use SR.primaryBright')
   static const blueBright = primaryBright;
 
@@ -138,28 +245,68 @@ abstract final class SR {
   static const iconMd = 18.0;
   static const iconLg = 22.0;
 
-  static const List<BoxShadow> cardShadow = [
-    BoxShadow(color: Color(0x0F10141A), blurRadius: 3, offset: Offset(0, 1)),
-  ];
+  static List<BoxShadow> get cardShadow => _dark
+      ? const []
+      : const [
+          BoxShadow(
+            color: Color(0x100B1B33),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ];
 
-  static const List<BoxShadow> floatShadow = [
-    BoxShadow(color: Color(0x1A10141A), blurRadius: 14, offset: Offset(0, 4)),
-  ];
+  static List<BoxShadow> get floatShadow => _dark
+      ? const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ]
+      : const [
+          BoxShadow(
+            color: Color(0x1A0B1B33),
+            blurRadius: 18,
+            offset: Offset(0, 5),
+          ),
+        ];
 
-  static const List<BoxShadow> popoverShadow = [
-    BoxShadow(color: Color(0x2910141A), blurRadius: 34, offset: Offset(0, 16)),
-  ];
+  static List<BoxShadow> get popoverShadow => _dark
+      ? const [
+          BoxShadow(
+            color: Color(0x8A000000),
+            blurRadius: 34,
+            offset: Offset(0, 16),
+          ),
+        ]
+      : const [
+          BoxShadow(
+            color: Color(0x290B1B33),
+            blurRadius: 34,
+            offset: Offset(0, 16),
+          ),
+        ];
 
-  static const List<BoxShadow> dialogShadow = [
-    BoxShadow(color: Color(0x5210141A), blurRadius: 70, offset: Offset(0, 30)),
-  ];
+  static List<BoxShadow> get dialogShadow => _dark
+      ? const [
+          BoxShadow(
+            color: Color(0xB3000000),
+            blurRadius: 70,
+            offset: Offset(0, 30),
+          ),
+        ]
+      : const [
+          BoxShadow(
+            color: Color(0x520B1B33),
+            blurRadius: 70,
+            offset: Offset(0, 30),
+          ),
+        ];
 
-  static const List<BoxShadow> toastShadow = [
-    BoxShadow(color: Color(0x2910141A), blurRadius: 34, offset: Offset(0, 14)),
-  ];
+  static List<BoxShadow> get toastShadow => popoverShadow;
 
   static const List<BoxShadow> focusRing = [
-    BoxShadow(color: Color(0x336367FF), spreadRadius: 3),
+    BoxShadow(color: Color(0x331A73E8), spreadRadius: 3),
   ];
 
   static List<BoxShadow> focusRingOf(Color color) => [
@@ -261,7 +408,7 @@ extension SrBreakpointContext on BuildContext {
   EdgeInsets get pageInsets => SR.pageInsets(viewportWidth);
 }
 
-const _sans = 'IBM Plex Sans';
+const _sans = 'Poppins';
 const _mono = 'IBM Plex Mono';
 
 FontWeight _weight(int w) => FontWeight.values[(w ~/ 100) - 1];
@@ -271,7 +418,7 @@ TextStyle sans(
   int w = 400,
   double? height,
   double tracking = 0,
-  Color color = SR.ink,
+  Color? color,
   TextDecoration? decoration,
   FontStyle? style,
 }) => TextStyle(
@@ -280,7 +427,7 @@ TextStyle sans(
   fontWeight: _weight(w),
   height: height,
   letterSpacing: tracking == 0 ? null : size * tracking,
-  color: color,
+  color: color ?? SR.ink,
   decoration: decoration,
   fontStyle: style,
 );
@@ -290,54 +437,54 @@ TextStyle mono(
   int w = 400,
   double? height,
   double tracking = 0,
-  Color color = SR.ink,
+  Color? color,
 }) => TextStyle(
   fontFamily: _mono,
   fontSize: size,
   fontWeight: _weight(w),
   height: height,
   letterSpacing: tracking == 0 ? null : size * tracking,
-  color: color,
+  color: color ?? SR.ink,
 );
 
 TextStyle get keyLabel => SrType.overline();
 
 abstract final class SrType {
-  static TextStyle display({Color color = SR.ink}) =>
+  static TextStyle display({Color? color}) =>
       sans(26, w: 600, height: 1.15, tracking: -.02, color: color);
 
-  static TextStyle title({Color color = SR.ink}) =>
+  static TextStyle title({Color? color}) =>
       sans(20, w: 600, height: 1.2, tracking: -.015, color: color);
 
-  static TextStyle heading({Color color = SR.ink}) =>
+  static TextStyle heading({Color? color}) =>
       sans(17, w: 600, height: 1.25, tracking: -.015, color: color);
 
-  static TextStyle subhead({Color color = SR.ink}) =>
+  static TextStyle subhead({Color? color}) =>
       sans(15, w: 600, height: 1.3, color: color);
 
-  static TextStyle bodyLg({int w = 400, Color color = SR.ink2}) =>
-      sans(14, w: w, height: 1.5, color: color);
+  static TextStyle bodyLg({int w = 400, Color? color}) =>
+      sans(14, w: w, height: 1.5, color: color ?? SR.ink2);
 
-  static TextStyle body({int w = 400, Color color = SR.ink2}) =>
-      sans(13, w: w, height: 1.5, color: color);
+  static TextStyle body({int w = 400, Color? color}) =>
+      sans(13, w: w, height: 1.5, color: color ?? SR.ink2);
 
-  static TextStyle bodySm({int w = 400, Color color = SR.ink3}) =>
-      sans(12, w: w, height: 1.45, color: color);
+  static TextStyle bodySm({int w = 400, Color? color}) =>
+      sans(12, w: w, height: 1.45, color: color ?? SR.ink3);
 
-  static TextStyle caption({int w = 400, Color color = SR.ink4}) =>
-      sans(11, w: w, height: 1.4, color: color);
+  static TextStyle caption({int w = 400, Color? color}) =>
+      sans(11, w: w, height: 1.4, color: color ?? SR.ink4);
 
-  static TextStyle label({Color color = SR.ink2}) =>
-      sans(12, w: 500, color: color);
+  static TextStyle label({Color? color}) =>
+      sans(12, w: 500, color: color ?? SR.ink2);
 
-  static TextStyle button({Color color = SR.ink2}) =>
-      sans(13, w: 600, color: color);
+  static TextStyle button({Color? color}) =>
+      sans(13, w: 600, color: color ?? SR.ink2);
 
-  static TextStyle overline({Color color = SR.muted}) =>
-      mono(10, w: 500, tracking: .05, color: color);
+  static TextStyle overline({Color? color}) =>
+      mono(10, w: 500, tracking: .05, color: color ?? SR.muted);
 
-  static TextStyle code({int w = 400, Color color = SR.ink2}) =>
-      mono(11.5, w: w, color: color);
+  static TextStyle code({int w = 400, Color? color}) =>
+      mono(11.5, w: w, color: color ?? SR.ink2);
 }
 
 enum SrTone {

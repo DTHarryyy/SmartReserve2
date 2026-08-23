@@ -62,14 +62,14 @@ void main() {
 
     final darkContext = tester.element(find.byKey(const Key('theme-probe')));
     expect(Theme.of(darkContext).brightness, Brightness.dark);
-    expect(darkContext.srColors, SrThemeColors.dark);
+    expect(darkContext.srColors, SrColors.dark);
 
     await state.setThemePreference(SrThemePreference.light);
     await tester.pumpAndSettle();
 
     final lightContext = tester.element(find.byKey(const Key('theme-probe')));
     expect(Theme.of(lightContext).brightness, Brightness.light);
-    expect(lightContext.srColors, SrThemeColors.light);
+    expect(lightContext.srColors, SrColors.light);
   });
 
   testWidgets('user and admin surfaces render with the dark design system', (
@@ -132,8 +132,12 @@ void main() {
       Color shellColor() =>
           tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor!;
 
+      // Deliberately exercises the legacy SR.* path (the one with no
+      // InheritedWidget behind it) rather than context.srColors, since
+      // that path is exactly what SrThemeBridge exists to keep repainting.
+      // ignore: deprecated_member_use_from_same_package
       expect(shellColor(), SR.bg);
-      expect(shellColor(), isNot(SrThemeColors.dark.canvas));
+      expect(shellColor(), isNot(SrColors.dark.canvas));
 
       await state.setThemePreference(SrThemePreference.dark);
       // Deliberately a single pump, not pumpAndSettle: the whole point of
@@ -141,12 +145,12 @@ void main() {
       // appearing after something else happens to rebuild the tree.
       await tester.pump();
 
-      expect(shellColor(), SrThemeColors.dark.canvas);
+      expect(shellColor(), SrColors.dark.canvas);
 
       await state.setThemePreference(SrThemePreference.light);
       await tester.pump();
 
-      expect(shellColor(), SrThemeColors.light.canvas);
+      expect(shellColor(), SrColors.light.canvas);
     },
   );
 
@@ -167,8 +171,11 @@ void main() {
           builder: (context) => Dialog(
             child: Builder(
               key: const Key('dialog-probe'),
-              builder: (context) =>
-                  ColoredBox(color: SR.bg, child: const SizedBox(width: 40, height: 40)),
+              builder: (context) => ColoredBox(
+                // ignore: deprecated_member_use_from_same_package
+                color: SR.bg,
+                child: const SizedBox(width: 40, height: 40),
+              ),
             ),
           ),
         ),
@@ -184,12 +191,12 @@ void main() {
           )
           .color;
 
-      expect(dialogColor(), SrThemeColors.light.canvas);
+      expect(dialogColor(), SrColors.light.canvas);
 
       await state.setThemePreference(SrThemePreference.dark);
       await tester.pump();
 
-      expect(dialogColor(), SrThemeColors.dark.canvas);
+      expect(dialogColor(), SrColors.dark.canvas);
     },
   );
 
@@ -209,7 +216,7 @@ void main() {
       Color shellColor() =>
           tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor!;
 
-      expect(shellColor(), SrThemeColors.light.canvas);
+      expect(shellColor(), SrColors.light.canvas);
 
       tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
       // Unlike AppState.setThemePreference (whose notifyListeners() marks
@@ -221,7 +228,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(shellColor(), SrThemeColors.dark.canvas);
+      expect(shellColor(), SrColors.dark.canvas);
     },
   );
 }
