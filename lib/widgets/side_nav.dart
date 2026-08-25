@@ -6,6 +6,8 @@ import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 import 'sr_logo.dart';
 
+import '../theme/sr_theme.dart';
+
 const adminSections = <AppView>[
   AppView.facilities,
   AppView.reservations,
@@ -85,8 +87,8 @@ class SideNav extends StatelessWidget {
     return Container(
       width: width,
       decoration: BoxDecoration(
-        color: SR.navBg,
-        border: Border(right: BorderSide(color: SR.navBorder)),
+        color: context.srColors.navBg,
+        border: Border(right: BorderSide(color: context.srColors.navBorder)),
       ),
       child: SafeArea(
         right: false,
@@ -228,8 +230,10 @@ class _NavButton extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: current
-                      ? SR.primaryTint
-                      : (hovered ? SR.surfaceSubtle : Colors.transparent),
+                      ? context.srColors.primaryTint
+                      : (hovered
+                            ? context.srColors.surfaceSubtle
+                            : Colors.transparent),
                   borderRadius: BorderRadius.circular(SR.rSm),
                 ),
                 child: Row(
@@ -239,7 +243,9 @@ class _NavButton extends StatelessWidget {
                       size: SR.iconMd,
                       color: current
                           ? SR.primary
-                          : (hovered ? SR.ink3 : SR.ink4),
+                          : (hovered
+                                ? context.srColors.ink3
+                                : context.srColors.ink4),
                     ),
                     const SizedBox(width: SR.space12),
                     Expanded(
@@ -251,8 +257,10 @@ class _NavButton extends StatelessWidget {
                           13,
                           w: current ? 600 : 500,
                           color: current
-                              ? SR.primaryDeep
-                              : (hovered ? SR.ink : SR.ink2),
+                              ? context.srColors.primaryDeep
+                              : (hovered
+                                    ? context.srColors.ink
+                                    : context.srColors.ink2),
                         ),
                       ),
                     ),
@@ -261,7 +269,11 @@ class _NavButton extends StatelessWidget {
                     else if (total != null)
                       Text(
                         total!,
-                        style: mono(10, w: 500, color: SR.mutedLight),
+                        style: mono(
+                          10,
+                          w: 500,
+                          color: context.srColors.mutedLight,
+                        ),
                       ),
                   ],
                 ),
@@ -302,13 +314,17 @@ class _PendingBadge extends StatelessWidget {
     constraints: const BoxConstraints(minWidth: 20),
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: current ? SR.primary : SR.primaryTint,
+      color: current ? SR.primary : context.srColors.primaryTint,
       borderRadius: BorderRadius.circular(SR.rFull),
-      border: current ? null : Border.all(color: SR.primaryLine),
+      border: current ? null : Border.all(color: context.srColors.primaryLine),
     ),
     child: Text(
       '$count',
-      style: mono(10, w: 600, color: current ? SR.onDark : SR.primaryDeep),
+      style: mono(
+        10,
+        w: 600,
+        color: current ? SR.onDark : context.srColors.primaryDeep,
+      ),
     ),
   );
 }
@@ -327,16 +343,22 @@ class _MappedStat extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(SR.space12, 0, SR.space12, SR.space12),
       padding: const EdgeInsets.all(SR.space12),
       decoration: BoxDecoration(
-        color: complete ? SR.greenTint : SR.surfaceSubtle,
+        color: complete
+            ? context.srColors.greenTint
+            : context.srColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(SR.rMd),
-        border: Border.all(color: complete ? SR.greenLine : SR.border),
+        border: Border.all(
+          color: complete
+              ? context.srColors.greenLine
+              : context.srColors.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Mapped facilities',
-            style: SrType.caption(w: 500, color: SR.ink3),
+            style: SrType.caption(w: 500, color: context.srColors.ink3),
           ),
           const SizedBox(height: SR.space4),
           Row(
@@ -349,11 +371,13 @@ class _MappedStat extends StatelessWidget {
                   20,
                   w: 600,
                   tracking: -.02,
-                  color: complete ? SR.greenDark : SR.ink,
+                  color: complete
+                      ? context.srColors.greenDark
+                      : context.srColors.ink,
                 ),
               ),
               const SizedBox(width: SR.space6),
-              Text('/ $total', style: mono(11, color: SR.muted)),
+              Text('/ $total', style: mono(11, color: context.srColors.muted)),
             ],
           ),
           const SizedBox(height: SR.space8),
@@ -363,7 +387,9 @@ class _MappedStat extends StatelessWidget {
               children: [
                 Container(
                   height: 5,
-                  color: complete ? SR.greenLine : SR.surfaceSunken,
+                  color: complete
+                      ? context.srColors.greenLine
+                      : context.srColors.surfaceSunken,
                 ),
                 AnimatedFractionallySizedBox(
                   duration: SR.progressSweep,
@@ -386,7 +412,11 @@ class _MappedStat extends StatelessWidget {
                 : '$outstanding ${outstanding == 1 ? 'facility' : 'facilities'} '
                       'still ${outstanding == 1 ? 'needs' : 'need'} a verified '
                       'pin.',
-            style: SrType.caption(color: complete ? SR.greenDark : SR.ink4),
+            style: SrType.caption(
+              color: complete
+                  ? context.srColors.greenDark
+                  : context.srColors.ink4,
+            ),
           ),
         ],
       ),
@@ -405,7 +435,7 @@ class _AdminFooter extends StatelessWidget {
     final admin = state.currentAdmin;
     return Container(
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: SR.navBorder)),
+        border: Border(top: BorderSide(color: context.srColors.navBorder)),
       ),
       padding: const EdgeInsets.all(SR.space8),
       child: Semantics(
@@ -418,7 +448,9 @@ class _AdminFooter extends StatelessWidget {
               duration: SR.stateChange,
               padding: const EdgeInsets.all(SR.space8),
               decoration: BoxDecoration(
-                color: hovered ? SR.surfaceSubtle : Colors.transparent,
+                color: hovered
+                    ? context.srColors.surfaceSubtle
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(SR.rSm),
               ),
               child: Row(
@@ -428,12 +460,16 @@ class _AdminFooter extends StatelessWidget {
                     height: 30,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: SR.navAvatar,
+                      color: context.srColors.navAvatar,
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       admin.initials,
-                      style: mono(10, w: 600, color: SR.navAvatarFg),
+                      style: mono(
+                        10,
+                        w: 600,
+                        color: context.srColors.navAvatarFg,
+                      ),
                     ),
                   ),
                   const SizedBox(width: SR.space8),
@@ -445,7 +481,7 @@ class _AdminFooter extends StatelessWidget {
                           admin.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: sans(12, w: 600, color: SR.ink),
+                          style: sans(12, w: 600, color: context.srColors.ink),
                         ),
                         Text(
                           'Administrator · ${admin.role.label}',
@@ -459,7 +495,9 @@ class _AdminFooter extends StatelessWidget {
                   Icon(
                     Icons.chevron_right_rounded,
                     size: SR.iconMd,
-                    color: hovered ? SR.ink3 : SR.mutedLight,
+                    color: hovered
+                        ? context.srColors.ink3
+                        : context.srColors.mutedLight,
                   ),
                 ],
               ),

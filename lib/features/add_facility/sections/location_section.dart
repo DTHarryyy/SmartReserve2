@@ -8,6 +8,8 @@ import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class LocationSection extends StatelessWidget {
   const LocationSection({
     super.key,
@@ -65,7 +67,9 @@ class LocationSection extends StatelessWidget {
                             style: mono(
                               10,
                               tracking: .04,
-                              color: selected.mapped ? SR.greenDark : SR.amber,
+                              color: selected.mapped
+                                  ? context.srColors.greenDark
+                                  : context.srColors.amber,
                             ),
                           ),
                   ),
@@ -161,17 +165,20 @@ class _BuildingHint extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
-      color: SR.blueTint2,
+      color: context.srColors.primaryTint2,
       borderRadius: BorderRadius.circular(9),
-      border: Border.all(color: SR.blueLine),
+      border: Border.all(color: context.srColors.primaryLine),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text('⌖', style: sans(12, color: SR.blue)),
+        Text('⌖', style: sans(12, color: SR.primary)),
         const SizedBox(width: 9),
         Expanded(
-          child: Text(text, style: sans(11.5, height: 1.5, color: SR.blueInk)),
+          child: Text(
+            text,
+            style: sans(11.5, height: 1.5, color: context.srColors.primaryDeep),
+          ),
         ),
         if (onCenter != null) ...[
           const SizedBox(width: 9),
@@ -185,13 +192,15 @@ class _BuildingHint extends StatelessWidget {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: hovered ? SR.blueTint : SR.surface,
+                  color: hovered
+                      ? context.srColors.primaryTint
+                      : context.srColors.surface,
                   borderRadius: BorderRadius.circular(7),
-                  border: Border.all(color: SR.blue),
+                  border: Border.all(color: SR.primary),
                 ),
                 child: Text(
                   'Centre map here',
-                  style: sans(11, w: 600, color: SR.blue),
+                  style: sans(11, w: 600, color: SR.primary),
                 ),
               ),
             ),

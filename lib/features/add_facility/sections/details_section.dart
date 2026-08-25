@@ -8,6 +8,8 @@ import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class DetailsSection extends StatelessWidget {
   const DetailsSection({
     super.key,
@@ -41,7 +43,7 @@ class DetailsSection extends StatelessWidget {
             required: true,
             meta: Text(
               '${draft.name.length}/$_nameLimit',
-              style: mono(10.5, color: SR.mutedLight),
+              style: mono(10.5, color: context.srColors.mutedLight),
             ),
           ),
           SrTextField(
@@ -96,9 +98,14 @@ class DetailsSection extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 11),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        border: Border(left: BorderSide(color: SR.hairline)),
+                        border: Border(
+                          left: BorderSide(color: context.srColors.hairline),
+                        ),
                       ),
-                      child: Text('seats', style: sans(11, color: SR.muted)),
+                      child: Text(
+                        'seats',
+                        style: sans(11, color: context.srColors.muted),
+                      ),
                     ),
                   ),
                   SrErrorText(errors[RequiredItem.capacity]),
@@ -138,7 +145,7 @@ class DetailsSection extends StatelessWidget {
           const SizedBox(height: 7),
           Text(
             draft.status.hint,
-            style: sans(11, height: 1.5, color: SR.muted),
+            style: sans(11, height: 1.5, color: context.srColors.muted),
           ),
         ],
       ),
@@ -169,12 +176,16 @@ class _StatusOption extends StatelessWidget {
           duration: SR.stateChange,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? SR.blueTint : SR.surface,
+            color: selected
+                ? context.srColors.primaryTint
+                : context.srColors.surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: selected
-                  ? SR.blue
-                  : (hovered ? SR.borderHover : SR.border),
+                  ? SR.primary
+                  : (hovered
+                        ? context.srColors.borderHover
+                        : context.srColors.border),
             ),
           ),
           child: Row(
@@ -194,7 +205,7 @@ class _StatusOption extends StatelessWidget {
                 style: sans(
                   12,
                   w: 500,
-                  color: selected ? SR.blueDark : SR.ink2,
+                  color: selected ? SR.primaryHover : context.srColors.ink2,
                 ),
               ),
             ],

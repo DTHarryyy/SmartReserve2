@@ -4,6 +4,8 @@ import '../model/decision_check.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
+import '../theme/sr_theme.dart';
+
 class CheckList extends StatelessWidget {
   const CheckList({
     super.key,
@@ -36,7 +38,9 @@ class CheckList extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: SR.dividerSoft)),
+            border: Border(
+              bottom: BorderSide(color: context.srColors.dividerSoft),
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,7 +64,7 @@ class CheckList extends StatelessWidget {
                 width: labelWidth,
                 child: Text(
                   check.label,
-                  style: sans(11.5, w: 500, color: SR.ink2),
+                  style: sans(11.5, w: 500, color: context.srColors.ink2),
                 ),
               ),
               Expanded(
@@ -69,7 +73,7 @@ class CheckList extends StatelessWidget {
                   style: sans(
                     11.5,
                     height: 1.5,
-                    color: check.outcome.valueColor,
+                    color: check.outcome.valueColor(context),
                   ),
                 ),
               ),
@@ -130,9 +134,13 @@ class _ReasonBoxState extends State<ReasonBox> {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: danger ? SR.redTint : SR.surfaceSubtle,
+        color: danger
+            ? context.srColors.redTint
+            : context.srColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: danger ? SR.redLine : SR.hairline),
+        border: Border.all(
+          color: danger ? context.srColors.redLine : context.srColors.hairline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -181,9 +189,9 @@ class PanelCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 12),
     padding: padding ?? const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: child,
   );
@@ -206,7 +214,10 @@ class Initials extends StatelessWidget {
     width: size,
     height: size,
     alignment: Alignment.center,
-    decoration: BoxDecoration(color: SR.blueTint, shape: BoxShape.circle),
-    child: Text(text, style: mono(fontSize, w: 600, color: SR.blueDark)),
+    decoration: BoxDecoration(
+      color: context.srColors.primaryTint,
+      shape: BoxShape.circle,
+    ),
+    child: Text(text, style: mono(fontSize, w: 600, color: SR.primaryHover)),
   );
 }

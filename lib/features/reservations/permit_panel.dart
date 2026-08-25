@@ -16,6 +16,8 @@ import '../../widgets/decision_widgets.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 
+import '../../theme/sr_theme.dart';
+
 /// The permit card shown on both the admin decision panel and the
 /// requester's own reservation detail. What it offers depends entirely on
 /// server-derived state (`request.permit`, `request.permitEligible`) --
@@ -58,7 +60,7 @@ class _PermitPanelState extends State<PermitPanel> {
           ..._body(context, request, permit),
           if (_error != null) ...[
             const SizedBox(height: SR.space8),
-            Text(_error!, style: SrType.bodySm(color: SR.red)),
+            Text(_error!, style: SrType.bodySm(color: context.srColors.red)),
           ],
         ],
       ),
@@ -111,16 +113,13 @@ class _PermitPanelState extends State<PermitPanel> {
           permit.status == PermitStatus.void_
               ? 'This permit is void${permit.voidReason == null ? '' : ' — ${permit.voidReason}'}.'
               : 'This permit has been superseded by a newer version.',
-          style: SrType.bodySm(color: SR.redInk),
+          style: SrType.bodySm(color: context.srColors.redInk),
         ),
       ];
     }
     if (request.permitEligible) {
       return [
-        Text(
-          'Your permit is being prepared.',
-          style: SrType.bodySm(),
-        ),
+        Text('Your permit is being prepared.', style: SrType.bodySm()),
         const SizedBox(height: SR.space8),
         SrButton(
           label: 'Check for permit',
@@ -134,7 +133,7 @@ class _PermitPanelState extends State<PermitPanel> {
         request.totalAmountCentavos > 0
             ? 'Locked until fully paid.'
             : 'Available once the reservation is approved and confirmed.',
-        style: SrType.bodySm(color: SR.muted),
+        style: SrType.bodySm(color: context.srColors.muted),
       ),
     ];
   }
@@ -155,7 +154,10 @@ class _PermitPanelState extends State<PermitPanel> {
     }
   }
 
-  Future<void> _view(ReservationPermit permit, ReservationRequest request) async {
+  Future<void> _view(
+    ReservationPermit permit,
+    ReservationRequest request,
+  ) async {
     final bytes = await _render(permit);
     if (bytes == null) return;
     _persist(permit, request, bytes);

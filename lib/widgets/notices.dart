@@ -5,6 +5,8 @@ import '../theme/sr_tokens.dart';
 import 'responsive_dialog.dart';
 import 'sr_controls.dart';
 
+import '../theme/sr_theme.dart';
+
 class ErrorBar extends StatelessWidget {
   const ErrorBar({
     super.key,
@@ -25,7 +27,7 @@ class ErrorBar extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 620),
       padding: const EdgeInsets.fromLTRB(15, 11, 13, 11),
       decoration: BoxDecoration(
-        color: SR.ink,
+        color: context.srColors.ink,
         borderRadius: BorderRadius.circular(12),
         boxShadow: SR.popoverShadow,
       ),
@@ -42,7 +44,10 @@ class ErrorBar extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: Text(text, style: sans(12, height: 1.5, color: SR.surface)),
+            child: Text(
+              text,
+              style: sans(12, height: 1.5, color: context.srColors.surface),
+            ),
           ),
           const SizedBox(width: 12),
           DarkBarButton(label: actionLabel, onPressed: onJumpToFirst),
@@ -135,9 +140,9 @@ class SrToast extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(SR.rMd),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
         boxShadow: SR.toastShadow,
       ),
       child: Row(
@@ -148,13 +153,13 @@ class SrToast extends StatelessWidget {
             height: 28,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: toneTint(message.tone),
+              color: toneTint(context, message.tone),
               shape: BoxShape.circle,
             ),
             child: Icon(
               toneIcon(message.tone),
               size: 17,
-              color: toneDot(message.tone),
+              color: toneDot(context, message.tone),
             ),
           ),
           const SizedBox(width: 10),
@@ -163,7 +168,7 @@ class SrToast extends StatelessWidget {
               message.text,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: sans(12, height: 1.45, color: SR.ink2),
+              style: sans(12, height: 1.45, color: context.srColors.ink2),
             ),
           ),
           if (message.action case final action?) ...[
@@ -175,10 +180,18 @@ class SrToast extends StatelessWidget {
             label: 'Dismiss notification',
             child: SizedBox.square(
               dimension: 44,
+              // No `tooltip:` here on purpose. The toast host is mounted from
+              // MaterialApp.builder, which puts it *above* the Navigator and
+              // therefore outside the Overlay — a Tooltip would throw "No
+              // Overlay widget found." on every build. The Semantics wrapper
+              // above already supplies the accessible name.
               child: IconButton(
-                tooltip: 'Dismiss notification',
                 onPressed: onDismiss,
-                icon: Icon(Icons.close_rounded, size: 18, color: SR.ink3),
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: context.srColors.ink3,
+                ),
               ),
             ),
           ),
@@ -206,27 +219,30 @@ class LightBarButton extends StatelessWidget {
       style: TextButton.styleFrom(
         minimumSize: const Size(0, 44),
         padding: const EdgeInsets.symmetric(horizontal: 9),
-        foregroundColor: SR.primaryDeep,
-        side: BorderSide(color: SR.border),
+        foregroundColor: context.srColors.primaryDeep,
+        side: BorderSide(color: context.srColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
-      child: Text(label, style: sans(11, w: 600, color: SR.primaryDeep)),
+      child: Text(
+        label,
+        style: sans(11, w: 600, color: context.srColors.primaryDeep),
+      ),
     ),
   );
 }
 
-Color toneDot(AdvisoryTone tone) => switch (tone) {
+Color toneDot(BuildContext context, AdvisoryTone tone) => switch (tone) {
   AdvisoryTone.good => SR.green,
-  AdvisoryTone.info => SR.blue,
+  AdvisoryTone.info => SR.primary,
   AdvisoryTone.warn => SR.orange,
-  AdvisoryTone.block => SR.red,
+  AdvisoryTone.block => context.srColors.red,
 };
 
-Color toneTint(AdvisoryTone tone) => switch (tone) {
-  AdvisoryTone.good => SR.greenTint,
-  AdvisoryTone.info => SR.blueTint,
-  AdvisoryTone.warn => SR.amberTint,
-  AdvisoryTone.block => SR.redTint,
+Color toneTint(BuildContext context, AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => context.srColors.greenTint,
+  AdvisoryTone.info => context.srColors.primaryTint,
+  AdvisoryTone.warn => context.srColors.amberTint,
+  AdvisoryTone.block => context.srColors.redTint,
 };
 
 IconData toneIcon(AdvisoryTone tone) => switch (tone) {
@@ -279,7 +295,7 @@ class GuardDialog extends StatelessWidget {
               : 'This facility is not published yet. Keep the draft and '
                     'everything, including the map pin, is waiting when you '
                     'come back.',
-          style: sans(12.5, height: 1.65, color: SR.ink4),
+          style: sans(12.5, height: 1.65, color: context.srColors.ink4),
         ),
         const SizedBox(height: 18),
         Wrap(

@@ -14,9 +14,8 @@ import '../../model/facility.dart';
 import '../../model/facility_draft.dart';
 import '../../model/facility_photo.dart';
 import '../../model/notice.dart';
-import '../../theme/sr_tokens.dart';
+import '../../theme/sr_theme.dart';
 import '../../util/geo.dart';
-
 export '../../model/notice.dart' show AdvisoryTone, ToastMessage;
 
 enum MapTab { map, preview }
@@ -49,38 +48,38 @@ class MapAdvisory {
   final String body;
   final List<AdvisoryAction> actions;
 
-  Color get background => switch (tone) {
-    AdvisoryTone.good => SR.greenTint,
-    AdvisoryTone.info => SR.blueTint,
-    AdvisoryTone.warn => SR.amberTint,
-    AdvisoryTone.block => SR.redTint,
+  Color background(BuildContext context) => switch (tone) {
+    AdvisoryTone.good => context.srColors.greenTint,
+    AdvisoryTone.info => context.srColors.primaryTint,
+    AdvisoryTone.warn => context.srColors.amberTint,
+    AdvisoryTone.block => context.srColors.redTint,
   };
 
-  Color get borderColor => switch (tone) {
-    AdvisoryTone.good => SR.greenLine,
-    AdvisoryTone.info => SR.blueLine,
-    AdvisoryTone.warn => SR.amberLine,
-    AdvisoryTone.block => SR.redLine,
+  Color borderColor(BuildContext context) => switch (tone) {
+    AdvisoryTone.good => context.srColors.greenLine,
+    AdvisoryTone.info => context.srColors.primaryLine,
+    AdvisoryTone.warn => context.srColors.amberLine,
+    AdvisoryTone.block => context.srColors.redLine,
   };
 
-  Color get foreground => switch (tone) {
-    AdvisoryTone.good => SR.greenDark,
-    AdvisoryTone.info => SR.blueInk,
-    AdvisoryTone.warn => SR.amber,
-    AdvisoryTone.block => SR.red,
+  Color foreground(BuildContext context) => switch (tone) {
+    AdvisoryTone.good => context.srColors.greenDark,
+    AdvisoryTone.info => context.srColors.primaryDeep,
+    AdvisoryTone.warn => context.srColors.amber,
+    AdvisoryTone.block => context.srColors.red,
   };
 
-  Color get iconBackground => switch (tone) {
-    AdvisoryTone.good => SR.greenTint,
-    AdvisoryTone.info => SR.blueTint,
-    AdvisoryTone.warn => SR.amberIcon,
-    AdvisoryTone.block => SR.redTint,
+  Color iconBackground(BuildContext context) => switch (tone) {
+    AdvisoryTone.good => context.srColors.greenTint,
+    AdvisoryTone.info => context.srColors.primaryTint,
+    AdvisoryTone.warn => context.srColors.amberIcon,
+    AdvisoryTone.block => context.srColors.redTint,
   };
 
-  Color get bodyForeground => switch (tone) {
-    AdvisoryTone.warn => SR.amberInk,
-    AdvisoryTone.block => SR.ink3,
-    _ => SR.ink4,
+  Color bodyForeground(BuildContext context) => switch (tone) {
+    AdvisoryTone.warn => context.srColors.amberInk,
+    AdvisoryTone.block => context.srColors.ink3,
+    _ => context.srColors.ink4,
   };
 }
 
@@ -513,16 +512,21 @@ class AddFacilityController extends ChangeNotifier {
   String get coordLabel =>
       draft.pin == null ? 'No pin yet' : formatCoords(draft.pin!);
 
-  (String label, Color background, Color foreground) get pinBadge {
-    if (!hasPin) return ('NO PIN', SR.dividerSoft, SR.muted);
+  (String label, Color background, Color foreground) pinBadge(
+    BuildContext context,
+  ) {
+    final colors = context.srColors;
+    if (!hasPin) return ('NO PIN', colors.dividerSoft, colors.muted);
     if (!insideBoundary && !draft.confirmedOutside) {
-      return ('OUTSIDE', SR.redTint, SR.red);
+      return ('OUTSIDE', colors.redTint, colors.red);
     }
-    if (tooFarFromBuilding) return ('CHECK', SR.amberTint, SR.amber);
+    if (tooFarFromBuilding) {
+      return ('CHECK', colors.amberTint, colors.amber);
+    }
     if ((draft.accuracy ?? 99) > accuracyWarnLimit) {
-      return ('COARSE', SR.amberTint, SR.amber);
+      return ('COARSE', colors.amberTint, colors.amber);
     }
-    return ('PINNED', SR.greenTint, SR.greenDark);
+    return ('PINNED', colors.greenTint, colors.greenDark);
   }
 
   String get mapHint => hasPin
@@ -533,22 +537,25 @@ class AddFacilityController extends ChangeNotifier {
       ? 'The pin marks the entrance, not the centre of the room.'
       : 'No map? Search a building, paste coordinates, or capture GPS.';
 
-  List<({String key, String value, Color color})> get liveStats {
+  List<({String key, String value, Color color})> liveStats(
+    BuildContext context,
+  ) {
     final pin = draft.pin;
     if (pin == null) return const [];
+    final colors = context.srColors;
     final accuracy = draft.accuracy ?? 0;
     return [
-      (key: 'LATITUDE', value: formatLat(pin.latitude), color: SR.ink),
-      (key: 'LONGITUDE', value: formatLat(pin.longitude), color: SR.ink),
+      (key: 'LATITUDE', value: formatLat(pin.latitude), color: colors.ink),
+      (key: 'LONGITUDE', value: formatLat(pin.longitude), color: colors.ink),
       (
         key: 'ACCURACY',
         value: '±$accuracy m',
-        color: accuracy > accuracyWarnLimit ? SR.amber : SR.greenDark,
+        color: accuracy > accuracyWarnLimit ? colors.amber : colors.greenDark,
       ),
       (
         key: 'FROM CENTRE',
         value: formatMetres(metresFromCenter ?? 0),
-        color: insideBoundary ? SR.ink : SR.red,
+        color: insideBoundary ? colors.ink : colors.red,
       ),
     ];
   }

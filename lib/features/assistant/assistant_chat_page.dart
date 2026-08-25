@@ -6,6 +6,8 @@ import '../../theme/sr_tokens.dart';
 import 'assistant_controller.dart';
 import 'assistant_tab.dart';
 
+import '../../theme/sr_theme.dart';
+
 class AssistantChatPage extends StatelessWidget {
   const AssistantChatPage({super.key, required this.controller});
 
@@ -13,7 +15,7 @@ class AssistantChatPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: SR.bg,
+    backgroundColor: context.srColors.bg,
     appBar: AppBar(
       backgroundColor: SR.primary,
       foregroundColor: Colors.white,

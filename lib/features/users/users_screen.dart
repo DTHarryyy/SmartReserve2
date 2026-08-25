@@ -13,6 +13,8 @@ import '../../widgets/sr_scroll_view.dart';
 import 'invite_dialog.dart';
 import 'user_detail_dialog.dart';
 
+import '../../theme/sr_theme.dart';
+
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
 
@@ -210,7 +212,7 @@ class _UsersScreenState extends State<UsersScreen> {
         alignment: Alignment.centerRight,
         child: Text(
           '$visible of $total shown',
-          style: mono(10.5, color: SR.muted),
+          style: mono(10.5, color: context.srColors.muted),
         ),
       ),
     ],
@@ -262,7 +264,9 @@ class _UsersScreenState extends State<UsersScreen> {
                     style: sans(
                       11.5,
                       w: 500,
-                      color: hovered ? SR.ink3 : SR.muted,
+                      color: hovered
+                          ? context.srColors.ink3
+                          : context.srColors.muted,
                       decoration: TextDecoration.underline,
                     ),
                   ),
@@ -374,9 +378,11 @@ class _UsersScreenState extends State<UsersScreen> {
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: SR.primaryTint,
+                          color: context.srColors.primaryTint,
                           borderRadius: BorderRadius.circular(SR.rXs),
-                          border: Border.all(color: SR.primaryLine),
+                          border: Border.all(
+                            color: context.srColors.primaryLine,
+                          ),
                         ),
                         child: Text(
                           'ADMIN',
@@ -384,7 +390,7 @@ class _UsersScreenState extends State<UsersScreen> {
                             8,
                             w: 600,
                             tracking: .04,
-                            color: SR.primaryDeep,
+                            color: context.srColors.primaryDeep,
                           ),
                         ),
                       ),
@@ -395,7 +401,7 @@ class _UsersScreenState extends State<UsersScreen> {
                   account.email,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: mono(10.5, color: SR.muted),
+                  style: mono(10.5, color: context.srColors.muted),
                 ),
               ],
             ),
@@ -410,13 +416,13 @@ class _UsersScreenState extends State<UsersScreen> {
             account.role.label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: sans(12, color: SR.ink3),
+            style: sans(12, color: context.srColors.ink3),
           ),
           Text(
             account.unit,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: sans(10, color: SR.muted),
+            style: sans(10, color: context.srColors.muted),
           ),
         ],
       ),
@@ -431,13 +437,13 @@ class _UsersScreenState extends State<UsersScreen> {
       ),
       Text(
         account.activityMetricsAvailable ? '${account.reservations}' : '—',
-        style: mono(12, color: SR.ink3),
+        style: mono(12, color: context.srColors.ink3),
       ),
       Text(
         account.lastActive,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: sans(11, color: SR.muted),
+        style: sans(11, color: context.srColors.muted),
       ),
       Align(
         alignment: Alignment.centerRight,
@@ -477,7 +483,11 @@ class _UserCompactCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   account.email,
-                  style: mono(10.5, height: 1.45, color: SR.muted),
+                  style: mono(
+                    10.5,
+                    height: 1.45,
+                    color: context.srColors.muted,
+                  ),
                 ),
               ],
             ),

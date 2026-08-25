@@ -11,6 +11,8 @@ import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 
+import '../../theme/sr_theme.dart';
+
 class VerificationsScreen extends StatelessWidget {
   const VerificationsScreen({super.key});
 
@@ -128,12 +130,16 @@ class _QueueRow extends StatelessWidget {
           duration: SR.stateChange,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            color: selected ? SR.primaryTint2 : SR.surface,
+            color: selected
+                ? context.srColors.primaryTint2
+                : context.srColors.surface,
             borderRadius: BorderRadius.circular(SR.rMd - 1),
             border: Border.all(
               color: selected
                   ? SR.primary
-                  : (hovered ? SR.primarySoft : SR.border),
+                  : (hovered
+                        ? context.srColors.primarySoft
+                        : context.srColors.border),
             ),
           ),
           child: Row(
@@ -167,7 +173,7 @@ class _QueueRow extends StatelessWidget {
                         const Spacer(),
                         Text(
                           submission.submitted,
-                          style: mono(10.5, color: SR.muted),
+                          style: mono(10.5, color: context.srColors.muted),
                         ),
                       ],
                     ),
@@ -176,7 +182,7 @@ class _QueueRow extends StatelessWidget {
                       '${submission.kind} · ${submission.unit}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: sans(11.5, color: SR.ink4),
+                      style: sans(11.5, color: context.srColors.ink4),
                     ),
                     const SizedBox(height: 7),
                     Wrap(
@@ -186,7 +192,7 @@ class _QueueRow extends StatelessWidget {
                       children: [
                         Text(
                           submission.idNumber,
-                          style: mono(11, w: 500, color: SR.ink3),
+                          style: mono(11, w: 500, color: context.srColors.ink3),
                         ),
                         SrStatusChip(
                           label: submission.documentPath == null
@@ -279,7 +285,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
                           submission.email,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: mono(11, color: SR.muted),
+                          style: mono(11, color: context.srColors.muted),
                         ),
                       ],
                     ),
@@ -288,16 +294,20 @@ class _VerificationPanelState extends State<_VerificationPanel> {
                   SrPill(
                     label: AppState.verificationLabel(submission.decision),
                     background: switch (submission.decision) {
-                      VerificationDecision.approved => SR.greenTint,
-                      VerificationDecision.rejected => SR.redTint,
-                      VerificationDecision.changesRequested => SR.blueTint,
-                      VerificationDecision.pending => SR.amberTint,
+                      VerificationDecision.approved =>
+                        context.srColors.greenTint,
+                      VerificationDecision.rejected => context.srColors.redTint,
+                      VerificationDecision.changesRequested =>
+                        context.srColors.primaryTint,
+                      VerificationDecision.pending =>
+                        context.srColors.amberTint,
                     },
                     foreground: switch (submission.decision) {
-                      VerificationDecision.approved => SR.greenDark,
-                      VerificationDecision.rejected => SR.red,
-                      VerificationDecision.changesRequested => SR.blueDark,
-                      VerificationDecision.pending => SR.amber,
+                      VerificationDecision.approved =>
+                        context.srColors.greenDark,
+                      VerificationDecision.rejected => context.srColors.red,
+                      VerificationDecision.changesRequested => SR.primaryHover,
+                      VerificationDecision.pending => context.srColors.amber,
                     },
                   ),
                 ],
@@ -326,7 +336,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
             children: [
               Text(
                 'Submitted document',
-                style: sans(11, w: 500, color: SR.ink2),
+                style: sans(11, w: 500, color: context.srColors.ink2),
               ),
               const SizedBox(height: 8),
               _DocumentViewer(state: widget.state, submission: submission),
@@ -335,7 +345,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
                 submission.documentPath == null
                     ? 'The document was deleted after the final decision.'
                     : 'Visible to internal admins only and deleted after a final decision.',
-                style: sans(10.5, height: 1.6, color: SR.muted),
+                style: sans(10.5, height: 1.6, color: context.srColors.muted),
               ),
             ],
           ),
@@ -347,7 +357,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
             children: [
               Text(
                 'Review the submitted identity document and the applicant details before deciding.',
-                style: sans(11.5, height: 1.6, color: SR.ink4),
+                style: sans(11.5, height: 1.6, color: context.srColors.ink4),
               ),
               const SizedBox(height: 14),
               if (submission.isPending)
@@ -431,7 +441,7 @@ class _VerificationPanelState extends State<_VerificationPanel> {
     final submission = widget.submission;
     final confirmed = await showDialog<bool>(
       context: context,
-      barrierColor: SR.scrim,
+      barrierColor: context.srColors.scrim,
       builder: (dialogContext) => SrConfirmDialog(
         title: 'Verify this campus member?',
         content: Text(
@@ -457,20 +467,20 @@ class _VerificationPanelState extends State<_VerificationPanel> {
       Text(
         '${AppState.verificationLabel(submission.decision)}'
         '${submission.decidedAt == null ? '' : ' · ${submission.decidedAt}'}',
-        style: sans(12, w: 500, color: SR.ink2),
+        style: sans(12, w: 500, color: context.srColors.ink2),
       ),
       if (submission.reason case final reason?) ...[
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            color: SR.surfaceSubtle,
+            color: context.srColors.surfaceSubtle,
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: SR.hairline),
+            border: Border.all(color: context.srColors.hairline),
           ),
           child: Text(
             '“$reason”',
-            style: sans(11.5, height: 1.6, color: SR.ink4),
+            style: sans(11.5, height: 1.6, color: context.srColors.ink4),
           ),
         ),
       ],
@@ -488,16 +498,16 @@ class _DocumentViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = submission.documentPath;
     if (path == null || state.backend == null) {
-      return _message('No document is available.');
+      return _message(context, 'No document is available.');
     }
     return FutureBuilder(
       future: state.backend!.downloadDocument(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return _message('Loading private document…');
+          return _message(context, 'Loading private document…');
         }
         if (snapshot.hasError || !snapshot.hasData) {
-          return _message('Document preview is unavailable.');
+          return _message(context, 'Document preview is unavailable.');
         }
         final image =
             submission.document.toLowerCase().endsWith('.jpg') ||
@@ -505,6 +515,7 @@ class _DocumentViewer extends StatelessWidget {
             submission.document.toLowerCase().endsWith('.png');
         if (!image) {
           return _message(
+            context,
             '${submission.document}\nPDF document available for review.',
           );
         }
@@ -519,20 +530,20 @@ class _DocumentViewer extends StatelessWidget {
     );
   }
 
-  Widget _message(String text) => AspectRatio(
+  Widget _message(BuildContext context, String text) => AspectRatio(
     aspectRatio: 16 / 10,
     child: Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: SR.surfaceSubtle,
+        color: context.srColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
       ),
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: sans(11, color: SR.muted),
+        style: sans(11, color: context.srColors.muted),
       ),
     ),
   );

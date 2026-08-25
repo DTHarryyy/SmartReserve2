@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 
+import '../theme/sr_theme.dart';
+
 enum CheckOutcome {
   pass(Icons.check_rounded, SrTone.success, true),
   warn(Icons.priority_high_rounded, SrTone.warning, false),
@@ -16,7 +18,8 @@ enum CheckOutcome {
 
   Color get background => tone.tint;
   Color get foreground => tone.ink;
-  Color get valueColor => _mutedValue ? SR.ink3 : tone.ink;
+  Color valueColor(BuildContext context) =>
+      _mutedValue ? context.srColors.ink3 : tone.ink;
 }
 
 @immutable

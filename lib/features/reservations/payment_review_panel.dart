@@ -9,6 +9,8 @@ import '../../widgets/decision_widgets.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 
+import '../../theme/sr_theme.dart';
+
 /// Payment evidence is rendered only after reservation RLS has already
 /// enforced facility assignment and the snapshotted admin lane.
 class PaymentReviewPanel extends StatelessWidget {
@@ -81,9 +83,9 @@ class _PaymentRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: SR.space8),
       padding: const EdgeInsets.all(SR.space12),
       decoration: BoxDecoration(
-        color: SR.surfaceSubtle,
+        color: context.srColors.surfaceSubtle,
         borderRadius: BorderRadius.circular(SR.rSm),
-        border: Border.all(color: SR.hairline),
+        border: Border.all(color: context.srColors.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,7 +116,7 @@ class _PaymentRow extends StatelessWidget {
           ),
           if (payment.rejectionReason case final reason?) ...[
             const SizedBox(height: SR.space4),
-            Text(reason, style: SrType.bodySm(color: SR.redInk)),
+            Text(reason, style: SrType.bodySm(color: context.srColors.redInk)),
           ],
           const SizedBox(height: SR.space8),
           Wrap(

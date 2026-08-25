@@ -1,5 +1,6 @@
 // ignore_for_file: annotate_overrides
 
+import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -911,19 +912,12 @@ class BackendNotification {
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value)?.toLocal() : null;
 
-/// rating_average arrives as a JSON number, but numeric columns are known
-/// to come back as strings depending on PostgREST config -- this is the
-/// feature's only numeric field, so handle both.
 double? _decimal(Object? value) => switch (value) {
   num n => n.toDouble(),
   String s => double.tryParse(s),
   _ => null,
 };
 
-/// PostgREST returns a to-one embed as either a single object or, in some
-/// configurations, a single-element array. facility_rating_stats and
-/// reservation_feedback are both one-to-one with their parent row, so
-/// parse defensively for either shape rather than trusting one.
 Map<String, dynamic>? _embeddedOne(Object? value) {
   if (value is Map) return Map<String, dynamic>.from(value);
   if (value is List && value.isNotEmpty) {
@@ -1039,9 +1033,6 @@ class BackendFeedback {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  /// Present only on rows returned by feedback_admin_list, which joins
-  /// reservation_requests for this context. Empty on the plain
-  /// reservation_feedback row embedded with each reservation fetch.
   final String facilityName;
   final String requesterName;
 
@@ -1088,8 +1079,9 @@ class BackendFeedbackPage {
       BackendFeedbackPage(
         entries: ((json['rows'] as List?) ?? const [])
             .map(
-              (row) =>
-                  BackendFeedback.fromJson(Map<String, dynamic>.from(row as Map)),
+              (row) => BackendFeedback.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
             )
             .toList(),
         total: (json['total'] as num?)?.toInt() ?? 0,
@@ -1577,9 +1569,6 @@ abstract interface class SmartReserveBackend {
   String facilityPhotoUrl(String path);
 }
 
-/// Optional Phase 1 capabilities. Keeping this separate lets existing test
-/// backends and incremental deployments continue to implement the original
-/// backend contract while production uses the authoritative core APIs.
 abstract interface class SmartReserveCoreBackend {
   Future<BackendReservationQuote> reservationQuote({
     required String facilityId,
@@ -1622,9 +1611,6 @@ abstract interface class SmartReserveCoreBackend {
   });
   Future<List<AuditEntry>> facilityActivity(String facilityId);
 
-  // Feedback and loyalty. Added on this optional interface, not
-  // SmartReserveBackend, so existing test fakes keep compiling and these
-  // features degrade silently wherever a fake stands in for the backend.
   Future<BackendFeedback> submitFeedback({
     required String reservationId,
     required int rating,
@@ -1887,8 +1873,7 @@ class BackendFacility {
         _embeddedOne(json['facility_rating_stats'])?['rating_average'],
       ),
       ratingCount:
-          (_embeddedOne(json['facility_rating_stats'])?['rating_count']
-                  as num?)
+          (_embeddedOne(json['facility_rating_stats'])?['rating_count'] as num?)
               ?.toInt() ??
           0,
     );
@@ -2452,26 +2437,29 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         : '';
     final path =
         '${currentUser.id}/${draft.requestId}/$transactionId$extension';
-    await _client.storage
-        .from('payment-proofs')
-        .uploadBinary(
-          path,
-          draft.proof.bytes,
-          fileOptions: FileOptions(contentType: draft.proof.mimeType),
-        );
     try {
-      final data = await _client.rpc(
-        'submit_payment',
-        params: {
-          'p_transaction_id': transactionId,
-          'p_request_id': draft.requestId,
-          'p_purpose': draft.purpose.raw,
-          'p_amount_centavos': draft.amountCentavos,
-          'p_reference_number': draft.referenceNumber,
-          'p_proof_path': path,
-          'p_idempotency_key': _uuid(),
-        },
-      );
+      await _client.storage
+          .from('payment-proofs')
+          .uploadBinary(
+            path,
+            draft.proof.bytes,
+            fileOptions: FileOptions(contentType: draft.proof.mimeType),
+          )
+          .timeout(const Duration(seconds: 90));
+      final data = await _client
+          .rpc(
+            'submit_payment',
+            params: {
+              'p_transaction_id': transactionId,
+              'p_request_id': draft.requestId,
+              'p_purpose': draft.purpose.raw,
+              'p_amount_centavos': draft.amountCentavos,
+              'p_reference_number': draft.referenceNumber,
+              'p_proof_path': path,
+              'p_idempotency_key': _uuid(),
+            },
+          )
+          .timeout(const Duration(seconds: 30));
       return _paymentFromJson(Map<String, dynamic>.from(data as Map));
     } catch (_) {
       try {
@@ -2539,10 +2527,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<Map<String, dynamic>> verifyPermit(String token) async {
-    final data = await _client.rpc(
-      'verify_permit',
-      params: {'p_token': token},
-    );
+    final data = await _client.rpc('verify_permit', params: {'p_token': token});
     return Map<String, dynamic>.from(data as Map);
   }
 
@@ -2708,7 +2693,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   @override
   Stream<List<BackendLoyaltyTransaction>> loyaltyTransactionStream() {
     final userId = user?.id;
-    var stream = _client.from('loyalty_transactions').stream(primaryKey: ['id']);
+    var stream = _client
+        .from('loyalty_transactions')
+        .stream(primaryKey: ['id']);
     if (userId != null) {
       stream = stream.eq('user_id', userId);
     }
@@ -2740,7 +2727,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     );
     return [
       for (final row in rows as List)
-        BackendLoyaltyBalanceRow.fromJson(Map<String, dynamic>.from(row as Map)),
+        BackendLoyaltyBalanceRow.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
     ];
   }
 
@@ -2755,7 +2744,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     );
     return [
       for (final row in rows as List)
-        BackendLoyaltyTransaction.fromJson(Map<String, dynamic>.from(row as Map)),
+        BackendLoyaltyTransaction.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
     ];
   }
 
@@ -2770,7 +2761,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     );
     return [
       for (final row in rows as List)
-        BackendLoyaltyRedemption.fromJson(Map<String, dynamic>.from(row as Map)),
+        BackendLoyaltyRedemption.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
     ];
   }
 
@@ -2798,8 +2791,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<void> setLoyaltyRewardActive(String rewardId, bool active) => _client
-      .rpc(
+  Future<void> setLoyaltyRewardActive(String rewardId, bool active) =>
+      _client.rpc(
         'set_loyalty_reward_active',
         params: {'p_reward_id': rewardId, 'p_active': active},
       );

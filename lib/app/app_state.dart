@@ -9,7 +9,6 @@ import '../data/campus_data.dart';
 import '../data/seed_accounts.dart';
 import '../data/seed_audit.dart';
 import '../data/seed_facilities.dart';
-import '../data/seed_feedback.dart';
 import '../data/seed_loyalty.dart';
 import '../data/seed_reservations.dart';
 import '../model/account.dart';
@@ -299,9 +298,6 @@ class AppState extends ChangeNotifier {
     'New facilities on campus': false,
   };
 
-  // Feedback -- reservation feedback rides along with each reservation
-  // fetch (see the reservation_feedback embed in supabase_service.dart), so
-  // AppState only needs to track the admin list/summary and in-flight state.
   final Set<String> feedbackSubmitting = {};
   FeedbackQuery feedbackQuery = const FeedbackQuery();
   List<FeedbackEntry> feedbackEntries = [];
@@ -829,7 +825,6 @@ class AppState extends ChangeNotifier {
 
   int get catalogueTotal => facilities.length;
 
-  /// Compatibility helper for feature code; [toasts] owns all toast state.
   void showToast(ToastMessage message, {Duration? duration}) =>
       toasts.show(message, duration: duration);
 
@@ -2672,9 +2667,6 @@ class AppState extends ChangeNotifier {
     if (outcome == VerificationDecision.approved) {
       account.role = AccountRole.user;
     }
-
-    // Existing reservations keep their snapshotted lane and price. Only a
-    // future request uses the newly verified campus identity.
     return 0;
   }
 
@@ -3231,11 +3223,6 @@ class AppState extends ChangeNotifier {
         r,
   ];
 
-  /// The single source of truth for feedback eligibility -- mirrors the
-  /// guard in submit_reservation_feedback exactly, so the UI never offers
-  /// an action the server will reject. A reservation whose every occurrence
-  /// is a no-show can still carry reservation_status == completed (see the
-  /// migration header); the occurrence check below is what excludes it.
   bool canLeaveFeedback(ReservationRequest request) =>
       request.lifecycleStatus == ReservationLifecycleStatus.completed &&
       request.feedbackRating == null &&
@@ -3324,9 +3311,6 @@ class AppState extends ChangeNotifier {
         condition: condition,
         equipment: equipment,
       );
-      // Mutate the model in place so the UI updates in the same frame,
-      // ahead of the background refreshes below reconciling with the
-      // server (which will simply overwrite these with the same values).
       request.feedbackRating = saved.rating;
       request.feedbackComment = saved.comment;
       request.feedbackAt = saved.createdAt;
@@ -3340,7 +3324,10 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       showToast(
-        ToastMessage(friendlyBackendMessage('$error'), tone: AdvisoryTone.block),
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
       );
       return false;
     } finally {
@@ -3364,7 +3351,10 @@ class AppState extends ChangeNotifier {
       if (requestId != _feedbackRequestId) return;
       feedbackEntries = [
         for (final row in page.entries)
-          FeedbackEntry(feedback: row.toModel(), reviewerName: row.requesterName),
+          FeedbackEntry(
+            feedback: row.toModel(),
+            reviewerName: row.requesterName,
+          ),
       ];
       feedbackEntriesTotal = page.total;
       feedbackSummaryData = summary.toModel();
@@ -3478,7 +3468,10 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       showToast(
-        ToastMessage(friendlyBackendMessage('$error'), tone: AdvisoryTone.block),
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
       );
       return false;
     } finally {
@@ -3526,7 +3519,10 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       showToast(
-        ToastMessage(friendlyBackendMessage('$error'), tone: AdvisoryTone.block),
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
       );
       return false;
     }
@@ -3557,7 +3553,10 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       showToast(
-        ToastMessage(friendlyBackendMessage('$error'), tone: AdvisoryTone.block),
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
       );
       return false;
     }
@@ -3571,7 +3570,10 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       showToast(
-        ToastMessage(friendlyBackendMessage('$error'), tone: AdvisoryTone.block),
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
       );
       return false;
     }
@@ -3589,7 +3591,7 @@ class AppState extends ChangeNotifier {
       ];
       notifyListeners();
     } catch (_) {
-      // The details view still opens; RLS remains the source of truth.
+      debugPrint('Failed to refresh activity for ${facility.name}.');
     }
   }
 
@@ -3859,10 +3861,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Re-derives permit eligibility on the server and, when a permit already
-  /// exists with nothing materially changed, returns it unchanged. Safe to
-  /// call whenever the UI wants to make sure a just-confirmed reservation's
-  /// permit has actually landed, without waiting on a realtime refresh.
   Future<bool> issuePermit(String requestId) async {
     final service = _coreBackend;
     if (service == null) return false;
@@ -3872,15 +3870,15 @@ class AppState extends ChangeNotifier {
       return true;
     } catch (error) {
       showToast(
-        ToastMessage(friendlyBackendMessage('$error'), tone: AdvisoryTone.block),
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
       );
       return false;
     }
   }
 
-  /// Best-effort persisted copy of a client-rendered permit PDF. The
-  /// requester already has the bytes in hand regardless of whether this
-  /// succeeds, so failures are swallowed rather than surfaced.
   Future<void> uploadPermitPdf({
     required String requestId,
     required String requesterId,

@@ -5,6 +5,8 @@ import '../../../theme/sr_tokens.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class ProgressStrip extends StatelessWidget {
   const ProgressStrip({
     super.key,
@@ -22,9 +24,9 @@ class ProgressStrip extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -40,7 +42,10 @@ class ProgressStrip extends StatelessWidget {
                     'required items ready',
                     style: sans(12, w: 600),
                   ),
-                  Text(draft.completePct, style: mono(10.5, color: SR.muted)),
+                  Text(
+                    draft.completePct,
+                    style: mono(10.5, color: context.srColors.muted),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -48,7 +53,7 @@ class ProgressStrip extends StatelessWidget {
                 borderRadius: BorderRadius.circular(3),
                 child: Stack(
                   children: [
-                    Container(height: 4, color: SR.hairline),
+                    Container(height: 4, color: context.srColors.hairline),
                     LayoutBuilder(
                       builder: (context, constraints) => AnimatedContainer(
                         duration: SR.progressSweep,
@@ -56,7 +61,7 @@ class ProgressStrip extends StatelessWidget {
                         height: 4,
                         width: constraints.maxWidth * draft.completeFraction,
                         decoration: BoxDecoration(
-                          color: SR.blue,
+                          color: SR.primary,
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
@@ -114,10 +119,18 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, fg, bd) = failing
-        ? (SR.redTint, SR.red, SR.redLine)
+        ? (
+            context.srColors.redTint,
+            context.srColors.red,
+            context.srColors.redLine,
+          )
         : done
-        ? (SR.blue, SR.surface, SR.blueDark)
-        : (SR.surface, SR.muted, SR.border);
+        ? (SR.primary, context.srColors.surface, SR.primaryHover)
+        : (
+            context.srColors.surface,
+            context.srColors.muted,
+            context.srColors.border,
+          );
     return Tooltip(
       message: done ? '${item.label} — ready' : '${item.label} — still needed',
       child: Semantics(
@@ -137,7 +150,9 @@ class _Chip extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: hovered ? SR.borderHover : bd),
+                    border: Border.all(
+                      color: hovered ? context.srColors.borderHover : bd,
+                    ),
                   ),
                   child: done
                       ? Icon(Icons.check_rounded, size: 12, color: fg)

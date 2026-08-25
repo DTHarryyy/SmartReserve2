@@ -89,9 +89,9 @@ class _SrButtonState extends State<SrButton> {
     Widget content(bool hovered) {
       final (Color bg, Color fg, Color? bd) = switch (widget.kind) {
         SrButtonKind.primary => (
-          hovered ? SR.blueDark : SR.blue,
+          hovered ? SR.primaryHover : SR.primary,
           SR.onDark,
-          SR.blueDark,
+          SR.primaryHover,
         ),
         SrButtonKind.secondary => (
           hovered ? c.surfaceSubtle : c.surface,
@@ -208,7 +208,7 @@ class SrIconButton extends StatelessWidget {
     this.fontSize = 12,
     this.background,
     this.foreground,
-    this.hoverForeground = SR.blue,
+    this.hoverForeground = SR.primary,
     this.border,
     this.radius = 9,
     this.shadow,
@@ -517,12 +517,14 @@ class _SrTextFieldState extends State<SrTextField> {
         color: c.surface,
         borderRadius: BorderRadius.circular(9),
         border: Border.all(
-          color: widget.hasError ? c.red : (_focused ? SR.blue : c.borderField),
+          color: widget.hasError
+              ? c.red
+              : (_focused ? SR.primary : c.borderField),
         ),
         boxShadow: _focused
             ? [
                 BoxShadow(
-                  color: (widget.hasError ? c.red : SR.blue).withValues(
+                  color: (widget.hasError ? c.red : SR.primary).withValues(
                     alpha: .12,
                   ),
                   spreadRadius: 3,
@@ -559,15 +561,19 @@ class _SrTextFieldState extends State<SrTextField> {
                 autocorrect: widget.autocorrect,
                 enableSuggestions: widget.enableSuggestions,
                 textCapitalization: widget.textCapitalization,
-                cursorColor: SR.blue,
+                cursorColor: SR.primary,
                 cursorWidth: 1.5,
                 style: style,
                 decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   hintText: widget.placeholder,
-                  hintStyle: style.copyWith(color: c.mutedLight),
                   labelText: null,
                 ),
               ),
@@ -906,36 +912,35 @@ class SrCellGrid extends StatelessWidget {
           : constraints.maxWidth < 520
           ? columns.clamp(1, 2)
           : columns;
+
       final rows = <Widget>[];
+
       for (var i = 0; i < children.length; i += effectiveColumns) {
         final slice = children.sublist(
           i,
           (i + effectiveColumns).clamp(0, children.length),
         );
+
         rows.add(
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var c = 0; c < effectiveColumns; c++) ...[
-                  if (c > 0) const SizedBox(width: 1),
+                for (var c = 0; c < effectiveColumns; c++)
                   Expanded(
                     child: c < slice.length
                         ? slice[c]
                         : ColoredBox(color: colors.surface),
                   ),
-                ],
               ],
             ),
           ),
         );
-        if (i + effectiveColumns < children.length) {
-          rows.add(const SizedBox(height: 1));
-        }
       }
+
       return Container(
         decoration: BoxDecoration(
-          color: colors.hairline,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: colors.hairline),
         ),

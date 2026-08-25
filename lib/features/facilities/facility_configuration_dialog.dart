@@ -5,13 +5,15 @@ import '../../backend/supabase_service.dart';
 import '../../model/facility.dart';
 import '../../theme/sr_tokens.dart';
 
+import '../../theme/sr_theme.dart';
+
 Future<void> showFacilityConfigurationDialog(
   BuildContext context, {
   required AppState state,
   required Facility facility,
 }) => showDialog<void>(
   context: context,
-  barrierColor: SR.scrim,
+  barrierColor: context.srColors.scrim,
   builder: (_) =>
       _FacilityConfigurationDialog(state: state, facility: facility),
 );
@@ -291,7 +293,8 @@ class _FacilityConfigurationDialogState
                           controller: _correctionHours,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
-                            labelText: 'Rejected-proof correction window (hours)',
+                            labelText:
+                                'Rejected-proof correction window (hours)',
                           ),
                         ),
                       ),
@@ -373,7 +376,7 @@ class _FacilityConfigurationDialogState
                   ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: sans(11, color: SR.red)),
+                    Text(_error!, style: sans(11, color: context.srColors.red)),
                   ],
                 ],
               ),
@@ -408,7 +411,7 @@ class _FacilityConfigurationDialogState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: sans(13, w: 600)),
-        Text(caption, style: sans(10.5, color: SR.muted)),
+        Text(caption, style: sans(10.5, color: context.srColors.muted)),
       ],
     ),
   );

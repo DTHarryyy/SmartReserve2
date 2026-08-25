@@ -14,12 +14,33 @@ import 'widgets/toast_host.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Rate-limited so a build error that recurs every frame (e.g. an Overlay
+  // lookup failing inside an animated widget) can never again cost a full
+  // tree dump per frame on the UI isolate — that turned one cosmetic
+  // assertion into a hard "Not Responding" freeze. Each distinct error
+  // prints in full a few times, then collapses to a one-line counter.
+  final errorSeenCount = <String, int>{};
+  const maxFullPrints = 3;
+  void logRateLimited(String key, void Function() printFull) {
+    final seen = (errorSeenCount[key] ?? 0) + 1;
+    errorSeenCount[key] = seen;
+    if (seen <= maxFullPrints) {
+      printFull();
+    } else if (seen == maxFullPrints + 1 || seen % 200 == 0) {
+      debugPrint(
+        '(suppressing further "$key" errors — $seen seen so far)',
+      );
+    }
+  }
+
   FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    debugPrint('FLUTTER ERROR: ${details.exception}\n${details.stack}');
+    logRateLimited(
+      details.exception.toString(),
+      () => FlutterError.presentError(details),
+    );
   };
   PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('UNCAUGHT: $error\n$stack');
+    logRateLimited('$error', () => debugPrint('UNCAUGHT: $error\n$stack'));
     return true;
   };
   final state = AppState(useDemoData: false);

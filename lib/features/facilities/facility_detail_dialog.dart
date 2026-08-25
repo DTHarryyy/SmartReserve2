@@ -11,6 +11,8 @@ import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
 import 'facility_configuration_dialog.dart';
 
+import '../../theme/sr_theme.dart';
+
 Future<void> showFacilityDetail(
   BuildContext context, {
   required AppState state,
@@ -22,7 +24,7 @@ Future<void> showFacilityDetail(
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
-    barrierColor: SR.scrim,
+    barrierColor: context.srColors.scrim,
     builder: (dialogContext) => _FacilityDetailDialog(
       state: state,
       facility: facility,
@@ -103,8 +105,8 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
     if (facility.coords == null) {
       return (
         'NO PIN',
-        SR.dividerSoft,
-        SR.muted,
+        context.srColors.dividerSoft,
+        context.srColors.muted,
         'Students cannot navigate to this facility until it is pinned.',
       );
     }
@@ -112,24 +114,24 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
     if (outside) {
       return (
         'OUTSIDE',
-        SR.redTint,
-        SR.red,
+        context.srColors.redTint,
+        context.srColors.red,
         'The pin sits outside the campus boundary and is flagged for review.',
       );
     }
     if (facility.pinConfidence == PinConfidence.needsCheck) {
       return (
         'NEEDS CHECK',
-        SR.amberTint,
-        SR.amber,
+        context.srColors.amberTint,
+        context.srColors.amber,
         'Precision is ±${facility.accuracy ?? 0} m — loose enough to send '
             'someone to the wrong door.',
       );
     }
     return (
       'VERIFIED',
-      SR.greenTint,
-      SR.greenDark,
+      context.srColors.greenTint,
+      context.srColors.greenDark,
       'Confirmed on the map at ±${facility.accuracy ?? 0} m.',
     );
   }
@@ -145,7 +147,7 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(14),
           boxShadow: const [
             BoxShadow(
@@ -197,13 +199,17 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                           const SizedBox(height: 5),
                           Text(
                             '${facility.room}  ·  ${facility.building}',
-                            style: sans(12, color: SR.ink4),
+                            style: sans(12, color: context.srColors.ink4),
                           ),
                           if (_tab == _Tab.details) ...[
                             const SizedBox(height: 11),
                             Text(
                               facility.description,
-                              style: sans(12.5, height: 1.65, color: SR.ink3),
+                              style: sans(
+                                12.5,
+                                height: 1.65,
+                                color: context.srColors.ink3,
+                              ),
                             ),
                           ],
 
@@ -213,7 +219,7 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                             child: Container(
                               padding: const EdgeInsets.all(3),
                               decoration: BoxDecoration(
-                                color: SR.dividerSoft,
+                                color: context.srColors.dividerSoft,
                                 borderRadius: BorderRadius.circular(9),
                               ),
                               child: Row(
@@ -255,9 +261,11 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                             Container(
                               padding: const EdgeInsets.all(13),
                               decoration: BoxDecoration(
-                                color: SR.surfaceSubtle,
+                                color: context.srColors.surfaceSubtle,
                                 borderRadius: BorderRadius.circular(11),
-                                border: Border.all(color: SR.hairline),
+                                border: Border.all(
+                                  color: context.srColors.hairline,
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,14 +292,17 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                                       13,
                                       w: 500,
                                       color: facility.coords == null
-                                          ? SR.muted
-                                          : SR.ink,
+                                          ? context.srColors.muted
+                                          : context.srColors.ink,
                                     ),
                                   ),
                                   const SizedBox(height: 3),
                                   Text(
                                     pinNote,
-                                    style: sans(11, color: SR.muted),
+                                    style: sans(
+                                      11,
+                                      color: context.srColors.muted,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -361,13 +372,17 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                             const SizedBox(height: 14),
                             Text(
                               'Amenities',
-                              style: sans(11, w: 500, color: SR.ink2),
+                              style: sans(
+                                11,
+                                w: 500,
+                                color: context.srColors.ink2,
+                              ),
                             ),
                             const SizedBox(height: 7),
                             if (facility.amenities.isEmpty)
                               Text(
                                 'None recorded.',
-                                style: sans(11, color: SR.muted),
+                                style: sans(11, color: context.srColors.muted),
                               )
                             else
                               Wrap(
@@ -381,12 +396,15 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: SR.dividerSoft,
+                                        color: context.srColors.dividerSoft,
                                         borderRadius: BorderRadius.circular(7),
                                       ),
                                       child: Text(
                                         amenity,
-                                        style: sans(11, color: SR.ink3),
+                                        style: sans(
+                                          11,
+                                          color: context.srColors.ink3,
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -395,7 +413,7 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                             const SizedBox(height: 14),
                             Text(
                               'Last changed ${facility.updated}',
-                              style: mono(10.5, color: SR.muted),
+                              style: mono(10.5, color: context.srColors.muted),
                             ),
                           ],
 
@@ -519,8 +537,10 @@ class _AdminFacilityGallery extends StatelessWidget {
             height: 78,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: SR.surfaceSubtle,
-              border: Border(bottom: BorderSide(color: SR.hairline)),
+              color: context.srColors.surfaceSubtle,
+              border: Border(
+                bottom: BorderSide(color: context.srColors.hairline),
+              ),
             ),
             child: ListView.separated(
               key: const ValueKey('admin-facility-photo-thumbnails'),
@@ -578,10 +598,10 @@ class _AdminPhotoThumbnail extends StatelessWidget {
         width: 74,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(9),
           border: Border.all(
-            color: selected ? SR.blue : SR.border,
+            color: selected ? SR.primary : context.srColors.border,
             width: selected ? 2 : 1,
           ),
         ),
@@ -646,8 +666,8 @@ class _FacilityActionFooter extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 14 : 16),
       decoration: BoxDecoration(
-        color: SR.surface,
-        border: Border(top: BorderSide(color: SR.divider)),
+        color: context.srColors.surface,
+        border: Border(top: BorderSide(color: context.srColors.divider)),
       ),
       child: compact
           ? Column(
@@ -690,7 +710,7 @@ Future<void> confirmDeleteFacility(
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
-    barrierColor: SR.scrim,
+    barrierColor: context.srColors.scrim,
     builder: (dialogContext) => SrAdaptiveDialog(
       maxWidth: 400,
       maxHeight: 520,
@@ -715,7 +735,7 @@ Future<void> confirmDeleteFacility(
                       'catalogue.'
                 : 'It has no bookings on record. Removing it takes it out of '
                       'the catalogue and off the campus map.',
-            style: sans(12.5, height: 1.65, color: SR.ink4),
+            style: sans(12.5, height: 1.65, color: context.srColors.ink4),
           ),
           const SizedBox(height: 18),
           Wrap(
@@ -770,11 +790,11 @@ class _DialogTab extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: selected
-                ? SR.surface
-                : (hovered ? SR.divider : Colors.transparent),
+                ? context.srColors.surface
+                : (hovered ? context.srColors.divider : Colors.transparent),
             borderRadius: BorderRadius.circular(7),
             border: Border.all(
-              color: selected ? SR.border : Colors.transparent,
+              color: selected ? context.srColors.border : Colors.transparent,
             ),
           ),
           child: Row(
@@ -782,11 +802,20 @@ class _DialogTab extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: sans(11.5, w: 500, color: selected ? SR.ink : SR.ink4),
+                style: sans(
+                  11.5,
+                  w: 500,
+                  color: selected
+                      ? context.srColors.ink
+                      : context.srColors.ink4,
+                ),
               ),
               if (count != null) ...[
                 const SizedBox(width: 6),
-                Text('$count', style: mono(10.5, color: SR.muted)),
+                Text(
+                  '$count',
+                  style: mono(10.5, color: context.srColors.muted),
+                ),
               ],
             ],
           ),

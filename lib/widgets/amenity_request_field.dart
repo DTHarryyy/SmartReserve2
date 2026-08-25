@@ -6,6 +6,8 @@ import '../model/payment.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
+import '../theme/sr_theme.dart';
+
 /// Lets a requester pick additional amenities to ask for on a reservation.
 ///
 /// Renders the current selection as removable chips, followed by a
@@ -63,7 +65,7 @@ class AmenityRequestField extends StatelessWidget {
         'Additional amenities · optional',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: sans(dense ? 11 : 11.5, w: 500, color: SR.ink2),
+        style: sans(dense ? 11 : 11.5, w: 500, color: context.srColors.ink2),
       ),
       const SizedBox(height: 8),
       Wrap(
@@ -126,7 +128,7 @@ class _AmenityPickerButton extends StatelessWidget {
     };
     return PopupMenuButton<void>(
       tooltip: 'Request more amenities',
-      color: SR.surface,
+      color: context.srColors.surface,
       position: PopupMenuPosition.under,
       constraints: const BoxConstraints(
         minWidth: 240,
@@ -195,10 +197,14 @@ class _AmenityPickerButton extends StatelessWidget {
           height: 30,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: selected.isEmpty ? SR.surface : SR.blueTint,
+            color: selected.isEmpty
+                ? context.srColors.surface
+                : context.srColors.primaryTint,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: selected.isEmpty ? SR.borderField : SR.blueSoft,
+              color: selected.isEmpty
+                  ? context.srColors.borderField
+                  : context.srColors.primarySoft,
             ),
           ),
           child: Row(
@@ -207,7 +213,9 @@ class _AmenityPickerButton extends StatelessWidget {
               Icon(
                 Icons.add_rounded,
                 size: 14,
-                color: selected.isEmpty ? SR.muted : SR.blueDark,
+                color: selected.isEmpty
+                    ? context.srColors.muted
+                    : SR.primaryHover,
               ),
               const SizedBox(width: 5),
               Text(
@@ -215,7 +223,9 @@ class _AmenityPickerButton extends StatelessWidget {
                 style: sans(
                   11,
                   w: 500,
-                  color: selected.isEmpty ? SR.ink3 : SR.blueDark,
+                  color: selected.isEmpty
+                      ? context.srColors.ink3
+                      : SR.primaryHover,
                 ),
               ),
             ],
@@ -236,7 +246,10 @@ class _GroupHeader extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
     child: Align(
       alignment: Alignment.centerLeft,
-      child: Text(label, style: mono(9.5, tracking: .04, color: SR.muted)),
+      child: Text(
+        label,
+        style: mono(9.5, tracking: .04, color: context.srColors.muted),
+      ),
     ),
   );
 }
@@ -266,8 +279,10 @@ class _AmenityRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           color: hovered
-              ? SR.blueTint2
-              : (selected ? SR.surfaceSubtle : SR.surface),
+              ? context.srColors.primaryTint2
+              : (selected
+                    ? context.srColors.surfaceSubtle
+                    : context.srColors.surface),
           child: Row(
             children: [
               Container(
@@ -275,14 +290,18 @@ class _AmenityRow extends StatelessWidget {
                 height: 16,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: selected ? SR.blue : SR.surface,
+                  color: selected ? SR.primary : context.srColors.surface,
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                    color: selected ? SR.blue : SR.borderField,
+                    color: selected ? SR.primary : context.srColors.borderField,
                   ),
                 ),
                 child: selected
-                    ? Icon(Icons.check_rounded, size: 11, color: SR.surface)
+                    ? Icon(
+                        Icons.check_rounded,
+                        size: 11,
+                        color: context.srColors.surface,
+                      )
                     : null,
               ),
               const SizedBox(width: 10),
@@ -295,7 +314,10 @@ class _AmenityRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(tag, style: mono(9.5, tracking: .04, color: SR.muted)),
+              Text(
+                tag,
+                style: mono(9.5, tracking: .04, color: context.srColors.muted),
+              ),
             ],
           ),
         ),
@@ -320,7 +342,7 @@ class _AmenityChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
           decoration: BoxDecoration(
-            color: SR.blueTint,
+            color: context.srColors.primaryTint,
             borderRadius: BorderRadius.circular(7),
           ),
           child: ConstrainedBox(
@@ -329,7 +351,7 @@ class _AmenityChip extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: sans(11.5, w: 500, color: SR.blueDark),
+              style: sans(11.5, w: 500, color: SR.primaryHover),
             ),
           ),
         ),
@@ -348,14 +370,16 @@ class _AmenityChip extends StatelessWidget {
                 height: 18,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: SR.surface,
+                  color: context.srColors.surface,
                   shape: BoxShape.circle,
-                  border: Border.all(color: SR.blueSoft),
+                  border: Border.all(color: context.srColors.primarySoft),
                 ),
                 child: Icon(
                   Icons.close_rounded,
                   size: 11,
-                  color: hovered ? SR.blueDark : SR.blueToken,
+                  color: hovered
+                      ? SR.primaryHover
+                      : context.srColors.primaryDeep,
                 ),
               ),
             ),
@@ -385,14 +409,14 @@ class AmenityPills extends StatelessWidget {
         for (final label in shown)
           SrPill(
             label: label,
-            background: SR.blueTint,
-            foreground: SR.blueDark,
+            background: context.srColors.primaryTint,
+            foreground: SR.primaryHover,
           ),
         if (overflow > 0)
           SrPill(
             label: '+$overflow',
-            background: SR.dividerSoft,
-            foreground: SR.ink4,
+            background: context.srColors.dividerSoft,
+            foreground: context.srColors.ink4,
           ),
       ],
     );

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 
+import '../theme/sr_theme.dart';
+
 class SrAdaptiveDialog extends StatelessWidget {
   const SrAdaptiveDialog({
     super.key,
@@ -36,7 +38,7 @@ class SrAdaptiveDialog extends StatelessWidget {
       padding: padding,
       clipBehavior: clipBehavior,
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: compact ? BorderRadius.zero : BorderRadius.circular(14),
         boxShadow: compact ? null : SR.dialogShadow,
       ),
@@ -83,7 +85,7 @@ class SrConfirmDialog extends StatelessWidget {
       onPressed: onConfirm,
       style: FilledButton.styleFrom(
         minimumSize: const Size(44, 44),
-        backgroundColor: destructive ? SR.red : SR.blue,
+        backgroundColor: destructive ? context.srColors.red : SR.primary,
       ),
       child: Text(confirmLabel),
     );
@@ -105,7 +107,11 @@ class SrConfirmDialog extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: sans(compact ? 18 : 19, w: 600, color: SR.ink),
+                    style: sans(
+                      compact ? 18 : 19,
+                      w: 600,
+                      color: context.srColors.ink,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -120,17 +126,17 @@ class SrConfirmDialog extends StatelessWidget {
               ],
             ),
           ),
-          Divider(height: 1, color: SR.border),
+          Divider(height: 1, color: context.srColors.border),
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.all(compact ? 16 : 22),
               child: DefaultTextStyle(
-                style: sans(13, height: 1.55, color: SR.ink3),
+                style: sans(13, height: 1.55, color: context.srColors.ink3),
                 child: content,
               ),
             ),
           ),
-          Divider(height: 1, color: SR.border),
+          Divider(height: 1, color: context.srColors.border),
           Padding(
             padding: EdgeInsets.all(compact ? 16 : 18),
             child: compact

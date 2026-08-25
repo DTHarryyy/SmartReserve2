@@ -11,6 +11,7 @@ import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
+import '../../model/notice.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
@@ -120,7 +121,7 @@ class _StudentAppState extends State<StudentApp> {
     final narrow = SR.isCompact(width);
 
     return ColoredBox(
-      color: SR.bg,
+      color: context.srColors.bg,
       child: Column(
         children: [
           _header(state, account, narrow),
@@ -163,8 +164,9 @@ class _StudentAppState extends State<StudentApp> {
         ),
       );
 
-  Future<void> _openLoyalty(BuildContext context) => Navigator.of(context)
-      .push(MaterialPageRoute(builder: (_) => const LoyaltyPage()));
+  Future<void> _openLoyalty(BuildContext context) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const LoyaltyPage()));
 
   Widget _scrollable(Widget child, double width, bool narrow, {Key? key}) =>
       SrScrollView(
@@ -425,7 +427,7 @@ class _StudentAppState extends State<StudentApp> {
                     ? Center(
                         child: Text(
                           'No notifications yet.',
-                          style: sans(12, color: SR.muted),
+                          style: sans(12, color: context.srColors.muted),
                         ),
                       )
                     : ListView.separated(
@@ -434,14 +436,20 @@ class _StudentAppState extends State<StudentApp> {
                         itemBuilder: (context, index) {
                           final item = state.notifications[index];
                           return ListTile(
-                            tileColor: item.unread ? SR.blueTint : null,
+                            tileColor: item.unread
+                                ? context.srColors.primaryTint
+                                : null,
                             title: Text(
                               item.title,
                               style: sans(12.5, w: item.unread ? 600 : 500),
                             ),
                             subtitle: Text(
                               item.body,
-                              style: sans(11, height: 1.45, color: SR.ink4),
+                              style: sans(
+                                11,
+                                height: 1.45,
+                                color: context.srColors.ink4,
+                              ),
                             ),
                             onTap: () async {
                               Navigator.pop(context);
@@ -495,14 +503,14 @@ class _StudentAppState extends State<StudentApp> {
         if (_shouldShowBanner(account))
           _Banner(
             background: account.verification == VerificationState.pending
-                ? SR.amberTint
-                : SR.greenTint,
+                ? context.srColors.amberTint
+                : context.srColors.greenTint,
             border: account.verification == VerificationState.pending
-                ? SR.amberLine
-                : SR.greenLine,
+                ? context.srColors.amberLine
+                : context.srColors.greenLine,
             foreground: account.verification == VerificationState.pending
-                ? SR.amberTitle
-                : SR.greenDark,
+                ? context.srColors.amberTitle
+                : context.srColors.greenDark,
             title: account.verification == VerificationState.pending
                 ? 'Verification in process'
                 : 'You are verified',
@@ -623,7 +631,7 @@ class _StudentAppState extends State<StudentApp> {
                 filtersActive
                     ? 'Filtered facility results'
                     : 'All public facilities',
-                style: sans(12, w: 600, color: SR.ink3),
+                style: sans(12, w: 600, color: context.srColors.ink3),
               ),
             ),
             if (filtersActive) clear,
@@ -661,7 +669,7 @@ class _StudentAppState extends State<StudentApp> {
           Expanded(child: Text('Categories', style: sans(13, w: 600))),
           Text(
             '${categories.length} available',
-            style: mono(9.5, color: SR.muted),
+            style: mono(9.5, color: context.srColors.muted),
           ),
         ],
       ),
@@ -828,9 +836,9 @@ class _StudentAppState extends State<StudentApp> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 52),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: SR.border),
+          border: Border.all(color: context.srColors.border),
         ),
         child: Column(
           children: [
@@ -842,7 +850,7 @@ class _StudentAppState extends State<StudentApp> {
                 'Pick a facility from Browse. You will see its status here as '
                 'the assigned facility administrator decides.',
                 textAlign: TextAlign.center,
-                style: sans(12, height: 1.6, color: SR.ink4),
+                style: sans(12, height: 1.6, color: context.srColors.ink4),
               ),
             ),
           ],
@@ -858,9 +866,9 @@ class _StudentAppState extends State<StudentApp> {
             margin: const EdgeInsets.only(bottom: 9),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
             decoration: BoxDecoration(
-              color: SR.surface,
+              color: context.srColors.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: SR.border),
+              border: Border.all(color: context.srColors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -873,7 +881,7 @@ class _StudentAppState extends State<StudentApp> {
                     Text(request.facility, style: sans(13, w: 600)),
                     Text(
                       '${request.building} · ${request.room}',
-                      style: sans(11, color: SR.muted),
+                      style: sans(11, color: context.srColors.muted),
                     ),
                   ],
                 ),
@@ -889,11 +897,15 @@ class _StudentAppState extends State<StudentApp> {
                         children: [
                           Text(
                             request.whenLabel,
-                            style: mono(11.5, w: 500, color: SR.ink3),
+                            style: mono(
+                              11.5,
+                              w: 500,
+                              color: context.srColors.ink3,
+                            ),
                           ),
                           Text(
                             '${request.heads} people',
-                            style: mono(11, color: SR.muted),
+                            style: mono(11, color: context.srColors.muted),
                           ),
                         ],
                       ),
@@ -903,10 +915,10 @@ class _StudentAppState extends State<StudentApp> {
                             ? 'Held — verification pending'
                             : request.lifecycleStatus.label,
                         background: request.heldForVerification
-                            ? SR.amberTint
+                            ? context.srColors.amberTint
                             : request.lifecycleStatus.background,
                         foreground: request.heldForVerification
-                            ? SR.amber
+                            ? context.srColors.amber
                             : request.lifecycleStatus.foreground,
                       ),
                     ],
@@ -922,11 +934,15 @@ class _StudentAppState extends State<StudentApp> {
                           children: [
                             Text(
                               request.whenLabel,
-                              style: mono(11.5, w: 500, color: SR.ink3),
+                              style: mono(
+                                11.5,
+                                w: 500,
+                                color: context.srColors.ink3,
+                              ),
                             ),
                             Text(
                               '${request.heads} people',
-                              style: mono(11, color: SR.muted),
+                              style: mono(11, color: context.srColors.muted),
                             ),
                           ],
                         ),
@@ -936,10 +952,10 @@ class _StudentAppState extends State<StudentApp> {
                             ? 'Held — verification pending'
                             : request.lifecycleStatus.label,
                         background: request.heldForVerification
-                            ? SR.amberTint
+                            ? context.srColors.amberTint
                             : request.lifecycleStatus.background,
                         foreground: request.heldForVerification
-                            ? SR.amber
+                            ? context.srColors.amber
                             : request.lifecycleStatus.foreground,
                       ),
                     ],
@@ -952,13 +968,17 @@ class _StudentAppState extends State<StudentApp> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: SR.surfaceSubtle,
+                      color: context.srColors.surfaceSubtle,
                       borderRadius: BorderRadius.circular(9),
-                      border: Border.all(color: SR.hairline),
+                      border: Border.all(color: context.srColors.hairline),
                     ),
                     child: Text(
                       '“$reason”',
-                      style: sans(11.5, height: 1.6, color: SR.ink4),
+                      style: sans(
+                        11.5,
+                        height: 1.6,
+                        color: context.srColors.ink4,
+                      ),
                     ),
                   ),
                 ],
@@ -973,9 +993,9 @@ class _StudentAppState extends State<StudentApp> {
                   Container(
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
-                      color: SR.surfaceSubtle,
+                      color: context.srColors.surfaceSubtle,
                       borderRadius: BorderRadius.circular(9),
-                      border: Border.all(color: SR.hairline),
+                      border: Border.all(color: context.srColors.hairline),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -985,19 +1005,23 @@ class _StudentAppState extends State<StudentApp> {
                           '${pesoFromCentavos(request.outstandingAmountCentavos)} remaining of '
                           '${pesoFromCentavos(request.totalAmountCentavos)} '
                           '(${request.downPaymentPercent}% down payment policy)',
-                          style: sans(10.5, w: 500, color: SR.ink3),
+                          style: sans(
+                            10.5,
+                            w: 500,
+                            color: context.srColors.ink3,
+                          ),
                         ),
                         if (request.paymentDueAt case final due?)
                           Text(
                             'Payment proof due ${_reservationDate(campusWallTime(due))} · '
                             '${_reservationClock(campusWallTime(due))}',
-                            style: sans(10.5, color: SR.muted),
+                            style: sans(10.5, color: context.srColors.muted),
                           ),
                         if (request.balanceDueAt case final due?)
                           Text(
                             'Remaining balance due ${_reservationDate(campusWallTime(due))} · '
                             '${_reservationClock(campusWallTime(due))}',
-                            style: sans(10.5, color: SR.muted),
+                            style: sans(10.5, color: context.srColors.muted),
                           ),
                         if (request.priceLines.isNotEmpty) ...[
                           const SizedBox(height: 6),
@@ -1007,12 +1031,18 @@ class _StudentAppState extends State<StudentApp> {
                                 Expanded(
                                   child: Text(
                                     line.label,
-                                    style: sans(10.5, color: SR.muted),
+                                    style: sans(
+                                      10.5,
+                                      color: context.srColors.muted,
+                                    ),
                                   ),
                                 ),
                                 Text(
                                   pesoFromCentavos(line.totalCentavos),
-                                  style: mono(10.5, color: SR.ink3),
+                                  style: mono(
+                                    10.5,
+                                    color: context.srColors.ink3,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1024,7 +1054,7 @@ class _StudentAppState extends State<StudentApp> {
                               '${payment.purpose.label}: '
                               '${pesoFromCentavos(payment.amountCentavos)} · '
                               '${payment.status.label} · Ref ${payment.referenceNumber}',
-                              style: sans(10.5, color: SR.muted),
+                              style: sans(10.5, color: context.srColors.muted),
                             ),
                         ],
                         if (request.outstandingAmountCentavos > 0 &&
@@ -1040,10 +1070,20 @@ class _StudentAppState extends State<StudentApp> {
                                     ReservationLifecycleStatus.confirmed)) ...[
                           const SizedBox(height: 8),
                           SrButton(
-                            label: 'Submit GCash proof',
+                            label:
+                                state.reservationActionsPending.contains(
+                                  'payment:${request.id}',
+                                )
+                                ? 'Submitting…'
+                                : 'Submit GCash proof',
                             kind: SrButtonKind.primary,
                             dense: true,
-                            onPressed: () => _submitPayment(state, request),
+                            onPressed:
+                                state.reservationActionsPending.contains(
+                                  'payment:${request.id}',
+                                )
+                                ? null
+                                : () => _submitPayment(state, request),
                           ),
                         ],
                       ],
@@ -1060,7 +1100,7 @@ class _StudentAppState extends State<StudentApp> {
                   const SizedBox(height: 10),
                   Text(
                     'Requested amenities',
-                    style: sans(10.5, w: 500, color: SR.ink4),
+                    style: sans(10.5, w: 500, color: context.srColors.ink4),
                   ),
                   const SizedBox(height: 5),
                   AmenityPills(request.amenities),
@@ -1069,7 +1109,7 @@ class _StudentAppState extends State<StudentApp> {
                   const SizedBox(height: 8),
                   Text(
                     'Terms accepted · ${request.acceptedTerms.map((term) => '${term.title} v${term.version}').join(' · ')}',
-                    style: sans(10.5, color: SR.muted),
+                    style: sans(10.5, color: context.srColors.muted),
                   ),
                 ],
                 if (request.occurrences.length > 1) ...[
@@ -1085,7 +1125,10 @@ class _StudentAppState extends State<StudentApp> {
                                   '${_reservationDate(occurrence.startsAt)} · '
                                   '${_reservationClock(occurrence.startsAt)}–'
                                   '${_reservationClock(occurrence.endsAt)}',
-                                  style: mono(10.5, color: SR.ink3),
+                                  style: mono(
+                                    10.5,
+                                    color: context.srColors.ink3,
+                                  ),
                                 ),
                                 const SizedBox(height: 5),
                                 Wrap(
@@ -1103,7 +1146,7 @@ class _StudentAppState extends State<StudentApp> {
                                       style: sans(
                                         10.5,
                                         w: 500,
-                                        color: SR.muted,
+                                        color: context.srColors.muted,
                                       ),
                                     ),
                                     if (state.canCancelOccurrence(
@@ -1140,7 +1183,10 @@ class _StudentAppState extends State<StudentApp> {
                                     '${_reservationDate(occurrence.startsAt)} · '
                                     '${_reservationClock(occurrence.startsAt)}–'
                                     '${_reservationClock(occurrence.endsAt)}',
-                                    style: mono(10.5, color: SR.ink3),
+                                    style: mono(
+                                      10.5,
+                                      color: context.srColors.ink3,
+                                    ),
                                   ),
                                 ),
                                 Text(
@@ -1150,7 +1196,11 @@ class _StudentAppState extends State<StudentApp> {
                                           '_',
                                           ' ',
                                         ),
-                                  style: sans(10.5, w: 500, color: SR.muted),
+                                  style: sans(
+                                    10.5,
+                                    w: 500,
+                                    color: context.srColors.muted,
+                                  ),
                                 ),
                                 if (state.canCancelOccurrence(
                                   request,
@@ -1239,12 +1289,16 @@ class _StudentAppState extends State<StudentApp> {
         Icon(
           done ? Icons.check_circle_rounded : Icons.circle_outlined,
           size: 12,
-          color: done ? SR.green : SR.muted,
+          color: done ? SR.green : context.srColors.muted,
         ),
         const SizedBox(width: 4),
         Text(
           label,
-          style: sans(10.5, w: 500, color: done ? SR.ink3 : SR.muted),
+          style: sans(
+            10.5,
+            w: 500,
+            color: done ? context.srColors.ink3 : context.srColors.muted,
+          ),
         ),
       ],
     );
@@ -1345,6 +1399,34 @@ class _StudentAppState extends State<StudentApp> {
     AppState state,
     ReservationRequest request,
   ) async {
+    Facility? facility;
+    for (final item in state.facilities) {
+      if (item.id == request.facilityId) {
+        facility = item;
+        break;
+      }
+    }
+    FacilityPaymentMethod? method = request.paymentMethod;
+    if (method == null) {
+      for (final item
+          in facility?.paymentMethods ?? const <FacilityPaymentMethod>[]) {
+        if (item.enabled) {
+          method = item;
+          break;
+        }
+      }
+    }
+    if (method == null) {
+      state.showToast(
+        const ToastMessage(
+          'This facility has not published a GCash account yet. '
+          'Contact the administrator before sending payment.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
+
     final depositRemaining =
         request.requiredDownPaymentCentavos - request.verifiedAmountCentavos;
     final fullPaymentDue =
@@ -1365,23 +1447,6 @@ class _StudentAppState extends State<StudentApp> {
     final referenceController = TextEditingController();
     ReservationUpload? proof;
     String? localError;
-    Facility? facility;
-    for (final item in state.facilities) {
-      if (item.id == request.facilityId) {
-        facility = item;
-        break;
-      }
-    }
-    FacilityPaymentMethod? method = request.paymentMethod;
-    if (method == null) {
-      for (final item
-          in facility?.paymentMethods ?? const <FacilityPaymentMethod>[]) {
-        if (item.enabled) {
-          method = item;
-          break;
-        }
-      }
-    }
 
     final submitted = await showDialog<bool>(
       context: context,
@@ -1402,7 +1467,11 @@ class _StudentAppState extends State<StudentApp> {
                   if (method.instructions.isNotEmpty)
                     Text(
                       method.instructions,
-                      style: sans(11, height: 1.5, color: SR.muted),
+                      style: sans(
+                        11,
+                        height: 1.5,
+                        color: context.srColors.muted,
+                      ),
                     ),
                   const SizedBox(height: 12),
                 ],
@@ -1443,6 +1512,12 @@ class _StudentAppState extends State<StudentApp> {
                       'pdf' => 'application/pdf',
                       _ => '',
                     };
+                    if (mime.isEmpty) {
+                      setDialogState(
+                        () => localError = 'Use a JPG, PNG, or PDF receipt.',
+                      );
+                      return;
+                    }
                     setDialogState(() {
                       proof = ReservationUpload(
                         name: file.name,
@@ -1457,7 +1532,10 @@ class _StudentAppState extends State<StudentApp> {
                 ),
                 if (localError != null) ...[
                   const SizedBox(height: 8),
-                  Text(localError!, style: sans(11, color: SR.red)),
+                  Text(
+                    localError!,
+                    style: sans(11, color: context.srColors.red),
+                  ),
                 ],
               ],
             ),
@@ -1487,23 +1565,26 @@ class _StudentAppState extends State<StudentApp> {
         ),
       ),
     );
-    if (submitted == true && proof != null) {
-      final amountCentavos = (double.parse(amountController.text.trim()) * 100)
-          .round();
-      await state.submitReservationPayment(
-        request: request,
-        purpose:
-            request.lifecycleStatus ==
-                ReservationLifecycleStatus.awaitingPayment
-            ? PaymentPurpose.downPayment
-            : PaymentPurpose.balance,
-        amountCentavos: amountCentavos,
-        referenceNumber: referenceController.text,
-        proof: proof!,
-      );
+    try {
+      if (submitted == true && proof != null) {
+        final amountCentavos =
+            (double.parse(amountController.text.trim()) * 100).round();
+        await state.submitReservationPayment(
+          request: request,
+          purpose:
+              request.lifecycleStatus ==
+                  ReservationLifecycleStatus.awaitingPayment
+              ? PaymentPurpose.downPayment
+              : PaymentPurpose.balance,
+          amountCentavos: amountCentavos,
+          referenceNumber: referenceController.text,
+          proof: proof!,
+        );
+      }
+    } finally {
+      amountController.dispose();
+      referenceController.dispose();
     }
-    amountController.dispose();
-    referenceController.dispose();
   }
 
   Future<void> _editAndResubmit(
@@ -1612,7 +1693,7 @@ class _StudentAppState extends State<StudentApp> {
                     ],
                   ),
                 ),
-                Divider(height: 1, color: SR.border),
+                Divider(height: 1, color: context.srColors.border),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.all(compact ? 16 : 22),
@@ -1675,7 +1756,7 @@ class _StudentAppState extends State<StudentApp> {
                     ),
                   ),
                 ),
-                Divider(height: 1, color: SR.border),
+                Divider(height: 1, color: context.srColors.border),
                 Padding(
                   padding: EdgeInsets.all(compact ? 16 : 18),
                   child: compact
@@ -1796,12 +1877,15 @@ class _StudentAppState extends State<StudentApp> {
                               const SizedBox(height: 2),
                               Text(
                                 account.email,
-                                style: mono(11, color: SR.muted),
+                                style: mono(11, color: context.srColors.muted),
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 'Joined ${account.joined}',
-                                style: mono(10.5, color: SR.muted),
+                                style: mono(
+                                  10.5,
+                                  color: context.srColors.muted,
+                                ),
                               ),
                             ],
                           ),
@@ -1838,12 +1922,12 @@ class _StudentAppState extends State<StudentApp> {
                             account.email,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: mono(11, color: SR.muted),
+                            style: mono(11, color: context.srColors.muted),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             'Joined ${account.joined}',
-                            style: mono(10.5, color: SR.muted),
+                            style: mono(10.5, color: context.srColors.muted),
                           ),
                         ],
                       ),
@@ -1869,7 +1953,7 @@ class _StudentAppState extends State<StudentApp> {
                           'verification submission.'
                     : 'Anything drawn from a verified document is fixed — '
                           're-submit to correct it.',
-                style: sans(11, color: SR.muted),
+                style: sans(11, color: context.srColors.muted),
               ),
               const SizedBox(height: 12),
               _detailsGrid(state, account),
@@ -1939,7 +2023,7 @@ class _StudentAppState extends State<StudentApp> {
               const SizedBox(height: 4),
               Text(
                 'Follow this device or choose a theme for SmartReserve.',
-                style: sans(11, color: SR.muted),
+                style: sans(11, color: context.srColors.muted),
               ),
               const SizedBox(height: 12),
               SrThemeSelector(
@@ -2001,9 +2085,9 @@ class _StudentAppState extends State<StudentApp> {
       cta,
     ) = switch (account.verification) {
       VerificationState.verified => (
-        SR.greenTint,
-        SR.greenLine,
-        SR.greenDark,
+        context.srColors.greenTint,
+        context.srColors.greenLine,
+        context.srColors.greenDark,
         'Verified campus member',
         'New requests use the internal-admin lane and this facility’s '
             'published campus-member rate. Verification runs to the end of '
@@ -2011,9 +2095,9 @@ class _StudentAppState extends State<StudentApp> {
         null,
       ),
       VerificationState.pending => (
-        SR.amberTint,
-        SR.amberLine,
-        SR.amber,
+        context.srColors.amberTint,
+        context.srColors.amberLine,
+        context.srColors.amber,
         'Awaiting review',
         'Documents are reviewed each morning, usually within one business '
             'day. Requests submitted now use the external-admin lane; later '
@@ -2021,9 +2105,9 @@ class _StudentAppState extends State<StudentApp> {
         null,
       ),
       VerificationState.rejected => (
-        SR.redTint,
-        SR.redLine,
-        SR.red,
+        context.srColors.redTint,
+        context.srColors.redLine,
+        context.srColors.red,
         'Campus claim not approved',
         'You can still reserve through the guest/unverified lane at each '
             'facility’s guest rate. One appeal with a different document is '
@@ -2031,9 +2115,9 @@ class _StudentAppState extends State<StudentApp> {
         'Appeal with another document',
       ),
       VerificationState.none => (
-        SR.blueTint2,
-        SR.blueLine,
-        SR.blueDark,
+        context.srColors.primaryTint2,
+        context.srColors.primaryLine,
+        SR.primaryHover,
         'Booking as a guest',
         'Campus members may have a different facility rate. If that is you, '
             'verification takes about a minute.',
@@ -2049,7 +2133,10 @@ class _StudentAppState extends State<StudentApp> {
         children: [
           Text(title, style: sans(13.5, w: 600, tracking: -.01, color: accent)),
           const SizedBox(height: 6),
-          Text(body, style: sans(12, height: 1.65, color: SR.ink4)),
+          Text(
+            body,
+            style: sans(12, height: 1.65, color: context.srColors.ink4),
+          ),
           if (cta != null) ...[
             const SizedBox(height: 13),
             SrButton(
@@ -2109,9 +2196,9 @@ class _StudentAppState extends State<StudentApp> {
     ];
     return Container(
       decoration: BoxDecoration(
-        color: SR.hairline,
+        color: context.srColors.hairline,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SR.hairline),
+        border: Border.all(color: context.srColors.hairline),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -2137,7 +2224,7 @@ class _StudentAppState extends State<StudentApp> {
   }) {
     final editing = _editingField == field;
     return Container(
-      color: SR.surface,
+      color: context.srColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -2172,7 +2259,10 @@ class _StudentAppState extends State<StudentApp> {
                       ),
                       if (locked && lockedNote != null) ...[
                         const SizedBox(height: 2),
-                        Text(lockedNote, style: sans(10.5, color: SR.muted)),
+                        Text(
+                          lockedNote,
+                          style: sans(10.5, color: context.srColors.muted),
+                        ),
                       ],
                     ],
                   ),
@@ -2248,9 +2338,9 @@ class _BottomNav extends StatelessWidget {
                 height: 58,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
-                  color: SR.surface,
+                  color: context.srColors.surface,
                   borderRadius: BorderRadius.circular(SR.rFull),
-                  border: Border.all(color: SR.border),
+                  border: Border.all(color: context.srColors.border),
                   boxShadow: SR.floatShadow,
                 ),
                 child: Stack(
@@ -2270,7 +2360,7 @@ class _BottomNav extends StatelessWidget {
                           ),
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: SR.primaryTint,
+                              color: context.srColors.primaryTint,
                               borderRadius: BorderRadius.circular(SR.rFull),
                             ),
                           ),
@@ -2324,7 +2414,7 @@ class _AssistantButton extends StatelessWidget {
           height: 58,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: hovered ? SR.primary : SR.primaryTint,
+            color: hovered ? SR.primary : context.srColors.primaryTint,
             shape: BoxShape.circle,
             boxShadow: hovered ? SR.popoverShadow : SR.floatShadow,
           ),
@@ -2363,7 +2453,9 @@ class _BottomNavItemState extends State<_BottomNavItem> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.selected ? SR.primaryDeep : SR.ink4;
+    final color = widget.selected
+        ? context.srColors.primaryDeep
+        : context.srColors.ink4;
     return Semantics(
       button: true,
       selected: widget.selected,
@@ -2430,9 +2522,15 @@ class _CategoryShortcut extends StatelessWidget {
           width: 92,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? SR.primaryTint : SR.surface,
+            color: selected
+                ? context.srColors.primaryTint
+                : context.srColors.surface,
             borderRadius: BorderRadius.circular(SR.rLg),
-            border: Border.all(color: selected ? SR.primaryLine : SR.border),
+            border: Border.all(
+              color: selected
+                  ? context.srColors.primaryLine
+                  : context.srColors.border,
+            ),
             boxShadow: selected ? null : SR.cardShadow,
           ),
           child: Column(
@@ -2442,7 +2540,7 @@ class _CategoryShortcut extends StatelessWidget {
                 height: 38,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: selected ? SR.primary : SR.surfaceSubtle,
+                  color: selected ? SR.primary : context.srColors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(SR.rMd),
                 ),
                 child: Icon(
@@ -2459,7 +2557,9 @@ class _CategoryShortcut extends StatelessWidget {
                 style: sans(
                   10.5,
                   w: selected ? 600 : 500,
-                  color: selected ? SR.primaryDeep : SR.ink3,
+                  color: selected
+                      ? context.srColors.primaryDeep
+                      : context.srColors.ink3,
                 ),
               ),
             ],
@@ -2485,7 +2585,7 @@ class _AmenitiesFilter extends StatelessWidget {
   Widget build(BuildContext context) => PopupMenuButton<String>(
     tooltip: 'Filter by amenities',
     onSelected: onToggle,
-    color: SR.surface,
+    color: context.srColors.surface,
     position: PopupMenuPosition.under,
     constraints: const BoxConstraints(maxHeight: 360, minWidth: 220),
     itemBuilder: (context) => [
@@ -2499,7 +2599,9 @@ class _AmenitiesFilter extends StatelessWidget {
                     ? Icons.check_box_rounded
                     : Icons.check_box_outline_blank_rounded,
                 size: 18,
-                color: selected.contains(amenity) ? SR.blue : SR.muted,
+                color: selected.contains(amenity)
+                    ? SR.primary
+                    : context.srColors.muted,
               ),
               const SizedBox(width: 9),
               Expanded(child: Text(amenity, style: sans(11.5, w: 500))),
@@ -2515,9 +2617,15 @@ class _AmenitiesFilter extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 11),
         decoration: BoxDecoration(
-          color: selected.isEmpty ? SR.surface : SR.blueTint,
+          color: selected.isEmpty
+              ? context.srColors.surface
+              : context.srColors.primaryTint,
           borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: selected.isEmpty ? SR.border : SR.blueSoft),
+          border: Border.all(
+            color: selected.isEmpty
+                ? context.srColors.border
+                : context.srColors.primarySoft,
+          ),
         ),
         child: Row(
           children: [
@@ -2528,11 +2636,15 @@ class _AmenitiesFilter extends StatelessWidget {
                     : 'Amenities (${selected.length})',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500, color: SR.ink3),
+                style: sans(11.5, w: 500, color: context.srColors.ink3),
               ),
             ),
             const SizedBox(width: 7),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: SR.muted),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: context.srColors.muted,
+            ),
           ],
         ),
       ),
@@ -2568,9 +2680,9 @@ class _BrowseStatus extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 44),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       children: [
@@ -2587,7 +2699,7 @@ class _BrowseStatus extends StatelessWidget {
               _BrowseStatusKind.noMatch => Icons.search_off_rounded,
               _BrowseStatusKind.loading => Icons.apartment_rounded,
             },
-            color: SR.muted,
+            color: context.srColors.muted,
             size: 28,
           ),
         const SizedBox(height: 8),
@@ -2611,7 +2723,7 @@ class _BrowseStatus extends StatelessWidget {
                   'Try a different search, capacity, category, or amenity.',
               },
           textAlign: TextAlign.center,
-          style: sans(12, height: 1.6, color: SR.ink4),
+          style: sans(12, height: 1.6, color: context.srColors.ink4),
         ),
         if (onAction != null) ...[
           const SizedBox(height: 14),
@@ -2638,18 +2750,22 @@ class _BrowseRefreshWarning extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(
-      color: SR.amberTint,
+      color: context.srColors.amberTint,
       borderRadius: BorderRadius.circular(SR.rMd),
-      border: Border.all(color: SR.amberLine),
+      border: Border.all(color: context.srColors.amberLine),
     ),
     child: Row(
       children: [
-        Icon(Icons.sync_problem_rounded, size: 18, color: SR.amberTitle),
+        Icon(
+          Icons.sync_problem_rounded,
+          size: 18,
+          color: context.srColors.amberTitle,
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             '$message Showing the most recently loaded facilities.',
-            style: sans(11.5, color: SR.amberTitle),
+            style: sans(11.5, color: context.srColors.amberTitle),
           ),
         ),
         const SizedBox(width: 8),
@@ -2764,14 +2880,14 @@ class _FacilityCard extends StatelessWidget {
                     facility.whereLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: SrType.caption(color: SR.muted),
+                    style: SrType.caption(color: context.srColors.muted),
                   ),
                   const SizedBox(height: SR.space8),
                   Text(
                     _factsLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: SrType.bodySm(w: 500, color: SR.ink3),
+                    style: SrType.bodySm(w: 500, color: context.srColors.ink3),
                   ),
                   if (facility.hasRatings) ...[
                     const SizedBox(height: 3),
@@ -2792,7 +2908,7 @@ class _FacilityCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: SR.space12),
-                  Divider(height: 1, color: SR.hairline),
+                  Divider(height: 1, color: context.srColors.hairline),
                   const SizedBox(height: SR.space8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2815,8 +2931,8 @@ class _FacilityCard extends StatelessWidget {
                             : '${pesoFromCentavos(facility.hourlyRateCentavosFor(audience) * 2)} / 2 h',
                         style: SrType.subhead(
                           color: facility.hourlyRateCentavosFor(audience) == 0
-                              ? SR.greenDark
-                              : SR.ink,
+                              ? context.srColors.greenDark
+                              : context.srColors.ink,
                         ),
                       ),
                     ],
@@ -2841,9 +2957,9 @@ class _CoverChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: SR.space8, vertical: 4),
     decoration: BoxDecoration(
-      color: SR.glass,
+      color: context.srColors.glass,
       borderRadius: BorderRadius.circular(SR.rFull),
-      border: Border.all(color: SR.glassLine2),
+      border: Border.all(color: context.srColors.glassLine2),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -2861,7 +2977,7 @@ class _CoverChip extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: SrType.caption(w: 600, color: SR.ink2),
+            style: SrType.caption(w: 600, color: context.srColors.ink2),
           ),
         ),
       ],
@@ -2881,9 +2997,9 @@ class _Panel extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     decoration: BoxDecoration(
-      color: background ?? SR.surface,
+      color: background ?? context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: border ?? SR.border),
+      border: Border.all(color: border ?? context.srColors.border),
     ),
     child: child,
   );
@@ -2937,7 +3053,10 @@ class _Banner extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 3),
-        Text(body, style: sans(11.5, height: 1.6, color: SR.ink4)),
+        Text(
+          body,
+          style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+        ),
       ],
     ),
   );

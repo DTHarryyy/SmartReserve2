@@ -4,6 +4,8 @@ import '../../../theme/sr_tokens.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class AdvisoryCard extends StatelessWidget {
   const AdvisoryCard({super.key, required this.advisory});
 
@@ -22,9 +24,9 @@ class AdvisoryCard extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
       decoration: BoxDecoration(
-        color: advisory.background,
+        color: advisory.background(context),
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: advisory.borderColor),
+        border: Border.all(color: advisory.borderColor(context)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -34,10 +36,14 @@ class AdvisoryCard extends StatelessWidget {
             height: 20,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: advisory.iconBackground,
+              color: advisory.iconBackground(context),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(advisory.icon, size: 12, color: advisory.foreground),
+            child: Icon(
+              advisory.icon,
+              size: 12,
+              color: advisory.foreground(context),
+            ),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -46,7 +52,7 @@ class AdvisoryCard extends StatelessWidget {
               children: [
                 Text(
                   advisory.title,
-                  style: sans(12, w: 600, color: advisory.foreground),
+                  style: sans(12, w: 600, color: advisory.foreground(context)),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -54,7 +60,7 @@ class AdvisoryCard extends StatelessWidget {
                   style: sans(
                     11.5,
                     height: 1.55,
-                    color: advisory.bodyForeground,
+                    color: advisory.bodyForeground(context),
                   ),
                 ),
                 if (advisory.actions.isNotEmpty) ...[
@@ -66,7 +72,7 @@ class AdvisoryCard extends StatelessWidget {
                       for (final action in advisory.actions)
                         _ActionButton(
                           action: action,
-                          accent: advisory.foreground,
+                          accent: advisory.foreground(context),
                         ),
                     ],
                   ),
@@ -94,13 +100,19 @@ class _ActionButton extends StatelessWidget {
         duration: SR.stateChange,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: action.primary ? accent : (hovered ? SR.surface : SR.glass),
+          color: action.primary
+              ? accent
+              : (hovered ? context.srColors.surface : context.srColors.glass),
           borderRadius: BorderRadius.circular(7),
           border: Border.all(color: accent.withValues(alpha: .45)),
         ),
         child: Text(
           action.label,
-          style: sans(11, w: 600, color: action.primary ? SR.surface : accent),
+          style: sans(
+            11,
+            w: 600,
+            color: action.primary ? context.srColors.surface : accent,
+          ),
         ),
       ),
     ),

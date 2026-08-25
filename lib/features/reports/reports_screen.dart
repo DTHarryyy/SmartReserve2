@@ -13,6 +13,8 @@ import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 import 'reports_data.dart';
 
+import '../../theme/sr_theme.dart';
+
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key, this.onFixLocation});
 
@@ -170,9 +172,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
         vertical: 11,
       ),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
       ),
       child: compact
           ? Row(
@@ -283,52 +285,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _reportError(AppState state, String error, {required bool stale}) =>
-      Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: SR.redTint,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: SR.red.withValues(alpha: .25)),
+  Widget _reportError(
+    AppState state,
+    String error, {
+    required bool stale,
+  }) => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: context.srColors.redTint,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: context.srColors.red.withValues(alpha: .25)),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            stale ? '$error Showing the last verified result.' : error,
+            style: sans(11.5, height: 1.45, color: context.srColors.red),
+          ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                stale ? '$error Showing the last verified result.' : error,
-                style: sans(11.5, height: 1.45, color: SR.red),
-              ),
-            ),
-            const SizedBox(width: 10),
-            SrButton(
-              label: 'Retry',
-              dense: true,
-              onPressed: state.reportsLoading
-                  ? null
-                  : () => state.refreshReports(
-                      scope: ReportScope.forRange(
-                        _range,
-                        category: _category == 'All categories'
-                            ? null
-                            : _category,
-                      ),
-                    ),
-            ),
-          ],
+        const SizedBox(width: 10),
+        SrButton(
+          label: 'Retry',
+          dense: true,
+          onPressed: state.reportsLoading
+              ? null
+              : () => state.refreshReports(
+                  scope: ReportScope.forRange(
+                    _range,
+                    category: _category == 'All categories' ? null : _category,
+                  ),
+                ),
         ),
-      );
+      ],
+    ),
+  );
 
   Widget _staleNotice(ReportSnapshot snapshot) => Container(
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
     decoration: BoxDecoration(
-      color: SR.amberTint,
+      color: context.srColors.amberTint,
       borderRadius: BorderRadius.circular(9),
     ),
     child: Text(
       'Last verified ${_reportTimestamp(snapshot.generatedAt)}. These figures may be out of date.',
-      style: sans(11.5, color: SR.ink3),
+      style: sans(11.5, color: context.srColors.ink3),
     ),
   );
 
@@ -336,14 +339,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Text(
       'No verified report is available for this scope.',
       textAlign: TextAlign.center,
-      style: sans(12, color: SR.muted),
+      style: sans(12, color: context.srColors.muted),
     ),
   );
 
@@ -365,9 +368,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(compact ? 14 : 18),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -377,11 +380,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
             spacing: 9,
             runSpacing: 2,
             children: [
-              Text(number, style: mono(10, w: 500, color: SR.blue)),
+              Text(number, style: mono(10, w: 500, color: SR.primary)),
               Text(title, style: sans(13.5, w: 600, tracking: -.01)),
               Tooltip(
                 message: tooltip ?? caption,
-                child: Text('$caption ⓘ', style: sans(11, color: SR.muted)),
+                child: Text(
+                  '$caption ⓘ',
+                  style: sans(11, color: context.srColors.muted),
+                ),
               ),
             ],
           ),
@@ -434,7 +440,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   Text('AVERAGE UTILISATION', style: keyLabel),
                 ],
               ),
-              Container(width: 1, height: 34, color: SR.hairline),
+              Container(width: 1, height: 34, color: context.srColors.hairline),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Text(
@@ -445,7 +451,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             '${formatUtilisationPercent(worst.fraction)} of its own opening hours. '
                             'Sorted worst first, because the actionable '
                             'insight is the empty room.',
-                  style: sans(11.5, height: 1.55, color: SR.ink4),
+                  style: sans(11.5, height: 1.55, color: context.srColors.ink4),
                 ),
               ),
             ],
@@ -458,7 +464,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 'No facilities in this category yet — insufficient data to '
                 'report.',
                 textAlign: TextAlign.center,
-                style: sans(12, color: SR.muted),
+                style: sans(12, color: context.srColors.muted),
               ),
             )
           else
@@ -501,7 +507,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: SR.divider)),
+        border: Border(top: BorderSide(color: context.srColors.divider)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -527,7 +533,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           if (rowCount == 0)
             Text(
               'No reservations in this period.',
-              style: sans(11.5, color: SR.muted),
+              style: sans(11.5, color: context.srColors.muted),
             )
           else if (!state.usesDemoData)
             for (final row in liveRows) _bookedOccurrenceRow(row)
@@ -536,7 +542,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: SR.dividerSoft)),
+                  border: Border(
+                    top: BorderSide(color: context.srColors.dividerSoft),
+                  ),
                 ),
                 child: SR.isCompact(MediaQuery.sizeOf(context).width)
                     ? Column(
@@ -547,7 +555,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               Expanded(
                                 child: Text(
                                   r.whenLabel,
-                                  style: mono(11, w: 500, color: SR.ink3),
+                                  style: mono(
+                                    11,
+                                    w: 500,
+                                    color: context.srColors.ink3,
+                                  ),
                                 ),
                               ),
                               SrPill(
@@ -561,10 +573,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           const SizedBox(height: 5),
                           Text(
                             r.purpose,
-                            style: sans(11.5, height: 1.45, color: SR.ink2),
+                            style: sans(
+                              11.5,
+                              height: 1.45,
+                              color: context.srColors.ink2,
+                            ),
                           ),
                           const SizedBox(height: 3),
-                          Text(r.requester, style: sans(11, color: SR.muted)),
+                          Text(
+                            r.requester,
+                            style: sans(11, color: context.srColors.muted),
+                          ),
                         ],
                       )
                     : Row(
@@ -575,7 +594,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               r.whenLabel,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: mono(11, w: 500, color: SR.ink3),
+                              style: mono(
+                                11,
+                                w: 500,
+                                color: context.srColors.ink3,
+                              ),
                             ),
                           ),
                           Expanded(
@@ -583,11 +606,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               r.purpose,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: sans(11.5, color: SR.ink2),
+                              style: sans(11.5, color: context.srColors.ink2),
                             ),
                           ),
                           const SizedBox(width: 10),
-                          Text(r.requester, style: sans(11, color: SR.muted)),
+                          Text(
+                            r.requester,
+                            style: sans(11, color: context.srColors.muted),
+                          ),
                           const SizedBox(width: 10),
                           SrPill(
                             label: r.status.label,
@@ -611,7 +637,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 9),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: SR.dividerSoft)),
+        border: Border(top: BorderSide(color: context.srColors.dividerSoft)),
       ),
       child: Wrap(
         spacing: 12,
@@ -620,13 +646,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         children: [
           Text(
             '${formatCampusDate(starts)} · ${starts.hour}:$startMinute–${ends.hour}:$endMinute',
-            style: mono(11, w: 500, color: SR.ink3),
+            style: mono(11, w: 500, color: context.srColors.ink3),
           ),
-          Text(row.purpose, style: sans(11.5, color: SR.ink2)),
-          Text(row.requester, style: sans(11, color: SR.muted)),
+          Text(row.purpose, style: sans(11.5, color: context.srColors.ink2)),
+          Text(row.requester, style: sans(11, color: context.srColors.muted)),
           Text(
             '${row.bookedHours.toStringAsFixed(2)} h in range',
-            style: mono(10.5, color: SR.muted),
+            style: mono(10.5, color: context.srColors.muted),
           ),
         ],
       ),
@@ -677,7 +703,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           child: Text(
                             hour,
                             textAlign: TextAlign.center,
-                            style: mono(8.5, color: SR.mutedLight),
+                            style: mono(
+                              8.5,
+                              color: context.srColors.mutedLight,
+                            ),
                           ),
                         ),
                     ],
@@ -692,7 +721,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           width: 34,
                           child: Text(
                             heatmap.days[day],
-                            style: mono(9.5, w: 500, color: SR.muted),
+                            style: mono(
+                              9.5,
+                              w: 500,
+                              color: context.srColors.muted,
+                            ),
                           ),
                         ),
                         for (
@@ -721,7 +754,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 : 'Peak is ${heatmap.peak} concurrent requests in one block. '
                       'That is the case for converting space, and it exports '
                       'as-is for a budget memo.',
-            style: sans(11, height: 1.55, color: SR.ink4),
+            style: sans(11, height: 1.55, color: context.srColors.ink4),
           ),
         ],
       ),
@@ -751,7 +784,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             SrKeyCell(
               label: 'EXPIRED',
               value: '${performance.expired}',
-              valueColor: performance.expired > 0 ? SR.red : SR.ink,
+              valueColor: performance.expired > 0
+                  ? context.srColors.red
+                  : context.srColors.ink,
             ),
           ],
         ),
@@ -760,7 +795,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Text(
             'No decisions in this period — insufficient data rather than a '
             'misleading zero.',
-            style: sans(11.5, height: 1.55, color: SR.muted),
+            style: sans(11.5, height: 1.55, color: context.srColors.muted),
           )
         else
           for (final admin in performance.perAdmin)
@@ -782,13 +817,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       borderRadius: BorderRadius.circular(4),
                       child: Stack(
                         children: [
-                          Container(height: 7, color: SR.divider),
+                          Container(height: 7, color: context.srColors.divider),
                           FractionallySizedBox(
                             widthFactor:
                                 (admin.decisions /
                                         performance.perAdmin.first.decisions)
                                     .clamp(0.05, 1.0),
-                            child: Container(height: 7, color: SR.blue),
+                            child: Container(height: 7, color: SR.primary),
                           ),
                         ],
                       ),
@@ -797,7 +832,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   const SizedBox(width: 10),
                   Text(
                     '${admin.decisions}',
-                    style: mono(10.5, color: SR.muted),
+                    style: mono(10.5, color: context.srColors.muted),
                   ),
                   const SizedBox(width: 10),
                   SizedBox(
@@ -807,7 +842,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ? '${admin.median.round()} h'
                           : '${(admin.median / 24).toStringAsFixed(1)} d',
                       textAlign: TextAlign.right,
-                      style: mono(10.5, w: 500, color: SR.ink3),
+                      style: mono(10.5, w: 500, color: context.srColors.ink3),
                     ),
                   ),
                 ],
@@ -817,7 +852,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Text(
           'Figures are limited to your assigned facilities and matching '
           'reservation lane.',
-          style: sans(10.5, height: 1.55, color: SR.muted),
+          style: sans(10.5, height: 1.55, color: context.srColors.muted),
         ),
       ],
     ),
@@ -837,14 +872,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Text(
             'Every facility has a pin inside the boundary, close to its '
             'building, with photos. Nothing to fix.',
-            style: sans(12, height: 1.6, color: SR.ink4),
+            style: sans(12, height: 1.6, color: context.srColors.ink4),
           )
         else
           for (final issue in issues)
             Container(
               padding: const EdgeInsets.symmetric(vertical: 11),
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: SR.dividerSoft)),
+                border: Border(
+                  top: BorderSide(color: context.srColors.dividerSoft),
+                ),
               ),
               child: Wrap(
                 spacing: 12,
@@ -854,14 +891,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   SrPill(
                     label: issue.severity.label,
                     background: switch (issue.severity) {
-                      QualitySeverity.blocking => SR.redTint,
-                      QualitySeverity.warning => SR.amberTint,
-                      QualitySeverity.minor => SR.dividerSoft,
+                      QualitySeverity.blocking => context.srColors.redTint,
+                      QualitySeverity.warning => context.srColors.amberTint,
+                      QualitySeverity.minor => context.srColors.dividerSoft,
                     },
                     foreground: switch (issue.severity) {
-                      QualitySeverity.blocking => SR.red,
-                      QualitySeverity.warning => SR.amber,
-                      QualitySeverity.minor => SR.ink4,
+                      QualitySeverity.blocking => context.srColors.red,
+                      QualitySeverity.warning => context.srColors.amber,
+                      QualitySeverity.minor => context.srColors.ink4,
                     },
                     fontSize: 10,
                   ),
@@ -878,7 +915,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     constraints: const BoxConstraints(maxWidth: 420),
                     child: Text(
                       issue.issue,
-                      style: sans(11.5, height: 1.5, color: SR.ink4),
+                      style: sans(
+                        11.5,
+                        height: 1.5,
+                        color: context.srColors.ink4,
+                      ),
                     ),
                   ),
                   SrButton(
@@ -896,7 +937,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Text(
           'Every row deep-links into the facility with the offending field '
           'loaded, so reporting a problem and fixing it are one step apart.',
-          style: sans(11, height: 1.6, color: SR.muted),
+          style: sans(11, height: 1.6, color: context.srColors.muted),
         ),
       ],
     ),
@@ -925,8 +966,10 @@ class _UtilisationRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
           decoration: BoxDecoration(
             color: selected
-                ? SR.blueTint
-                : (hovered ? SR.surfaceSubtle : Colors.transparent),
+                ? context.srColors.primaryTint
+                : (hovered
+                      ? context.srColors.surfaceSubtle
+                      : Colors.transparent),
             borderRadius: BorderRadius.circular(8),
           ),
           child: compact
@@ -945,7 +988,10 @@ class _UtilisationRow extends StatelessWidget {
                               ),
                               Text(
                                 row.building,
-                                style: sans(10.5, color: SR.muted),
+                                style: sans(
+                                  10.5,
+                                  color: context.srColors.muted,
+                                ),
                               ),
                             ],
                           ),
@@ -961,7 +1007,7 @@ class _UtilisationRow extends StatelessWidget {
                       borderRadius: BorderRadius.circular(5),
                       child: Stack(
                         children: [
-                          Container(height: 9, color: SR.divider),
+                          Container(height: 9, color: context.srColors.divider),
                           AnimatedFractionallySizedBox(
                             duration: const Duration(milliseconds: 400),
                             curve: SR.easing,
@@ -971,8 +1017,8 @@ class _UtilisationRow extends StatelessWidget {
                               color: row.fraction < .25
                                   ? SR.orange
                                   : (row.fraction < .6
-                                        ? SR.blueBright
-                                        : SR.blue),
+                                        ? SR.primaryBright
+                                        : SR.primary),
                             ),
                           ),
                         ],
@@ -981,7 +1027,7 @@ class _UtilisationRow extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       '${row.bookedHours.round()} of ${row.availableHours.round()} available hours booked',
-                      style: mono(10, color: SR.muted),
+                      style: mono(10, color: context.srColors.muted),
                     ),
                   ],
                 )
@@ -1003,7 +1049,7 @@ class _UtilisationRow extends StatelessWidget {
                             row.building,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: sans(10, color: SR.muted),
+                            style: sans(10, color: context.srColors.muted),
                           ),
                         ],
                       ),
@@ -1014,7 +1060,10 @@ class _UtilisationRow extends StatelessWidget {
                         borderRadius: BorderRadius.circular(5),
                         child: Stack(
                           children: [
-                            Container(height: 9, color: SR.divider),
+                            Container(
+                              height: 9,
+                              color: context.srColors.divider,
+                            ),
                             AnimatedFractionallySizedBox(
                               duration: const Duration(milliseconds: 400),
                               curve: SR.easing,
@@ -1024,8 +1073,8 @@ class _UtilisationRow extends StatelessWidget {
                                 color: row.fraction < .25
                                     ? SR.orange
                                     : (row.fraction < .6
-                                          ? SR.blueBright
-                                          : SR.blue),
+                                          ? SR.primaryBright
+                                          : SR.primary),
                               ),
                             ),
                           ],
@@ -1047,7 +1096,7 @@ class _UtilisationRow extends StatelessWidget {
                       child: Text(
                         '${row.bookedHours.round()} / ${row.availableHours.round()} h',
                         textAlign: TextAlign.right,
-                        style: mono(10.5, color: SR.muted),
+                        style: mono(10.5, color: context.srColors.muted),
                       ),
                     ),
                   ],
@@ -1081,8 +1130,8 @@ class _HeatCell extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: count == 0
-              ? SR.divider
-              : Color.lerp(SR.blueTint, SR.blue, intensity),
+              ? context.srColors.divider
+              : Color.lerp(context.srColors.primaryTint, SR.primary, intensity),
           borderRadius: BorderRadius.circular(5),
         ),
         child: Text(
@@ -1090,7 +1139,7 @@ class _HeatCell extends StatelessWidget {
           style: mono(
             9.5,
             w: 500,
-            color: intensity > .55 ? SR.surface : SR.blueDark,
+            color: intensity > .55 ? context.srColors.surface : SR.primaryHover,
           ),
         ),
       ),

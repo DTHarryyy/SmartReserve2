@@ -88,14 +88,14 @@ void main() {
     expect(state.userAccount.id, 'u3');
   });
 
-  test('only verified users reserve free', () {
+  test('only verified users are exempt from payment', () {
     final state = AppState()..signInAsUser('u3');
 
     expect(state.userAccount.verification, VerificationState.pending);
-    expect(state.userAccount.reservesFree, isFalse);
+    expect(state.userAccount.isPaymentExempt, isFalse);
 
     state.signInAsUser('u5');
-    expect(state.userAccount.reservesFree, isFalse);
+    expect(state.userAccount.isPaymentExempt, isFalse);
   });
 
   test(

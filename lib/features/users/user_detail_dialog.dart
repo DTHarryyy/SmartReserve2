@@ -8,6 +8,8 @@ import '../../widgets/decision_widgets.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
 
+import '../../theme/sr_theme.dart';
+
 Future<void> showUserDetail(
   BuildContext context, {
   required AppState state,
@@ -23,7 +25,7 @@ Future<void> showUserDetail(
 
   return showDialog<void>(
     context: context,
-    barrierColor: SR.scrim,
+    barrierColor: context.srColors.scrim,
     builder: (_) => _UserDetailDialog(state: state, account: account),
   );
 }
@@ -201,10 +203,13 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                       _account.email,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: mono(11, color: SR.muted),
+                      style: mono(11, color: context.srColors.muted),
                     ),
                     const SizedBox(height: 3),
-                    Text(_account.unit, style: sans(11, color: SR.ink4)),
+                    Text(
+                      _account.unit,
+                      style: sans(11, color: context.srColors.ink4),
+                    ),
                   ],
                 ),
               ),
@@ -232,9 +237,9 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           const SizedBox(height: 14),
           _Note(
             text: _account.role.privileges,
-            background: SR.blueTint2,
-            border: SR.blueLine,
-            foreground: SR.blueInk,
+            background: context.srColors.primaryTint2,
+            border: context.srColors.primaryLine,
+            foreground: context.srColors.primaryDeep,
           ),
           if (_account.role == AccountRole.externalAdmin)
             _Note(
@@ -242,25 +247,25 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                   'Cannot see student or faculty documents, the '
                   'verification queue, or campus reservations. External '
                   'clients, rates and invoices only.',
-              background: SR.surfaceSubtle,
-              border: SR.hairline,
-              foreground: SR.ink4,
+              background: context.srColors.surfaceSubtle,
+              border: context.srColors.hairline,
+              foreground: context.srColors.ink4,
             ),
           if (_account.isInvited)
             _Note(
               text: _invitationNote,
-              background: SR.amberTint,
-              border: SR.amberLine,
-              foreground: SR.amberTitle,
+              background: context.srColors.amberTint,
+              border: context.srColors.amberLine,
+              foreground: context.srColors.amberTitle,
             ),
           if (_account.status == AccountStatus.suspended)
             _Note(
               text:
                   '${_account.suspendReason ?? 'Suspended.'}'
                   '${_account.suspendUntil == null ? '' : ' Lifts on ${_account.suspendUntil}.'}',
-              background: SR.redTint,
-              border: SR.redLine,
-              foreground: SR.redInk,
+              background: context.srColors.redTint,
+              border: context.srColors.redLine,
+              foreground: context.srColors.redInk,
             ),
 
           const SizedBox(height: 12),
@@ -286,8 +291,8 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                     : '—',
                 valueColor:
                     _account.activityMetricsAvailable && _account.noShows > 0
-                    ? SR.amber
-                    : SR.ink,
+                    ? context.srColors.amber
+                    : context.srColors.ink,
               ),
               SrKeyCell(label: 'JOINED', value: _account.joined),
               SrKeyCell(label: 'LAST ACTIVE', value: _account.lastActive),
@@ -298,9 +303,9 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
             const SizedBox(height: 12),
             _Note(
               text: blocked,
-              background: SR.surfaceSubtle,
-              border: SR.hairline,
-              foreground: SR.ink4,
+              background: context.srColors.surfaceSubtle,
+              border: context.srColors.hairline,
+              foreground: context.srColors.ink4,
             ),
           ],
 
@@ -308,7 +313,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           Container(
             padding: const EdgeInsets.only(top: 14),
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: SR.divider)),
+              border: Border(top: BorderSide(color: context.srColors.divider)),
             ),
             child: _account.isInvited
                 ? _inviteActions()
@@ -413,9 +418,9 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     margin: const EdgeInsets.only(top: 12),
     padding: const EdgeInsets.all(13),
     decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
+      color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.hairline),
+      border: Border.all(color: context.srColors.hairline),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -441,7 +446,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
         const SizedBox(height: 7),
         Text(
           _roleDraft.privileges,
-          style: sans(11, height: 1.55, color: SR.ink4),
+          style: sans(11, height: 1.55, color: context.srColors.ink4),
         ),
         const SizedBox(height: 12),
         Row(
@@ -482,19 +487,22 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     margin: const EdgeInsets.only(top: 12),
     padding: const EdgeInsets.all(13),
     decoration: BoxDecoration(
-      color: SR.redTint,
+      color: context.srColors.redTint,
       borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.redLine),
+      border: Border.all(color: context.srColors.redLine),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Suspend this account', style: sans(12, w: 600, color: SR.redInk)),
+        Text(
+          'Suspend this account',
+          style: sans(12, w: 600, color: context.srColors.redInk),
+        ),
         const SizedBox(height: 3),
         Text(
           'New requests are blocked. Reservations already approved stay in the '
           'calendar.',
-          style: sans(11.5, height: 1.6, color: SR.redInk2),
+          style: sans(11.5, height: 1.6, color: context.srColors.redInk2),
         ),
         const SizedBox(height: 12),
         const SrLabel('Reason', required: true),
@@ -515,7 +523,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           'Lifts on',
           meta: Text(
             'leave blank for indefinite',
-            style: sans(11, color: SR.muted),
+            style: sans(11, color: context.srColors.muted),
           ),
         ),
         SrTextField(
@@ -614,8 +622,8 @@ class _UserDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      backgroundColor: SR.surface,
-      foregroundColor: SR.ink,
+      backgroundColor: context.srColors.surface,
+      foregroundColor: context.srColors.ink,
       elevation: 0,
       scrolledUnderElevation: 0,
       title: Text('Account details', style: sans(16, w: 600)),

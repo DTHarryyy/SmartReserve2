@@ -4,6 +4,8 @@ import '../../../theme/sr_tokens.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class MapSearchBar extends StatelessWidget {
   const MapSearchBar({
     super.key,
@@ -47,14 +49,14 @@ class _Field extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: EdgeInsets.symmetric(horizontal: 11, vertical: compact ? 11 : 9),
     decoration: BoxDecoration(
-      color: SR.glass,
+      color: context.srColors.glass,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: SR.glassLine),
+      border: Border.all(color: context.srColors.glassLine),
       boxShadow: SR.floatShadow,
     ),
     child: Row(
       children: [
-        Icon(Icons.search_rounded, size: 15, color: SR.muted),
+        Icon(Icons.search_rounded, size: 15, color: context.srColors.muted),
         const SizedBox(width: 8),
         Expanded(
           child: TextField(
@@ -62,7 +64,7 @@ class _Field extends StatelessWidget {
             onChanged: controller.setSearchQuery,
             onTap: controller.openSearch,
             onSubmitted: (_) => controller.submitSearch(),
-            cursorColor: SR.blue,
+            cursorColor: SR.primary,
             cursorWidth: 1.5,
             style: sans(12),
             decoration: InputDecoration(
@@ -71,7 +73,7 @@ class _Field extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               hintText:
                   'Search building, facility, address, or 18.3541, 121.6306',
-              hintStyle: sans(12, color: SR.muted),
+              hintStyle: sans(12, color: context.srColors.muted),
             ),
           ),
         ),
@@ -88,7 +90,12 @@ class _Field extends StatelessWidget {
                 },
                 child: Text(
                   '✕',
-                  style: sans(11, color: hovered ? SR.ink2 : SR.muted),
+                  style: sans(
+                    11,
+                    color: hovered
+                        ? context.srColors.ink2
+                        : context.srColors.muted,
+                  ),
                 ),
               ),
             ),
@@ -108,9 +115,9 @@ class _LayerSwitch extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(2),
     decoration: BoxDecoration(
-      color: SR.glass,
+      color: context.srColors.glass,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: SR.glassLine),
+      border: Border.all(color: context.srColors.glassLine),
       boxShadow: SR.floatShadow,
     ),
     child: Row(
@@ -133,8 +140,10 @@ class _LayerSwitch extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: controller.layer == layer
-                          ? SR.blue
-                          : (hovered ? SR.dividerSoft : Colors.transparent),
+                          ? SR.primary
+                          : (hovered
+                                ? context.srColors.dividerSoft
+                                : Colors.transparent),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -142,7 +151,9 @@ class _LayerSwitch extends StatelessWidget {
                       style: sans(
                         11,
                         w: 500,
-                        color: controller.layer == layer ? SR.onDark : SR.ink2,
+                        color: controller.layer == layer
+                            ? SR.onDark
+                            : context.srColors.ink2,
                       ),
                     ),
                   ),
@@ -167,9 +178,9 @@ class _Results extends StatelessWidget {
       constraints: const BoxConstraints(maxHeight: 260),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
         boxShadow: SR.popoverShadow,
       ),
       child: controller.searchNoResults
@@ -177,7 +188,7 @@ class _Results extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               child: Text(
                 'Nothing matched. Try a building name, or paste coordinates.',
-                style: sans(12, color: SR.muted),
+                style: sans(12, color: context.srColors.muted),
               ),
             )
           : ListView.builder(
@@ -195,9 +206,13 @@ class _Results extends StatelessWidget {
                         vertical: 9,
                       ),
                       decoration: BoxDecoration(
-                        color: hovered ? SR.blueTint2 : SR.surface,
+                        color: hovered
+                            ? context.srColors.primaryTint2
+                            : context.srColors.surface,
                         border: Border(
-                          bottom: BorderSide(color: SR.dividerSoft),
+                          bottom: BorderSide(
+                            color: context.srColors.dividerSoft,
+                          ),
                         ),
                       ),
                       child: Row(
@@ -207,10 +222,10 @@ class _Results extends StatelessWidget {
                             height: 22,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: SR.blueTint,
+                              color: context.srColors.primaryTint,
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Icon(hit.icon, size: 12, color: SR.blue),
+                            child: Icon(hit.icon, size: 12, color: SR.primary),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -227,7 +242,10 @@ class _Results extends StatelessWidget {
                                   hit.subtitle,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: mono(10.5, color: SR.muted),
+                                  style: mono(
+                                    10.5,
+                                    color: context.srColors.muted,
+                                  ),
                                 ),
                               ],
                             ),
@@ -238,7 +256,7 @@ class _Results extends StatelessWidget {
                             style: mono(
                               9.5,
                               tracking: .04,
-                              color: SR.mutedLight,
+                              color: context.srColors.mutedLight,
                             ),
                           ),
                         ],

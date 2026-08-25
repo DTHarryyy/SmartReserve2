@@ -12,6 +12,8 @@ import 'conflict_engine.dart';
 import 'decision_panel.dart';
 import 'reservation_checks.dart';
 
+import '../../theme/sr_theme.dart';
+
 class ReservationsScreen extends StatelessWidget {
   const ReservationsScreen({super.key});
 
@@ -185,12 +187,16 @@ class _QueueRow extends StatelessWidget {
           duration: SR.stateChange,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            color: selected ? SR.primaryTint2 : SR.surface,
+            color: selected
+                ? context.srColors.primaryTint2
+                : context.srColors.surface,
             borderRadius: BorderRadius.circular(SR.rMd - 1),
             border: Border.all(
               color: selected
                   ? SR.primary
-                  : (hovered ? SR.primarySoft : SR.border),
+                  : (hovered
+                        ? context.srColors.primarySoft
+                        : context.srColors.border),
             ),
           ),
           child: Row(
@@ -232,7 +238,7 @@ class _QueueRow extends StatelessWidget {
                         const SizedBox(width: SR.space8),
                         Text(
                           request.submitted,
-                          style: mono(10.5, color: SR.muted),
+                          style: mono(10.5, color: context.srColors.muted),
                         ),
                       ],
                     ),
@@ -241,14 +247,14 @@ class _QueueRow extends StatelessWidget {
                       request.org,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: sans(11.5, color: SR.ink4),
+                      style: sans(11.5, color: context.srColors.ink4),
                     ),
                     const SizedBox(height: 7),
                     Text(
                       request.facility,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: sans(11.5, color: SR.ink2),
+                      style: sans(11.5, color: context.srColors.ink2),
                     ),
                     const SizedBox(height: 7),
                     Wrap(
@@ -258,18 +264,18 @@ class _QueueRow extends StatelessWidget {
                       children: [
                         Text(
                           request.whenLabel,
-                          style: mono(11, w: 500, color: SR.ink3),
+                          style: mono(11, w: 500, color: context.srColors.ink3),
                         ),
                         Text(
                           '${request.heads} people',
-                          style: mono(10.5, color: SR.muted),
+                          style: mono(10.5, color: context.srColors.muted),
                         ),
                         if (request.amenities.isNotEmpty)
                           Tooltip(
                             message: request.amenities.join(', '),
                             child: Text(
                               '+${request.amenities.length} amenities',
-                              style: mono(10.5, color: SR.muted),
+                              style: mono(10.5, color: context.srColors.muted),
                             ),
                           ),
                         SrStatusChip(
@@ -283,7 +289,7 @@ class _QueueRow extends StatelessWidget {
                               Icon(
                                 Icons.warning_amber_rounded,
                                 size: SR.iconSm,
-                                color: SR.amber,
+                                color: context.srColors.amber,
                               ),
                               const SizedBox(width: SR.space4),
                               Expanded(
@@ -293,7 +299,7 @@ class _QueueRow extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                   style: SrType.caption(
                                     w: 500,
-                                    color: SR.amber,
+                                    color: context.srColors.amber,
                                   ),
                                 ),
                               ),

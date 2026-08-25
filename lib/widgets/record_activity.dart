@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../model/audit_change.dart';
 import '../model/audit_entry.dart';
+import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
 import 'decision_widgets.dart';
 
@@ -21,14 +22,15 @@ class RecordActivity extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.srColors;
     if (entries.isEmpty) {
       return Container(
         margin: const EdgeInsets.only(top: 8),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 34),
         decoration: BoxDecoration(
-          color: SR.surfaceSubtle,
+          color: colors.surfaceSubtle,
           borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: SR.hairline),
+          border: Border.all(color: colors.hairline),
         ),
         child: Column(
           children: [
@@ -37,7 +39,7 @@ class RecordActivity extends StatelessWidget {
             Text(
               emptyBody,
               textAlign: TextAlign.center,
-              style: sans(11.5, height: 1.6, color: SR.ink4),
+              style: sans(11.5, height: 1.6, color: colors.ink4),
             ),
           ],
         ),
@@ -50,7 +52,10 @@ class RecordActivity extends StatelessWidget {
         if (intro case final intro?)
           Padding(
             padding: const EdgeInsets.fromLTRB(0, 14, 0, 4),
-            child: Text(intro, style: sans(11, height: 1.6, color: SR.muted)),
+            child: Text(
+              intro,
+              style: sans(11, height: 1.6, color: colors.muted),
+            ),
           ),
         for (final entry in entries) _ActivityRow(entry: entry),
       ],
@@ -64,104 +69,111 @@ class _ActivityRow extends StatelessWidget {
   final AuditEntry entry;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(vertical: 13),
-    decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: SR.divider)),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Initials(text: entry.initials, size: 30, fontSize: 10),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 7,
-                runSpacing: 2,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(entry.actor, style: sans(12, w: 600)),
-                  Text(entry.action, style: sans(11.5, color: SR.ink4)),
-                  if (entry.material)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 1,
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.divider)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Initials(text: entry.initials, size: 30, fontSize: 10),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(entry.actor, style: sans(12, w: 600)),
+                    Text(entry.action, style: sans(11.5, color: colors.ink4)),
+                    if (entry.material)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.amberTint,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: colors.amberLine),
+                        ),
+                        child: Text(
+                          'MATERIAL',
+                          style: mono(8.5, w: 600, color: colors.amberTitle),
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: SR.amberTint,
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(color: SR.amberLine),
-                      ),
-                      child: Text(
-                        'MATERIAL',
-                        style: mono(8.5, w: 600, color: SR.amberTitle),
-                      ),
+                    Text(entry.when, style: mono(10.5, color: colors.muted)),
+                  ],
+                ),
+                if (entry.changes.isNotEmpty || entry.diff.isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 9,
                     ),
-                  Text(entry.when, style: mono(10.5, color: SR.muted)),
-                ],
-              ),
-              if (entry.changes.isNotEmpty || entry.diff.isNotEmpty) ...[
-                const SizedBox(height: 7),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    color: SR.surfaceSubtle,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: SR.hairline),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: entry.changes.isNotEmpty
-                        ? [
-                            for (var i = 0; i < entry.changes.length; i++) ...[
-                              if (i > 0) const SizedBox(height: 6),
-                              _changeLine(entry.changes[i]),
-                            ],
-                          ]
-                        : [
-                            for (final line in entry.diff)
-                              Text(
-                                line,
-                                style: mono(
-                                  11,
-                                  w: 500,
-                                  height: 1.65,
-                                  color: SR.ink2,
+                    decoration: BoxDecoration(
+                      color: colors.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: colors.hairline),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: entry.changes.isNotEmpty
+                          ? [
+                              for (
+                                var i = 0;
+                                i < entry.changes.length;
+                                i++
+                              ) ...[
+                                if (i > 0) const SizedBox(height: 6),
+                                _changeLine(colors, entry.changes[i]),
+                              ],
+                            ]
+                          : [
+                              for (final line in entry.diff)
+                                Text(
+                                  line,
+                                  style: mono(
+                                    11,
+                                    w: 500,
+                                    height: 1.65,
+                                    color: colors.ink2,
+                                  ),
                                 ),
-                              ),
-                          ],
+                            ],
+                    ),
                   ),
-                ),
+                ],
+                if (entry.reason.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    entry.reason,
+                    style: sans(11, height: 1.55, color: colors.amberInk),
+                  ),
+                ],
+                const SizedBox(height: 5),
+                Text(entry.absolute, style: sans(10, color: colors.muted)),
               ],
-              if (entry.reason.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  entry.reason,
-                  style: sans(11, height: 1.55, color: SR.amberInk),
-                ),
-              ],
-              const SizedBox(height: 5),
-              Text(entry.absolute, style: sans(10, color: SR.muted)),
-            ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
-  Widget _changeLine(AuditChange change) {
+  Widget _changeLine(SrColors colors, AuditChange change) {
     if (change.isNote) {
       return Text(
         change.note!,
-        style: mono(11, w: 500, height: 1.65, color: SR.ink2),
+        style: mono(11, w: 500, height: 1.65, color: colors.ink2),
       );
     }
     if (change.before == null) {
@@ -170,11 +182,11 @@ class _ActivityRow extends StatelessWidget {
           children: [
             TextSpan(
               text: '${change.label}: ',
-              style: mono(11, w: 600, color: SR.ink3),
+              style: mono(11, w: 600, color: colors.ink3),
             ),
             TextSpan(
               text: change.after ?? '—',
-              style: mono(11, w: 500, color: SR.ink2),
+              style: mono(11, w: 500, color: colors.ink2),
             ),
           ],
         ),
@@ -184,12 +196,12 @@ class _ActivityRow extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SizedBox(width: 116, child: Text(change.label, style: keyLabel)),
-        Text(change.before!, style: mono(11, color: SR.muted)),
+        Text(change.before!, style: mono(11, color: colors.muted)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: Text('→', style: mono(10.5, color: SR.mutedLight)),
+          child: Text('→', style: mono(10.5, color: colors.mutedLight)),
         ),
-        Text(change.after ?? '—', style: mono(11, w: 500, color: SR.ink2)),
+        Text(change.after ?? '—', style: mono(11, w: 500, color: colors.ink2)),
       ],
     );
   }

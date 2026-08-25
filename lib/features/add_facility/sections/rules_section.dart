@@ -6,6 +6,8 @@ import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class RulesSection extends StatelessWidget {
   const RulesSection({
     super.key,
@@ -59,7 +61,9 @@ class RulesSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 11),
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: SR.dividerSoft)),
+                border: Border(
+                  bottom: BorderSide(color: context.srColors.dividerSoft),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -72,7 +76,11 @@ class RulesSection extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           rule.hint,
-                          style: sans(11, height: 1.5, color: SR.muted),
+                          style: sans(
+                            11,
+                            height: 1.5,
+                            color: context.srColors.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -132,7 +140,10 @@ class RulesSection extends StatelessWidget {
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 7),
-                        child: Text('–', style: sans(13, color: SR.mutedLight)),
+                        child: Text(
+                          '–',
+                          style: sans(13, color: context.srColors.mutedLight),
+                        ),
                       ),
                       Expanded(
                         child: _TimeField(
@@ -228,15 +239,23 @@ class _DayToggle extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 9),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: on ? SR.blueTint : SR.surface,
+            color: on ? context.srColors.primaryTint : context.srColors.surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: on ? SR.blue : (hovered ? SR.borderHover : SR.border),
+              color: on
+                  ? SR.primary
+                  : (hovered
+                        ? context.srColors.borderHover
+                        : context.srColors.border),
             ),
           ),
           child: Text(
             label,
-            style: sans(11.5, w: 500, color: on ? SR.blueDark : SR.ink3),
+            style: sans(
+              11.5,
+              w: 500,
+              color: on ? SR.primaryHover : context.srColors.ink3,
+            ),
           ),
         ),
       ),
@@ -290,9 +309,11 @@ class _TimeField extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           alignment: Alignment.centerLeft,
           decoration: BoxDecoration(
-            color: SR.surface,
+            color: context.srColors.surface,
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: hovered ? SR.blue : SR.borderField),
+            border: Border.all(
+              color: hovered ? SR.primary : context.srColors.borderField,
+            ),
           ),
           child: Text(value, style: mono(12.5)),
         ),

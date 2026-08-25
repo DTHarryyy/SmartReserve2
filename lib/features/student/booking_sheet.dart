@@ -20,6 +20,8 @@ import '../../widgets/rating_display.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 
+import '../../theme/sr_theme.dart';
+
 Future<void> showBookingSheet(
   BuildContext context, {
   required AppState state,
@@ -48,10 +50,10 @@ class _MobileFacilityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: SR.surface,
+    backgroundColor: context.srColors.surface,
     appBar: AppBar(
-      backgroundColor: SR.surface,
-      foregroundColor: SR.ink,
+      backgroundColor: context.srColors.surface,
+      foregroundColor: context.srColors.ink,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
@@ -65,7 +67,7 @@ class _MobileFacilityPage extends StatelessWidget {
       ),
       bottom: PreferredSize(
         preferredSize: Size.fromHeight(1),
-        child: Divider(height: 1, color: SR.border),
+        child: Divider(height: 1, color: context.srColors.border),
       ),
     ),
     body: SafeArea(
@@ -375,7 +377,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     final screen = MediaQuery.sizeOf(context);
     final mobile = widget.fullPage || screen.width < 600;
     final content = ColoredBox(
-      color: SR.surface,
+      color: context.srColors.surface,
       child: SrScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -589,8 +591,10 @@ class _FacilityGallery extends StatelessWidget {
             height: 76,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: SR.surfaceSubtle,
-              border: Border(bottom: BorderSide(color: SR.hairline)),
+              color: context.srColors.surfaceSubtle,
+              border: Border(
+                bottom: BorderSide(color: context.srColors.hairline),
+              ),
             ),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
@@ -635,10 +639,10 @@ class _PhotoThumbnail extends StatelessWidget {
         width: 72,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(9),
           border: Border.all(
-            color: selected ? SR.blue : SR.border,
+            color: selected ? SR.primary : context.srColors.border,
             width: selected ? 2 : 1,
           ),
         ),
@@ -671,8 +675,8 @@ class _FacilityOverview extends StatelessWidget {
           ),
           SrPill(
             label: facility.category,
-            background: SR.blueTint,
-            foreground: SR.blueDark,
+            background: context.srColors.primaryTint,
+            foreground: SR.primaryHover,
           ),
         ],
       ),
@@ -682,17 +686,20 @@ class _FacilityOverview extends StatelessWidget {
         style: sans(23, w: 600, tracking: -.025, height: 1.15),
       ),
       const SizedBox(height: 5),
-      Text(facility.whereLine, style: sans(12.5, color: SR.ink4)),
+      Text(facility.whereLine, style: sans(12.5, color: context.srColors.ink4)),
       if (facility.hasRatings) ...[
         const SizedBox(height: 6),
-        SrRatingStars(average: facility.ratingAverage, count: facility.ratingCount),
+        SrRatingStars(
+          average: facility.ratingAverage,
+          count: facility.ratingCount,
+        ),
       ],
       const SizedBox(height: 13),
       Text(
         facility.description.isEmpty
             ? 'No description has been added for this facility.'
             : facility.description,
-        style: sans(13, height: 1.65, color: SR.ink3),
+        style: sans(13, height: 1.65, color: context.srColors.ink3),
       ),
       const SizedBox(height: 22),
       const _SectionTitle('Facility details'),
@@ -724,7 +731,10 @@ class _FacilityOverview extends StatelessWidget {
       const _SectionTitle('Amenities'),
       const SizedBox(height: 9),
       if (facility.amenities.isEmpty)
-        Text('No amenities recorded.', style: sans(12, color: SR.muted))
+        Text(
+          'No amenities recorded.',
+          style: sans(12, color: context.srColors.muted),
+        )
       else
         Wrap(
           spacing: 7,
@@ -737,11 +747,14 @@ class _FacilityOverview extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: SR.dividerSoft,
+                  color: context.srColors.dividerSoft,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: SR.hairline),
+                  border: Border.all(color: context.srColors.hairline),
                 ),
-                child: Text(amenity, style: sans(11.5, color: SR.ink3)),
+                child: Text(
+                  amenity,
+                  style: sans(11.5, color: context.srColors.ink3),
+                ),
               ),
           ],
         ),
@@ -749,9 +762,9 @@ class _FacilityOverview extends StatelessWidget {
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: SR.surfaceSubtle,
+          color: context.srColors.surfaceSubtle,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: SR.hairline),
+          border: Border.all(color: context.srColors.hairline),
         ),
         child: Wrap(
           spacing: 18,
@@ -759,20 +772,20 @@ class _FacilityOverview extends StatelessWidget {
           children: [
             Text(
               '${facility.photos.length} ${facility.photos.length == 1 ? 'photo' : 'photos'}',
-              style: mono(10.5, color: SR.ink4),
+              style: mono(10.5, color: context.srColors.ink4),
             ),
             Text(
               '${facility.bookings} bookings on record',
-              style: mono(10.5, color: SR.ink4),
+              style: mono(10.5, color: context.srColors.ink4),
             ),
             if (facility.hasRatings)
               Text(
                 '${facility.ratingCount} ${facility.ratingCount == 1 ? 'review' : 'reviews'}',
-                style: mono(10.5, color: SR.ink4),
+                style: mono(10.5, color: context.srColors.ink4),
               ),
             Text(
               'Updated ${facility.updated}',
-              style: mono(10.5, color: SR.ink4),
+              style: mono(10.5, color: context.srColors.ink4),
             ),
           ],
         ),
@@ -813,9 +826,9 @@ class _DetailGrid extends StatelessWidget {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: SR.surfaceSubtle,
+                  color: context.srColors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(9),
-                  border: Border.all(color: SR.hairline),
+                  border: Border.all(color: context.srColors.hairline),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -824,7 +837,12 @@ class _DetailGrid extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       item.value.isEmpty ? 'Not specified' : item.value,
-                      style: sans(11.5, w: 500, color: SR.ink2, height: 1.35),
+                      style: sans(
+                        11.5,
+                        w: 500,
+                        color: context.srColors.ink2,
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
@@ -867,18 +885,27 @@ class _LocationDetails extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: SR.blueTint2,
+      color: context.srColors.primaryTint2,
       borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.blueLine),
+      border: Border.all(color: context.srColors.primaryLine),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(facility.campusName, style: sans(12.5, w: 600, color: SR.ink2)),
+        Text(
+          facility.campusName,
+          style: sans(12.5, w: 600, color: context.srColors.ink2),
+        ),
         const SizedBox(height: 3),
-        Text(facility.whereLine, style: sans(11.5, color: SR.ink4)),
+        Text(
+          facility.whereLine,
+          style: sans(11.5, color: context.srColors.ink4),
+        ),
         const SizedBox(height: 3),
-        Text(_address, style: sans(11.5, height: 1.5, color: SR.ink4)),
+        Text(
+          _address,
+          style: sans(11.5, height: 1.5, color: context.srColors.ink4),
+        ),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -888,10 +915,10 @@ class _LocationDetails extends StatelessWidget {
             SrPill(
               label: facility.pinConfidence.label,
               background: facility.pinConfidence == PinConfidence.verified
-                  ? SR.greenTint
+                  ? context.srColors.greenTint
                   : facility.pinConfidence == PinConfidence.needsCheck
-                  ? SR.amberTint
-                  : SR.dividerSoft,
+                  ? context.srColors.amberTint
+                  : context.srColors.dividerSoft,
               foreground: facility.pinConfidence.color,
               monospace: true,
               fontSize: 9,
@@ -899,12 +926,12 @@ class _LocationDetails extends StatelessWidget {
             if (facility.coords != null)
               Text(
                 formatCoords(facility.coords!),
-                style: mono(9.5, color: SR.muted),
+                style: mono(9.5, color: context.srColors.muted),
               ),
             if (facility.accuracy != null)
               Text(
                 '±${facility.accuracy} m accuracy',
-                style: mono(9.5, color: SR.muted),
+                style: mono(9.5, color: context.srColors.muted),
               ),
           ],
         ),
@@ -1004,9 +1031,9 @@ class _BookingForm extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
+      color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1016,7 +1043,7 @@ class _BookingForm extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           'Choose a schedule and tell the assigned administrator what you need it for.',
-          style: sans(11.5, height: 1.5, color: SR.ink4),
+          style: sans(11.5, height: 1.5, color: context.srColors.ink4),
         ),
         const SizedBox(height: 16),
         _row(
@@ -1090,15 +1117,15 @@ class _BookingForm extends StatelessWidget {
               ? 'Pick an end time after the start.'
               : '${duration.toStringAsFixed(duration % 1 == 0 ? 0 : 1)} '
                     'hours · maximum ${facility.maxDuration}',
-          style: sans(11, color: SR.muted),
+          style: sans(11, color: context.srColors.muted),
         ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
           decoration: BoxDecoration(
-            color: SR.surface,
+            color: context.srColors.surface,
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: SR.hairline),
+            border: Border.all(color: context.srColors.hairline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1160,7 +1187,7 @@ class _BookingForm extends StatelessWidget {
                 'Supporting files · optional',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500, color: SR.ink2),
+                style: sans(11.5, w: 500, color: context.srColors.ink2),
               ),
             ),
             SrButton(
@@ -1177,14 +1204,18 @@ class _BookingForm extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Row(
                 children: [
-                  Icon(Icons.attach_file_rounded, size: 15, color: SR.muted),
+                  Icon(
+                    Icons.attach_file_rounded,
+                    size: 15,
+                    color: context.srColors.muted,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       attachments[index].name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: sans(11, color: SR.ink3),
+                      style: sans(11, color: context.srColors.ink3),
                     ),
                   ),
                   IconButton(
@@ -1199,9 +1230,9 @@ class _BookingForm extends StatelessWidget {
         if (clashes.isNotEmpty) ...[
           const SizedBox(height: 10),
           _Alert(
-            background: SR.amberTint,
-            border: SR.amberLine,
-            foreground: SR.amberTitle,
+            background: context.srColors.amberTint,
+            border: context.srColors.amberLine,
+            foreground: context.srColors.amberTitle,
             text:
                 'Someone already has this room from '
                 '${clashes.first.start} to ${clashes.first.end}. You can still '
@@ -1212,9 +1243,9 @@ class _BookingForm extends StatelessWidget {
         if (overCapacity) ...[
           const SizedBox(height: 8),
           _Alert(
-            background: SR.redTint,
-            border: SR.redLine,
-            foreground: SR.redInk,
+            background: context.srColors.redTint,
+            border: context.srColors.redLine,
+            foreground: context.srColors.redInk,
             text:
                 '$headcount people in a ${facility.capacity}-seat room. '
                 'Lower the attendee count or pick a bigger space — this '
@@ -1225,9 +1256,9 @@ class _BookingForm extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
           decoration: BoxDecoration(
-            color: SR.surface,
+            color: context.srColors.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: SR.hairline),
+            border: Border.all(color: context.srColors.hairline),
           ),
           child: quoteLoading
               ? const LinearProgressIndicator(minHeight: 2)
@@ -1241,7 +1272,11 @@ class _BookingForm extends StatelessWidget {
                         Expanded(
                           child: Text(
                             'Authoritative total',
-                            style: sans(11.5, w: 500, color: SR.ink2),
+                            style: sans(
+                              11.5,
+                              w: 500,
+                              color: context.srColors.ink2,
+                            ),
                           ),
                         ),
                         Text(
@@ -1258,7 +1293,11 @@ class _BookingForm extends StatelessWidget {
                           (quote?.totalAmountCentavos == 0
                               ? 'No payment is required under this facility’s ${account.pricingAudience} rate. Approval confirms the reservation.'
                               : '${pesoFromCentavos(quote?.requiredDownPaymentCentavos ?? 0)} is required after approval. The slot is held while GCash proof is submitted and reviewed.'),
-                      style: sans(10.5, height: 1.6, color: SR.muted),
+                      style: sans(
+                        10.5,
+                        height: 1.6,
+                        color: context.srColors.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -1277,7 +1316,11 @@ class _BookingForm extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       '${term.title} · version ${term.version}\n${term.content}',
-                      style: sans(10.5, height: 1.5, color: SR.ink4),
+                      style: sans(
+                        10.5,
+                        height: 1.5,
+                        color: context.srColors.ink4,
+                      ),
                     ),
                   ),
                 ),
@@ -1291,11 +1334,11 @@ class _BookingForm extends StatelessWidget {
             controlAffinity: ListTileControlAffinity.leading,
             title: Text(
               'I accept ${quote!.terms.map((term) => term.title).join(' and ')}.',
-              style: sans(11.5, height: 1.4, color: SR.ink2),
+              style: sans(11.5, height: 1.4, color: context.srColors.ink2),
             ),
             subtitle: Text(
               'Acceptance and the exact policy versions are recorded with this reservation.',
-              style: sans(10.5, height: 1.4, color: SR.muted),
+              style: sans(10.5, height: 1.4, color: context.srColors.muted),
             ),
           ),
         ],
@@ -1342,7 +1385,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Text(label, style: sans(13, w: 600, color: SR.ink2));
+      Text(label, style: sans(13, w: 600, color: context.srColors.ink2));
 }
 
 class _Alert extends StatelessWidget {

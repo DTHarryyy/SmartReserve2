@@ -71,4 +71,131 @@ void main() {
     final permit = _permit(paymentRequired: false, paymentExemption: 'verified_faculty');
     expect(permit.verificationPayload, 'smartreserve:permit:${'a' * 32}');
   });
+
+  test('does not overflow with many occurrences spanning months', () async {
+    final base = _permit(paymentRequired: false, paymentExemption: 'verified_student');
+    final occurrences = [
+      for (var i = 0; i < 30; i++)
+        PermitOccurrence(
+          startsAt: DateTime.utc(2026, 9, 1 + i, 5),
+          endsAt: DateTime.utc(2026, 9, 1 + i, 9),
+        ),
+    ];
+    final permit = ReservationPermit(
+      id: base.id,
+      requestId: base.requestId,
+      permitNumber: base.permitNumber,
+      version: base.version,
+      status: base.status,
+      verificationToken: base.verificationToken,
+      issuedAt: base.issuedAt,
+      institutionName: base.institutionName,
+      formCode: base.formCode,
+      requesterName: base.requesterName,
+      requesterType: base.requesterType,
+      office: base.office,
+      facilityName: base.facilityName,
+      facilityLocation: base.facilityLocation,
+      purpose: base.purpose,
+      headcount: base.headcount,
+      occurrences: occurrences,
+      amenities: base.amenities,
+      paymentExemption: base.paymentExemption,
+      paymentRequired: base.paymentRequired,
+      totalAmountCentavos: base.totalAmountCentavos,
+      amountPaidCentavos: base.amountPaidCentavos,
+      remainingBalanceCentavos: base.remainingBalanceCentavos,
+      signatoryName: base.signatoryName,
+      signatoryTitle: base.signatoryTitle,
+      approvedByName: base.approvedByName,
+      approvedByRole: base.approvedByRole,
+      approvedAt: base.approvedAt,
+    );
+    final bytes = await buildPermitPdf(permit);
+    expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+  });
+
+  test('does not overflow with long purpose and facility name', () async {
+    final long = List.filled(60, 'word').join(' ');
+    final base = _permit(paymentRequired: false, paymentExemption: 'verified_student');
+    final permit = ReservationPermit(
+      id: base.id,
+      requestId: base.requestId,
+      permitNumber: base.permitNumber,
+      version: base.version,
+      status: base.status,
+      verificationToken: base.verificationToken,
+      issuedAt: base.issuedAt,
+      institutionName: base.institutionName,
+      formCode: base.formCode,
+      requesterName: base.requesterName,
+      requesterType: base.requesterType,
+      office: base.office,
+      facilityName: 'A very long unmatched facility name that keeps going $long',
+      facilityLocation: base.facilityLocation,
+      purpose: long,
+      headcount: base.headcount,
+      occurrences: base.occurrences,
+      amenities: const [
+        'Ceiling Fans',
+        'Extra Tables',
+        'Extra Chairs',
+        'Extension Cords',
+        'Portable Stage',
+        'Backdrop Panels',
+        'Podium',
+        'Whiteboard',
+        'Extra Trash Bins',
+        'Bunting Flags',
+      ],
+      paymentExemption: base.paymentExemption,
+      paymentRequired: base.paymentRequired,
+      totalAmountCentavos: base.totalAmountCentavos,
+      amountPaidCentavos: base.amountPaidCentavos,
+      remainingBalanceCentavos: base.remainingBalanceCentavos,
+      signatoryName: base.signatoryName,
+      signatoryTitle: base.signatoryTitle,
+      approvedByName: null,
+      approvedByRole: null,
+      approvedAt: null,
+    );
+    final bytes = await buildPermitPdf(permit);
+    expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+  });
+
+  test('does not overflow with empty office and facility location', () async {
+    final base = _permit(paymentRequired: true, totalAmountCentavos: 500000);
+    final permit = ReservationPermit(
+      id: base.id,
+      requestId: base.requestId,
+      permitNumber: base.permitNumber,
+      version: base.version,
+      status: base.status,
+      verificationToken: base.verificationToken,
+      issuedAt: base.issuedAt,
+      institutionName: base.institutionName,
+      formCode: base.formCode,
+      requesterName: base.requesterName,
+      requesterType: base.requesterType,
+      office: '',
+      facilityName: base.facilityName,
+      facilityLocation: '',
+      purpose: base.purpose,
+      headcount: base.headcount,
+      occurrences: base.occurrences,
+      amenities: base.amenities,
+      paymentExemption: base.paymentExemption,
+      paymentRequired: base.paymentRequired,
+      totalAmountCentavos: base.totalAmountCentavos,
+      amountPaidCentavos: base.amountPaidCentavos,
+      remainingBalanceCentavos: base.remainingBalanceCentavos,
+      signatoryName: base.signatoryName,
+      signatoryTitle: base.signatoryTitle,
+      approvedByName: null,
+      approvedByRole: null,
+      approvedAt: null,
+    );
+    final bytes = await buildPermitPdf(permit);
+    expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+  });
 }

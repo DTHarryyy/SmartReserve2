@@ -18,6 +18,8 @@ import 'reservation_activity.dart';
 import 'reservation_checks.dart';
 import 'reservation_series.dart';
 
+import '../../theme/sr_theme.dart';
+
 class DecisionPanel extends StatefulWidget {
   const DecisionPanel({
     super.key,
@@ -134,7 +136,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                     value:
                         '${_request.heads} of '
                         '${facility?.capacity ?? _request.capacity} seats',
-                    valueColor: _request.overCapacity ? SR.red : SR.ink,
+                    valueColor: _request.overCapacity
+                        ? context.srColors.red
+                        : context.srColors.ink,
                   ),
                   SrKeyCell(
                     label: 'SUPPORTING FILES',
@@ -172,9 +176,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                     vertical: SR.space8,
                   ),
                   decoration: BoxDecoration(
-                    color: SR.primaryTint,
+                    color: context.srColors.primaryTint,
                     borderRadius: BorderRadius.circular(SR.rSm),
-                    border: Border.all(color: SR.primaryLine),
+                    border: Border.all(color: context.srColors.primaryLine),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,7 +186,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                       Icon(
                         Icons.repeat_rounded,
                         size: SR.iconSm,
-                        color: SR.primaryDeep,
+                        color: context.srColors.primaryDeep,
                       ),
                       const SizedBox(width: SR.space8),
                       Expanded(
@@ -190,7 +194,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                           '$recurring — one decision covers the series. Dates '
                           'that clash can be excepted rather than '
                           're-requested.',
-                          style: SrType.bodySm(color: SR.primaryDeep),
+                          style: SrType.bodySm(
+                            color: context.srColors.primaryDeep,
+                          ),
                         ),
                       ),
                     ],
@@ -209,7 +215,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                         icon: Icon(
                           Icons.attach_file_rounded,
                           size: SR.iconSm,
-                          color: SR.ink3,
+                          color: context.srColors.ink3,
                         ),
                         dense: true,
                         fontSize: 11,
@@ -230,7 +236,10 @@ class _DecisionPanelState extends State<DecisionPanel> {
               const SizedBox(height: SR.space16),
               Text('Purpose', style: SrType.label()),
               const SizedBox(height: SR.space4),
-              Text(_request.purpose, style: SrType.body(color: SR.ink3)),
+              Text(
+                _request.purpose,
+                style: SrType.body(color: context.srColors.ink3),
+              ),
               const SizedBox(height: SR.space8),
               Text(
                 '${_request.org} · ${_request.building} · ${_request.room}',
@@ -265,7 +274,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 ),
                 const SizedBox(height: SR.space16),
                 ReservationActivityList(
-                  events: reservationEvents(widget.state, _request),
+                  events: reservationEvents(context, widget.state, _request),
                 ),
               ],
             ),
@@ -282,7 +291,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 const SizedBox(height: 14),
                 Text(
                   'That day in ${_request.facility}',
-                  style: sans(11, w: 500, color: SR.ink2),
+                  style: sans(11, w: 500, color: context.srColors.ink2),
                 ),
                 const SizedBox(height: 8),
                 DayTimeline(
@@ -450,9 +459,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 vertical: SR.space8 + 3,
               ),
               decoration: BoxDecoration(
-                color: SR.primaryTint,
+                color: context.srColors.primaryTint,
                 borderRadius: BorderRadius.circular(SR.rSm),
-                border: Border.all(color: SR.primaryLine),
+                border: Border.all(color: context.srColors.primaryLine),
               ),
               child: Text(
                 '${_request.seriesExceptions.join(', ')} '
@@ -460,7 +469,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 'handed back. The requester re-times '
                 '${_request.seriesExceptions.length == 1 ? 'that date' : 'those dates'} '
                 'without re-filing the series.',
-                style: SrType.bodySm(color: SR.primaryDeep),
+                style: SrType.bodySm(color: context.srColors.primaryDeep),
               ),
             ),
           ],
@@ -556,7 +565,10 @@ class _DecisionPanelState extends State<DecisionPanel> {
                           Text(
                             '${occurrence.startsAt.day}/${occurrence.startsAt.month}/${occurrence.startsAt.year} · '
                             '${_clock(occurrence.startsAt)}–${_clock(occurrence.endsAt)}',
-                            style: SrType.code(w: 500, color: SR.ink3),
+                            style: SrType.code(
+                              w: 500,
+                              color: context.srColors.ink3,
+                            ),
                           ),
                           Text(
                             occurrence.stage.summary,
@@ -642,7 +654,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                     height: 2,
                     margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
-                      color: stage.index > step.index ? SR.green : SR.divider,
+                      color: stage.index > step.index
+                          ? SR.green
+                          : context.srColors.divider,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -702,14 +716,14 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 vertical: SR.space8 + 3,
               ),
               decoration: BoxDecoration(
-                color: SR.greenTint2,
+                color: context.srColors.greenTint2,
                 borderRadius: BorderRadius.circular(SR.rSm),
-                border: Border.all(color: SR.greenLine),
+                border: Border.all(color: context.srColors.greenLine),
               ),
               child: Text(
                 'This booking is closed and now counts toward the utilisation '
                 'report for its facility.',
-                style: SrType.bodySm(color: SR.greenDark),
+                style: SrType.bodySm(color: context.srColors.greenDark),
               ),
             ),
           ],
@@ -731,9 +745,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
         vertical: SR.space12,
       ),
       decoration: BoxDecoration(
-        color: SR.redTint,
+        color: context.srColors.redTint,
         borderRadius: BorderRadius.circular(SR.rMd - 2),
-        border: Border.all(color: SR.redLine),
+        border: Border.all(color: context.srColors.redLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,13 +757,13 @@ class _DecisionPanelState extends State<DecisionPanel> {
               Icon(
                 Icons.error_outline_rounded,
                 size: SR.iconSm,
-                color: SR.redInk,
+                color: context.srColors.redInk,
               ),
               const SizedBox(width: SR.space6),
               Expanded(
                 child: Text(
                   kCollidesTitle,
-                  style: SrType.body(w: 600, color: SR.redInk),
+                  style: SrType.body(w: 600, color: context.srColors.redInk),
                 ),
               ),
             ],
@@ -759,7 +773,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
             Text(
               '${conflict.label} · ${conflict.requester} · '
               '${conflict.start}–${conflict.end}',
-              style: SrType.bodySm(color: SR.redInk2),
+              style: SrType.bodySm(color: context.srColors.redInk2),
             ),
           const SizedBox(height: SR.space8),
           Wrap(
@@ -800,9 +814,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
         vertical: SR.space12,
       ),
       decoration: BoxDecoration(
-        color: SR.redTint,
+        color: context.srColors.redTint,
         borderRadius: BorderRadius.circular(SR.rMd - 2),
-        border: Border.all(color: SR.redLine),
+        border: Border.all(color: context.srColors.redLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -812,13 +826,13 @@ class _DecisionPanelState extends State<DecisionPanel> {
               Icon(
                 Icons.error_outline_rounded,
                 size: SR.iconSm,
-                color: SR.redInk,
+                color: context.srColors.redInk,
               ),
               const SizedBox(width: SR.space6),
               Expanded(
                 child: Text(
                   kOverlapsFlag,
-                  style: SrType.body(w: 600, color: SR.redInk),
+                  style: SrType.body(w: 600, color: context.srColors.redInk),
                 ),
               ),
             ],
@@ -828,7 +842,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
             Text(
               '${conflict.label} · ${conflict.requester} · '
               '${conflict.start}–${conflict.end}',
-              style: SrType.bodySm(color: SR.redInk2),
+              style: SrType.bodySm(color: context.srColors.redInk2),
             ),
         ],
       ),
@@ -844,7 +858,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
           Text(
             '${_request.status.label} by ${_request.decidedBy ?? 'the system'}'
             '${_request.decidedAt == null ? '' : ' · ${_request.decidedAt}'}',
-            style: SrType.body(w: 500, color: SR.ink2),
+            style: SrType.body(w: 500, color: context.srColors.ink2),
           ),
           if (_request.reason case final reason?) ...[
             const SizedBox(height: SR.space8),
@@ -854,11 +868,14 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 vertical: SR.space8 + 3,
               ),
               decoration: BoxDecoration(
-                color: SR.surfaceSubtle,
+                color: context.srColors.surfaceSubtle,
                 borderRadius: BorderRadius.circular(SR.rSm),
-                border: Border.all(color: SR.hairline),
+                border: Border.all(color: context.srColors.hairline),
               ),
-              child: Text('“$reason”', style: SrType.bodySm(color: SR.ink4)),
+              child: Text(
+                '“$reason”',
+                style: SrType.bodySm(color: context.srColors.ink4),
+              ),
             ),
           ],
         ],
@@ -897,7 +914,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
               icon: Icon(
                 Icons.edit_note_rounded,
                 size: SR.iconSm,
-                color: SR.ink3,
+                color: context.srColors.ink3,
               ),
               fontSize: 12.5,
               minHeight: 42,
@@ -907,7 +924,11 @@ class _DecisionPanelState extends State<DecisionPanel> {
             ),
             SrButton(
               label: 'Decline',
-              icon: Icon(Icons.close_rounded, size: SR.iconSm, color: SR.red),
+              icon: Icon(
+                Icons.close_rounded,
+                size: SR.iconSm,
+                color: context.srColors.red,
+              ),
               kind: SrButtonKind.danger,
               fontSize: 12.5,
               minHeight: 42,
@@ -933,7 +954,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(SR.rSm),
                     border: Border.all(
-                      color: hovered ? SR.redLine : SR.borderField,
+                      color: hovered
+                          ? context.srColors.redLine
+                          : context.srColors.borderField,
                       style: BorderStyle.solid,
                     ),
                   ),
@@ -941,7 +964,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
                     'No decision needed — mark expired',
                     style: SrType.caption(
                       w: 500,
-                      color: hovered ? SR.red : SR.muted,
+                      color: hovered
+                          ? context.srColors.red
+                          : context.srColors.muted,
                     ),
                   ),
                 ),
@@ -1022,15 +1047,31 @@ class _StageDot extends StatelessWidget {
         height: 20,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: done ? SR.greenTint : SR.dividerSoft,
+          color: done
+              ? context.srColors.greenTint
+              : context.srColors.dividerSoft,
           shape: BoxShape.circle,
         ),
         child: done
-            ? Icon(Icons.check_rounded, size: 12, color: SR.greenDark)
-            : Text('$index', style: mono(9.5, w: 600, color: SR.muted)),
+            ? Icon(
+                Icons.check_rounded,
+                size: 12,
+                color: context.srColors.greenDark,
+              )
+            : Text(
+                '$index',
+                style: mono(9.5, w: 600, color: context.srColors.muted),
+              ),
       ),
       const SizedBox(width: 7),
-      Text(label, style: sans(11, w: 500, color: done ? SR.ink2 : SR.muted)),
+      Text(
+        label,
+        style: sans(
+          11,
+          w: 500,
+          color: done ? context.srColors.ink2 : context.srColors.muted,
+        ),
+      ),
     ],
   );
 }

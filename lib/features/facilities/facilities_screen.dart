@@ -12,6 +12,8 @@ import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 import 'facility_detail_dialog.dart';
 
+import '../../theme/sr_theme.dart';
+
 enum FacilityFilter {
   all('All'),
   active('Active'),
@@ -213,7 +215,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(7),
                   child: facility.coverPhoto == null
-                      ? ColoredBox(color: SR.hairline)
+                      ? ColoredBox(color: context.srColors.hairline)
                       : FacilityPhotoImage(photo: facility.coverPhoto!),
                 ),
               ),
@@ -233,7 +235,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                       facility.room,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: mono(10.5, color: SR.muted),
+                      style: mono(10.5, color: context.srColors.muted),
                     ),
                   ],
                 ),
@@ -244,13 +246,13 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
             facility.building,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: sans(12, color: SR.ink3),
+            style: sans(12, color: context.srColors.ink3),
           ),
           Text(
             facility.category,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: sans(12, color: SR.ink3),
+            style: sans(12, color: context.srColors.ink3),
           ),
           Align(
             alignment: Alignment.centerLeft,
@@ -262,7 +264,10 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
               showCount: false,
             ),
           ),
-          Text('${facility.capacity}', style: mono(12, color: SR.ink3)),
+          Text(
+            '${facility.capacity}',
+            style: mono(12, color: context.srColors.ink3),
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: SrStatusChip(
@@ -298,8 +303,8 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                   size: 28,
                   fontSize: 11,
                   radius: 7,
-                  foreground: SR.red,
-                  hoverForeground: SR.red,
+                  foreground: context.srColors.red,
+                  hoverForeground: context.srColors.red,
                   onPressed: () => confirmDeleteFacility(
                     context,
                     state: state,
@@ -341,7 +346,7 @@ class _FacilityCompactCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(9),
               child: facility.coverPhoto == null
-                  ? ColoredBox(color: SR.hairline)
+                  ? ColoredBox(color: context.srColors.hairline)
                   : FacilityPhotoImage(photo: facility.coverPhoto!),
             ),
           ),
@@ -354,7 +359,7 @@ class _FacilityCompactCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${facility.room} · ${facility.building}',
-                  style: sans(11.5, height: 1.45, color: SR.ink4),
+                  style: sans(11.5, height: 1.45, color: context.srColors.ink4),
                 ),
               ],
             ),
@@ -367,7 +372,7 @@ class _FacilityCompactCard extends StatelessWidget {
                 PopupMenuItem(value: 'edit', child: Text('Edit facility')),
                 PopupMenuItem(value: 'delete', child: Text('Delete facility')),
               ],
-              icon: Icon(Icons.more_vert_rounded, color: SR.ink4),
+              icon: Icon(Icons.more_vert_rounded, color: context.srColors.ink4),
             ),
         ],
       ),

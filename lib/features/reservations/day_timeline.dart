@@ -5,6 +5,8 @@ import '../../theme/sr_tokens.dart';
 import 'conflict_engine.dart';
 import 'reservation_checks.dart';
 
+import '../../theme/sr_theme.dart';
+
 class DayTimeline extends StatelessWidget {
   const DayTimeline({
     super.key,
@@ -78,9 +80,9 @@ class DayTimeline extends StatelessWidget {
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: SR.surfaceSubtle,
+                        color: context.srColors.surfaceSubtle,
                         borderRadius: BorderRadius.circular(9),
-                        border: Border.all(color: SR.hairline),
+                        border: Border.all(color: context.srColors.hairline),
                       ),
                     ),
                   ),
@@ -90,14 +92,14 @@ class DayTimeline extends StatelessWidget {
                       top: 0,
                       bottom: 0,
                       width: 1,
-                      child: ColoredBox(color: SR.hairline),
+                      child: ColoredBox(color: context.srColors.hairline),
                     ),
                     Positioned(
                       left: fraction(tick.toDouble()) * width + 3,
                       top: 4,
                       child: Text(
                         '${tick.toString().padLeft(2, '0')}:00',
-                        style: mono(8.5, color: SR.mutedLight),
+                        style: mono(8.5, color: context.srColors.mutedLight),
                       ),
                     ),
                   ],
@@ -106,9 +108,9 @@ class DayTimeline extends StatelessWidget {
                       from: booking.startAt,
                       to: booking.endAt,
                       label: booking.label,
-                      background: SR.divider,
-                      border: SR.hairline,
-                      foreground: SR.ink3,
+                      background: context.srColors.divider,
+                      border: context.srColors.hairline,
+                      foreground: context.srColors.ink3,
                       top: 22,
                       height: 24,
                     ),
@@ -118,9 +120,13 @@ class DayTimeline extends StatelessWidget {
                     label:
                         '${assessment.request.start}–'
                         '${assessment.request.end} · this request',
-                    background: assessment.hasConflict ? SR.red : SR.blue,
-                    border: assessment.hasConflict ? SR.red : SR.blueDark,
-                    foreground: SR.surface,
+                    background: assessment.hasConflict
+                        ? context.srColors.red
+                        : SR.primary,
+                    border: assessment.hasConflict
+                        ? context.srColors.red
+                        : SR.primaryHover,
+                    foreground: context.srColors.surface,
                     top: 56,
                     height: 26,
                   ),
@@ -131,7 +137,7 @@ class DayTimeline extends StatelessWidget {
             Text(
               'Grey blocks are confirmed bookings · the coloured block is this '
               'request',
-              style: sans(10.5, color: SR.muted),
+              style: sans(10.5, color: context.srColors.muted),
             ),
           ],
         );

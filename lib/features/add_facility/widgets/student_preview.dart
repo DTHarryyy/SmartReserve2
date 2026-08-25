@@ -7,6 +7,8 @@ import '../../../widgets/sr_components.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 IconData _categoryIcon(String category) => switch (category) {
   'Computer Laboratory' => Icons.computer_rounded,
   'Science Laboratory' => Icons.science_rounded,
@@ -31,7 +33,7 @@ class StudentPreview extends StatelessWidget {
         : draft.name.trim();
 
     return Container(
-      color: SR.bg,
+      color: context.srColors.bg,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
         child: Column(
@@ -41,9 +43,9 @@ class StudentPreview extends StatelessWidget {
               child: Container(
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: SR.surface,
+                  color: context.srColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: SR.border),
+                  border: Border.all(color: context.srColors.border),
                   boxShadow: SR.cardShadow,
                 ),
                 child: Column(
@@ -92,7 +94,7 @@ class StudentPreview extends StatelessWidget {
                           const SizedBox(height: 3),
                           Text(
                             draft.whereLine,
-                            style: sans(11.5, color: SR.ink4),
+                            style: sans(11.5, color: context.srColors.ink4),
                           ),
                           const SizedBox(height: 10),
                           Text(
@@ -105,8 +107,8 @@ class StudentPreview extends StatelessWidget {
                               12,
                               height: 1.65,
                               color: draft.description.trim().isEmpty
-                                  ? SR.muted
-                                  : SR.ink3,
+                                  ? context.srColors.muted
+                                  : context.srColors.ink3,
                             ),
                           ),
                           if (draft.amenities.isNotEmpty) ...[
@@ -122,12 +124,15 @@ class StudentPreview extends StatelessWidget {
                                       vertical: 3,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: SR.dividerSoft,
+                                      color: context.srColors.dividerSoft,
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
                                       a,
-                                      style: sans(10.5, color: SR.ink3),
+                                      style: sans(
+                                        10.5,
+                                        color: context.srColors.ink3,
+                                      ),
                                     ),
                                   ),
                               ],
@@ -138,7 +143,9 @@ class StudentPreview extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 13),
                             decoration: BoxDecoration(
                               border: Border(
-                                top: BorderSide(color: SR.divider),
+                                top: BorderSide(
+                                  color: context.srColors.divider,
+                                ),
                               ),
                             ),
                             child: Row(
@@ -180,7 +187,7 @@ class StudentPreview extends StatelessWidget {
                           Center(
                             child: Text(
                               controller.coordLabel,
-                              style: mono(10.5, color: SR.muted),
+                              style: mono(10.5, color: context.srColors.muted),
                             ),
                           ),
                         ],
@@ -197,7 +204,7 @@ class StudentPreview extends StatelessWidget {
                 'This is exactly what a student sees in the reservation '
                 'catalogue.',
                 textAlign: TextAlign.center,
-                style: sans(10.5, height: 1.6, color: SR.muted),
+                style: sans(10.5, height: 1.6, color: context.srColors.muted),
               ),
             ),
           ],

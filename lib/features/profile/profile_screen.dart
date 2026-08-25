@@ -32,7 +32,7 @@ class ProfileScreen extends StatelessWidget {
                   icon: Icon(
                     Icons.arrow_back_rounded,
                     size: SR.iconSm,
-                    color: SR.ink3,
+                    color: context.srColors.ink3,
                   ),
                   kind: SrButtonKind.ghost,
                   dense: true,
@@ -60,7 +60,9 @@ class ProfileScreen extends StatelessWidget {
                                 admin.email,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: SrType.code(color: SR.muted),
+                                style: SrType.code(
+                                  color: context.srColors.muted,
+                                ),
                               ),
                               const SizedBox(height: 3),
                               Text(admin.unit, style: SrType.caption()),
@@ -115,7 +117,7 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icon(
                         Icons.badge_outlined,
                         size: SR.iconSm,
-                        color: SR.ink3,
+                        color: context.srColors.ink3,
                       ),
                       expand: true,
                       minHeight: 42,
@@ -128,7 +130,7 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icon(
                         Icons.logout_rounded,
                         size: SR.iconSm,
-                        color: SR.red,
+                        color: context.srColors.red,
                       ),
                       kind: SrButtonKind.danger,
                       expand: true,

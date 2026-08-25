@@ -1,3 +1,10 @@
+// The context-free helpers below (sans, mono, SrType, SrTone) have no
+// BuildContext to read context.srColors from and are called from thousands
+// of sites across the app, so they intentionally keep reading the legacy
+// SR.* static bridge (theme-aware via SR.activate) rather than the
+// per-context SrColors extension.
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:flutter/material.dart';
 
 import 'sr_theme.dart';
@@ -58,12 +65,10 @@ abstract final class SR {
   static Color get surfaceSunken =>
       _dark ? SrColors.dark.surfaceSunken : SrColors.light.surfaceSunken;
   @Deprecated('Use context.srColors.mapBg instead.')
-  static Color get mapBg =>
-      _dark ? SrColors.dark.mapBg : SrColors.light.mapBg;
+  static Color get mapBg => _dark ? SrColors.dark.mapBg : SrColors.light.mapBg;
 
   @Deprecated('Use context.srColors.navBg instead.')
-  static Color get navBg =>
-      _dark ? SrColors.dark.navBg : SrColors.light.navBg;
+  static Color get navBg => _dark ? SrColors.dark.navBg : SrColors.light.navBg;
   @Deprecated('Use context.srColors.navBorder instead.')
   static Color get navBorder =>
       _dark ? SrColors.dark.navBorder : SrColors.light.navBorder;
@@ -105,8 +110,7 @@ abstract final class SR {
   @Deprecated('Use context.srColors.ink4 instead.')
   static Color get ink4 => _dark ? SrColors.dark.ink4 : SrColors.light.ink4;
   @Deprecated('Use context.srColors.muted instead.')
-  static Color get muted =>
-      _dark ? SrColors.dark.muted : SrColors.light.muted;
+  static Color get muted => _dark ? SrColors.dark.muted : SrColors.light.muted;
   @Deprecated('Use context.srColors.mutedLight instead.')
   static Color get mutedLight =>
       _dark ? SrColors.dark.mutedLight : SrColors.light.mutedLight;
@@ -152,8 +156,7 @@ abstract final class SR {
       _dark ? SrColors.dark.greenLine : SrColors.light.greenLine;
 
   @Deprecated('Use context.srColors.amber instead.')
-  static Color get amber =>
-      _dark ? SrColors.dark.amber : SrColors.light.amber;
+  static Color get amber => _dark ? SrColors.dark.amber : SrColors.light.amber;
   @Deprecated('Use context.srColors.amberTint instead.')
   static Color get amberTint =>
       _dark ? SrColors.dark.amberTint : SrColors.light.amberTint;
