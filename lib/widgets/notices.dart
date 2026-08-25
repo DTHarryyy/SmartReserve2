@@ -180,11 +180,6 @@ class SrToast extends StatelessWidget {
             label: 'Dismiss notification',
             child: SizedBox.square(
               dimension: 44,
-              // No `tooltip:` here on purpose. The toast host is mounted from
-              // MaterialApp.builder, which puts it *above* the Navigator and
-              // therefore outside the Overlay — a Tooltip would throw "No
-              // Overlay widget found." on every build. The Semantics wrapper
-              // above already supplies the accessible name.
               child: IconButton(
                 onPressed: onDismiss,
                 icon: Icon(

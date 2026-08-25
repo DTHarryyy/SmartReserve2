@@ -4,11 +4,6 @@ import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
-/// Compact/full read-only star display used on facility cards, facility
-/// detail, the booking sheet, and the admin feedback screen.
-///
-/// Renders nothing when there are no reviews yet -- an unrated facility
-/// should not carry a visual penalty on a browse grid.
 class SrRatingStars extends StatelessWidget {
   const SrRatingStars({
     super.key,
@@ -91,8 +86,6 @@ class SrRatingStars extends StatelessWidget {
   }
 }
 
-/// Interactive 1-5 star picker with a rating label underneath. Each star is
-/// a 44px tap target on compact widths, matching SR.tapTarget.
 class SrRatingInput extends StatelessWidget {
   const SrRatingInput({
     super.key,
@@ -131,7 +124,9 @@ class SrRatingInput extends StatelessWidget {
                     onTap: enabled ? () => onChanged(i) : null,
                     child: Center(
                       child: Icon(
-                        value >= i ? Icons.star_rounded : Icons.star_outline_rounded,
+                        value >= i
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
                         size: hovered ? iconSize + 2 : iconSize,
                         color: value >= i ? SrTone.warning.solid : c.border,
                       ),

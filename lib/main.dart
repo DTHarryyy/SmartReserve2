@@ -14,11 +14,6 @@ import 'widgets/toast_host.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Rate-limited so a build error that recurs every frame (e.g. an Overlay
-  // lookup failing inside an animated widget) can never again cost a full
-  // tree dump per frame on the UI isolate — that turned one cosmetic
-  // assertion into a hard "Not Responding" freeze. Each distinct error
-  // prints in full a few times, then collapses to a one-line counter.
   final errorSeenCount = <String, int>{};
   const maxFullPrints = 3;
   void logRateLimited(String key, void Function() printFull) {
@@ -27,9 +22,7 @@ Future<void> main() async {
     if (seen <= maxFullPrints) {
       printFull();
     } else if (seen == maxFullPrints + 1 || seen % 200 == 0) {
-      debugPrint(
-        '(suppressing further "$key" errors — $seen seen so far)',
-      );
+      debugPrint('(suppressing further "$key" errors — $seen seen so far)');
     }
   }
 
@@ -67,11 +60,6 @@ class SmartReserveApp extends StatefulWidget {
 }
 
 class _SmartReserveAppState extends State<SmartReserveApp> {
-  // Built once rather than on every AppState.notifyListeners() (there are
-  // 100+ call sites): ColorScheme.fromSeed() plus ~20 sub-theme
-  // constructions is not free, and rebuilding it every notify also handed
-  // MaterialApp a non-identical ThemeData each time, re-triggering its
-  // (now-disabled) theme animation for no reason.
   static final _lightTheme = SrThemeData.light();
   static final _darkTheme = SrThemeData.dark();
 
@@ -101,12 +89,6 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
           theme: _lightTheme,
           darkTheme: _darkTheme,
           themeMode: widget.state.themePreference.themeMode,
-          // MaterialApp otherwise cross-fades theme/darkTheme over
-          // kThemeAnimationDuration (200ms) via AnimatedTheme, and
-          // ThemeData.lerp resolves `brightness` as `t < 0.5 ? a : b` —
-          // mid-lerp reads (including the SrThemeBridge below) briefly see
-          // the *old* brightness. Zero duration makes the switch land in a
-          // single frame instead of fading in behind a stale value.
           themeAnimationDuration: Duration.zero,
           builder: (context, child) => SrThemeBridge(
             child: AppToastHost(child: child ?? const SizedBox.shrink()),

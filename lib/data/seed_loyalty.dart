@@ -1,8 +1,5 @@
 import '../model/loyalty.dart';
 
-/// Demo-mode loyalty data for the seeded student account (u1 / Jomar
-/// Padilla). Values match [LoyaltyPoints] so the demo experience reflects
-/// the same earning rules production would show via LoyaltySummary.rules.
 LoyaltySummary seedLoyalty() {
   final transactions = [
     LoyaltyTransaction(
@@ -64,7 +61,10 @@ LoyaltySummary seedLoyalty() {
       updatedAt: DateTime(2026, 6, 1),
     ),
   ];
-  final balance = transactions.fold<int>(0, (value, item) => value + item.points);
+  final balance = transactions.fold<int>(
+    0,
+    (value, item) => value + item.points,
+  );
   final earned = transactions
       .where((item) => item.isCredit)
       .fold<int>(0, (value, item) => value + item.points);

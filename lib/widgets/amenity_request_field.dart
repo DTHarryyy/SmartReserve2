@@ -8,13 +8,6 @@ import 'sr_controls.dart';
 
 import '../theme/sr_theme.dart';
 
-/// Lets a requester pick additional amenities to ask for on a reservation.
-///
-/// Renders the current selection as removable chips, followed by a
-/// "Request more amenities" trigger as the last item in the row. The trigger
-/// opens a popover listing only amenities configured for the facility. The
-/// optional catalogue fallback exists for old demo fixtures, but production
-/// booking leaves it disabled so requesters cannot invent price inputs.
 class AmenityRequestField extends StatelessWidget {
   const AmenityRequestField({
     super.key,
@@ -35,8 +28,6 @@ class AmenityRequestField extends StatelessWidget {
   final bool allowOtherAmenities;
   final bool dense;
 
-  /// Keep legacy fixture labels deduplicated; production options are backed
-  /// by trusted facility-amenity IDs when the reservation is submitted.
   List<String> get _facilityLabels => amenityOptions.isEmpty
       ? facilityAmenities.toSet().toList()
       : [
@@ -136,17 +127,12 @@ class _AmenityPickerButton extends StatelessWidget {
         maxHeight: 320,
       ),
       itemBuilder: (context) => [
-        // A single disabled item holds the whole list so that tapping a row
-        // toggles it without dismissing the menu. `enabled: false` also
-        // dims icons to 38%, so the opacity is reset here.
         PopupMenuItem<void>(
           enabled: false,
           padding: EdgeInsets.zero,
           child: IconTheme(
             data: const IconThemeData(opacity: 1),
             child: StatefulBuilder(
-              // A scrollable here would break the IntrinsicWidth the popup
-              // menu wraps its items in — the menu supplies its own scrolling.
               builder: (context, setMenuState) => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -390,8 +376,6 @@ class _AmenityChip extends StatelessWidget {
   );
 }
 
-/// Read-only display of requested amenities as pills, with a "+N" overflow
-/// when [max] is set and there are more than [max] labels.
 class AmenityPills extends StatelessWidget {
   const AmenityPills(this.amenities, {super.key, this.max});
 
