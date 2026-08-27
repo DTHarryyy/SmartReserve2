@@ -42,7 +42,11 @@ class _PublicCalendarScreenState extends State<PublicCalendarScreen> {
     super.didChangeDependencies();
     if (_requestedInitialLoad) return;
     _requestedInitialLoad = true;
-    unawaited(AppScope.of(context).ensureUserCalendarLoaded());
+    final state = AppScope.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(state.ensureUserCalendarLoaded());
+    });
   }
 
   @override

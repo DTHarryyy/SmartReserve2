@@ -2314,14 +2314,32 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     required DateTime to,
   }) async {
     if (facilityIds.isEmpty) return const [];
-    final data = await _client.rpc(
-      'public_reservation_calendar',
-      params: {
-        'p_facility_ids': facilityIds,
-        'p_from': from.toUtc().toIso8601String(),
-        'p_to': to.toUtc().toIso8601String(),
-      },
-    );
+    late final Object? data;
+    try {
+      data = await _client.rpc(
+        'public_reservation_calendar',
+        params: {
+          'p_facility_ids': facilityIds,
+          'p_from': from.toUtc().toIso8601String(),
+          'p_to': to.toUtc().toIso8601String(),
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST202') rethrow;
+      final fallback = await facilityBusyWindows(
+        facilityIds: facilityIds,
+        from: from,
+        to: to,
+      );
+      return [
+        for (final row in fallback)
+          BackendPublicReservationSlot(
+            facilityId: row.facilityId,
+            startsAt: row.startsAt,
+            endsAt: row.endsAt,
+          ),
+      ];
+    }
     return [
       for (final row in (data as List? ?? const []))
         BackendPublicReservationSlot.fromJson(
