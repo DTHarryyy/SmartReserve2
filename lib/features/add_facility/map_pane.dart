@@ -12,6 +12,8 @@ import 'widgets/campus_map.dart';
 import 'widgets/map_search.dart';
 import 'widgets/student_preview.dart';
 
+import '../../theme/sr_theme.dart';
+
 class MapPane extends StatelessWidget {
   const MapPane({
     super.key,
@@ -80,7 +82,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (badge, badgeBg, badgeFg) = controller.pinBadge;
+    final (badge, badgeBg, badgeFg) = controller.pinBadge(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -107,7 +109,10 @@ class _Header extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-              Text(controller.mapHint, style: sans(11, color: SR.ink4)),
+              Text(
+                controller.mapHint,
+                style: sans(11, color: context.srColors.ink4),
+              ),
             ],
           ),
         ),
@@ -127,7 +132,7 @@ class _TabSwitch extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(2),
     decoration: BoxDecoration(
-      color: SR.hairline,
+      color: context.srColors.hairline,
       borderRadius: BorderRadius.circular(9),
     ),
     child: Row(
@@ -166,7 +171,7 @@ class _Tab extends StatelessWidget {
           duration: SR.stateChange,
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
           decoration: BoxDecoration(
-            color: selected ? SR.surface : Colors.transparent,
+            color: selected ? context.srColors.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
             boxShadow: selected ? SR.cardShadow : null,
           ),
@@ -175,7 +180,9 @@ class _Tab extends StatelessWidget {
             style: sans(
               11.5,
               w: 500,
-              color: selected ? SR.ink : (hovered ? SR.ink2 : SR.ink4),
+              color: selected
+                  ? context.srColors.ink
+                  : (hovered ? context.srColors.ink2 : context.srColors.ink4),
             ),
           ),
         ),
@@ -202,9 +209,9 @@ class _MapSurface extends StatelessWidget {
     borderRadius: BorderRadius.circular(13),
     child: Container(
       decoration: BoxDecoration(
-        color: SR.mapBg,
+        color: context.srColors.mapBg,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: SR.borderField),
+        border: Border.all(color: context.srColors.borderField),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -261,16 +268,10 @@ class _DropHint extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xEDFFFFFF),
+        color: context.srColors.glass,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x1210141A)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1F10141A),
-            blurRadius: 30,
-            offset: Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: context.srColors.glassLine),
+        boxShadow: SR.popoverShadow,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -282,7 +283,7 @@ class _DropHint extends StatelessWidget {
             child: Text(
               'Then drag or nudge it until it sits on the actual doorway.',
               textAlign: TextAlign.center,
-              style: sans(11, height: 1.5, color: SR.ink4),
+              style: sans(11, height: 1.5, color: context.srColors.ink4),
             ),
           ),
         ],
@@ -310,9 +311,9 @@ class _MapTools extends StatelessWidget {
     final zoomPair = Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xF7FFFFFF),
+        color: context.srColors.glass,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0x1410141A)),
+        border: Border.all(color: context.srColors.glassLine),
         boxShadow: SR.floatShadow,
       ),
       child: Flex(
@@ -332,7 +333,7 @@ class _MapTools extends StatelessWidget {
           Container(
             width: horizontal ? 1 : size,
             height: horizontal ? size : 1,
-            color: SR.divider,
+            color: context.srColors.divider,
           ),
           SrIconButton(
             glyph: '－',
@@ -355,9 +356,11 @@ class _MapTools extends StatelessWidget {
           glyph: tool.glyph,
           tooltip: tool.tooltip,
           size: size,
-          background: tool.active ? SR.blueTint : const Color(0xF7FFFFFF),
-          foreground: tool.active ? SR.blue : SR.ink2,
-          border: const Color(0x1410141A),
+          background: tool.active
+              ? context.srColors.primaryTint
+              : context.srColors.glass,
+          foreground: tool.active ? SR.primary : context.srColors.ink2,
+          border: context.srColors.glassLine,
           shadow: SR.floatShadow,
           onPressed: tool.onPressed,
         ),
@@ -489,9 +492,9 @@ class _FloatingCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding,
     decoration: BoxDecoration(
-      color: const Color(0xF7FFFFFF),
+      color: context.srColors.glass,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0x1410141A)),
+      border: Border.all(color: context.srColors.glassLine),
       boxShadow: SR.floatShadow,
     ),
     child: child,
@@ -516,8 +519,8 @@ class _NudgePad extends StatelessWidget {
           size: w,
           fontSize: 8,
           radius: 5,
-          border: SR.hairline,
-          foreground: SR.ink3,
+          border: context.srColors.hairline,
+          foreground: context.srColors.ink3,
           onPressed: () => controller.nudgePin(north: n, east: e),
         );
 
@@ -526,7 +529,12 @@ class _NudgePad extends StatelessWidget {
       children: [
         Text(
           'NUDGE 1 m',
-          style: mono(8.5, w: 500, tracking: .04, color: SR.muted),
+          style: mono(
+            8.5,
+            w: 500,
+            tracking: .04,
+            color: context.srColors.muted,
+          ),
         ),
         const SizedBox(height: 3),
         SizedBox(height: h, child: key('▲', 'Nudge north', n: 1)),
@@ -556,7 +564,7 @@ class _OfflinePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    color: SR.bg,
+    color: context.srColors.bg,
     alignment: Alignment.center,
     padding: const EdgeInsets.all(24),
     child: ConstrainedBox(
@@ -569,11 +577,15 @@ class _OfflinePanel extends StatelessWidget {
             height: 42,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: SR.surface,
+              color: context.srColors.surface,
               borderRadius: BorderRadius.circular(11),
-              border: Border.all(color: SR.border),
+              border: Border.all(color: context.srColors.border),
             ),
-            child: const Icon(Icons.wifi_off_rounded, size: 18, color: SR.red),
+            child: Icon(
+              Icons.wifi_off_rounded,
+              size: 18,
+              color: context.srColors.red,
+            ),
           ),
           const SizedBox(height: 14),
           Text('Map tiles are not loading', style: sans(13.5, w: 600)),
@@ -582,7 +594,7 @@ class _OfflinePanel extends StatelessWidget {
             'The connection to the tile server failed. You can still enter '
             'coordinates manually and verify the pin later.',
             textAlign: TextAlign.center,
-            style: sans(11.5, height: 1.6, color: SR.ink4),
+            style: sans(11.5, height: 1.6, color: context.srColors.ink4),
           ),
           const SizedBox(height: 14),
           Wrap(
@@ -620,22 +632,22 @@ class _Footer extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Row(
       children: [
         Expanded(
           child: Text(
             controller.footerHint,
-            style: sans(11, height: 1.5, color: SR.ink4),
+            style: sans(11, height: 1.5, color: context.srColors.ink4),
           ),
         ),
         const SizedBox(width: 10),
         SrButton(
           label: "I'm standing in the room",
-          icon: Text('◎', style: sans(12, color: SR.ink2)),
+          icon: Text('◎', style: sans(12, color: context.srColors.ink2)),
           dense: true,
           fontSize: 11.5,
           onPressed: controller.useGps,

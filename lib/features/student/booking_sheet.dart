@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
@@ -8,11 +11,16 @@ import '../../model/account.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
 import '../../model/reservation.dart';
+import '../../model/payment.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/geo.dart';
 import '../../util/campus_calendar.dart';
+import '../../widgets/amenity_request_field.dart';
+import '../../widgets/rating_display.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
+
+import '../../theme/sr_theme.dart';
 
 Future<void> showBookingSheet(
   BuildContext context, {
@@ -42,10 +50,10 @@ class _MobileFacilityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: SR.surface,
+    backgroundColor: context.srColors.surface,
     appBar: AppBar(
-      backgroundColor: SR.surface,
-      foregroundColor: SR.ink,
+      backgroundColor: context.srColors.surface,
+      foregroundColor: context.srColors.ink,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
@@ -57,9 +65,9 @@ class _MobileFacilityPage extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: sans(15, w: 600, tracking: -.01),
       ),
-      bottom: const PreferredSize(
+      bottom: PreferredSize(
         preferredSize: Size.fromHeight(1),
-        child: Divider(height: 1, color: SR.border),
+        child: Divider(height: 1, color: context.srColors.border),
       ),
     ),
     body: SafeArea(
@@ -97,6 +105,13 @@ class _BookingSheetState extends State<_BookingSheet> {
   bool _weekly = false;
   int _occurrenceCount = 2;
   final List<ReservationUpload> _attachments = [];
+  final Set<String> _amenities = <String>{};
+  BackendReservationQuote? _serverQuote;
+  String? _quoteError;
+  bool _quoteLoading = false;
+  bool _termsAccepted = false;
+  Timer? _quoteTimer;
+  int _quoteRequest = 0;
   int _selectedPhoto = 0;
 
   Facility get facility => widget.facility;
@@ -107,18 +122,23 @@ class _BookingSheetState extends State<_BookingSheet> {
     _dateValues = _availableDates();
     _dates = [for (final value in _dateValues) _dateLabel(value)];
     _date = _dates.first;
-    _start = _times.first;
-    _end = _times.length > 2 ? _times[2] : _times.last;
+    final slots = _times;
+    _start = slots.first;
+    _end = slots.length > 2 ? slots[2] : slots.last;
+    _heads.addListener(_scheduleQuote);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scheduleQuote());
   }
 
   @override
   void dispose() {
+    _heads.removeListener(_scheduleQuote);
     _heads.dispose();
     _purpose.dispose();
+    _quoteTimer?.cancel();
     super.dispose();
   }
 
-  List<String> get _times => [
+  List<String> get _allSlots => [
     for (
       var minutes = facility.openHour * 60;
       minutes <= facility.closeHour * 60;
@@ -128,15 +148,44 @@ class _BookingSheetState extends State<_BookingSheet> {
           '${(minutes % 60).toString().padLeft(2, '0')}',
   ];
 
+  List<String> _slotsFor(DateTime date) =>
+      bookableSlots(_allSlots, date, campusNow());
+
+  /// Falls back to the full day when today has nothing left, so the dropdowns
+  /// keep a valid value; [_error] blocks the submit in that case.
+  List<String> get _times {
+    final slots = _slotsFor(_selectedDate);
+    return slots.length >= 2 ? slots : _allSlots;
+  }
+
   List<DateTime> _availableDates() {
     final today = campusNow();
     final start = DateTime(today.year, today.month, today.day);
     final values = <DateTime>[];
     for (var offset = 0; offset <= facility.advanceBookingDays; offset++) {
       final date = start.add(Duration(days: offset));
-      if (facility.opensOn(date)) values.add(date);
+      // A day needs both a start and a later end to be bookable.
+      if (facility.opensOn(date) && _slotsFor(date).length >= 2) {
+        values.add(date);
+      }
     }
     return values.isEmpty ? [start] : values;
+  }
+
+  /// Re-anchors the time selection after the date changes: today's list is
+  /// shorter than a future day's, and `DropdownButton` asserts that its value
+  /// is present in its items.
+  void _clampTimes() {
+    final slots = _times;
+    if (!slots.contains(_start)) _start = slots.first;
+    var startIndex = slots.indexOf(_start);
+    if (slots.length >= 2 && startIndex == slots.length - 1) {
+      startIndex = slots.length - 2;
+      _start = slots[startIndex];
+    }
+    if (!slots.contains(_end) || slots.indexOf(_end) <= startIndex) {
+      _end = slots[(startIndex + 2).clamp(startIndex + 1, slots.length - 1)];
+    }
   }
 
   static String _dateLabel(DateTime date) {
@@ -196,11 +245,75 @@ class _BookingSheetState extends State<_BookingSheet> {
           'This account is suspended and cannot submit new requests.';
     }
     if (_duration <= 0) return 'The end time has to be after the start time.';
+    if (!_at(_start).isAfter(DateTime.now().toUtc())) {
+      return 'That start time has already passed — pick a later slot.';
+    }
+    if (_heads.text.trim().isNotEmpty &&
+        int.tryParse(_heads.text.trim()) == null) {
+      return 'Attendees needs to be a whole number.';
+    }
     if (_headcount <= 0) return 'How many people are coming?';
+    if (_overCapacity) {
+      return '${facility.name} seats ${facility.capacity}. Lower the '
+          'attendee count or pick a bigger space.';
+    }
     if (_purpose.text.trim().isEmpty) {
-      return 'The registrar reads this — a sentence is enough.';
+      return 'The assigned administrator reads this — a sentence is enough.';
+    }
+    if (_quoteLoading) return 'Wait for the current price to finish loading.';
+    if (_quoteError != null) return _quoteError;
+    if (_serverQuote == null) {
+      return 'A server price is required before submitting.';
+    }
+    if (_serverQuote?.terms.isNotEmpty == true && !_termsAccepted) {
+      return 'Accept the reservation and payment terms before submitting.';
     }
     return null;
+  }
+
+  void _scheduleQuote() {
+    _quoteTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _serverQuote = null;
+        _quoteError = null;
+        _quoteLoading = true;
+        _termsAccepted = false;
+      });
+    }
+    _quoteTimer = Timer(const Duration(milliseconds: 250), _refreshQuote);
+  }
+
+  Future<void> _refreshQuote() async {
+    if (_duration <= 0) {
+      if (mounted) setState(() => _quoteLoading = false);
+      return;
+    }
+    final request = ++_quoteRequest;
+    if (mounted) {
+      setState(() {
+        _quoteLoading = true;
+        _quoteError = null;
+      });
+    }
+    final count = _weekly ? _occurrenceCount : 1;
+    final quote = await widget.state.quoteReservation(
+      facility: facility,
+      startsAt: [for (var i = 0; i < count; i++) _at(_start, i)],
+      endsAt: [for (var i = 0; i < count; i++) _at(_end, i)],
+      headcount: _headcount,
+      amenities: _amenities.toList(),
+    );
+    if (!mounted || request != _quoteRequest) return;
+    setState(() {
+      _quoteLoading = false;
+      _serverQuote = quote;
+      _quoteError = quote == null
+          ? widget.state.lastReservationError ??
+                'The price could not be calculated.'
+          : null;
+      _termsAccepted = quote?.terms.isEmpty == true;
+    });
   }
 
   Future<void> _chooseAttachments() async {
@@ -226,6 +339,18 @@ class _BookingSheetState extends State<_BookingSheet> {
     if (mounted) setState(() {});
   }
 
+  void _toggleAmenity(String label) {
+    setState(() {
+      if (!_amenities.remove(label)) _amenities.add(label);
+    });
+    _scheduleQuote();
+  }
+
+  void _removeAmenity(String label) {
+    setState(() => _amenities.remove(label));
+    _scheduleQuote();
+  }
+
   Future<void> _submit() async {
     setState(() => _attempted = true);
     if (_error != null) return;
@@ -238,6 +363,9 @@ class _BookingSheetState extends State<_BookingSheet> {
       heads: _headcount,
       purpose: _purpose.text.trim(),
       attachments: _attachments,
+      amenities: _amenities.toList(),
+      quote: _serverQuote,
+      acceptedTerms: _termsAccepted,
     );
     if (!mounted) return;
     setState(() => _submitting = false);
@@ -249,7 +377,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     final screen = MediaQuery.sizeOf(context);
     final mobile = widget.fullPage || screen.width < 600;
     final content = ColoredBox(
-      color: SR.surface,
+      color: context.srColors.surface,
       child: SrScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -276,11 +404,10 @@ class _BookingSheetState extends State<_BookingSheet> {
                   final booking = _BookingForm(
                     account: widget.state.userAccount,
                     facility: facility,
-                    free: widget.state.userAccount.reservesFree,
-                    quote: widget.state.quoteFor(
-                      facility,
-                      _duration <= 0 ? 0 : _duration,
-                    ),
+                    quote: _serverQuote,
+                    quoteLoading: _quoteLoading,
+                    quoteError: _quoteError,
+                    termsAccepted: _termsAccepted,
                     narrow: widget.fullPage ? false : mobile || !wide,
                     date: _date,
                     dates: _dates,
@@ -298,17 +425,39 @@ class _BookingSheetState extends State<_BookingSheet> {
                     weekly: _weekly,
                     occurrenceCount: _occurrenceCount,
                     attachments: _attachments,
+                    amenities: _amenities,
                     submitting: _submitting,
-                    onDateChanged: (value) => setState(() => _date = value),
-                    onStartChanged: (value) => setState(() => _start = value),
-                    onEndChanged: (value) => setState(() => _end = value),
+                    onDateChanged: (value) {
+                      setState(() {
+                        _date = value;
+                        _clampTimes();
+                      });
+                      _scheduleQuote();
+                    },
+                    onStartChanged: (value) {
+                      setState(() => _start = value);
+                      _scheduleQuote();
+                    },
+                    onEndChanged: (value) {
+                      setState(() => _end = value);
+                      _scheduleQuote();
+                    },
                     onFieldChanged: () => setState(() {}),
-                    onWeeklyChanged: (value) => setState(() => _weekly = value),
-                    onOccurrenceCountChanged: (value) =>
-                        setState(() => _occurrenceCount = value),
+                    onWeeklyChanged: (value) {
+                      setState(() => _weekly = value);
+                      _scheduleQuote();
+                    },
+                    onOccurrenceCountChanged: (value) {
+                      setState(() => _occurrenceCount = value);
+                      _scheduleQuote();
+                    },
                     onChooseAttachments: _chooseAttachments,
                     onRemoveAttachment: (index) =>
                         setState(() => _attachments.removeAt(index)),
+                    onToggleAmenity: _toggleAmenity,
+                    onRemoveAmenity: _removeAmenity,
+                    onTermsAccepted: (value) =>
+                        setState(() => _termsAccepted = value),
                     onSubmit: _submit,
                   );
 
@@ -441,9 +590,11 @@ class _FacilityGallery extends StatelessWidget {
           Container(
             height: 76,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: const BoxDecoration(
-              color: SR.surfaceSubtle,
-              border: Border(bottom: BorderSide(color: SR.hairline)),
+            decoration: BoxDecoration(
+              color: context.srColors.surfaceSubtle,
+              border: Border(
+                bottom: BorderSide(color: context.srColors.hairline),
+              ),
             ),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
@@ -488,10 +639,10 @@ class _PhotoThumbnail extends StatelessWidget {
         width: 72,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(9),
           border: Border.all(
-            color: selected ? SR.blue : SR.border,
+            color: selected ? SR.primary : context.srColors.border,
             width: selected ? 2 : 1,
           ),
         ),
@@ -524,8 +675,8 @@ class _FacilityOverview extends StatelessWidget {
           ),
           SrPill(
             label: facility.category,
-            background: SR.blueTint,
-            foreground: SR.blueDark,
+            background: context.srColors.primaryTint,
+            foreground: SR.primaryHover,
           ),
         ],
       ),
@@ -535,13 +686,20 @@ class _FacilityOverview extends StatelessWidget {
         style: sans(23, w: 600, tracking: -.025, height: 1.15),
       ),
       const SizedBox(height: 5),
-      Text(facility.whereLine, style: sans(12.5, color: SR.ink4)),
+      Text(facility.whereLine, style: sans(12.5, color: context.srColors.ink4)),
+      if (facility.hasRatings) ...[
+        const SizedBox(height: 6),
+        SrRatingStars(
+          average: facility.ratingAverage,
+          count: facility.ratingCount,
+        ),
+      ],
       const SizedBox(height: 13),
       Text(
         facility.description.isEmpty
             ? 'No description has been added for this facility.'
             : facility.description,
-        style: sans(13, height: 1.65, color: SR.ink3),
+        style: sans(13, height: 1.65, color: context.srColors.ink3),
       ),
       const SizedBox(height: 22),
       const _SectionTitle('Facility details'),
@@ -562,6 +720,7 @@ class _FacilityOverview extends StatelessWidget {
             'LISTING',
             facility.publicListing ? 'Publicly listed' : 'Not public',
           ),
+          _DetailItem('RATING', facility.ratingLabel),
         ],
       ),
       const SizedBox(height: 22),
@@ -572,7 +731,10 @@ class _FacilityOverview extends StatelessWidget {
       const _SectionTitle('Amenities'),
       const SizedBox(height: 9),
       if (facility.amenities.isEmpty)
-        Text('No amenities recorded.', style: sans(12, color: SR.muted))
+        Text(
+          'No amenities recorded.',
+          style: sans(12, color: context.srColors.muted),
+        )
       else
         Wrap(
           spacing: 7,
@@ -585,11 +747,14 @@ class _FacilityOverview extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: SR.dividerSoft,
+                  color: context.srColors.dividerSoft,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: SR.hairline),
+                  border: Border.all(color: context.srColors.hairline),
                 ),
-                child: Text(amenity, style: sans(11.5, color: SR.ink3)),
+                child: Text(
+                  amenity,
+                  style: sans(11.5, color: context.srColors.ink3),
+                ),
               ),
           ],
         ),
@@ -597,9 +762,9 @@ class _FacilityOverview extends StatelessWidget {
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: SR.surfaceSubtle,
+          color: context.srColors.surfaceSubtle,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: SR.hairline),
+          border: Border.all(color: context.srColors.hairline),
         ),
         child: Wrap(
           spacing: 18,
@@ -607,15 +772,20 @@ class _FacilityOverview extends StatelessWidget {
           children: [
             Text(
               '${facility.photos.length} ${facility.photos.length == 1 ? 'photo' : 'photos'}',
-              style: mono(10.5, color: SR.ink4),
+              style: mono(10.5, color: context.srColors.ink4),
             ),
             Text(
               '${facility.bookings} bookings on record',
-              style: mono(10.5, color: SR.ink4),
+              style: mono(10.5, color: context.srColors.ink4),
             ),
+            if (facility.hasRatings)
+              Text(
+                '${facility.ratingCount} ${facility.ratingCount == 1 ? 'review' : 'reviews'}',
+                style: mono(10.5, color: context.srColors.ink4),
+              ),
             Text(
               'Updated ${facility.updated}',
-              style: mono(10.5, color: SR.ink4),
+              style: mono(10.5, color: context.srColors.ink4),
             ),
           ],
         ),
@@ -656,9 +826,9 @@ class _DetailGrid extends StatelessWidget {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: SR.surfaceSubtle,
+                  color: context.srColors.surfaceSubtle,
                   borderRadius: BorderRadius.circular(9),
-                  border: Border.all(color: SR.hairline),
+                  border: Border.all(color: context.srColors.hairline),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -667,7 +837,12 @@ class _DetailGrid extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       item.value.isEmpty ? 'Not specified' : item.value,
-                      style: sans(11.5, w: 500, color: SR.ink2, height: 1.35),
+                      style: sans(
+                        11.5,
+                        w: 500,
+                        color: context.srColors.ink2,
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
@@ -710,18 +885,27 @@ class _LocationDetails extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: SR.blueTint2,
+      color: context.srColors.primaryTint2,
       borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.blueLine),
+      border: Border.all(color: context.srColors.primaryLine),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(facility.campusName, style: sans(12.5, w: 600, color: SR.ink2)),
+        Text(
+          facility.campusName,
+          style: sans(12.5, w: 600, color: context.srColors.ink2),
+        ),
         const SizedBox(height: 3),
-        Text(facility.whereLine, style: sans(11.5, color: SR.ink4)),
+        Text(
+          facility.whereLine,
+          style: sans(11.5, color: context.srColors.ink4),
+        ),
         const SizedBox(height: 3),
-        Text(_address, style: sans(11.5, height: 1.5, color: SR.ink4)),
+        Text(
+          _address,
+          style: sans(11.5, height: 1.5, color: context.srColors.ink4),
+        ),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -731,10 +915,10 @@ class _LocationDetails extends StatelessWidget {
             SrPill(
               label: facility.pinConfidence.label,
               background: facility.pinConfidence == PinConfidence.verified
-                  ? SR.greenTint
+                  ? context.srColors.greenTint
                   : facility.pinConfidence == PinConfidence.needsCheck
-                  ? SR.amberTint
-                  : SR.dividerSoft,
+                  ? context.srColors.amberTint
+                  : context.srColors.dividerSoft,
               foreground: facility.pinConfidence.color,
               monospace: true,
               fontSize: 9,
@@ -742,12 +926,12 @@ class _LocationDetails extends StatelessWidget {
             if (facility.coords != null)
               Text(
                 formatCoords(facility.coords!),
-                style: mono(9.5, color: SR.muted),
+                style: mono(9.5, color: context.srColors.muted),
               ),
             if (facility.accuracy != null)
               Text(
                 '±${facility.accuracy} m accuracy',
-                style: mono(9.5, color: SR.muted),
+                style: mono(9.5, color: context.srColors.muted),
               ),
           ],
         ),
@@ -768,8 +952,10 @@ class _BookingForm extends StatelessWidget {
   const _BookingForm({
     required this.account,
     required this.facility,
-    required this.free,
     required this.quote,
+    required this.quoteLoading,
+    required this.quoteError,
+    required this.termsAccepted,
     required this.narrow,
     required this.date,
     required this.dates,
@@ -787,6 +973,7 @@ class _BookingForm extends StatelessWidget {
     required this.weekly,
     required this.occurrenceCount,
     required this.attachments,
+    required this.amenities,
     required this.submitting,
     required this.onDateChanged,
     required this.onStartChanged,
@@ -796,13 +983,18 @@ class _BookingForm extends StatelessWidget {
     required this.onOccurrenceCountChanged,
     required this.onChooseAttachments,
     required this.onRemoveAttachment,
+    required this.onToggleAmenity,
+    required this.onRemoveAmenity,
+    required this.onTermsAccepted,
     required this.onSubmit,
   });
 
   final Account account;
   final Facility facility;
-  final bool free;
-  final int quote;
+  final BackendReservationQuote? quote;
+  final bool quoteLoading;
+  final String? quoteError;
+  final bool termsAccepted;
   final bool narrow;
   final String date;
   final List<String> dates;
@@ -820,6 +1012,7 @@ class _BookingForm extends StatelessWidget {
   final bool weekly;
   final int occurrenceCount;
   final List<ReservationUpload> attachments;
+  final Set<String> amenities;
   final bool submitting;
   final ValueChanged<String> onDateChanged;
   final ValueChanged<String> onStartChanged;
@@ -829,15 +1022,18 @@ class _BookingForm extends StatelessWidget {
   final ValueChanged<int> onOccurrenceCountChanged;
   final VoidCallback onChooseAttachments;
   final ValueChanged<int> onRemoveAttachment;
+  final ValueChanged<String> onToggleAmenity;
+  final ValueChanged<String> onRemoveAmenity;
+  final ValueChanged<bool> onTermsAccepted;
   final Future<void> Function() onSubmit;
 
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
+      color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -846,8 +1042,8 @@ class _BookingForm extends StatelessWidget {
         Text('Request this facility', style: sans(16, w: 600, tracking: -.015)),
         const SizedBox(height: 4),
         Text(
-          'Choose a schedule and tell the registrar what you need it for.',
-          style: sans(11.5, height: 1.5, color: SR.ink4),
+          'Choose a schedule and tell the assigned administrator what you need it for.',
+          style: sans(11.5, height: 1.5, color: context.srColors.ink4),
         ),
         const SizedBox(height: 16),
         _row(
@@ -874,7 +1070,13 @@ class _BookingForm extends StatelessWidget {
               mono: true,
               fontSize: 12.5,
               keyboardType: TextInputType.number,
-              hasError: attempted && headcount <= 0,
+              // Digits only: `TextInputType.number` is a hint the desktop and
+              // web keyboards ignore, so letters and signs get through.
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(5),
+              ],
+              hasError: attempted && (headcount <= 0 || overCapacity),
               onChanged: (_) => onFieldChanged(),
             ),
           ),
@@ -915,15 +1117,15 @@ class _BookingForm extends StatelessWidget {
               ? 'Pick an end time after the start.'
               : '${duration.toStringAsFixed(duration % 1 == 0 ? 0 : 1)} '
                     'hours · maximum ${facility.maxDuration}',
-          style: sans(11, color: SR.muted),
+          style: sans(11, color: context.srColors.muted),
         ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
           decoration: BoxDecoration(
-            color: SR.surface,
+            color: context.srColors.surface,
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: SR.hairline),
+            border: Border.all(color: context.srColors.hairline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -959,7 +1161,8 @@ class _BookingForm extends StatelessWidget {
         const SrLabel('What is it for?'),
         SrTextField(
           controller: purpose,
-          placeholder: 'The registrar reads this — a sentence is enough.',
+          placeholder:
+              'The assigned administrator reads this — a sentence is enough.',
           semanticLabel: 'Purpose',
           fontSize: 12.5,
           minLines: 3,
@@ -969,6 +1172,14 @@ class _BookingForm extends StatelessWidget {
           onChanged: (_) => onFieldChanged(),
         ),
         const SizedBox(height: 12),
+        AmenityRequestField(
+          facilityAmenities: facility.amenities,
+          amenityOptions: facility.amenityOptions,
+          selected: amenities,
+          onToggle: onToggleAmenity,
+          onRemove: onRemoveAmenity,
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -976,7 +1187,7 @@ class _BookingForm extends StatelessWidget {
                 'Supporting files · optional',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500, color: SR.ink2),
+                style: sans(11.5, w: 500, color: context.srColors.ink2),
               ),
             ),
             SrButton(
@@ -993,10 +1204,10 @@ class _BookingForm extends StatelessWidget {
               padding: const EdgeInsets.only(top: 6),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.attach_file_rounded,
                     size: 15,
-                    color: SR.muted,
+                    color: context.srColors.muted,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -1004,7 +1215,7 @@ class _BookingForm extends StatelessWidget {
                       attachments[index].name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: sans(11, color: SR.ink3),
+                      style: sans(11, color: context.srColors.ink3),
                     ),
                   ),
                   IconButton(
@@ -1019,76 +1230,118 @@ class _BookingForm extends StatelessWidget {
         if (clashes.isNotEmpty) ...[
           const SizedBox(height: 10),
           _Alert(
-            background: SR.amberTint,
-            border: SR.amberLine,
-            foreground: SR.amberTitle,
+            background: context.srColors.amberTint,
+            border: context.srColors.amberLine,
+            foreground: context.srColors.amberTitle,
             text:
                 'Someone already has this room from '
                 '${clashes.first.start} to ${clashes.first.end}. You can still '
-                'ask — the registrar decides, and will offer the next free '
+                'ask — the assigned administrator decides, and will offer the next free '
                 'slot if it cannot be moved.',
           ),
         ],
         if (overCapacity) ...[
           const SizedBox(height: 8),
           _Alert(
-            background: SR.redTint,
-            border: SR.redLine,
-            foreground: const Color(0xFF912018),
+            background: context.srColors.redTint,
+            border: context.srColors.redLine,
+            foreground: context.srColors.redInk,
             text:
                 '$headcount people in a ${facility.capacity}-seat room. '
-                'Requests over capacity are almost always declined — pick a '
-                'bigger space.',
+                'Lower the attendee count or pick a bigger space — this '
+                'cannot be sent as it stands.',
           ),
         ],
         const SizedBox(height: 12),
-        if (free)
-          _Alert(
-            background: const Color(0xFFF2FDF7),
-            border: const Color(0xFFB7E9CD),
-            foreground: const Color(0xFF0A5C3A),
-            text: account.verification == VerificationState.pending
-                ? 'No payment — you can send this request while your '
-                      'verification is in progress. It is released for review '
-                      'once verification is approved.'
-                : 'No payment — verified campus members reserve free, subject '
-                      'to approval.',
-          )
-        else
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-            decoration: BoxDecoration(
-              color: SR.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: SR.hairline),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+          decoration: BoxDecoration(
+            color: context.srColors.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: context.srColors.hairline),
+          ),
+          child: quoteLoading
+              ? const LinearProgressIndicator(minHeight: 2)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Estimated charge',
-                        style: sans(11.5, w: 500, color: SR.ink2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Authoritative total',
+                            style: sans(
+                              11.5,
+                              w: 500,
+                              color: context.srColors.ink2,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          quote == null
+                              ? '—'
+                              : pesoFromCentavos(quote!.totalAmountCentavos),
+                          style: sans(15, w: 600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      quoteError ??
+                          (quote?.totalAmountCentavos == 0
+                              ? 'No payment is required under this facility’s ${account.pricingAudience} rate. Approval confirms the reservation.'
+                              : '${pesoFromCentavos(quote?.requiredDownPaymentCentavos ?? 0)} is required after approval. The slot is held while GCash proof is submitted and reviewed.'),
+                      style: sans(
+                        10.5,
+                        height: 1.6,
+                        color: context.srColors.muted,
                       ),
                     ),
-                    Text('₱$quote', style: sans(15, w: 600)),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  account.verification == VerificationState.pending
-                      ? 'This server-calculated quote is kept while your verification is reviewed. The request stays held; approval makes it free, while rejection releases it as a paid request.'
-                      : 'Payment status is tracked only; no real charge is made. '
-                            'Approval marks it authorised and check-in marks it captured.',
-                  style: sans(10.5, height: 1.6, color: SR.muted),
+        ),
+        if (quote?.terms.isNotEmpty == true) ...[
+          const SizedBox(height: 10),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 8),
+            title: Text('Review terms', style: sans(11.5, w: 600)),
+            children: [
+              for (final term in quote!.terms)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${term.title} · version ${term.version}\n${term.content}',
+                      style: sans(
+                        10.5,
+                        height: 1.5,
+                        color: context.srColors.ink4,
+                      ),
+                    ),
+                  ),
                 ),
-              ],
+            ],
+          ),
+          CheckboxListTile(
+            value: termsAccepted,
+            onChanged: (value) => onTermsAccepted(value ?? false),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(
+              'I accept ${quote!.terms.map((term) => term.title).join(' and ')}.',
+              style: sans(11.5, height: 1.4, color: context.srColors.ink2),
+            ),
+            subtitle: Text(
+              'Acceptance and the exact policy versions are recorded with this reservation.',
+              style: sans(10.5, height: 1.4, color: context.srColors.muted),
             ),
           ),
+        ],
         SrErrorText(error),
         const SizedBox(height: 12),
         SrButton(
@@ -1132,7 +1385,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Text(label, style: sans(13, w: 600, color: SR.ink2));
+      Text(label, style: sans(13, w: 600, color: context.srColors.ink2));
 }
 
 class _Alert extends StatelessWidget {

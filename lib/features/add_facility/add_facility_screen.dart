@@ -10,6 +10,8 @@ import 'map_pane.dart';
 import 'widgets/mobile_pin_sheet.dart';
 import 'widgets/success_view.dart';
 
+import '../../theme/sr_theme.dart';
+
 class AddFacilityBody extends StatelessWidget {
   const AddFacilityBody({
     super.key,
@@ -49,7 +51,7 @@ class AddFacilityBody extends StatelessWidget {
           if (controller.fullscreenMap && !layout.isMobile)
             Positioned.fill(
               child: ColoredBox(
-                color: SR.bg,
+                color: context.srColors.bg,
                 child: SafeArea(
                   child: MapPane(
                     controller: controller,
@@ -70,8 +72,8 @@ class AddFacilityBody extends StatelessWidget {
       children: [
         Expanded(
           child: DecoratedBox(
-            decoration: const BoxDecoration(
-              border: Border(right: BorderSide(color: SR.border)),
+            decoration: BoxDecoration(
+              border: Border(right: BorderSide(color: context.srColors.border)),
             ),
             child: FormRail(
               controller: controller,
@@ -145,16 +147,10 @@ class _MobileBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-    decoration: const BoxDecoration(
-      color: SR.surface,
-      border: Border(top: BorderSide(color: SR.border)),
-      boxShadow: [
-        BoxShadow(
-          color: Color(0x1210141A),
-          blurRadius: 20,
-          offset: Offset(0, -6),
-        ),
-      ],
+    decoration: BoxDecoration(
+      color: context.srColors.surface,
+      border: Border(top: BorderSide(color: context.srColors.border)),
+      boxShadow: SR.cardShadow,
     ),
     child: SafeArea(
       top: false,
@@ -174,7 +170,7 @@ class _MobileBar extends StatelessWidget {
                   controller.coordLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: mono(10.5, color: SR.muted),
+                  style: mono(10.5, color: context.srColors.muted),
                 ),
               ],
             ),

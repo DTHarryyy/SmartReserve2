@@ -9,6 +9,8 @@ import '../../widgets/sr_controls.dart';
 import 'assistant_cards.dart';
 import 'assistant_controller.dart';
 
+import '../../theme/sr_theme.dart';
+
 class AssistantTab extends StatefulWidget {
   const AssistantTab({super.key, required this.controller});
 
@@ -67,7 +69,7 @@ class _AssistantTabState extends State<AssistantTab> {
     final controller = widget.controller;
 
     return ColoredBox(
-      color: SR.bg,
+      color: context.srColors.bg,
       child: Column(
         children: [
           if (state.busyWindowsDegraded) _degradedNotice(),
@@ -122,19 +124,23 @@ class _AssistantTabState extends State<AssistantTab> {
     margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
     decoration: BoxDecoration(
-      color: SR.amberTint,
+      color: context.srColors.amberTint,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.amberLine),
+      border: Border.all(color: context.srColors.amberLine),
     ),
     child: Row(
       children: [
-        const Icon(Icons.wifi_off_rounded, size: 14, color: SR.amberTitle),
+        Icon(
+          Icons.wifi_off_rounded,
+          size: 14,
+          color: context.srColors.amberTitle,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             "Couldn't reach the live schedule — availability answers are "
             'based on opening hours only.',
-            style: sans(11, color: SR.amberInk),
+            style: sans(11, color: context.srColors.amberInk),
           ),
         ),
       ],
@@ -151,8 +157,8 @@ class _AssistantTabState extends State<AssistantTab> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
             decoration: BoxDecoration(
-              color: SR.surface,
-              border: Border.all(color: SR.border),
+              color: context.srColors.surface,
+              border: Border.all(color: context.srColors.border),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(18),
                 topRight: Radius.circular(18),
@@ -181,7 +187,7 @@ class _AssistantTabState extends State<AssistantTab> {
     height: 6,
     decoration: BoxDecoration(
       shape: BoxShape.circle,
-      color: SR.muted.withValues(alpha: opacity),
+      color: context.srColors.muted.withValues(alpha: opacity),
     ),
   );
 
@@ -190,9 +196,9 @@ class _AssistantTabState extends State<AssistantTab> {
     final canSend = !controller.busy;
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        color: SR.surface,
-        border: Border(top: BorderSide(color: SR.hairline)),
+      decoration: BoxDecoration(
+        color: context.srColors.surface,
+        border: Border(top: BorderSide(color: context.srColors.hairline)),
       ),
       child: Center(
         child: ConstrainedBox(
@@ -272,10 +278,10 @@ class _ComposerFieldState extends State<_ComposerField> {
     constraints: const BoxConstraints(minHeight: 40),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
     decoration: BoxDecoration(
-      color: SR.bg,
+      color: context.srColors.bg,
       borderRadius: BorderRadius.circular(21),
       border: Border.all(
-        color: _focused ? SR.blue : SR.border,
+        color: _focused ? SR.primary : context.srColors.border,
         width: _focused ? 1.4 : 1,
       ),
     ),
@@ -290,7 +296,7 @@ class _ComposerFieldState extends State<_ComposerField> {
         textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.send,
         onSubmitted: widget.onSubmitted,
-        cursorColor: SR.blue,
+        cursorColor: SR.primary,
         cursorWidth: 1.5,
         style: sans(13.5, height: 1.4),
         decoration: InputDecoration(
@@ -298,7 +304,7 @@ class _ComposerFieldState extends State<_ComposerField> {
           isCollapsed: true,
           border: InputBorder.none,
           hintText: 'Message SmartReserve AI',
-          hintStyle: sans(13.5, color: SR.mutedLight),
+          hintStyle: sans(13.5, color: context.srColors.mutedLight),
         ),
       ),
     ),
@@ -329,14 +335,14 @@ class _SendButton extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: enabled
-                  ? (hovered ? SR.blueDark : SR.blue)
-                  : SR.dividerSoft,
+                  ? (hovered ? SR.primaryHover : SR.primary)
+                  : context.srColors.dividerSoft,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.arrow_upward_rounded,
               size: 18,
-              color: enabled ? SR.surface : SR.mutedLight,
+              color: enabled ? SR.onDark : context.srColors.mutedLight,
             ),
           ),
         ),

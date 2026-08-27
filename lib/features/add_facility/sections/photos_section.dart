@@ -9,6 +9,8 @@ import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class PhotosSection extends StatelessWidget {
   const PhotosSection({
     super.key,
@@ -36,7 +38,10 @@ class PhotosSection extends StatelessWidget {
       title: 'Photos',
       caption: 'First image becomes the cover',
       dense: dense,
-      titleSuffix: Text(' *', style: sans(13.5, w: 600, color: SR.red)),
+      titleSuffix: Text(
+        ' *',
+        style: sans(13.5, w: 600, color: context.srColors.red),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -51,20 +56,22 @@ class PhotosSection extends StatelessWidget {
   Widget _dropZone(BuildContext context) {
     final zone = DashedBox(
       radius: 11,
-      color: controller.dragging ? SR.blue : SR.dashed,
-      background: controller.dragging ? SR.blueTint : Colors.transparent,
+      color: controller.dragging ? SR.primary : context.srColors.dashed,
+      background: controller.dragging
+          ? context.srColors.primaryTint
+          : Colors.transparent,
       child: Column(
         children: [
           Text(
             _supportsFileDrop ? 'Drag photos here' : 'Add photos of the room',
-            style: sans(12.5, w: 500, color: SR.ink2),
+            style: sans(12.5, w: 500, color: context.srColors.ink2),
           ),
           const SizedBox(height: 3),
           Text(
             'JPG or PNG · up to ${AddFacilityController.maxPhotos} images · '
             '10 MB each',
             textAlign: TextAlign.center,
-            style: sans(11, color: SR.muted),
+            style: sans(11, color: context.srColors.muted),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -151,7 +158,9 @@ class _PhotoTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: isCover ? SR.blue : SR.border),
+        border: Border.all(
+          color: isCover ? SR.primary : context.srColors.border,
+        ),
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -192,7 +201,7 @@ class _PhotoTile extends StatelessWidget {
                   _TileButton(
                     glyph: '✕',
                     tooltip: 'Remove photo',
-                    foreground: SR.red,
+                    foreground: context.srColors.red,
                     onPressed: () => controller.removePhoto(photo.id),
                   ),
                 ],
@@ -218,8 +227,10 @@ class _PhotoTile extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: isCover
-                          ? SR.blue
-                          : (hovered ? SR.blueDark : const Color(0xE6FFFFFF)),
+                          ? SR.primary
+                          : (hovered
+                                ? SR.primaryHover
+                                : const Color(0xE6FFFFFF)),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Text(
@@ -228,7 +239,9 @@ class _PhotoTile extends StatelessWidget {
                         8.5,
                         w: 600,
                         tracking: .04,
-                        color: isCover || hovered ? SR.surface : SR.ink2,
+                        color: isCover || hovered
+                            ? context.srColors.surface
+                            : context.srColors.ink2,
                       ),
                     ),
                   ),
@@ -247,13 +260,13 @@ class _TileButton extends StatelessWidget {
     required this.glyph,
     required this.tooltip,
     required this.onPressed,
-    this.foreground = SR.ink2,
+    this.foreground,
   });
 
   final String glyph;
   final String tooltip;
   final VoidCallback? onPressed;
-  final Color foreground;
+  final Color? foreground;
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -270,14 +283,18 @@ class _TileButton extends StatelessWidget {
             height: 20,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: hovered ? SR.surface : const Color(0xD9FFFFFF),
+              color: hovered
+                  ? context.srColors.surface
+                  : const Color(0xD9FFFFFF),
               borderRadius: BorderRadius.circular(5),
             ),
             child: Text(
               glyph,
               style: sans(
                 9,
-                color: onPressed == null ? SR.mutedLight : foreground,
+                color: onPressed == null
+                    ? context.srColors.mutedLight
+                    : (foreground ?? context.srColors.ink2),
               ),
             ),
           ),

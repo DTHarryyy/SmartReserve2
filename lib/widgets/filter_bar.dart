@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
@@ -7,55 +8,77 @@ Future<void> showSrFilterSheet(
   BuildContext context, {
   required String title,
   required Widget child,
-}) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  backgroundColor: SR.surface,
-  constraints: const BoxConstraints(maxWidth: 640),
-  shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-  ),
-  builder: (context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      18,
-      10,
-      18,
-      18 + MediaQuery.viewInsetsOf(context).bottom,
-    ),
-    child: SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: SR.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: Text(title, style: sans(16, w: 600))),
-              SrIconButton(
-                icon: Icons.close_rounded,
-                tooltip: 'Close filters',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          child,
-        ],
+}) {
+  final width = MediaQuery.sizeOf(context).width;
+  final compact = SR.isCompact(width);
+
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: context.srColors.surface,
+    constraints: const BoxConstraints(maxWidth: 640),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(compact ? 20 : 18),
       ),
     ),
-  ),
-);
+    builder: (context) {
+      final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+          compact ? 16 : 18,
+          10,
+          compact ? 16 : 18,
+          18 + keyboardInset,
+        ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: context.srColors.border,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: sans(compact ? 15 : 16, w: 600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SrIconButton(
+                    icon: Icons.close_rounded,
+                    tooltip: 'Close filters',
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              child,
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
 
 class CompactFilterButton extends StatelessWidget {
   const CompactFilterButton({
@@ -69,16 +92,17 @@ class CompactFilterButton extends StatelessWidget {
   final VoidCallback onPressed;
   final int activeCount;
   final String label;
-
   final double minHeight;
 
   @override
-  Widget build(BuildContext context) => SrButton(
-    label: activeCount == 0 ? label : '$label ($activeCount)',
-    icon: const Icon(Icons.tune_rounded, size: 17),
-    minHeight: minHeight,
-    onPressed: onPressed,
-  );
+  Widget build(BuildContext context) {
+    return SrButton(
+      label: activeCount == 0 ? label : '$label ($activeCount)',
+      icon: const Icon(Icons.tune_rounded, size: 17),
+      minHeight: minHeight,
+      onPressed: onPressed,
+    );
+  }
 }
 
 class FilterBar extends StatelessWidget {
@@ -90,55 +114,139 @@ class FilterBar extends StatelessWidget {
   });
 
   final List<Widget> children;
-
   final List<Widget> trailing;
-
   final String? count;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final compact = constraints.maxWidth < SR.compactMax;
-      final filters = Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < SR.compactMax;
+
+        if (compact) {
+          return _buildCompact(context, constraints);
+        }
+
+        return _buildDesktop(context);
+      },
+    );
+  }
+
+  Widget _buildCompact(BuildContext context, BoxConstraints constraints) {
+    final searchChildren = children
+        .where((child) => child is FilterSearch)
+        .toList();
+
+    final filterChildren = children
+        .where((child) => child is! FilterSearch)
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ...children,
-          if (count != null) Text(count!, style: mono(10.5, color: SR.muted)),
+          for (int i = 0; i < searchChildren.length; i++) ...[
+            SizedBox(width: double.infinity, child: searchChildren[i]),
+            if (i != searchChildren.length - 1) const SizedBox(height: 8),
+          ],
+          if (searchChildren.isNotEmpty && filterChildren.isNotEmpty)
+            const SizedBox(height: 8),
+          if (filterChildren.isNotEmpty)
+            _MobileFilterRow(children: filterChildren),
+          if (count != null) ...[
+            const SizedBox(height: 8),
+            Text(count!, style: mono(10.5, color: context.srColors.muted)),
+          ],
+          if (trailing.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: trailing,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktop(BuildContext context) {
+    final filters = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ...children,
+        if (count != null)
+          Text(count!, style: mono(10.5, color: context.srColors.muted)),
+      ],
+    );
+
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: trailing,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: filters),
+          if (trailing.isNotEmpty) ...[const SizedBox(width: 8), actions],
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileFilterRow extends StatelessWidget {
+  const _MobileFilterRow({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.length <= 3) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (int i = 0; i < children.length; i++) ...[
+            Expanded(
+              flex: _flexForIndex(index: i, count: children.length),
+              child: children[i],
+            ),
+            if (i != children.length - 1) const SizedBox(width: 8),
+          ],
         ],
       );
-      final actions = Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        alignment: WrapAlignment.end,
-        children: trailing,
-      );
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: compact
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  filters,
-                  if (trailing.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    actions,
-                  ],
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(child: filters),
-                  if (trailing.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    actions,
-                  ],
-                ],
-              ),
-      );
-    },
-  );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          for (int i = 0; i < children.length; i++) ...[
+            SizedBox(width: i == 0 ? 160 : 130, child: children[i]),
+            if (i != children.length - 1) const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int _flexForIndex({required int index, required int count}) {
+    if (count == 3) {
+      return index == 0 ? 3 : 2;
+    }
+
+    return 1;
+  }
 }
 
 class FilterSearch extends StatelessWidget {
@@ -156,58 +264,93 @@ class FilterSearch extends StatelessWidget {
   final double width;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => SizedBox(
-      width: constraints.maxWidth < width ? constraints.maxWidth : width,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-        decoration: BoxDecoration(
-          color: SR.surface,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: SR.border),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.search_rounded, size: 15, color: SR.muted),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                onChanged: onChanged,
-                cursorColor: SR.blue,
-                cursorWidth: 1.5,
-                style: sans(12),
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  hintText: placeholder,
-                  hintStyle: sans(12, color: SR.muted),
-                ),
-              ),
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+
+        final desiredWidth = compact
+            ? constraints.maxWidth
+            : constraints.maxWidth < width
+            ? constraints.maxWidth
+            : width;
+
+        return SizedBox(
+          width: desiredWidth,
+          child: Container(
+            height: compact ? 44 : 36,
+            padding: const EdgeInsets.symmetric(horizontal: 11),
+            decoration: BoxDecoration(
+              color: context.srColors.surface,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: context.srColors.border),
             ),
-            if (controller.text.isNotEmpty)
-              Semantics(
-                button: true,
-                label: 'Clear the search',
-                child: Hoverable(
-                  builder: (context, hovered) => GestureDetector(
-                    onTap: () {
-                      controller.clear();
-                      onChanged('');
-                    },
-                    child: Text(
-                      '✕',
-                      style: sans(11, color: hovered ? SR.ink2 : SR.muted),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search_rounded,
+                  size: 16,
+                  color: context.srColors.muted,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    onChanged: onChanged,
+                    cursorColor: SR.primary,
+                    cursorWidth: 1.5,
+                    style: sans(12),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: false,
+                      hintText: placeholder,
+                      hintStyle: sans(12, color: context.srColors.muted),
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
                     ),
                   ),
                 ),
-              ),
-          ],
-        ),
-      ),
-    ),
-  );
+                if (controller.text.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Semantics(
+                    button: true,
+                    label: 'Clear the search',
+                    child: Hoverable(
+                      builder: (context, hovered) {
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            controller.clear();
+                            onChanged('');
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 15,
+                              color: hovered
+                                  ? context.srColors.ink2
+                                  : context.srColors.muted,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class FilterPill extends StatelessWidget {
@@ -227,59 +370,66 @@ class FilterPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+
     return Semantics(
       button: true,
       selected: selected,
       child: Hoverable(
-        builder: (context, hovered) => GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: SR.stateChange,
-            padding: EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: compact ? 11 : 8,
-            ),
-            decoration: BoxDecoration(
-              color: selected ? SR.blue : SR.surface,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                color: selected
-                    ? SR.blueDark
-                    : (hovered ? SR.borderHover : SR.border),
+        builder: (context, hovered) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: SR.stateChange,
+              height: compact ? 44 : 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: selected ? SR.primary : context.srColors.surface,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: selected
+                      ? SR.primaryHover
+                      : hovered
+                      ? context.srColors.borderHover
+                      : context.srColors.border,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: sans(
+                        12,
+                        w: 500,
+                        color: selected
+                            ? context.srColors.surface
+                            : context.srColors.ink3,
+                      ),
+                    ),
+                  ),
+                  if (count != null) ...[
+                    const SizedBox(width: 7),
+                    Text(
+                      count!,
+                      style: mono(
+                        10.5,
+                        w: 500,
+                        color: selected
+                            ? context.srColors.surface.withValues(alpha: .7)
+                            : context.srColors.muted,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: sans(
-                      12,
-                      w: 500,
-                      color: selected ? SR.surface : SR.ink3,
-                    ),
-                  ),
-                ),
-                if (count != null) ...[
-                  const SizedBox(width: 7),
-                  Text(
-                    count!,
-                    style: mono(
-                      10.5,
-                      w: 500,
-                      color: selected
-                          ? SR.surface.withValues(alpha: .7)
-                          : SR.muted,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -299,19 +449,19 @@ class FilterSelect extends StatelessWidget {
   final List<String> items;
   final ValueChanged<String> onChanged;
   final String semanticLabel;
-
   final double? width;
 
   @override
   Widget build(BuildContext context) {
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+
     final field = Container(
       height: compact ? 44 : 36,
-      padding: const EdgeInsets.symmetric(horizontal: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -319,53 +469,73 @@ class FilterSelect extends StatelessWidget {
           isDense: true,
           isExpanded: true,
           borderRadius: BorderRadius.circular(10),
-          dropdownColor: SR.surface,
-          icon: const Icon(
+          dropdownColor: context.srColors.surface,
+          icon: Icon(
             Icons.keyboard_arrow_down_rounded,
             size: 16,
-            color: SR.muted,
+            color: context.srColors.muted,
           ),
-          style: sans(11.5, w: 500, color: SR.ink3),
-          onChanged: (v) {
-            if (v != null) onChanged(v);
+          style: sans(
+            compact ? 11 : 11.5,
+            w: 500,
+            color: context.srColors.ink3,
+          ),
+          onChanged: (newValue) {
+            if (newValue != null) {
+              onChanged(newValue);
+            }
           },
-          selectedItemBuilder: (context) => [
-            for (final item in items)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  item,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: sans(11.5, w: 500, color: SR.ink3),
+          selectedItemBuilder: (context) {
+            return [
+              for (final item in items)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    item,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: sans(
+                      compact ? 11 : 11.5,
+                      w: 500,
+                      color: context.srColors.ink3,
+                    ),
+                  ),
                 ),
-              ),
-          ],
+            ];
+          },
           items: [
             for (final item in items)
-              DropdownMenuItem(
+              DropdownMenuItem<String>(
                 value: item,
                 child: Text(
                   item,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: sans(11.5, w: 500, color: SR.ink3),
+                  style: sans(11.5, w: 500, color: context.srColors.ink3),
                 ),
               ),
           ],
         ),
       ),
     );
-    final boxed = width == null
-        ? field
-        : LayoutBuilder(
-            builder: (context, constraints) => SizedBox(
-              width: constraints.maxWidth < width!
-                  ? constraints.maxWidth
-                  : width,
-              child: field,
-            ),
+
+    Widget result;
+
+    if (compact) {
+      result = field;
+    } else if (width == null) {
+      result = field;
+    } else {
+      result = LayoutBuilder(
+        builder: (context, constraints) {
+          return SizedBox(
+            width: constraints.maxWidth < width! ? constraints.maxWidth : width,
+            child: field,
           );
-    return Semantics(label: semanticLabel, child: boxed);
+        },
+      );
+    }
+
+    return Semantics(label: semanticLabel, child: result);
   }
 }

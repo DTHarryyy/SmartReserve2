@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
+import '../theme/sr_theme.dart';
+
 enum ColumnHide { never, small, medium }
 
 @immutable
@@ -90,9 +92,9 @@ class RecordTable extends StatelessWidget {
         Container(
           clipBehavior: compact ? Clip.none : Clip.antiAlias,
           decoration: BoxDecoration(
-            color: compact ? Colors.transparent : SR.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: compact ? null : Border.all(color: SR.border),
+            color: compact ? Colors.transparent : context.srColors.surface,
+            borderRadius: BorderRadius.circular(SR.rLg),
+            border: compact ? null : Border.all(color: context.srColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -104,9 +106,11 @@ class RecordTable extends StatelessWidget {
                     horizontal: 16,
                     vertical: 11,
                   ),
-                  decoration: const BoxDecoration(
-                    color: SR.surfaceSubtle,
-                    border: Border(bottom: BorderSide(color: SR.hairline)),
+                  decoration: BoxDecoration(
+                    color: context.srColors.surfaceSubtle,
+                    border: Border(
+                      bottom: BorderSide(color: context.srColors.hairline),
+                    ),
                   ),
                   child: TableRowLayout(
                     columns: columns,
@@ -121,7 +125,7 @@ class RecordTable extends StatelessWidget {
                             10,
                             w: 500,
                             tracking: .04,
-                            color: SR.muted,
+                            color: context.srColors.muted,
                           ),
                         ),
                     ],
@@ -133,7 +137,10 @@ class RecordTable extends StatelessWidget {
         ),
         if (footerNote != null) ...[
           const SizedBox(height: 12),
-          Text(footerNote!, style: sans(11, height: 1.6, color: SR.muted)),
+          Text(
+            footerNote!,
+            style: sans(11, height: 1.6, color: context.srColors.muted),
+          ),
         ],
       ],
     );
@@ -172,11 +179,17 @@ class RecordRow extends StatelessWidget {
             vertical: compact ? 14 : vertical,
           ),
           decoration: BoxDecoration(
-            color: hovered ? SR.surfaceSubtle : SR.surface,
-            borderRadius: compact ? BorderRadius.circular(12) : null,
+            color: hovered
+                ? context.srColors.surfaceSubtle
+                : context.srColors.surface,
+            borderRadius: compact ? BorderRadius.circular(SR.rLg) : null,
             border: compact
-                ? Border.all(color: hovered ? SR.blueSoft : SR.border)
-                : const Border(bottom: BorderSide(color: SR.divider)),
+                ? Border.all(
+                    color: hovered
+                        ? context.srColors.primarySoft
+                        : context.srColors.border,
+                  )
+                : Border(bottom: BorderSide(color: context.srColors.divider)),
           ),
           child: compact
               ? compactChild ??
@@ -291,11 +304,11 @@ class _SkeletonRowState extends State<SkeletonRow>
       margin: compact ? const EdgeInsets.only(bottom: 8) : EdgeInsets.zero,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: compact ? BorderRadius.circular(12) : null,
         border: compact
-            ? Border.all(color: SR.border)
-            : const Border(bottom: BorderSide(color: SR.divider)),
+            ? Border.all(color: context.srColors.border)
+            : Border(bottom: BorderSide(color: context.srColors.divider)),
       ),
       child: compact
           ? _MobileSkeleton(shimmer: _shimmer)
@@ -315,10 +328,10 @@ class _SkeletonRowState extends State<SkeletonRow>
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(4),
                                 gradient: LinearGradient(
-                                  colors: const [
-                                    SR.hairline,
-                                    Color(0xFFF7F8FA),
-                                    SR.hairline,
+                                  colors: [
+                                    context.srColors.hairline,
+                                    context.srColors.surfaceSubtle,
+                                    context.srColors.hairline,
                                   ],
                                   stops: [
                                     (_shimmer.value - .3).clamp(0.0, 1.0),
@@ -333,7 +346,7 @@ class _SkeletonRowState extends State<SkeletonRow>
                       : Container(
                           height: 11,
                           decoration: BoxDecoration(
-                            color: SR.divider,
+                            color: context.srColors.divider,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -359,7 +372,7 @@ class _MobileSkeleton extends StatelessWidget {
           child: Container(
             height: 13,
             decoration: BoxDecoration(
-              color: SR.hairline,
+              color: context.srColors.hairline,
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -374,8 +387,8 @@ class _MobileSkeleton extends StatelessWidget {
                   height: 28,
                   decoration: BoxDecoration(
                     color: Color.lerp(
-                      SR.hairline,
-                      SR.surfaceSubtle,
+                      context.srColors.hairline,
+                      context.srColors.surfaceSubtle,
                       shimmer.value,
                     ),
                     borderRadius: BorderRadius.circular(5),
@@ -424,9 +437,9 @@ class ListEmptyState extends StatelessWidget {
       ),
       decoration: compact
           ? BoxDecoration(
-              color: SR.surface,
+              color: context.srColors.surface,
               borderRadius: BorderRadius.circular(SR.rMd),
-              border: Border.all(color: SR.border),
+              border: Border.all(color: context.srColors.border),
             )
           : null,
       child: Column(
@@ -435,14 +448,17 @@ class ListEmptyState extends StatelessWidget {
             width: 52,
             height: 52,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: SR.primaryTint,
+            decoration: BoxDecoration(
+              color: context.srColors.primaryTint,
               shape: BoxShape.circle,
             ),
             child: icon != null
-                ? Icon(icon, size: 24, color: SR.primaryDeep)
-                // ignore: deprecated_member_use_from_same_package
-                : Text(glyph!, style: sans(20, color: SR.primaryDeep)),
+                ? Icon(icon, size: 24, color: context.srColors.primaryDeep)
+                : Text(
+                    // ignore: deprecated_member_use_from_same_package
+                    glyph!,
+                    style: sans(20, color: context.srColors.primaryDeep),
+                  ),
           ),
           const SizedBox(height: SR.space16),
           Text(title, style: SrType.subhead()),

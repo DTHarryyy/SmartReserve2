@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
-import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -11,11 +9,14 @@ import '../../model/audit_change.dart';
 import '../../model/audit_entry.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/file_export.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
+
+import '../../theme/sr_theme.dart';
 
 const _kinds = ['All records', 'FACILITY', 'RESERVATION', 'ACCOUNT', 'SYSTEM'];
 
@@ -133,7 +134,10 @@ class _AuditScreenState extends State<AuditScreen> {
               if (state.auditError case final error?)
                 Padding(
                   padding: const EdgeInsets.only(bottom: SR.space8 + 2),
-                  child: Text(error, style: SrType.bodySm(color: SR.red)),
+                  child: Text(
+                    error,
+                    style: SrType.bodySm(color: context.srColors.red),
+                  ),
                 ),
 
               RecordTable(
@@ -203,9 +207,9 @@ class _AuditScreenState extends State<AuditScreen> {
       vertical: SR.space12,
     ),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(SR.rMd),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -231,10 +235,10 @@ class _AuditScreenState extends State<AuditScreen> {
             const SizedBox(width: SR.space8 + 2),
             SrButton(
               label: 'Export CSV',
-              icon: const Icon(
+              icon: Icon(
                 Icons.file_download_outlined,
                 size: SR.iconSm,
-                color: SR.ink3,
+                color: context.srColors.ink3,
               ),
               onPressed: () => _export(state),
             ),
@@ -281,13 +285,18 @@ class _AuditScreenState extends State<AuditScreen> {
                     style: sans(
                       11.5,
                       w: 500,
-                      color: hovered ? SR.ink3 : SR.muted,
+                      color: hovered
+                          ? context.srColors.ink3
+                          : context.srColors.muted,
                       decoration: TextDecoration.underline,
                     ),
                   ),
                 ),
               ),
-            Text('$visible of $total', style: mono(10.5, color: SR.muted)),
+            Text(
+              '$visible of $total',
+              style: mono(10.5, color: context.srColors.muted),
+            ),
           ],
         ),
       ],
@@ -339,7 +348,10 @@ class _AuditScreenState extends State<AuditScreen> {
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerRight,
-          child: Text('$visible of $total', style: mono(10.5, color: SR.muted)),
+          child: Text(
+            '$visible of $total',
+            style: mono(10.5, color: context.srColors.muted),
+          ),
         ),
       ],
     ),
@@ -487,24 +499,43 @@ class _AuditScreenState extends State<AuditScreen> {
   Future<void> _export(AppState state) async {
     final exportedRows = await state.auditExportRows();
     final csv = state.exportAuditCsv(exportedRows);
-    await FileSaver.instance.saveAs(
-      name: 'smartreserve-audit-log',
-      bytes: Uint8List.fromList(utf8.encode(csv)),
-      fileExtension: 'csv',
-      mimeType: MimeType.text,
+    final result = await saveTextFile(
+      baseName: 'smartreserve-audit-log',
+      extension: 'csv',
+      contents: csv,
     );
+    if (!result.ok) {
+      if (!mounted) return;
+      state.showToast(
+        const ToastMessage(
+          "Audit log couldn't be exported. Check the destination and try again.",
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
     if (state.backend != null) {
       await state.backend!.recordAuditExport(
         state.auditQuery,
         exportedRows.length,
       );
     }
+    if (!mounted) return;
     state.showToast(
       ToastMessage(
-        '${exportedRows.length} entries saved as CSV, signed with your name. '
-        'The export is itself logged.',
+        '${exportedRows.length} entries saved as CSV to ${result.path}, '
+        'signed with your name. The export is itself logged.',
         tone: AdvisoryTone.info,
+        action: result.revealSupported
+            ? ToastAction(
+                label: 'Open',
+                onPressed: () => revealInFileExplorer(result.path!),
+              )
+            : null,
       ),
+      duration: result.revealSupported
+          ? const Duration(seconds: 8)
+          : const Duration(seconds: 4),
     );
   }
 
@@ -519,7 +550,7 @@ class _AuditScreenState extends State<AuditScreen> {
             style: sans(
               11,
               w: 500,
-              color: hovered ? SR.ink3 : SR.muted,
+              color: hovered ? context.srColors.ink3 : context.srColors.muted,
               decoration: TextDecoration.underline,
             ),
           ),
@@ -533,7 +564,7 @@ class _AuditScreenState extends State<AuditScreen> {
           'summarised. Account and role entries are visible to '
           'internal admins only, and an export records who exported '
           'it.',
-          style: sans(11, height: 1.6, color: SR.muted),
+          style: sans(11, height: 1.6, color: context.srColors.muted),
         ),
       ],
     ],
@@ -543,19 +574,19 @@ class _AuditScreenState extends State<AuditScreen> {
 String _titleCase(String value) =>
     value.isEmpty ? value : value[0] + value.substring(1).toLowerCase();
 
-Widget _avatar(AuditEntry entry) => entry.isSystemActor
+Widget _avatar(BuildContext context, AuditEntry entry) => entry.isSystemActor
     ? Container(
         width: 30,
         height: 30,
         alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: SR.hairline,
+        decoration: BoxDecoration(
+          color: context.srColors.hairline,
           shape: BoxShape.circle,
         ),
-        child: const Icon(
+        child: Icon(
           Icons.settings_suggest_rounded,
           size: 14,
-          color: SR.ink4,
+          color: context.srColors.ink4,
         ),
       )
     : SrAvatar(initials: entry.initials, size: 30, tone: SrTone.neutral);
@@ -576,12 +607,12 @@ String _identitySubtitle(AuditEntry entry) {
   return '$role · $email';
 }
 
-Widget _personCell(AuditEntry entry) {
+Widget _personCell(BuildContext context, AuditEntry entry) {
   final subtitle = _identitySubtitle(entry);
   return Row(
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
-      _avatar(entry),
+      _avatar(context, entry),
       const SizedBox(width: 10),
       Expanded(
         child: Column(
@@ -599,7 +630,7 @@ Widget _personCell(AuditEntry entry) {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: mono(10.5, color: SR.muted),
+                style: mono(10.5, color: context.srColors.muted),
               ),
           ],
         ),
@@ -643,7 +674,7 @@ class _AuditRowState extends State<_AuditRow> {
       decoration: BoxDecoration(
         border: compact
             ? null
-            : const Border(bottom: BorderSide(color: SR.divider)),
+            : Border(bottom: BorderSide(color: context.srColors.divider)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -661,10 +692,16 @@ class _AuditRowState extends State<_AuditRow> {
                   vertical: compact ? 14 : 13,
                 ),
                 decoration: BoxDecoration(
-                  color: hovered ? SR.surfaceSubtle : SR.surface,
+                  color: hovered
+                      ? context.srColors.surfaceSubtle
+                      : context.srColors.surface,
                   borderRadius: compact ? BorderRadius.circular(12) : null,
                   border: compact
-                      ? Border.all(color: hovered ? SR.primarySoft : SR.border)
+                      ? Border.all(
+                          color: hovered
+                              ? context.srColors.primarySoft
+                              : context.srColors.border,
+                        )
                       : null,
                 ),
                 child: Row(
@@ -676,7 +713,7 @@ class _AuditRowState extends State<_AuditRow> {
                         height: compact ? 52 : 28,
                         margin: const EdgeInsets.only(right: 9, top: 2),
                         decoration: BoxDecoration(
-                          color: SR.amber,
+                          color: context.srColors.amber,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -699,7 +736,7 @@ class _AuditRowState extends State<_AuditRow> {
                                         style: sans(
                                           11.5,
                                           w: 500,
-                                          color: SR.ink3,
+                                          color: context.srColors.ink3,
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -707,12 +744,15 @@ class _AuditRowState extends State<_AuditRow> {
                                         entry.createdAt != null
                                             ? _clockOnly(entry.createdAt!)
                                             : '',
-                                        style: mono(10, color: SR.muted),
+                                        style: mono(
+                                          10,
+                                          color: context.srColors.muted,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                _personCell(entry),
+                                _personCell(context, entry),
                                 Text.rich(
                                   TextSpan(
                                     children: [
@@ -728,7 +768,7 @@ class _AuditRowState extends State<_AuditRow> {
                                   style: sans(
                                     12.5,
                                     height: 1.4,
-                                    color: SR.ink2,
+                                    color: context.srColors.ink2,
                                   ),
                                 ),
                                 SrStatusChip(
@@ -741,7 +781,7 @@ class _AuditRowState extends State<_AuditRow> {
                                       ? Icons.keyboard_arrow_up_rounded
                                       : Icons.keyboard_arrow_down_rounded,
                                   size: 16,
-                                  color: SR.mutedLight,
+                                  color: context.srColors.mutedLight,
                                 ),
                               ],
                             ),
@@ -764,7 +804,7 @@ class _AuditRowState extends State<_AuditRow> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _personCell(entry),
+            _personCell(context, entry),
             const SizedBox(height: 6),
             Text.rich(
               TextSpan(
@@ -773,7 +813,7 @@ class _AuditRowState extends State<_AuditRow> {
                   TextSpan(text: entry.target, style: sans(12.5, w: 600)),
                 ],
               ),
-              style: sans(12.5, height: 1.5, color: SR.ink2),
+              style: sans(12.5, height: 1.5, color: context.srColors.ink2),
             ),
             const SizedBox(height: 6),
             Wrap(
@@ -788,7 +828,10 @@ class _AuditRowState extends State<_AuditRow> {
                   monospace: true,
                   fontSize: 8.5,
                 ),
-                Text(entry.when, style: mono(10.5, color: SR.muted)),
+                Text(
+                  entry.when,
+                  style: mono(10.5, color: context.srColors.muted),
+                ),
               ],
             ),
           ],
@@ -801,7 +844,7 @@ class _AuditRowState extends State<_AuditRow> {
               ? Icons.keyboard_arrow_up_rounded
               : Icons.keyboard_arrow_down_rounded,
           size: 16,
-          color: SR.mutedLight,
+          color: context.srColors.mutedLight,
         ),
       ),
     ],
@@ -822,9 +865,9 @@ class _AuditRowState extends State<_AuditRow> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
             decoration: BoxDecoration(
-              color: SR.surfaceSubtle,
+              color: context.srColors.surfaceSubtle,
               borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: SR.hairline),
+              border: Border.all(color: context.srColors.hairline),
             ),
             child: hasChanges
                 ? _changeGrid(entry.changes)
@@ -834,13 +877,13 @@ class _AuditRowState extends State<_AuditRow> {
             const SizedBox(height: 8),
             Text(
               'Reason: "${entry.reason}"',
-              style: sans(11.5, height: 1.6, color: SR.ink4),
+              style: sans(11.5, height: 1.6, color: context.srColors.ink4),
             ),
           ],
           const SizedBox(height: 8),
           Text(
             'Recorded ${entry.absolute}',
-            style: sans(10.5, color: SR.muted),
+            style: sans(10.5, color: context.srColors.muted),
           ),
           if (hasRaw) ...[
             const SizedBox(height: 8),
@@ -850,10 +893,10 @@ class _AuditRowState extends State<_AuditRow> {
             const SizedBox(height: 10),
             SrButton(
               label: 'Revert this change',
-              icon: const Icon(
+              icon: Icon(
                 Icons.undo_rounded,
                 size: SR.iconSm,
-                color: SR.ink3,
+                color: context.srColors.ink3,
               ),
               dense: true,
               fontSize: 11,
@@ -879,7 +922,7 @@ class _AuditRowState extends State<_AuditRow> {
     if (change.isNote) {
       return Text(
         _breakable(change.note!),
-        style: mono(11.5, w: 500, height: 1.6, color: SR.ink2),
+        style: mono(11.5, w: 500, height: 1.6, color: context.srColors.ink2),
       );
     }
     if (change.before == null) {
@@ -888,11 +931,11 @@ class _AuditRowState extends State<_AuditRow> {
           children: [
             TextSpan(
               text: '${change.label}: ',
-              style: mono(11.5, w: 600, color: SR.ink3),
+              style: mono(11.5, w: 600, color: context.srColors.ink3),
             ),
             TextSpan(
               text: _breakable(change.after ?? '—'),
-              style: mono(11.5, w: 500, color: SR.ink2),
+              style: mono(11.5, w: 500, color: context.srColors.ink2),
             ),
           ],
         ),
@@ -902,14 +945,17 @@ class _AuditRowState extends State<_AuditRow> {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SizedBox(width: 132, child: Text(change.label, style: keyLabel)),
-        Text(_breakable(change.before!), style: mono(11.5, color: SR.muted)),
+        Text(
+          _breakable(change.before!),
+          style: mono(11.5, color: context.srColors.muted),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: Text('→', style: mono(11, color: SR.mutedLight)),
+          child: Text('→', style: mono(11, color: context.srColors.mutedLight)),
         ),
         Text(
           _breakable(change.after ?? '—'),
-          style: mono(11.5, w: 500, color: SR.ink2),
+          style: mono(11.5, w: 500, color: context.srColors.ink2),
         ),
       ],
     );
@@ -921,7 +967,7 @@ class _AuditRowState extends State<_AuditRow> {
       for (final line in diff)
         Text(
           _breakable(line),
-          style: mono(11.5, w: 500, height: 1.7, color: SR.ink2),
+          style: mono(11.5, w: 500, height: 1.7, color: context.srColors.ink2),
         ),
     ],
   );
@@ -939,7 +985,7 @@ class _AuditRowState extends State<_AuditRow> {
             style: sans(
               10.5,
               w: 500,
-              color: hovered ? SR.ink3 : SR.muted,
+              color: hovered ? context.srColors.ink3 : context.srColors.muted,
               decoration: TextDecoration.underline,
             ),
           ),
@@ -951,7 +997,7 @@ class _AuditRowState extends State<_AuditRow> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
           decoration: BoxDecoration(
-            color: SR.ink.withValues(alpha: .03),
+            color: context.srColors.ink.withValues(alpha: .03),
             borderRadius: BorderRadius.circular(7),
           ),
           child: Text(
@@ -962,7 +1008,7 @@ class _AuditRowState extends State<_AuditRow> {
                 if (entry.rawDetails.isNotEmpty) 'details': entry.rawDetails,
               }),
             ),
-            style: mono(10, height: 1.6, color: SR.ink3),
+            style: mono(10, height: 1.6, color: context.srColors.ink3),
           ),
         ),
       ],

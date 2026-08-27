@@ -5,6 +5,8 @@ import '../../../util/geo.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class SuccessView extends StatelessWidget {
   const SuccessView({
     super.key,
@@ -19,7 +21,7 @@ class SuccessView extends StatelessWidget {
   Widget build(BuildContext context) {
     final draft = controller.draft;
     return Container(
-      color: SR.bg,
+      color: context.srColors.bg,
       alignment: Alignment.center,
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 56),
@@ -39,16 +41,10 @@ class SuccessView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(30),
               decoration: BoxDecoration(
-                color: SR.surface,
+                color: context.srColors.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: SR.border),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x0D10141A),
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(color: context.srColors.border),
+                boxShadow: SR.cardShadow,
               ),
               child: Column(
                 children: [
@@ -56,14 +52,14 @@ class SuccessView extends StatelessWidget {
                     width: 46,
                     height: 46,
                     alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: SR.greenTint,
+                    decoration: BoxDecoration(
+                      color: context.srColors.greenTint,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.check_rounded,
                       size: 24,
-                      color: SR.greenDark,
+                      color: context.srColors.greenDark,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -77,7 +73,11 @@ class SuccessView extends StatelessWidget {
                     'Pinned and published. Students can now find it and get '
                     'walking directions from any campus gate.',
                     textAlign: TextAlign.center,
-                    style: sans(12.5, height: 1.6, color: SR.ink4),
+                    style: sans(
+                      12.5,
+                      height: 1.6,
+                      color: context.srColors.ink4,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   SrCellGrid(

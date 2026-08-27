@@ -6,6 +6,8 @@ import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class AmenitiesSection extends StatelessWidget {
   const AmenitiesSection({
     super.key,
@@ -30,10 +32,12 @@ class AmenitiesSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
-              color: SR.surface,
+              color: context.srColors.surface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: controller.amenityOpen ? SR.blue : SR.borderField,
+                color: controller.amenityOpen
+                    ? SR.primary
+                    : context.srColors.borderField,
               ),
             ),
             child: Wrap(
@@ -57,7 +61,7 @@ class AmenitiesSection extends StatelessWidget {
                     onChanged: controller.setAmenityQuery,
                     onTap: controller.openAmenities,
                     onSubmitted: (_) => controller.submitAmenityQuery(),
-                    cursorColor: SR.blue,
+                    cursorColor: SR.primary,
                     cursorWidth: 1.5,
                     style: sans(12.5),
                     decoration: InputDecoration(
@@ -68,7 +72,7 @@ class AmenitiesSection extends StatelessWidget {
                         vertical: 5,
                       ),
                       hintText: controller.amenityPlaceholder,
-                      hintStyle: sans(12.5, color: SR.mutedLight),
+                      hintStyle: sans(12.5, color: context.srColors.mutedLight),
                     ),
                   ),
                 ),
@@ -95,13 +99,13 @@ class _Token extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(9, 4, 6, 4),
     decoration: BoxDecoration(
-      color: SR.blueTint,
+      color: context.srColors.primaryTint,
       borderRadius: BorderRadius.circular(7),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: sans(11.5, w: 500, color: SR.blueDark)),
+        Text(label, style: sans(11.5, w: 500, color: SR.primaryHover)),
         const SizedBox(width: 6),
         Semantics(
           button: true,
@@ -111,7 +115,12 @@ class _Token extends StatelessWidget {
               onTap: onRemove,
               child: Text(
                 '✕',
-                style: sans(10, color: hovered ? SR.blueDark : SR.blueToken),
+                style: sans(
+                  10,
+                  color: hovered
+                      ? SR.primaryHover
+                      : context.srColors.primaryDeep,
+                ),
               ),
             ),
           ),
@@ -133,16 +142,10 @@ class _Results extends StatelessWidget {
       constraints: const BoxConstraints(maxHeight: 220),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SR.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1710141A),
-            blurRadius: 26,
-            offset: Offset(0, 10),
-          ),
-        ],
+        border: Border.all(color: context.srColors.border),
+        boxShadow: SR.popoverShadow,
       ),
       child: controller.amenityNoResults
           ? Padding(
@@ -150,7 +153,7 @@ class _Results extends StatelessWidget {
               child: Text(
                 'No amenity matches “${controller.amenityQuery}”. Press Enter '
                 'to request it as a new tag.',
-                style: sans(12, height: 1.5, color: SR.muted),
+                style: sans(12, height: 1.5, color: context.srColors.muted),
               ),
             )
           : ListView.builder(
@@ -192,9 +195,13 @@ class _ResultRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
             color: hovered
-                ? SR.blueTint2
-                : (selected ? SR.surfaceSubtle : SR.surface),
-            border: const Border(bottom: BorderSide(color: SR.dividerSoft)),
+                ? context.srColors.primaryTint2
+                : (selected
+                      ? context.srColors.surfaceSubtle
+                      : context.srColors.surface),
+            border: Border(
+              bottom: BorderSide(color: context.srColors.dividerSoft),
+            ),
           ),
           child: Row(
             children: [
@@ -203,17 +210,17 @@ class _ResultRow extends StatelessWidget {
                 height: 16,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: selected ? SR.blue : SR.surface,
+                  color: selected ? SR.primary : context.srColors.surface,
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                    color: selected ? SR.blue : SR.borderField,
+                    color: selected ? SR.primary : context.srColors.borderField,
                   ),
                 ),
                 child: selected
-                    ? const Icon(
+                    ? Icon(
                         Icons.check_rounded,
                         size: 11,
-                        color: SR.surface,
+                        color: context.srColors.surface,
                       )
                     : null,
               ),
@@ -221,7 +228,7 @@ class _ResultRow extends StatelessWidget {
               Expanded(child: Text(amenity.label, style: sans(12.5))),
               Text(
                 amenity.group,
-                style: mono(9.5, tracking: .04, color: SR.muted),
+                style: mono(9.5, tracking: .04, color: context.srColors.muted),
               ),
             ],
           ),

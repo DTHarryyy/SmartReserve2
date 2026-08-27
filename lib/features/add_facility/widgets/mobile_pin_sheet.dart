@@ -9,6 +9,8 @@ import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 import 'campus_map.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class MobilePinSheet extends StatefulWidget {
   const MobilePinSheet({super.key, required this.controller});
 
@@ -42,15 +44,17 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
   Widget build(BuildContext context) {
     final c = widget.controller;
     return Scaffold(
-      backgroundColor: SR.bg,
+      backgroundColor: context.srColors.bg,
       body: SafeArea(
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
-              decoration: const BoxDecoration(
-                color: SR.bg,
-                border: Border(bottom: BorderSide(color: SR.border)),
+              decoration: BoxDecoration(
+                color: context.srColors.bg,
+                border: Border(
+                  bottom: BorderSide(color: context.srColors.border),
+                ),
               ),
               child: Row(
                 children: [
@@ -72,7 +76,7 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                         ),
                         Text(
                           'Drag the map so the crosshair sits on the doorway.',
-                          style: sans(11, color: SR.ink4),
+                          style: sans(11, color: context.srColors.ink4),
                         ),
                       ],
                     ),
@@ -91,7 +95,7 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                         initialZoom: _zoom,
                         minZoom: 3,
                         maxZoom: 21,
-                        backgroundColor: SR.mapBg,
+                        backgroundColor: context.srColors.mapBg,
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                         ),
@@ -101,14 +105,18 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                         }),
                       ),
                       children: [
-                        srTileLayer(c.layer, c.tileGeneration),
+                        srTileLayer(
+                          c.layer,
+                          c.tileGeneration,
+                          dark: Theme.of(context).brightness == Brightness.dark,
+                        ),
                         if (c.showBoundary)
                           PolygonLayer(
                             polygons: [
                               Polygon(
                                 points: campus.boundary,
-                                color: SR.blue.withValues(alpha: .10),
-                                borderColor: SR.blue.withValues(alpha: .9),
+                                color: SR.primary.withValues(alpha: .10),
+                                borderColor: SR.primary.withValues(alpha: .9),
                                 borderStrokeWidth: 2.5,
                               ),
                             ],
@@ -120,10 +128,10 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                               horizontal: 5,
                               vertical: 2,
                             ),
-                            color: const Color(0xB8FFFFFF),
+                            color: context.srColors.glass,
                             child: Text(
                               attributionFor(c.layer),
-                              style: sans(9, color: SR.ink3),
+                              style: sans(9, color: context.srColors.ink3),
                             ),
                           ),
                         ),
@@ -207,21 +215,29 @@ class _Crosshair extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: SR.blue.withValues(alpha: .5),
+                color: SR.primary.withValues(alpha: .5),
                 width: 2,
               ),
-              color: SR.blue.withValues(alpha: .08),
+              color: SR.primary.withValues(alpha: .08),
             ),
           ),
-          Container(width: 2, height: 56, color: SR.blue.withValues(alpha: .5)),
-          Container(width: 56, height: 2, color: SR.blue.withValues(alpha: .5)),
+          Container(
+            width: 2,
+            height: 56,
+            color: SR.primary.withValues(alpha: .5),
+          ),
+          Container(
+            width: 56,
+            height: 2,
+            color: SR.primary.withValues(alpha: .5),
+          ),
           Container(
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: SR.blue,
+              color: SR.primary,
               shape: BoxShape.circle,
-              border: Border.all(color: SR.surface, width: 2),
+              border: Border.all(color: context.srColors.surface, width: 2),
             ),
           ),
         ],
@@ -248,9 +264,9 @@ class _ConfirmBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-    decoration: const BoxDecoration(
-      color: SR.surface,
-      border: Border(top: BorderSide(color: SR.border)),
+    decoration: BoxDecoration(
+      color: context.srColors.surface,
+      border: Border(top: BorderSide(color: context.srColors.border)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -269,8 +285,12 @@ class _ConfirmBar extends StatelessWidget {
             ),
             SrPill(
               label: inside ? 'INSIDE CAMPUS' : 'OUTSIDE',
-              background: inside ? SR.greenTint : SR.redTint,
-              foreground: inside ? SR.greenDark : SR.red,
+              background: inside
+                  ? context.srColors.greenTint
+                  : context.srColors.redTint,
+              foreground: inside
+                  ? context.srColors.greenDark
+                  : context.srColors.red,
               monospace: true,
               fontSize: 9.5,
             ),

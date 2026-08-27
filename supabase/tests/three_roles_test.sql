@@ -55,71 +55,41 @@ where email='user@csu.edu.ph';
 select set_config('request.jwt.claim.sub',
   (select id::text from public.profiles where email='user@csu.edu.ph'),false);
 
-select public.submit_reservation(
-  '94000000-0000-0000-0000-000000000001',
-  '10000000-0000-0000-0000-000000000001',
-  'Three-role test reservation',10,
-  array[(now()+interval '1 day')::timestamptz],
-  array[(now()+interval '1 day 1 hour')::timestamptz],
-  '[]'::jsonb,0
-);
-
-select ok(
-  (select held_for_verification from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'),
-  'pending users create held requests'
-);
 select is(
-  (select payment_amount_centavos from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'),
-  50000, 'a tampered zero client amount is replaced by the server quote'
+  public.requester_admin_lane(), 'external',
+  'pending campus users derive the external admin lane'
 );
+select is(public.requester_pricing_audience(), 'guest',
+  'pending campus users receive the guest pricing audience');
 
-update public.profiles set verification_status='verified'
+insert into public.reservation_requests(
+  id,requester_id,facility_id,requester_name,requester_role,facility_name,
+  facility_building,facility_capacity,purpose,headcount,status,admin_lane
+)
+select '94000000-0000-0000-0000-000000000001',id,
+  '10000000-0000-0000-0000-000000000001','Lane snapshot','user',
+  'Computer Laboratory 1','CICS',40,'Stable lane test',10,'pending','external'
+from public.profiles where email='user@csu.edu.ph';
+
+update public.profiles set verification_status='verified',campus_claim='student'
 where email='user@csu.edu.ph';
 
-select isnt(
-  (select held_for_verification from public.reservation_requests
+select is(public.requester_admin_lane(), 'internal',
+  'verified campus users derive the internal admin lane');
+select is(public.requester_pricing_audience(), 'student',
+  'verified student claim derives student pricing');
+select is((select admin_lane from public.reservation_requests
     where id='94000000-0000-0000-0000-000000000001'),
-  true, 'verification releases the held request'
-);
-select results_eq(
-  $$select payment_amount_centavos,payment_status from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'$$,
-  $$values (0,'not_required'::text)$$,
-  'verified requests become free'
-);
-
-update public.profiles set verification_status='pending'
-where email='user@csu.edu.ph';
-select ok(
-  (select held_for_verification from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'),
-  'reverification holds an undecided request'
-);
-select is(
-  (select payment_amount_centavos from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'),
-  50000, 'reverification restores the authoritative quote'
-);
-
-update public.profiles set verification_status='verified'
-where email='user@csu.edu.ph';
-update public.reservation_requests set status='approved'
-where id='94000000-0000-0000-0000-000000000001';
-update public.profiles set verification_status='pending'
-where email='user@csu.edu.ph';
-select isnt(
-  (select held_for_verification from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'),
-  true, 'reverification does not hold an approved booking'
-);
-select results_eq(
-  $$select payment_amount_centavos,payment_status from public.reservation_requests
-    where id='94000000-0000-0000-0000-000000000001'$$,
-  $$values (0,'not_required'::text)$$,
-  'reverification does not reprice an approved booking'
-);
+  'external','verification changes do not transfer an existing reservation');
+select is((select count(*)::integer from public.facility_rates
+    where facility_id='10000000-0000-0000-0000-000000000001'),
+  4,'every facility starts with four explicit audience rates');
+select ok(public.has_facility_admin_lane(
+    '10000000-0000-0000-0000-000000000001','internal'),
+  'the ownership backfill preserves internal-lane coverage');
+select isnt(public.has_facility_admin_lane(
+    '10000000-0000-0000-0000-000000000001','external'),true,
+  'external coverage is not granted globally during migration');
 
 select * from finish();
 rollback;

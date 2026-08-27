@@ -176,6 +176,39 @@ List<ReservationRequest> seedRequests() => [
         'Headcount exceeds the seating capacity and the sponsor booth needs a '
         'permit from the Business Affairs Office.',
   ),
+  ReservationRequest(
+    id: 'r9',
+    facility: 'Computer Laboratory 1',
+    building: 'College of Information and Computing Sciences',
+    room: 'CICS-201',
+    capacity: 40,
+    requester: 'Jomar Padilla',
+    requesterId: 'u1',
+    role: 'User · BSIT 4A',
+    org: 'Junior Philippine Computer Society',
+    purpose: 'Weekly review session for the systems integration elective.',
+    date: 'Tue 21 Jul',
+    start: '13:00',
+    end: '15:00',
+    heads: 12,
+    submitted: '9 days ago',
+    urgent: false,
+    attachments: 0,
+    noShows: 0,
+    status: RequestStatus.approved,
+    lifecycleStatus: ReservationLifecycleStatus.completed,
+    decidedBy: 'You',
+    decidedAt: '9 days ago',
+    occurrences: [
+      ReservationOccurrence(
+        id: 'r9-occ1',
+        startsAt: DateTime(2026, 7, 21, 13),
+        endsAt: DateTime(2026, 7, 21, 15),
+        bookingState: 'booked',
+        stage: BookingStage.completed,
+      ),
+    ],
+  ),
 ];
 
 List<Booking> seedBookings() => [

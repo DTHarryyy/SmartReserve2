@@ -6,6 +6,8 @@ import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class DetectedSection extends StatelessWidget {
   const DetectedSection({
     super.key,
@@ -40,11 +42,14 @@ class DetectedSection extends StatelessWidget {
 
   Widget _empty(BuildContext context) => DashedBox(
     radius: 10,
-    background: SR.surfaceSubtle,
+    background: context.srColors.surfaceSubtle,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
     child: Column(
       children: [
-        Text('No pin yet', style: sans(12.5, w: 500, color: SR.ink2)),
+        Text(
+          'No pin yet',
+          style: sans(12.5, w: 500, color: context.srColors.ink2),
+        ),
         const SizedBox(height: 4),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
@@ -52,7 +57,7 @@ class DetectedSection extends StatelessWidget {
             'Drop a pin on the campus map and these seven address fields fill '
             'in automatically.',
             textAlign: TextAlign.center,
-            style: sans(11.5, height: 1.6, color: SR.muted),
+            style: sans(11.5, height: 1.6, color: context.srColors.muted),
           ),
         ),
         SrErrorText(controller.errors[RequiredItem.pin]),
@@ -66,7 +71,7 @@ class DetectedSection extends StatelessWidget {
       SrCellGrid(
         columns: stacked ? 2 : 4,
         children: [
-          for (final stat in controller.liveStats)
+          for (final stat in controller.liveStats(context))
             SrKeyCell(
               label: stat.key,
               value: stat.value,
@@ -97,25 +102,25 @@ class _Resolving extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
     decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
+      color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(9),
-      border: Border.all(color: SR.hairline),
+      border: Border.all(color: context.srColors.hairline),
     ),
     child: Row(
       children: [
-        const SizedBox(
+        SizedBox(
           width: 12,
           height: 12,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            color: SR.blue,
-            backgroundColor: SR.borderField,
+            color: SR.primary,
+            backgroundColor: context.srColors.borderField,
           ),
         ),
         const SizedBox(width: 9),
         Text(
           'Resolving address from coordinates…',
-          style: sans(11.5, color: SR.ink4),
+          style: sans(11.5, color: context.srColors.ink4),
         ),
       ],
     ),
@@ -138,17 +143,25 @@ class _GeoField extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 5),
           child: Row(
             children: [
-              Text(field.label, style: sans(11, w: 500, color: SR.ink2)),
+              Text(
+                field.label,
+                style: sans(11, w: 500, color: context.srColors.ink2),
+              ),
               const SizedBox(width: 5),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: edited ? SR.blueTint : SR.dividerSoft,
+                  color: edited
+                      ? context.srColors.primaryTint
+                      : context.srColors.dividerSoft,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   edited ? 'EDITED' : 'AUTO',
-                  style: mono(9, color: edited ? SR.blueDark : SR.muted),
+                  style: mono(
+                    9,
+                    color: edited ? SR.primaryHover : context.srColors.muted,
+                  ),
                 ),
               ),
             ],

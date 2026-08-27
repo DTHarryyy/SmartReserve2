@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
@@ -12,7 +13,7 @@ class SrCard extends StatelessWidget {
     this.level = SrCardLevel.flat,
     this.padding = const EdgeInsets.all(SR.space16),
     this.margin,
-    this.radius = SR.rMd,
+    this.radius = SR.rLg,
     this.onTap,
   });
 
@@ -21,7 +22,7 @@ class SrCard extends StatelessWidget {
     required this.child,
     this.level = SrCardLevel.flat,
     this.margin,
-    this.radius = SR.rMd,
+    this.radius = SR.rLg,
     this.onTap,
   }) : padding = EdgeInsets.zero;
 
@@ -34,11 +35,12 @@ class SrCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.srColors;
     final (Color bg, Color? border) = switch (level) {
-      SrCardLevel.flat => (SR.surface, SR.border),
-      SrCardLevel.sunken => (SR.surfaceSubtle, null),
-      SrCardLevel.tinted => (SR.primaryTint2, SR.primaryLine),
-      SrCardLevel.raised => (SR.surface, null),
+      SrCardLevel.flat => (c.surface, c.border),
+      SrCardLevel.sunken => (c.surfaceSubtle, null),
+      SrCardLevel.tinted => (c.primaryTint2, c.primaryLine),
+      SrCardLevel.raised => (c.surface, null),
     };
 
     Widget content = Container(
@@ -48,7 +50,7 @@ class SrCard extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(radius),
         border: border == null ? null : Border.all(color: border),
-        boxShadow: level == SrCardLevel.raised ? SR.floatShadow : null,
+        boxShadow: level == SrCardLevel.raised ? c.floatShadow : null,
       ),
       child: child,
     );
@@ -63,20 +65,20 @@ class SrCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
             boxShadow: hovered && level == SrCardLevel.raised
-                ? SR.popoverShadow
+                ? c.popoverShadow
                 : null,
           ),
           child: Container(
             padding: padding,
             decoration: BoxDecoration(
               color: hovered && level != SrCardLevel.raised
-                  ? SR.surfaceSubtle
+                  ? c.surfaceSubtle
                   : bg,
               borderRadius: BorderRadius.circular(radius),
               border: border == null
                   ? null
-                  : Border.all(color: hovered ? SR.borderHover : border),
-              boxShadow: level == SrCardLevel.raised ? SR.floatShadow : null,
+                  : Border.all(color: hovered ? c.borderHover : border),
+              boxShadow: level == SrCardLevel.raised ? c.floatShadow : null,
             ),
             child: child,
           ),
@@ -109,7 +111,10 @@ class SrPageHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (eyebrow case final eyebrow?) ...[
-              Text(eyebrow, style: SrType.overline(color: SR.primaryDeep)),
+              Text(
+                eyebrow,
+                style: SrType.overline(color: context.srColors.primaryDeep),
+              ),
               const SizedBox(height: SR.space4),
             ],
             Text(title, style: SrType.title()),
@@ -149,7 +154,7 @@ class SrSectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: SR.iconMd, color: SR.ink3),
+          Icon(icon, size: SR.iconMd, color: context.srColors.ink3),
           const SizedBox(width: SR.space8),
         ],
         Expanded(
@@ -254,10 +259,11 @@ class SrTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.srColors;
     final row = Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: SR.surfaceSunken,
+        color: c.surfaceSunken,
         borderRadius: BorderRadius.circular(SR.rSm + 2),
       ),
       child: Row(
@@ -300,70 +306,76 @@ class _SrTab extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Hoverable(
-    builder: (context, hovered) => GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: SR.stateChange,
-        curve: SR.easing,
-        constraints: const BoxConstraints(minHeight: 34),
-        padding: const EdgeInsets.symmetric(horizontal: SR.space12),
-        decoration: BoxDecoration(
-          color: selected
-              ? SR.surface
-              : (hovered
-                    ? SR.surface.withValues(alpha: .5)
-                    : Colors.transparent),
-          borderRadius: BorderRadius.circular(SR.rXs),
-          boxShadow: selected ? SR.cardShadow : null,
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (item.icon != null) ...[
-              Icon(
-                item.icon,
-                size: SR.iconSm,
-                color: selected ? SR.primaryDeep : SR.ink4,
-              ),
-              const SizedBox(width: SR.space6),
-            ],
-            Flexible(
-              child: Text(
-                item.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: sans(
-                  12.5,
-                  w: selected ? 600 : 500,
-                  color: selected ? SR.primaryDeep : SR.ink3,
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return Hoverable(
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: SR.stateChange,
+          curve: SR.easing,
+          constraints: const BoxConstraints(minHeight: 34),
+          padding: const EdgeInsets.symmetric(horizontal: SR.space12),
+          decoration: BoxDecoration(
+            color: selected
+                ? c.surface
+                : (hovered
+                      ? c.surface.withValues(alpha: .5)
+                      : Colors.transparent),
+            borderRadius: BorderRadius.circular(SR.rXs),
+            boxShadow: selected ? c.cardShadow : null,
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (item.icon != null) ...[
+                Icon(
+                  item.icon,
+                  size: SR.iconSm,
+                  color: selected ? c.primaryDeep : c.ink4,
                 ),
-              ),
-            ),
-            if (item.count case final count?) ...[
-              const SizedBox(width: SR.space6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: selected ? SR.primaryTint : SR.divider,
-                  borderRadius: BorderRadius.circular(SR.rFull),
-                ),
+                const SizedBox(width: SR.space6),
+              ],
+              Flexible(
                 child: Text(
-                  '$count',
-                  style: mono(
-                    10,
-                    w: 600,
-                    color: selected ? SR.primaryDeep : SR.ink4,
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: sans(
+                    12.5,
+                    w: selected ? 600 : 500,
+                    color: selected ? c.primaryDeep : c.ink3,
                   ),
                 ),
               ),
+              if (item.count case final count?) ...[
+                const SizedBox(width: SR.space6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected ? c.primaryTint : c.divider,
+                    borderRadius: BorderRadius.circular(SR.rFull),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: mono(
+                      10,
+                      w: 600,
+                      color: selected ? c.primaryDeep : c.ink4,
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class SrStat extends StatelessWidget {
@@ -384,49 +396,52 @@ class SrStat extends StatelessWidget {
   final bool? trendUp;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text(label, style: SrType.overline()),
-      const SizedBox(height: SR.space6),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(
-            value,
-            style: SrType.display(
-              color: tone == SrTone.neutral ? SR.ink : tone.ink,
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: SrType.overline()),
+        const SizedBox(height: SR.space6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              value,
+              style: SrType.display(
+                color: tone == SrTone.neutral ? c.ink : tone.ink,
+              ),
             ),
-          ),
-          if (trend case final trend?) ...[
-            const SizedBox(width: SR.space8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  trendUp == false
-                      ? Icons.trending_down_rounded
-                      : Icons.trending_up_rounded,
-                  size: SR.iconSm,
-                  color: trendUp == false ? SR.red : SR.green,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  trend,
-                  style: SrType.bodySm(
-                    w: 600,
-                    color: trendUp == false ? SR.red : SR.green,
+            if (trend case final trend?) ...[
+              const SizedBox(width: SR.space8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    trendUp == false
+                        ? Icons.trending_down_rounded
+                        : Icons.trending_up_rounded,
+                    size: SR.iconSm,
+                    color: trendUp == false ? c.red : SR.green,
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 2),
+                  Text(
+                    trend,
+                    style: SrType.bodySm(
+                      w: 600,
+                      color: trendUp == false ? c.red : SR.green,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
-      ),
-    ],
-  );
+        ),
+      ],
+    );
+  }
 }
 
 class SrSearchField extends StatelessWidget {
@@ -452,7 +467,11 @@ class SrSearchField extends StatelessWidget {
     placeholder: placeholder,
     onChanged: onChanged,
     semanticLabel: semanticLabel ?? placeholder,
-    prefix: const Icon(Icons.search_rounded, size: SR.iconMd, color: SR.muted),
+    prefix: Icon(
+      Icons.search_rounded,
+      size: SR.iconMd,
+      color: context.srColors.muted,
+    ),
     suffix: AnimatedBuilder(
       animation: controller,
       builder: (context, _) => controller.text.isEmpty
@@ -480,28 +499,31 @@ class SrFactChip extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(
-      horizontal: SR.space8,
-      vertical: SR.space6,
-    ),
-    decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
-      borderRadius: BorderRadius.circular(SR.rSm),
-      border: Border.all(color: SR.hairline),
-    ),
-    child: Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: '$label: ', style: SrType.caption()),
-          TextSpan(
-            text: value,
-            style: SrType.caption(w: 500, color: SR.ink3),
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SR.space8,
+        vertical: SR.space6,
       ),
-    ),
-  );
+      decoration: BoxDecoration(
+        color: c.surfaceSubtle,
+        borderRadius: BorderRadius.circular(SR.rSm),
+        border: Border.all(color: c.hairline),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: '$label: ', style: SrType.caption()),
+            TextSpan(
+              text: value,
+              style: SrType.caption(w: 500, color: c.ink3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class SrLoadingState extends StatelessWidget {
@@ -575,7 +597,8 @@ class SrListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labelStyle = SrType.body(w: 500, color: tone?.ink ?? SR.ink);
+    final c = context.srColors;
+    final labelStyle = SrType.body(w: 500, color: tone?.ink ?? c.ink);
 
     Widget content = LayoutBuilder(
       builder: (context, constraints) {
@@ -588,23 +611,23 @@ class SrListRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: stack ? TextAlign.start : TextAlign.end,
                 style: valueMono
-                    ? SrType.code(color: SR.ink4)
-                    : SrType.bodySm(color: SR.ink4),
+                    ? SrType.code(color: c.ink4)
+                    : SrType.bodySm(color: c.ink4),
               );
         final chevron =
             trailing ??
             (onTap == null
                 ? null
-                : const Icon(
+                : Icon(
                     Icons.chevron_right_rounded,
                     size: SR.iconMd,
-                    color: SR.muted,
+                    color: c.muted,
                   ));
 
         return Row(
           children: [
             if (icon != null) ...[
-              Icon(icon, size: SR.iconMd, color: tone?.ink ?? SR.ink3),
+              Icon(icon, size: SR.iconMd, color: tone?.ink ?? c.ink3),
               const SizedBox(width: SR.space12),
             ],
             Expanded(
@@ -662,7 +685,7 @@ class SrListRow extends StatelessWidget {
           onTap: onTap,
           child: AnimatedContainer(
             duration: SR.stateChange,
-            color: hovered ? SR.surfaceSubtle : SR.surface,
+            color: hovered ? c.surfaceSubtle : c.surface,
             child: content,
           ),
         ),
@@ -707,10 +730,10 @@ class SrListGroup extends StatelessWidget {
               children: [
                 for (var i = 0; i < children.length; i++) ...[
                   if (i > 0)
-                    const Divider(
+                    Divider(
                       height: 1,
                       indent: SR.space16,
-                      color: SR.hairline,
+                      color: context.srColors.hairline,
                     ),
                   children[i],
                 ],
@@ -764,6 +787,7 @@ class _SrPasswordFieldState extends State<SrPasswordField> {
   @override
   Widget build(BuildContext context) {
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    final c = context.srColors;
     return SrTextField(
       controller: widget.controller,
       placeholder:
@@ -801,7 +825,7 @@ class _SrPasswordFieldState extends State<SrPasswordField> {
                   ? Icons.visibility_outlined
                   : Icons.visibility_off_outlined,
               size: 19,
-              color: SR.ink4,
+              color: c.ink4,
             ),
             onPressed: () => setState(() => _hidden = !_hidden),
           ),
@@ -836,13 +860,13 @@ class SrErrorState extends StatelessWidget {
           width: 44,
           height: 44,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: SR.redTint,
+          decoration: BoxDecoration(
+            color: context.srColors.redTint,
             shape: BoxShape.circle,
           ),
-          child: const Icon(
+          child: Icon(
             Icons.error_outline_rounded,
-            color: SR.red,
+            color: context.srColors.red,
             size: 22,
           ),
         ),

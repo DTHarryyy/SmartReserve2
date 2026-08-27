@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../theme/sr_tokens.dart';
 import 'sr_controls.dart';
 
+import '../theme/sr_theme.dart';
+
 class AppHeader extends StatelessWidget {
   const AppHeader({
     super.key,
@@ -35,9 +37,9 @@ class AppHeader extends StatelessWidget {
       horizontal: compact ? SR.space16 : SR.space24,
       vertical: compact ? SR.space8 : SR.space12,
     ),
-    decoration: const BoxDecoration(
-      color: SR.surface,
-      border: Border(bottom: BorderSide(color: SR.border)),
+    decoration: BoxDecoration(
+      color: context.srColors.surface,
+      border: Border(bottom: BorderSide(color: context.srColors.border)),
     ),
     child: Row(
       children: [
@@ -101,7 +103,7 @@ class _Breadcrumbs extends StatelessWidget {
             child: Icon(
               Icons.chevron_right_rounded,
               size: SR.iconSm,
-              color: SR.mutedLight,
+              color: context.srColors.mutedLight,
             ),
           ),
         Flexible(
@@ -110,7 +112,7 @@ class _Breadcrumbs extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: i == crumbs.length - 1
-                ? SrType.caption(w: 500, color: SR.ink3)
+                ? SrType.caption(w: 500, color: context.srColors.ink3)
                 : SrType.caption(),
           ),
         ),
@@ -140,15 +142,17 @@ class _Avatar extends StatelessWidget {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: SR.primaryTint,
+              color: context.srColors.primaryTint,
               shape: BoxShape.circle,
               border: Border.all(
-                color: hovered ? SR.primarySoft : SR.primaryLine,
+                color: hovered
+                    ? context.srColors.primarySoft
+                    : context.srColors.primaryLine,
               ),
             ),
             child: Text(
               initials,
-              style: mono(11, w: 600, color: SR.primaryDeep),
+              style: mono(11, w: 600, color: context.srColors.primaryDeep),
             ),
           ),
         ),
@@ -170,9 +174,9 @@ class HeaderChip extends StatelessWidget {
       vertical: SR.space6,
     ),
     decoration: BoxDecoration(
-      color: SR.surfaceSubtle,
+      color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(SR.rFull),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -183,7 +187,10 @@ class HeaderChip extends StatelessWidget {
           decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
         ),
         const SizedBox(width: SR.space6),
-        Text(label, style: SrType.caption(w: 500, color: SR.ink3)),
+        Text(
+          label,
+          style: SrType.caption(w: 500, color: context.srColors.ink3),
+        ),
       ],
     ),
   );

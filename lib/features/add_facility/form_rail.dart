@@ -12,6 +12,8 @@ import 'sections/rules_section.dart';
 import 'widgets/draft_banner.dart';
 import 'widgets/progress_strip.dart';
 
+import '../../theme/sr_theme.dart';
+
 class FormRail extends StatelessWidget {
   const FormRail({
     super.key,
@@ -55,7 +57,7 @@ class FormRail extends StatelessWidget {
           child: Text(
             'Drafts autosave locally every few seconds. Nothing is published '
             'until you save.',
-            style: sans(11, height: 1.6, color: SR.muted),
+            style: sans(11, height: 1.6, color: context.srColors.muted),
           ),
         ),
       ],

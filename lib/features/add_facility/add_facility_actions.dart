@@ -6,6 +6,8 @@ import '../../theme/sr_tokens.dart';
 import '../../widgets/notices.dart';
 import 'add_facility_controller.dart';
 
+import '../../theme/sr_theme.dart';
+
 Future<void> saveFacility(
   BuildContext context,
   AppState state,
@@ -71,7 +73,7 @@ Future<void> cancelEdit(
 
   final choice = await showDialog<String>(
     context: context,
-    barrierColor: const Color(0x6B10141A),
+    barrierColor: context.srColors.scrimSoft,
     builder: (dialogContext) => GuardDialog(
       hasStoredDraft: controller.draftSavedAt != null,
       onStay: () => Navigator.of(dialogContext).pop('stay'),

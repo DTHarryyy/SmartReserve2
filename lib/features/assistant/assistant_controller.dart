@@ -112,6 +112,7 @@ class BookingDraft {
   int? heads;
   String? purpose;
   List<Facility> candidates = const [];
+  final Set<String> amenities = <String>{};
 
   bool get hasTime => startHour != null && endHour != null;
 
@@ -239,6 +240,16 @@ class AssistantController extends ChangeNotifier {
   void _resetDraft() {
     draft = BookingDraft();
     stage = AssistantStage.idle;
+  }
+
+  void toggleDraftAmenity(String label) {
+    if (!draft.amenities.remove(label)) draft.amenities.add(label);
+    notifyListeners();
+  }
+
+  void removeDraftAmenity(String label) {
+    draft.amenities.remove(label);
+    notifyListeners();
   }
 
   void _runAction(Future<void> Function() action) {
@@ -417,6 +428,14 @@ class AssistantController extends ChangeNotifier {
       draft.purpose = p.purpose;
     }
 
+    if (p.amenities.isNotEmpty) {
+      final newOnes = p.amenities.difference(draft.amenities);
+      draft.amenities.addAll(p.amenities);
+      if (newOnes.isNotEmpty && draft.facility != null) {
+        _say("Noted — I'll ask for ${newOnes.join(' and ')} with it.");
+      }
+    }
+
     if (p.unknownAmenityWords.isNotEmpty) {
       _say(
         "I don't track '${p.unknownAmenityWords.first}' as an amenity. I "
@@ -508,6 +527,7 @@ class AssistantController extends ChangeNotifier {
 
     if (results.length == 1) {
       draft.facility = results.first;
+      messages.add(AssistantMessage.facilityList('Best match:', results));
     } else if (results.length > 1) {
       draft.candidates = results;
       _say('A few rooms fit — which one?');
@@ -614,7 +634,7 @@ class AssistantController extends ChangeNotifier {
         break;
       case AssistantStage.needPurpose:
         _say(
-          "What's it for? One sentence is enough — the registrar reads this.",
+          "What's it for? One sentence is enough — the assigned administrator reads this.",
         );
         break;
       case AssistantStage.confirming:
@@ -883,12 +903,35 @@ class AssistantController extends ChangeNotifier {
     stage = AssistantStage.submitting;
     notifyListeners();
 
+    final requestedAmenities = draft.amenities.toList();
+    final quote = await state.quoteReservation(
+      facility: facility,
+      startsAt: [campusInstant(startWall)],
+      endsAt: [campusInstant(endWall)],
+      headcount: heads,
+      amenities: requestedAmenities,
+    );
+    if (quote == null || quote.terms.isNotEmpty) {
+      _submitting = false;
+      stage = AssistantStage.confirming;
+      _say(
+        quote == null
+            ? state.lastReservationError ?? 'The server quote is unavailable.'
+            : 'Open ${facility.name} from Browse to review the exact price and accept the current terms before sending.',
+        tone: quote == null ? AdvisoryTone.block : AdvisoryTone.info,
+      );
+      notifyListeners();
+      return;
+    }
     final ok = await state.submitReservationRequest(
       facility: facility,
       startsAt: [campusInstant(startWall)],
       endsAt: [campusInstant(endWall)],
       heads: heads,
       purpose: purpose.trim(),
+      amenities: requestedAmenities,
+      quote: quote,
+      acceptedTerms: true,
     );
 
     _submitting = false;
@@ -898,7 +941,8 @@ class AssistantController extends ChangeNotifier {
       _say(
         'Sent. ${facility.name}, ${formatCampusDate(day)} '
         '${formatClockHour(startHour)}–${formatClockHour(endHour)}. '
-        '${state.userAccount.verification == VerificationState.pending ? 'It is held until your verification is approved.' : 'The registrar will decide — check My reservations for updates.'}',
+        'The assigned ${quote.adminLane} administrator will decide — check My reservations for updates.'
+        '${requestedAmenities.isEmpty ? '' : ' Requested: ${requestedAmenities.join(', ')}.'}',
       );
       _resetDraft();
     } else {
@@ -1133,7 +1177,7 @@ class AssistantController extends ChangeNotifier {
     final mine = state.myRequests;
     final cancellable = [
       for (final r in mine)
-        if (isCancellable(r)) r,
+        if (state.canCancelReservation(r)) r,
     ];
     if (cancellable.isEmpty) {
       _say(
@@ -1151,8 +1195,3 @@ class AssistantController extends ChangeNotifier {
     messages.add(AssistantMessage.reservationList('', cancellable));
   }
 }
-
-bool isCancellable(ReservationRequest r) =>
-    r.isPending ||
-    r.status == RequestStatus.changesRequested ||
-    r.status == RequestStatus.approved;

@@ -4,6 +4,8 @@ import '../../../theme/sr_tokens.dart';
 import '../../../widgets/sr_controls.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 class DraftBanner extends StatelessWidget {
   const DraftBanner({super.key, required this.controller});
 
@@ -14,9 +16,9 @@ class DraftBanner extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     decoration: BoxDecoration(
-      color: SR.amberTint,
+      color: context.srColors.amberTint,
       borderRadius: BorderRadius.circular(11),
-      border: Border.all(color: SR.amberLine),
+      border: Border.all(color: context.srColors.amberLine),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -26,10 +28,10 @@ class DraftBanner extends StatelessWidget {
           height: 22,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: SR.amberIcon,
+            color: context.srColors.amberIcon,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text('↺', style: sans(11, color: SR.amber)),
+          child: Text('↺', style: sans(11, color: context.srColors.amber)),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -38,13 +40,17 @@ class DraftBanner extends StatelessWidget {
             children: [
               Text(
                 'Unsaved draft from ${controller.draftAge}',
-                style: sans(12.5, w: 600, color: SR.amberTitle),
+                style: sans(12.5, w: 600, color: context.srColors.amberTitle),
               ),
               const SizedBox(height: 2),
               Text(
                 '“${controller.draftPreviewName}” was left unfinished, '
                 'including its map pin.',
-                style: sans(11.5, height: 1.55, color: SR.amberInk),
+                style: sans(
+                  11.5,
+                  height: 1.55,
+                  color: context.srColors.amberInk,
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -93,17 +99,21 @@ class _BannerButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
           color: solid
-              ? SR.amber
-              : (hovered ? SR.amberIcon : Colors.transparent),
+              ? context.srColors.amber
+              : (hovered ? context.srColors.amberIcon : Colors.transparent),
           borderRadius: BorderRadius.circular(7),
-          border: Border.all(color: solid ? SR.amber : SR.amberLine2),
+          border: Border.all(
+            color: solid ? context.srColors.amber : context.srColors.amberLine2,
+          ),
         ),
         child: Text(
           label,
           style: sans(
             11,
             w: solid ? 600 : 500,
-            color: solid ? SR.surface : SR.amberTitle,
+            color: solid
+                ? context.srColors.surface
+                : context.srColors.amberTitle,
           ),
         ),
       ),

@@ -2,21 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 
-enum CheckOutcome {
-  pass(Icons.check_rounded, SrTone.success, SR.ink3),
-  warn(Icons.priority_high_rounded, SrTone.warning, null),
-  fail(Icons.close_rounded, SrTone.error, null),
-  info(Icons.remove_rounded, SrTone.neutral, null);
+import '../theme/sr_theme.dart';
 
-  const CheckOutcome(this.mark, this.tone, this._valueColorOverride);
+enum CheckOutcome {
+  pass(Icons.check_rounded, SrTone.success, true),
+  warn(Icons.priority_high_rounded, SrTone.warning, false),
+  fail(Icons.close_rounded, SrTone.error, false),
+  info(Icons.remove_rounded, SrTone.neutral, false);
+
+  const CheckOutcome(this.mark, this.tone, this._mutedValue);
 
   final IconData mark;
   final SrTone tone;
-  final Color? _valueColorOverride;
+  final bool _mutedValue;
 
   Color get background => tone.tint;
   Color get foreground => tone.ink;
-  Color get valueColor => _valueColorOverride ?? tone.ink;
+  Color valueColor(BuildContext context) =>
+      _mutedValue ? context.srColors.ink3 : tone.ink;
 }
 
 @immutable

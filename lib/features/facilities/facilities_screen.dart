@@ -5,11 +5,14 @@ import '../../app/app_state.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
 import '../../theme/sr_tokens.dart';
+import '../../widgets/rating_display.dart';
 import '../../widgets/record_table.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 import 'facility_detail_dialog.dart';
+
+import '../../theme/sr_theme.dart';
 
 enum FacilityFilter {
   all('All'),
@@ -53,6 +56,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
     ColSpec('FACILITY', flex: 4),
     ColSpec('BUILDING', flex: 3, hide: ColumnHide.small),
     ColSpec('CATEGORY', flex: 2, hide: ColumnHide.medium),
+    ColSpec('RATING', width: 96, hide: ColumnHide.medium),
     ColSpec('CAP.', width: 48, hide: ColumnHide.small),
     ColSpec('PIN', width: 92, hide: ColumnHide.medium),
     ColSpec('STATUS', width: 104),
@@ -160,7 +164,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                 _filter = FacilityFilter.all;
               }),
             )
-          : state.isInternalAdmin
+          : state.isAdmin
           ? SrButton(
               label: 'Add the first facility',
               kind: SrButtonKind.primary,
@@ -189,7 +193,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
         compactChild: _FacilityCompactCard(
           key: ValueKey('facility-compact-${facility.id}'),
           facility: facility,
-          canEdit: state.isInternalAdmin,
+          canEdit: facility.canManage,
           onEdit: () => widget.onEdit(facility),
           onDelete: () =>
               confirmDeleteFacility(context, state: state, facility: facility),
@@ -211,7 +215,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(7),
                   child: facility.coverPhoto == null
-                      ? const ColoredBox(color: SR.hairline)
+                      ? ColoredBox(color: context.srColors.hairline)
                       : FacilityPhotoImage(photo: facility.coverPhoto!),
                 ),
               ),
@@ -231,7 +235,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                       facility.room,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: mono(10.5, color: SR.muted),
+                      style: mono(10.5, color: context.srColors.muted),
                     ),
                   ],
                 ),
@@ -242,15 +246,28 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
             facility.building,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: sans(12, color: SR.ink3),
+            style: sans(12, color: context.srColors.ink3),
           ),
           Text(
             facility.category,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: sans(12, color: SR.ink3),
+            style: sans(12, color: context.srColors.ink3),
           ),
-          Text('${facility.capacity}', style: mono(12, color: SR.ink3)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SrRatingStars(
+              average: facility.ratingAverage,
+              count: facility.ratingCount,
+              dense: true,
+              compact: true,
+              showCount: false,
+            ),
+          ),
+          Text(
+            '${facility.capacity}',
+            style: mono(12, color: context.srColors.ink3),
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: SrStatusChip(
@@ -267,7 +284,7 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
               tone: facility.state.tone,
             ),
           ),
-          if (state.isInternalAdmin)
+          if (facility.canManage)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -286,8 +303,8 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
                   size: 28,
                   fontSize: 11,
                   radius: 7,
-                  foreground: SR.red,
-                  hoverForeground: SR.red,
+                  foreground: context.srColors.red,
+                  hoverForeground: context.srColors.red,
                   onPressed: () => confirmDeleteFacility(
                     context,
                     state: state,
@@ -329,7 +346,7 @@ class _FacilityCompactCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(9),
               child: facility.coverPhoto == null
-                  ? const ColoredBox(color: SR.hairline)
+                  ? ColoredBox(color: context.srColors.hairline)
                   : FacilityPhotoImage(photo: facility.coverPhoto!),
             ),
           ),
@@ -342,7 +359,7 @@ class _FacilityCompactCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${facility.room} · ${facility.building}',
-                  style: sans(11.5, height: 1.45, color: SR.ink4),
+                  style: sans(11.5, height: 1.45, color: context.srColors.ink4),
                 ),
               ],
             ),
@@ -355,7 +372,7 @@ class _FacilityCompactCard extends StatelessWidget {
                 PopupMenuItem(value: 'edit', child: Text('Edit facility')),
                 PopupMenuItem(value: 'delete', child: Text('Delete facility')),
               ],
-              icon: const Icon(Icons.more_vert_rounded, color: SR.ink4),
+              icon: Icon(Icons.more_vert_rounded, color: context.srColors.ink4),
             ),
         ],
       ),
@@ -368,6 +385,13 @@ class _FacilityCompactCard extends StatelessWidget {
           SrStatusChip(label: facility.state.label, tone: facility.state.tone),
           SrFactChip(label: 'Capacity', value: '${facility.capacity}'),
           SrFactChip(label: 'Category', value: facility.category),
+          if (facility.hasRatings)
+            SrRatingStars(
+              average: facility.ratingAverage,
+              count: facility.ratingCount,
+              dense: true,
+              compact: true,
+            ),
         ],
       ),
     ],

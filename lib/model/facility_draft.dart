@@ -9,26 +9,28 @@ import 'facility_photo.dart';
 enum FacilityStatus {
   active(
     'Active',
-    SR.green,
+    SrTone.success,
     'Visible in the catalogue and open for reservations right away.',
   ),
   draft(
     'Draft',
-    SR.muted,
+    SrTone.neutral,
     'Saved but unpublished. Only administrators can see it.',
   ),
   maintenance(
     'Maintenance',
-    SR.orange,
+    SrTone.warning,
     'Listed but closed for booking. Existing bookings are flagged for '
         'relocation.',
   );
 
-  const FacilityStatus(this.label, this.dot, this.hint);
+  const FacilityStatus(this.label, this.tone, this.hint);
 
   final String label;
-  final Color dot;
+  final SrTone tone;
   final String hint;
+
+  Color get dot => tone.solid;
 
   static FacilityStatus fromLabel(String label) => values.firstWhere(
     (s) => s.label == label,

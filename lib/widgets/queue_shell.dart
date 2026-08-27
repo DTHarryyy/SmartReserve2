@@ -6,6 +6,8 @@ import 'notices.dart';
 import 'sr_controls.dart';
 import 'sr_scroll_view.dart';
 
+import '../theme/sr_theme.dart';
+
 class QueueShell extends StatelessWidget {
   const QueueShell({
     super.key,
@@ -50,7 +52,7 @@ class QueueShell extends StatelessWidget {
             Positioned.fill(
               child: GestureDetector(
                 onTap: onClosePanel,
-                child: const ColoredBox(color: Color(0x6B10141A)),
+                child: ColoredBox(color: context.srColors.scrim),
               ),
             ),
             Positioned(
@@ -63,14 +65,16 @@ class QueueShell extends StatelessWidget {
                   top: Radius.circular(16),
                 ),
                 child: ColoredBox(
-                  color: SR.bg,
+                  color: context.srColors.bg,
                   child: Column(
                     children: [
                       Container(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                        decoration: const BoxDecoration(
-                          color: SR.bg,
-                          border: Border(bottom: BorderSide(color: SR.border)),
+                        decoration: BoxDecoration(
+                          color: context.srColors.bg,
+                          border: Border(
+                            bottom: BorderSide(color: context.srColors.border),
+                          ),
                         ),
                         child: Row(
                           children: [
@@ -111,8 +115,8 @@ class QueueShell extends StatelessWidget {
         Expanded(
           flex: 4,
           child: DecoratedBox(
-            decoration: const BoxDecoration(
-              border: Border(right: BorderSide(color: SR.border)),
+            decoration: BoxDecoration(
+              border: Border(right: BorderSide(color: context.srColors.border)),
             ),
             child: listPane,
           ),
@@ -146,7 +150,7 @@ class _NothingSelected extends StatelessWidget {
             Text(
               'Pick an item to see its checks and the decision controls.',
               textAlign: TextAlign.center,
-              style: sans(12, height: 1.6, color: SR.ink4),
+              style: sans(12, height: 1.6, color: context.srColors.ink4),
             ),
           ],
         ),
@@ -185,12 +189,14 @@ class QueueTab extends StatelessWidget {
               vertical: compact ? 11 : 8,
             ),
             decoration: BoxDecoration(
-              color: selected ? SR.ink : SR.surface,
+              color: selected ? context.srColors.ink : context.srColors.surface,
               borderRadius: BorderRadius.circular(9),
               border: Border.all(
                 color: selected
-                    ? SR.ink
-                    : (hovered ? SR.borderHover : SR.border),
+                    ? context.srColors.ink
+                    : (hovered
+                          ? context.srColors.borderHover
+                          : context.srColors.border),
               ),
             ),
             child: Row(
@@ -201,7 +207,9 @@ class QueueTab extends StatelessWidget {
                   style: sans(
                     12,
                     w: 500,
-                    color: selected ? SR.surface : SR.ink3,
+                    color: selected
+                        ? context.srColors.surface
+                        : context.srColors.ink3,
                   ),
                 ),
                 const SizedBox(width: 7),
@@ -211,8 +219,8 @@ class QueueTab extends StatelessWidget {
                     10.5,
                     w: 500,
                     color: selected
-                        ? SR.surface.withValues(alpha: .65)
-                        : SR.muted,
+                        ? context.srColors.surface.withValues(alpha: .65)
+                        : context.srColors.muted,
                   ),
                 ),
               ],
@@ -249,7 +257,7 @@ class BulkBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: sans(12, w: 500, color: SR.surface)),
+          Text(label, style: sans(12, w: 500, color: context.srColors.surface)),
           if (blockedNote != null) ...[
             const SizedBox(height: 2),
             Text(
@@ -281,7 +289,7 @@ class BulkBar extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: SR.ink,
+          color: context.srColors.ink,
           borderRadius: BorderRadius.circular(10),
         ),
         child: compact
@@ -329,16 +337,22 @@ class SelectBox extends StatelessWidget {
               height: 17,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: selected ? SR.blue : SR.surface,
+                color: selected ? SR.primary : context.srColors.surface,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(
                   color: selected
-                      ? SR.blue
-                      : (hovered ? SR.blueSoft : SR.borderField),
+                      ? SR.primary
+                      : (hovered
+                            ? context.srColors.primarySoft
+                            : context.srColors.borderField),
                 ),
               ),
               child: selected
-                  ? const Icon(Icons.check_rounded, size: 11, color: SR.surface)
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 11,
+                      color: context.srColors.surface,
+                    )
                   : null,
             ),
           ),

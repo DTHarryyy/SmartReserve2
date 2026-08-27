@@ -4,6 +4,8 @@ import '../../data/design_notes.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_scroll_view.dart';
 
+import '../../theme/sr_theme.dart';
+
 class NotesScreen extends StatelessWidget {
   const NotesScreen({super.key});
 
@@ -41,9 +43,9 @@ class _NoteCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 12),
     padding: EdgeInsets.symmetric(horizontal: stacked ? 16 : 22, vertical: 20),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +57,7 @@ class _NoteCard extends StatelessWidget {
           children: [
             Text(
               note.number,
-              style: mono(10, w: 500, tracking: .06, color: SR.blue),
+              style: mono(10, w: 500, tracking: .06, color: SR.primary),
             ),
             Text(note.title, style: sans(14, w: 600, tracking: -.01)),
           ],
@@ -64,8 +66,8 @@ class _NoteCard extends StatelessWidget {
         for (final item in note.items)
           Container(
             padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: SR.divider)),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: context.srColors.divider)),
             ),
             child: stacked
                 ? Column(
@@ -73,12 +75,21 @@ class _NoteCard extends StatelessWidget {
                     children: [
                       Text(
                         item.key,
-                        style: sans(11.5, w: 500, height: 1.5, color: SR.ink2),
+                        style: sans(
+                          11.5,
+                          w: 500,
+                          height: 1.5,
+                          color: context.srColors.ink2,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         item.value,
-                        style: sans(12, height: 1.65, color: SR.ink4),
+                        style: sans(
+                          12,
+                          height: 1.65,
+                          color: context.srColors.ink4,
+                        ),
                       ),
                     ],
                   )
@@ -93,7 +104,7 @@ class _NoteCard extends StatelessWidget {
                             11.5,
                             w: 500,
                             height: 1.5,
-                            color: SR.ink2,
+                            color: context.srColors.ink2,
                           ),
                         ),
                       ),
@@ -101,7 +112,11 @@ class _NoteCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           item.value,
-                          style: sans(12, height: 1.65, color: SR.ink4),
+                          style: sans(
+                            12,
+                            height: 1.65,
+                            color: context.srColors.ink4,
+                          ),
                         ),
                       ),
                     ],

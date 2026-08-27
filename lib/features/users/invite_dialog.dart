@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -9,13 +6,16 @@ import '../../app/app_state.dart';
 import '../../model/account.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/file_export.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_controls.dart';
+
+import '../../theme/sr_theme.dart';
 
 Future<void> showInviteDialog(BuildContext context, AppState state) =>
     showDialog<void>(
       context: context,
-      barrierColor: SR.scrim,
+      barrierColor: context.srColors.scrim,
       builder: (_) => _InviteDialog(state: state),
     );
 
@@ -77,13 +77,14 @@ class _InviteDialogState extends State<_InviteDialog> {
 
   Future<void> _saveCredentials() => _export(
     () async {
-      await FileSaver.instance.saveAs(
-        name: 'smartreserve-admin-credentials',
-        bytes: Uint8List.fromList(utf8.encode(_credentials!.exportText)),
-        fileExtension: 'txt',
-        mimeType: MimeType.text,
+      final result = await saveTextFile(
+        baseName: 'smartreserve-admin-credentials',
+        extension: 'txt',
+        contents: _credentials!.exportText,
       );
-      _notice = 'Credentials file saved. Keep it in a secure location.';
+      if (!result.ok) throw Exception(result.error);
+      _notice =
+          'Credentials file saved to ${result.path}. Keep it in a secure location.';
     },
     toast: 'Credentials file wasn’t saved.',
     detail:
@@ -154,7 +155,7 @@ class _InviteDialogState extends State<_InviteDialog> {
       Text(
         'A strong temporary password is generated after the account is '
         'created. You can save or share the credentials once.',
-        style: SrType.bodySm(color: SR.ink4),
+        style: SrType.bodySm(color: context.srColors.ink4),
       ),
       const SizedBox(height: SR.space16),
       const SrLabel('Email address'),
@@ -246,14 +247,14 @@ class _InviteDialogState extends State<_InviteDialog> {
               height: 28,
               alignment: Alignment.center,
               margin: const EdgeInsets.only(right: SR.space8, top: 1),
-              decoration: const BoxDecoration(
-                color: SR.greenTint,
+              decoration: BoxDecoration(
+                color: context.srColors.greenTint,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.check_rounded,
                 size: 16,
-                color: SR.greenDark,
+                color: context.srColors.greenDark,
               ),
             ),
             Expanded(
@@ -265,7 +266,7 @@ class _InviteDialogState extends State<_InviteDialog> {
         Text(
           'Give these credentials directly to the administrator. The temporary '
           'password is shown only in this dialog.',
-          style: SrType.bodySm(color: SR.ink4),
+          style: SrType.bodySm(color: context.srColors.ink4),
         ),
         const SizedBox(height: SR.space16),
         const SrLabel('Login email'),
@@ -309,10 +310,10 @@ class _InviteDialogState extends State<_InviteDialog> {
                   : (_busy ? 'Working…' : 'Share credentials'),
               icon: kIsWeb || _busy
                   ? null
-                  : const Icon(
+                  : Icon(
                       Icons.ios_share_rounded,
                       size: SR.iconSm,
-                      color: SR.ink3,
+                      color: context.srColors.ink3,
                     ),
               fontSize: 12.5,
               minHeight: 40,
@@ -323,7 +324,10 @@ class _InviteDialogState extends State<_InviteDialog> {
         SrErrorText(_error),
         if (_notice != null) ...[
           const SizedBox(height: SR.space8),
-          Text(_notice!, style: SrType.bodySm(color: SR.greenDark)),
+          Text(
+            _notice!,
+            style: SrType.bodySm(color: context.srColors.greenDark),
+          ),
         ],
         const SizedBox(height: SR.space12 + 2),
         SrButton(
@@ -395,12 +399,16 @@ class _RoleOption extends StatelessWidget {
               vertical: SR.space12,
             ),
             decoration: BoxDecoration(
-              color: selected ? SR.primaryTint : SR.surface,
+              color: selected
+                  ? context.srColors.primaryTint
+                  : context.srColors.surface,
               borderRadius: BorderRadius.circular(SR.rMd - 2),
               border: Border.all(
                 color: selected
                     ? SR.primary
-                    : (hovered ? SR.primarySoft : SR.border),
+                    : (hovered
+                          ? context.srColors.primarySoft
+                          : context.srColors.border),
               ),
             ),
             child: Row(
@@ -414,7 +422,9 @@ class _RoleOption extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: selected ? SR.primary : SR.borderField,
+                      color: selected
+                          ? SR.primary
+                          : context.srColors.borderField,
                     ),
                   ),
                   child: Container(
@@ -431,7 +441,10 @@ class _RoleOption extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(role.label, style: SrType.body(w: 600, color: SR.ink)),
+                      Text(
+                        role.label,
+                        style: SrType.body(w: 600, color: context.srColors.ink),
+                      ),
                       const SizedBox(height: SR.space2),
                       Text(role.privileges, style: SrType.caption()),
                     ],

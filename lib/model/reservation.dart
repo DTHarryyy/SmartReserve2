@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 import '../util/campus_calendar.dart';
+import 'payment.dart';
+import 'permit.dart';
 
 enum BookingStage {
   booked('Approved', 'Approved — the room is held and the requester notified.'),
@@ -59,6 +61,40 @@ enum PaymentTrackingStatus {
   static PaymentTrackingStatus fromRaw(String raw) => values.firstWhere(
     (value) => value.raw == raw,
     orElse: () => PaymentTrackingStatus.notRequired,
+  );
+}
+
+enum ReservationLifecycleStatus {
+  pendingApproval('pending_approval', 'Pending approval'),
+  changesRequested('changes_requested', 'Changes requested'),
+  awaitingPayment('awaiting_payment', 'Awaiting payment'),
+  confirmed('confirmed', 'Confirmed'),
+  declined('declined', 'Declined'),
+  cancelled('cancelled', 'Cancelled'),
+  expired('expired', 'Expired'),
+  completed('completed', 'Completed');
+
+  const ReservationLifecycleStatus(this.raw, this.label);
+  final String raw;
+  final String label;
+
+  SrTone get tone => switch (this) {
+    ReservationLifecycleStatus.pendingApproval ||
+    ReservationLifecycleStatus.awaitingPayment => SrTone.warning,
+    ReservationLifecycleStatus.changesRequested => SrTone.info,
+    ReservationLifecycleStatus.confirmed ||
+    ReservationLifecycleStatus.completed => SrTone.success,
+    ReservationLifecycleStatus.declined => SrTone.error,
+    ReservationLifecycleStatus.cancelled ||
+    ReservationLifecycleStatus.expired => SrTone.neutral,
+  };
+
+  Color get background => tone.tint;
+  Color get foreground => tone.ink;
+
+  static ReservationLifecycleStatus fromRaw(String raw) => values.firstWhere(
+    (value) => value.raw == raw,
+    orElse: () => ReservationLifecycleStatus.pendingApproval,
   );
 }
 
@@ -139,10 +175,36 @@ class ReservationRequest {
     DateTime? slotDay,
     List<ReservationOccurrence>? occurrences,
     List<ReservationFile>? files,
+    List<String>? amenities,
+    this.adminLane = 'external',
+    this.lifecycleStatus = ReservationLifecycleStatus.pendingApproval,
+    this.pricingAudience = 'guest',
+    this.facilityAmountCentavos = 0,
+    this.amenityAmountCentavos = 0,
+    this.discountAmountCentavos = 0,
+    this.totalAmountCentavos = 0,
+    this.requiredDownPaymentCentavos = 0,
+    this.downPaymentPercent = 50,
+    this.paymentExemption = 'none',
+    this.paymentDueAt,
+    this.balanceDueAt,
+    this.legacyFinancialState = false,
+    List<PaymentTransaction>? paymentTransactions,
+    this.paymentMethod,
+    List<PriceSnapshotLine>? priceLines,
+    List<AcceptedTerms>? acceptedTerms,
+    this.feedbackRating,
+    this.feedbackComment = '',
+    this.feedbackAt,
+    this.permit,
   }) : seriesExceptions = seriesExceptions ?? <String>[],
        slotDay = slotDay ?? parseCampusDate(date),
        occurrences = occurrences ?? <ReservationOccurrence>[],
-       files = files ?? <ReservationFile>[];
+       files = files ?? <ReservationFile>[],
+       amenities = amenities ?? <String>[],
+       paymentTransactions = paymentTransactions ?? <PaymentTransaction>[],
+       priceLines = priceLines ?? <PriceSnapshotLine>[],
+       acceptedTerms = acceptedTerms ?? <AcceptedTerms>[];
 
   final String id;
   final String? requesterId;
@@ -187,6 +249,74 @@ class ReservationRequest {
   PaymentTrackingStatus paymentStatus;
   final List<ReservationOccurrence> occurrences;
   final List<ReservationFile> files;
+  final List<String> amenities;
+  final String adminLane;
+  ReservationLifecycleStatus lifecycleStatus;
+  final String pricingAudience;
+  final int facilityAmountCentavos;
+  final int amenityAmountCentavos;
+  final int discountAmountCentavos;
+  final int totalAmountCentavos;
+  final int requiredDownPaymentCentavos;
+  final int downPaymentPercent;
+  final String paymentExemption;
+  final DateTime? paymentDueAt;
+  final DateTime? balanceDueAt;
+  final bool legacyFinancialState;
+  final List<PaymentTransaction> paymentTransactions;
+  final FacilityPaymentMethod? paymentMethod;
+  final List<PriceSnapshotLine> priceLines;
+  final List<AcceptedTerms> acceptedTerms;
+  final ReservationPermit? permit;
+
+  bool get isPaymentExempt => paymentExemption != 'none';
+
+  /// Null until the requester leaves feedback -- arrives with the
+  /// reservation fetch via the reservation_feedback embed, so no separate
+  /// lookup is needed. Mutated in place by AppState.submitFeedback for an
+  /// immediate UI update.
+  int? feedbackRating;
+  String feedbackComment;
+  DateTime? feedbackAt;
+
+  int get verifiedAmountCentavos => paymentTransactions
+      .where((payment) => payment.status == PaymentDecisionStatus.verified)
+      .fold(0, (total, payment) => total + payment.amountCentavos);
+
+  int get outstandingAmountCentavos {
+    final value = totalAmountCentavos - verifiedAmountCentavos;
+    if (value < 0) return 0;
+    return value > totalAmountCentavos ? totalAmountCentavos : value;
+  }
+
+  AggregatePaymentStatus get aggregatePaymentStatus {
+    if (totalAmountCentavos == 0) return AggregatePaymentStatus.notRequired;
+    if (verifiedAmountCentavos >= totalAmountCentavos) {
+      return AggregatePaymentStatus.fullyPaid;
+    }
+    if (balanceDueAt != null && balanceDueAt!.isBefore(DateTime.now())) {
+      return AggregatePaymentStatus.overdue;
+    }
+    if (verifiedAmountCentavos >= requiredDownPaymentCentavos) {
+      return AggregatePaymentStatus.downPaymentVerified;
+    }
+    if (paymentTransactions.any(
+      (payment) => payment.status == PaymentDecisionStatus.submitted,
+    )) {
+      return AggregatePaymentStatus.submitted;
+    }
+    if (verifiedAmountCentavos > 0) {
+      return AggregatePaymentStatus.partiallyPaid;
+    }
+    return AggregatePaymentStatus.unpaid;
+  }
+
+  /// Mirrors the server's issue_reservation_permit gate: confirmed, and
+  /// either exempt or fully paid. The server re-checks this independently --
+  /// this getter only decides what the UI offers, never what is allowed.
+  bool get permitEligible =>
+      lifecycleStatus == ReservationLifecycleStatus.confirmed &&
+      (totalAmountCentavos == 0 || verifiedAmountCentavos >= totalAmountCentavos);
 
   String get initials => requester
       .replaceAll(RegExp(r'^(Prof\.|Dr\.|Atty\.|Ms\.|Mr\.|Dean|Coach)\s+'), '')

@@ -14,24 +14,21 @@ enum CalendarViewMode {
 }
 
 enum CalendarEventState {
-  confirmed('Confirmed', SR.divider, SR.border, SR.ink2),
-  needsDecision('Needs decision', SR.amberTint, SR.amberLine, SR.amberTitle),
-  changesRequested('Changes requested', SR.blueTint, SR.blueLine, SR.blueDark),
-  declined('Declined', SR.redTint, SR.redLine, SR.red),
-  cancelled('Cancelled', SR.dividerSoft, SR.border, SR.ink4),
-  expired('Expired', SR.dividerSoft, SR.border, SR.muted);
+  confirmed('Confirmed', SrTone.neutral),
+  needsDecision('Needs decision', SrTone.warning),
+  changesRequested('Changes requested', SrTone.info),
+  declined('Declined', SrTone.error),
+  cancelled('Cancelled', SrTone.neutral),
+  expired('Expired', SrTone.neutral);
 
-  const CalendarEventState(
-    this.label,
-    this.background,
-    this.border,
-    this.foreground,
-  );
+  const CalendarEventState(this.label, this.tone);
 
   final String label;
-  final Color background;
-  final Color border;
-  final Color foreground;
+  final SrTone tone;
+
+  Color get background => tone.tint;
+  Color get border => tone.line;
+  Color get foreground => tone.ink;
 
   static const defaultVisible = {
     CalendarEventState.confirmed,

@@ -1,19 +1,27 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
+import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
+import '../../model/notice.dart';
+import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
+import '../../theme/sr_theme.dart';
 import '../../util/campus_calendar.dart';
+import '../reservations/permit_panel.dart';
+import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/filter_bar.dart';
+import '../../widgets/rating_display.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
@@ -21,6 +29,8 @@ import '../../widgets/sr_scroll_view.dart';
 import '../assistant/assistant_chat_page.dart';
 import '../assistant/assistant_controller.dart';
 import 'booking_sheet.dart';
+import 'feedback_dialog.dart';
+import 'loyalty_page.dart';
 
 enum StudentTab {
   browse('Browse', 'Browse', Icons.grid_view_outlined, Icons.grid_view_rounded),
@@ -86,6 +96,13 @@ class _StudentAppState extends State<StudentApp> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _syncBannerDismissal(AppScope.of(context).userAccount);
+    final state = AppScope.of(context);
+    if (state.pendingLoyaltyOpen) {
+      state.pendingLoyaltyOpen = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openLoyalty(context);
+      });
+    }
   }
 
   @override
@@ -104,7 +121,7 @@ class _StudentAppState extends State<StudentApp> {
     final narrow = SR.isCompact(width);
 
     return ColoredBox(
-      color: SR.bg,
+      color: context.srColors.bg,
       child: Column(
         children: [
           _header(state, account, narrow),
@@ -147,6 +164,10 @@ class _StudentAppState extends State<StudentApp> {
         ),
       );
 
+  Future<void> _openLoyalty(BuildContext context) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const LoyaltyPage()));
+
   Widget _scrollable(Widget child, double width, bool narrow, {Key? key}) =>
       SrScrollView(
         key: key,
@@ -160,82 +181,231 @@ class _StudentAppState extends State<StudentApp> {
         ),
       );
 
-  Widget _header(AppState state, Account account, bool narrow) => Container(
-    padding: EdgeInsets.symmetric(horizontal: narrow ? 14 : 20, vertical: 12),
-    decoration: const BoxDecoration(
-      color: SR.bg,
-      border: Border(bottom: BorderSide(color: SR.border)),
-    ),
-    child: Row(
-      children: [
-        Initials(text: account.initials, size: 34, fontSize: 11),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                account.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: sans(13, w: 600, tracking: -.01),
-              ),
-              Text(
-                account.email,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: mono(10, color: SR.muted),
-              ),
-            ],
-          ),
+  Widget _header(AppState state, Account account, bool narrow) {
+    final tiny = MediaQuery.sizeOf(context).width < 340;
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        narrow ? 16 : 24,
+        narrow ? 16 : 20,
+        narrow ? 16 : 24,
+        _tab == StudentTab.browse ? 20 : 16,
+      ),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1A73E8), Color(0xFF00A8EF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(width: 10),
-        Stack(
-          clipBehavior: Clip.none,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            IconButton(
-              tooltip: 'Notifications',
-              onPressed: () => _showNotifications(state),
-              icon: const Icon(Icons.notifications_none_rounded, size: 20),
-            ),
-            if (state.unreadNotifications > 0)
-              Positioned(
-                right: 2,
-                top: 2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 1,
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (tiny)
+                        Text(
+                          account.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: sans(
+                            17,
+                            w: 600,
+                            tracking: -.02,
+                            color: Colors.white,
+                          ),
+                        )
+                      else
+                        Row(
+                          children: [
+                            Text(
+                              'Hello, ',
+                              style: sans(
+                                narrow ? 18 : 21,
+                                w: 600,
+                                tracking: -.02,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Flexible(
+                              child: Text(
+                                account.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: sans(
+                                  narrow ? 18 : 21,
+                                  w: 600,
+                                  tracking: -.02,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '! 👋',
+                              style: sans(
+                                narrow ? 18 : 21,
+                                w: 600,
+                                tracking: -.02,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 2),
+                      Text(
+                        account.email,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: mono(10, color: SR.onDarkMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                InkWell(
+                  key: const Key('student-loyalty-chip'),
+                  borderRadius: BorderRadius.circular(SR.rFull),
+                  onTap: () => _openLoyalty(context),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: narrow ? 7 : 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .16),
+                      borderRadius: BorderRadius.circular(SR.rFull),
+                      border: Border.all(color: SR.onDarkLine),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.stars_rounded,
+                          size: 15,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${state.loyalty?.balance ?? 0}',
+                          style: mono(11, w: 600, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(width: narrow ? 2 : 6),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      tooltip: 'Notifications',
+                      color: Colors.white,
+                      onPressed: () => _showNotifications(state),
+                      icon: const Icon(
+                        Icons.notifications_none_rounded,
+                        size: 22,
+                      ),
+                    ),
+                    if (state.unreadNotifications > 0)
+                      Positioned(
+                        right: 1,
+                        top: 1,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: SR.redBright,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${state.unreadNotifications}',
+                            style: mono(8.5, w: 600, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                SizedBox(width: narrow ? 2 : 6),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: narrow ? 5 : 9,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: SR.red,
-                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withValues(alpha: .16),
+                    borderRadius: BorderRadius.circular(SR.rFull),
+                    border: Border.all(color: SR.onDarkLine),
                   ),
-                  child: Text(
-                    '${state.unreadNotifications}',
-                    style: mono(8.5, w: 600, color: SR.surface),
+                  child: Text(switch (account.verification) {
+                    VerificationState.verified => 'VERIFIED',
+                    VerificationState.pending => 'IN PROCESS',
+                    VerificationState.rejected => 'NOT VERIFIED',
+                    VerificationState.none => 'GUEST',
+                  }, style: mono(8.5, w: 600, color: Colors.white)),
+                ),
+              ],
+            ),
+            if (_tab == StudentTab.browse) ...[
+              const SizedBox(height: 16),
+              Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x220B1B33),
+                      blurRadius: 18,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _browseSearch,
+                  onChanged: (value) => setState(() => _browseQuery = value),
+                  style: sans(13, color: SR.neutralDark),
+                  cursorColor: SR.primary,
+                  decoration: InputDecoration(
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    hintText: 'Search facilities, buildings, or amenities',
+                    hintStyle: sans(12, color: const Color(0xFF7B8CA1)),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: SR.primary,
+                    ),
+                    suffixIcon: _browseQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              _browseSearch.clear();
+                              setState(() => _browseQuery = '');
+                            },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Color(0xFF60748A),
+                            ),
+                          ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
+            ],
           ],
         ),
-        const SizedBox(width: 4),
-        SrPill(
-          label: switch (account.verification) {
-            VerificationState.verified => 'VERIFIED',
-            VerificationState.pending =>
-              narrow ? 'IN PROCESS' : 'VERIFICATION IN PROCESS',
-            VerificationState.rejected => 'NOT VERIFIED',
-            VerificationState.none => 'GUEST',
-          },
-          background: account.verification.background,
-          foreground: account.verification.foreground,
-          monospace: true,
-          fontSize: 9.5,
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   Future<void> _showNotifications(AppState state) async {
     await showModalBottomSheet<void>(
@@ -257,7 +427,7 @@ class _StudentAppState extends State<StudentApp> {
                     ? Center(
                         child: Text(
                           'No notifications yet.',
-                          style: sans(12, color: SR.muted),
+                          style: sans(12, color: context.srColors.muted),
                         ),
                       )
                     : ListView.separated(
@@ -266,14 +436,20 @@ class _StudentAppState extends State<StudentApp> {
                         itemBuilder: (context, index) {
                           final item = state.notifications[index];
                           return ListTile(
-                            tileColor: item.unread ? SR.blueTint : null,
+                            tileColor: item.unread
+                                ? context.srColors.primaryTint
+                                : null,
                             title: Text(
                               item.title,
                               style: sans(12.5, w: item.unread ? 600 : 500),
                             ),
                             subtitle: Text(
                               item.body,
-                              style: sans(11, height: 1.45, color: SR.ink4),
+                              style: sans(
+                                11,
+                                height: 1.45,
+                                color: context.srColors.ink4,
+                              ),
                             ),
                             onTap: () async {
                               Navigator.pop(context);
@@ -294,24 +470,31 @@ class _StudentAppState extends State<StudentApp> {
   }
 
   Widget _browse(AppState state, Account account) {
-    final bookable = state.bookableFacilities;
+    final browsable = state.browsableFacilities;
     final categories = {
-      for (final facility in bookable) facility.category,
+      for (final facility in browsable) facility.category,
     }.toList()..sort();
     final amenities = {
-      for (final facility in bookable) ...facility.amenities,
+      for (final facility in browsable) ...facility.amenities,
     }.toList()..sort();
-    final visible = state.searchFacilities(
+    final effectiveCategory = categories.contains(_browseCategory)
+        ? _browseCategory
+        : 'All categories';
+    final availableAmenities = amenities.toSet();
+    final effectiveAmenities = _browseAmenities.intersection(
+      availableAmenities,
+    );
+    final visible = state.searchBrowsableFacilities(
       query: _browseQuery,
-      category: _browseCategory,
+      category: effectiveCategory,
       minCapacity: _minimumCapacity,
-      amenities: _browseAmenities,
+      amenities: effectiveAmenities,
     );
     final filtersActive =
         _browseQuery.trim().isNotEmpty ||
-        _browseCategory != 'All categories' ||
+        effectiveCategory != 'All categories' ||
         _minimumCapacity > 0 ||
-        _browseAmenities.isNotEmpty;
+        effectiveAmenities.isNotEmpty;
     final narrow = SR.isCompact(MediaQuery.sizeOf(context).width);
 
     return Column(
@@ -320,64 +503,83 @@ class _StudentAppState extends State<StudentApp> {
         if (_shouldShowBanner(account))
           _Banner(
             background: account.verification == VerificationState.pending
-                ? SR.amberTint
-                : SR.greenTint,
+                ? context.srColors.amberTint
+                : context.srColors.greenTint,
             border: account.verification == VerificationState.pending
-                ? SR.amberLine
-                : const Color(0xFFB7E9CD),
+                ? context.srColors.amberLine
+                : context.srColors.greenLine,
             foreground: account.verification == VerificationState.pending
-                ? SR.amberTitle
-                : SR.greenDark,
+                ? context.srColors.amberTitle
+                : context.srColors.greenDark,
             title: account.verification == VerificationState.pending
                 ? 'Verification in process'
                 : 'You are verified',
             body: account.verification == VerificationState.pending
                 ? 'You can browse facilities and send reservation requests now. '
-                      'Your request is held until verification is approved.'
+                      'Requests sent now stay in the external administrator lane. '
+                      'New requests use the internal lane after verification.'
                 : 'Your campus membership is confirmed. Browse facilities and '
                       'send reservation requests whenever you are ready.',
             onDismiss: _dismissBanner,
           ),
-        const SizedBox(height: 4),
-        _browseFilters(
-          narrow: narrow,
-          categories: categories,
-          amenities: amenities,
-          filtersActive: filtersActive,
-        ),
-        if (visible.isEmpty)
-          _BrowseEmpty(onClear: _clearBrowseFilters)
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = ((constraints.maxWidth + 12) / 300).floor().clamp(
-                1,
-                3,
-              );
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                itemCount: visible.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  mainAxisExtent: 296,
-                ),
-                itemBuilder: (context, index) => _FacilityCard(
-                  facility: visible[index],
-                  free: account.reservesFree,
-                  quote: state.quoteFor(visible[index], 2),
-                  onTap: () => showBookingSheet(
-                    context,
-                    state: state,
-                    facility: visible[index],
-                  ),
-                ),
-              );
-            },
+        const SizedBox(height: 8),
+        if (state.facilitiesLoading && browsable.isEmpty)
+          const _BrowseStatus.loading()
+        else if (state.facilitiesError != null && browsable.isEmpty)
+          _BrowseStatus.error(
+            message: state.facilitiesError!,
+            onAction: () => unawaited(state.refreshFacilities()),
+          )
+        else if (browsable.isEmpty)
+          const _BrowseStatus.empty()
+        else ...[
+          if (state.facilitiesError != null)
+            _BrowseRefreshWarning(
+              message: state.facilitiesError!,
+              onRetry: () => unawaited(state.refreshFacilities()),
+            ),
+          _categoryShortcuts(categories, selected: effectiveCategory),
+          const SizedBox(height: 12),
+          _browseFilters(
+            narrow: narrow,
+            categories: categories,
+            amenities: amenities,
+            selectedCategory: effectiveCategory,
+            selectedAmenities: effectiveAmenities,
+            filtersActive: filtersActive,
           ),
+          if (visible.isEmpty)
+            _BrowseStatus.noMatch(onAction: _clearBrowseFilters)
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = ((constraints.maxWidth + 12) / 300)
+                    .floor()
+                    .clamp(1, 3);
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  itemCount: visible.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    mainAxisExtent: narrow ? 262 : 296,
+                  ),
+                  itemBuilder: (context, index) => _FacilityCard(
+                    facility: visible[index],
+                    audience: account.pricingAudience,
+                    onTap: () => showBookingSheet(
+                      context,
+                      state: state,
+                      facility: visible[index],
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
       ],
     );
   }
@@ -386,18 +588,12 @@ class _StudentAppState extends State<StudentApp> {
     required bool narrow,
     required List<String> categories,
     required List<String> amenities,
+    required String selectedCategory,
+    required Set<String> selectedAmenities,
     required bool filtersActive,
   }) {
-    final search = FilterSearch(
-      controller: _browseSearch,
-      placeholder: 'Search facilities',
-      width: narrow ? double.infinity : 260,
-      onChanged: (value) => setState(() => _browseQuery = value),
-    );
     final category = FilterSelect(
-      value: categories.contains(_browseCategory)
-          ? _browseCategory
-          : 'All categories',
+      value: selectedCategory,
       items: ['All categories', ...categories],
       semanticLabel: 'Filter by category',
       onChanged: (value) => setState(() => _browseCategory = value),
@@ -413,7 +609,7 @@ class _StudentAppState extends State<StudentApp> {
     );
     final amenity = _AmenitiesFilter(
       amenities: amenities,
-      selected: _browseAmenities,
+      selected: selectedAmenities,
       onToggle: (value) => setState(() {
         if (!_browseAmenities.remove(value)) _browseAmenities.add(value);
       }),
@@ -428,31 +624,25 @@ class _StudentAppState extends State<StudentApp> {
     if (narrow) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Row(
           children: [
-            SizedBox(
-              height: 44,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: search),
-                  const SizedBox(width: 8),
-                  CompactFilterButton(
-                    minHeight: 0,
-                    activeCount:
-                        (_browseCategory == 'All categories' ? 0 : 1) +
-                        (_minimumCapacity == 0 ? 0 : 1) +
-                        (_browseAmenities.isEmpty ? 0 : 1),
-                    onPressed: () => _showBrowseFilters(categories, amenities),
-                  ),
-                ],
+            Expanded(
+              child: Text(
+                filtersActive
+                    ? 'Filtered facility results'
+                    : 'All public facilities',
+                style: sans(12, w: 600, color: context.srColors.ink3),
               ),
             ),
-            if (filtersActive) ...[
-              const SizedBox(height: 8),
-              Row(children: [const Spacer(), clear]),
-            ],
+            if (filtersActive) clear,
+            const SizedBox(width: 8),
+            CompactFilterButton(
+              activeCount:
+                  (selectedCategory == 'All categories' ? 0 : 1) +
+                  (_minimumCapacity == 0 ? 0 : 1) +
+                  (selectedAmenities.isEmpty ? 0 : 1),
+              onPressed: () => _showBrowseFilters(categories, amenities),
+            ),
           ],
         ),
       );
@@ -460,13 +650,65 @@ class _StudentAppState extends State<StudentApp> {
 
     return FilterBar(
       children: [
-        search,
         SizedBox(width: 200, child: category),
         SizedBox(width: 200, child: capacity),
         SizedBox(width: 200, child: amenity),
         if (filtersActive) clear,
       ],
     );
+  }
+
+  Widget _categoryShortcuts(
+    List<String> categories, {
+    required String selected,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          Expanded(child: Text('Categories', style: sans(13, w: 600))),
+          Text(
+            '${categories.length} available',
+            style: mono(9.5, color: context.srColors.muted),
+          ),
+        ],
+      ),
+      const SizedBox(height: 9),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _CategoryShortcut(
+              label: 'All',
+              icon: Icons.apps_rounded,
+              selected: selected == 'All categories',
+              onTap: () => setState(() => _browseCategory = 'All categories'),
+            ),
+            for (final category in categories)
+              _CategoryShortcut(
+                label: category,
+                icon: _categoryIcon(category),
+                selected: selected == category,
+                onTap: () => setState(() => _browseCategory = category),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  IconData _categoryIcon(String category) {
+    final value = category.toLowerCase();
+    if (value.contains('laboratory') || value.contains('lab')) {
+      return Icons.science_rounded;
+    }
+    if (value.contains('court') || value.contains('gym')) {
+      return Icons.sports_basketball_rounded;
+    }
+    if (value.contains('auditorium') || value.contains('event')) {
+      return Icons.campaign_rounded;
+    }
+    return Icons.meeting_room_rounded;
   }
 
   Future<void> _showBrowseFilters(
@@ -594,9 +836,9 @@ class _StudentAppState extends State<StudentApp> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 52),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: SR.border),
+          border: Border.all(color: context.srColors.border),
         ),
         child: Column(
           children: [
@@ -606,9 +848,9 @@ class _StudentAppState extends State<StudentApp> {
               constraints: const BoxConstraints(maxWidth: 300),
               child: Text(
                 'Pick a facility from Browse. You will see its status here as '
-                'the registrar decides.',
+                'the assigned facility administrator decides.',
                 textAlign: TextAlign.center,
-                style: sans(12, height: 1.6, color: SR.ink4),
+                style: sans(12, height: 1.6, color: context.srColors.ink4),
               ),
             ),
           ],
@@ -624,9 +866,9 @@ class _StudentAppState extends State<StudentApp> {
             margin: const EdgeInsets.only(bottom: 9),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
             decoration: BoxDecoration(
-              color: SR.surface,
+              color: context.srColors.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: SR.border),
+              border: Border.all(color: context.srColors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -639,7 +881,7 @@ class _StudentAppState extends State<StudentApp> {
                     Text(request.facility, style: sans(13, w: 600)),
                     Text(
                       '${request.building} · ${request.room}',
-                      style: sans(11, color: SR.muted),
+                      style: sans(11, color: context.srColors.muted),
                     ),
                   ],
                 ),
@@ -655,11 +897,15 @@ class _StudentAppState extends State<StudentApp> {
                         children: [
                           Text(
                             request.whenLabel,
-                            style: mono(11.5, w: 500, color: SR.ink3),
+                            style: mono(
+                              11.5,
+                              w: 500,
+                              color: context.srColors.ink3,
+                            ),
                           ),
                           Text(
                             '${request.heads} people',
-                            style: mono(11, color: SR.muted),
+                            style: mono(11, color: context.srColors.muted),
                           ),
                         ],
                       ),
@@ -667,13 +913,13 @@ class _StudentAppState extends State<StudentApp> {
                       SrPill(
                         label: request.heldForVerification
                             ? 'Held — verification pending'
-                            : request.status.label,
+                            : request.lifecycleStatus.label,
                         background: request.heldForVerification
-                            ? SR.amberTint
-                            : request.status.background,
+                            ? context.srColors.amberTint
+                            : request.lifecycleStatus.background,
                         foreground: request.heldForVerification
-                            ? SR.amber
-                            : request.status.foreground,
+                            ? context.srColors.amber
+                            : request.lifecycleStatus.foreground,
                       ),
                     ],
                   )
@@ -688,11 +934,15 @@ class _StudentAppState extends State<StudentApp> {
                           children: [
                             Text(
                               request.whenLabel,
-                              style: mono(11.5, w: 500, color: SR.ink3),
+                              style: mono(
+                                11.5,
+                                w: 500,
+                                color: context.srColors.ink3,
+                              ),
                             ),
                             Text(
                               '${request.heads} people',
-                              style: mono(11, color: SR.muted),
+                              style: mono(11, color: context.srColors.muted),
                             ),
                           ],
                         ),
@@ -700,13 +950,13 @@ class _StudentAppState extends State<StudentApp> {
                       SrPill(
                         label: request.heldForVerification
                             ? 'Held — verification pending'
-                            : request.status.label,
+                            : request.lifecycleStatus.label,
                         background: request.heldForVerification
-                            ? SR.amberTint
-                            : request.status.background,
+                            ? context.srColors.amberTint
+                            : request.lifecycleStatus.background,
                         foreground: request.heldForVerification
-                            ? SR.amber
-                            : request.status.foreground,
+                            ? context.srColors.amber
+                            : request.lifecycleStatus.foreground,
                       ),
                     ],
                   ),
@@ -718,22 +968,148 @@ class _StudentAppState extends State<StudentApp> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: SR.surfaceSubtle,
+                      color: context.srColors.surfaceSubtle,
                       borderRadius: BorderRadius.circular(9),
-                      border: Border.all(color: SR.hairline),
+                      border: Border.all(color: context.srColors.hairline),
                     ),
                     child: Text(
                       '“$reason”',
-                      style: sans(11.5, height: 1.6, color: SR.ink4),
+                      style: sans(
+                        11.5,
+                        height: 1.6,
+                        color: context.srColors.ink4,
+                      ),
                     ),
                   ),
                 ],
-                if (request.paymentStatus !=
-                    PaymentTrackingStatus.notRequired) ...[
+                const SizedBox(height: 9),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 6,
+                  children: _progressSteps(request),
+                ),
+                if (request.totalAmountCentavos > 0) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: context.srColors.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: context.srColors.hairline),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${request.aggregatePaymentStatus.label} · '
+                          '${pesoFromCentavos(request.outstandingAmountCentavos)} remaining of '
+                          '${pesoFromCentavos(request.totalAmountCentavos)} '
+                          '(${request.downPaymentPercent}% down payment policy)',
+                          style: sans(
+                            10.5,
+                            w: 500,
+                            color: context.srColors.ink3,
+                          ),
+                        ),
+                        if (request.paymentDueAt case final due?)
+                          Text(
+                            'Payment proof due ${_reservationDate(campusWallTime(due))} · '
+                            '${_reservationClock(campusWallTime(due))}',
+                            style: sans(10.5, color: context.srColors.muted),
+                          ),
+                        if (request.balanceDueAt case final due?)
+                          Text(
+                            'Remaining balance due ${_reservationDate(campusWallTime(due))} · '
+                            '${_reservationClock(campusWallTime(due))}',
+                            style: sans(10.5, color: context.srColors.muted),
+                          ),
+                        if (request.priceLines.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          for (final line in request.priceLines)
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    line.label,
+                                    style: sans(
+                                      10.5,
+                                      color: context.srColors.muted,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  pesoFromCentavos(line.totalCentavos),
+                                  style: mono(
+                                    10.5,
+                                    color: context.srColors.ink3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                        if (request.paymentTransactions.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          for (final payment in request.paymentTransactions)
+                            Text(
+                              '${payment.purpose.label}: '
+                              '${pesoFromCentavos(payment.amountCentavos)} · '
+                              '${payment.status.label} · Ref ${payment.referenceNumber}',
+                              style: sans(10.5, color: context.srColors.muted),
+                            ),
+                        ],
+                        if (request.outstandingAmountCentavos > 0 &&
+                            !request.paymentTransactions.any(
+                              (payment) =>
+                                  payment.status ==
+                                  PaymentDecisionStatus.submitted,
+                            ) &&
+                            (request.lifecycleStatus ==
+                                    ReservationLifecycleStatus
+                                        .awaitingPayment ||
+                                request.lifecycleStatus ==
+                                    ReservationLifecycleStatus.confirmed)) ...[
+                          const SizedBox(height: 8),
+                          SrButton(
+                            label:
+                                state.reservationActionsPending.contains(
+                                  'payment:${request.id}',
+                                )
+                                ? 'Submitting…'
+                                : 'Submit GCash proof',
+                            kind: SrButtonKind.primary,
+                            dense: true,
+                            onPressed:
+                                state.reservationActionsPending.contains(
+                                  'payment:${request.id}',
+                                )
+                                ? null
+                                : () => _submitPayment(state, request),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                if (request.lifecycleStatus ==
+                        ReservationLifecycleStatus.confirmed ||
+                    request.permit != null) ...[
+                  const SizedBox(height: 8),
+                  PermitPanel(state: state, request: request),
+                ],
+                if (request.amenities.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Requested amenities',
+                    style: sans(10.5, w: 500, color: context.srColors.ink4),
+                  ),
+                  const SizedBox(height: 5),
+                  AmenityPills(request.amenities),
+                ],
+                if (request.acceptedTerms.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '${request.paymentStatus.label} · no real payment is processed',
-                    style: sans(10.5, color: SR.muted),
+                    'Terms accepted · ${request.acceptedTerms.map((term) => '${term.title} v${term.version}').join(' · ')}',
+                    style: sans(10.5, color: context.srColors.muted),
                   ),
                 ],
                 if (request.occurrences.length > 1) ...[
@@ -749,7 +1125,10 @@ class _StudentAppState extends State<StudentApp> {
                                   '${_reservationDate(occurrence.startsAt)} · '
                                   '${_reservationClock(occurrence.startsAt)}–'
                                   '${_reservationClock(occurrence.endsAt)}',
-                                  style: mono(10.5, color: SR.ink3),
+                                  style: mono(
+                                    10.5,
+                                    color: context.srColors.ink3,
+                                  ),
                                 ),
                                 const SizedBox(height: 5),
                                 Wrap(
@@ -767,25 +1146,31 @@ class _StudentAppState extends State<StudentApp> {
                                       style: sans(
                                         10.5,
                                         w: 500,
-                                        color: SR.muted,
+                                        color: context.srColors.muted,
                                       ),
                                     ),
-                                    if (occurrence.startsAt.isAfter(
-                                          campusNow(),
-                                        ) &&
-                                        !const [
-                                          'cancelled',
-                                          'expired',
-                                        ].contains(occurrence.bookingState))
+                                    if (state.canCancelOccurrence(
+                                      request,
+                                      occurrence,
+                                    ))
                                       SrButton(
-                                        label: 'Cancel date',
+                                        label:
+                                            state.reservationActionsPending
+                                                .contains(request.id)
+                                            ? 'Cancelling…'
+                                            : 'Cancel date',
                                         dense: true,
                                         fontSize: 10,
-                                        onPressed: () =>
-                                            state.cancelReservation(
-                                              request,
-                                              occurrenceId: occurrence.id,
-                                            ),
+                                        onPressed:
+                                            state.reservationActionsPending
+                                                .contains(request.id)
+                                            ? null
+                                            : () async {
+                                                await state.cancelReservation(
+                                                  request,
+                                                  occurrenceId: occurrence.id,
+                                                );
+                                              },
                                       ),
                                   ],
                                 ),
@@ -798,7 +1183,10 @@ class _StudentAppState extends State<StudentApp> {
                                     '${_reservationDate(occurrence.startsAt)} · '
                                     '${_reservationClock(occurrence.startsAt)}–'
                                     '${_reservationClock(occurrence.endsAt)}',
-                                    style: mono(10.5, color: SR.ink3),
+                                    style: mono(
+                                      10.5,
+                                      color: context.srColors.ink3,
+                                    ),
                                   ),
                                 ),
                                 Text(
@@ -808,22 +1196,35 @@ class _StudentAppState extends State<StudentApp> {
                                           '_',
                                           ' ',
                                         ),
-                                  style: sans(10.5, w: 500, color: SR.muted),
+                                  style: sans(
+                                    10.5,
+                                    w: 500,
+                                    color: context.srColors.muted,
+                                  ),
                                 ),
-                                if (occurrence.startsAt.isAfter(campusNow()) &&
-                                    !const [
-                                      'cancelled',
-                                      'expired',
-                                    ].contains(occurrence.bookingState)) ...[
+                                if (state.canCancelOccurrence(
+                                  request,
+                                  occurrence,
+                                )) ...[
                                   const SizedBox(width: 6),
                                   SrButton(
-                                    label: 'Cancel date',
+                                    label:
+                                        state.reservationActionsPending
+                                            .contains(request.id)
+                                        ? 'Cancelling…'
+                                        : 'Cancel date',
                                     dense: true,
                                     fontSize: 10,
-                                    onPressed: () => state.cancelReservation(
-                                      request,
-                                      occurrenceId: occurrence.id,
-                                    ),
+                                    onPressed:
+                                        state.reservationActionsPending
+                                            .contains(request.id)
+                                        ? null
+                                        : () async {
+                                            await state.cancelReservation(
+                                              request,
+                                              occurrenceId: occurrence.id,
+                                            );
+                                          },
                                   ),
                                 ],
                               ],
@@ -855,24 +1256,335 @@ class _StudentAppState extends State<StudentApp> {
                     ],
                   ),
                 ],
-                if (request.status == RequestStatus.pending ||
-                    request.status == RequestStatus.approved ||
-                    request.status == RequestStatus.changesRequested) ...[
+                if (state.canCancelReservation(request)) ...[
                   const SizedBox(height: 9),
                   SrButton(
-                    label: request.occurrences.length > 1
+                    label: state.reservationActionsPending.contains(request.id)
+                        ? 'Cancelling…'
+                        : request.occurrences.length > 1
                         ? 'Cancel all future dates'
                         : 'Cancel reservation',
                     kind: SrButtonKind.danger,
                     dense: true,
-                    onPressed: () => state.cancelReservation(request),
+                    onPressed:
+                        state.reservationActionsPending.contains(request.id)
+                        ? null
+                        : () async {
+                            await state.cancelReservation(request);
+                          },
                   ),
                 ],
+                _feedbackSection(state, request),
               ],
             ),
           ),
       ],
     );
+  }
+
+  List<Widget> _progressSteps(ReservationRequest request) {
+    Widget step(String label, bool done) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          done ? Icons.check_circle_rounded : Icons.circle_outlined,
+          size: 12,
+          color: done ? SR.green : context.srColors.muted,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: sans(
+            10.5,
+            w: 500,
+            color: done ? context.srColors.ink3 : context.srColors.muted,
+          ),
+        ),
+      ],
+    );
+
+    final terminal = {
+      ReservationLifecycleStatus.declined,
+      ReservationLifecycleStatus.cancelled,
+      ReservationLifecycleStatus.expired,
+    }.contains(request.lifecycleStatus);
+    if (terminal) return const [];
+
+    final approved =
+        request.lifecycleStatus != ReservationLifecycleStatus.pendingApproval &&
+        request.lifecycleStatus != ReservationLifecycleStatus.changesRequested;
+    final confirmed =
+        request.lifecycleStatus == ReservationLifecycleStatus.confirmed;
+    final exempt = request.isPaymentExempt;
+    final downPaymentVerified =
+        request.totalAmountCentavos > 0 &&
+        request.verifiedAmountCentavos >= request.requiredDownPaymentCentavos;
+    final fullyPaid =
+        request.totalAmountCentavos > 0 &&
+        request.verifiedAmountCentavos >= request.totalAmountCentavos;
+
+    final steps = <Widget>[
+      step('Reservation Submitted', true),
+      step('Admin Approved', approved),
+    ];
+    if (exempt) {
+      steps.add(step('Payment Not Required', true));
+    } else if (request.totalAmountCentavos > 0) {
+      steps.add(step('Downpayment Verified', downPaymentVerified));
+      if (downPaymentVerified) {
+        steps.add(step('Full Payment Verified', fullyPaid));
+      }
+    }
+    steps.add(step('Reservation Confirmed', confirmed));
+    return steps;
+  }
+
+  Widget _feedbackSection(AppState state, ReservationRequest request) {
+    final c = context.srColors;
+    if (request.feedbackRating != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: c.surfaceSunken,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SrRatingStars(
+                average: request.feedbackRating!.toDouble(),
+                count: 1,
+                dense: true,
+                showCount: false,
+              ),
+              if (request.feedbackComment.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  request.feedbackComment,
+                  style: sans(12, height: 1.4, color: c.textSecondary),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    if (state.canLeaveFeedback(request)) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 9),
+        child: SrButton(
+          label: 'Rate your visit',
+          kind: SrButtonKind.primary,
+          dense: true,
+          onPressed: () =>
+              showFeedbackDialog(context, state: state, request: request),
+        ),
+      );
+    }
+    if (request.lifecycleStatus == ReservationLifecycleStatus.confirmed) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Feedback becomes available after your reservation is completed.',
+          style: sans(11, color: c.textMuted),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Future<void> _submitPayment(
+    AppState state,
+    ReservationRequest request,
+  ) async {
+    Facility? facility;
+    for (final item in state.facilities) {
+      if (item.id == request.facilityId) {
+        facility = item;
+        break;
+      }
+    }
+    FacilityPaymentMethod? method = request.paymentMethod;
+    if (method == null) {
+      for (final item
+          in facility?.paymentMethods ?? const <FacilityPaymentMethod>[]) {
+        if (item.enabled) {
+          method = item;
+          break;
+        }
+      }
+    }
+    if (method == null) {
+      state.showToast(
+        const ToastMessage(
+          'This facility has not published a GCash account yet. '
+          'Contact the administrator before sending payment.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
+
+    final depositRemaining =
+        request.requiredDownPaymentCentavos - request.verifiedAmountCentavos;
+    final fullPaymentDue =
+        request.balanceDueAt != null &&
+        !request.balanceDueAt!.isAfter(DateTime.now());
+    final amount =
+        request.lifecycleStatus == ReservationLifecycleStatus.awaitingPayment &&
+            !fullPaymentDue
+        ? (depositRemaining < 1
+              ? 1
+              : depositRemaining > request.outstandingAmountCentavos
+              ? request.outstandingAmountCentavos
+              : depositRemaining)
+        : request.outstandingAmountCentavos;
+    final amountController = TextEditingController(
+      text: (amount / 100).toStringAsFixed(2),
+    );
+    final referenceController = TextEditingController();
+    ReservationUpload? proof;
+    String? localError;
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Submit GCash proof'),
+          content: SizedBox(
+            width: 430,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (method != null) ...[
+                  Text(
+                    '${method.accountName} · ${method.accountNumber}',
+                    style: sans(13, w: 600),
+                  ),
+                  if (method.instructions.isNotEmpty)
+                    Text(
+                      method.instructions,
+                      style: sans(
+                        11,
+                        height: 1.5,
+                        color: context.srColors.muted,
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Amount (PHP)'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(
+                    labelText: 'GCash reference number',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final file = await FilePicker.pickFile(
+                      type: FileType.custom,
+                      allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
+                    );
+                    if (file == null) return;
+                    final bytes = await file.readAsBytes();
+                    if (bytes.isEmpty ||
+                        bytes.lengthInBytes > 10 * 1024 * 1024) {
+                      setDialogState(
+                        () => localError = 'Proof must be at most 10 MB.',
+                      );
+                      return;
+                    }
+                    final extension = file.name.split('.').last.toLowerCase();
+                    final mime = switch (extension) {
+                      'jpg' || 'jpeg' => 'image/jpeg',
+                      'png' => 'image/png',
+                      'pdf' => 'application/pdf',
+                      _ => '',
+                    };
+                    if (mime.isEmpty) {
+                      setDialogState(
+                        () => localError = 'Use a JPG, PNG, or PDF receipt.',
+                      );
+                      return;
+                    }
+                    setDialogState(() {
+                      proof = ReservationUpload(
+                        name: file.name,
+                        mimeType: mime,
+                        bytes: bytes,
+                      );
+                      localError = null;
+                    });
+                  },
+                  icon: const Icon(Icons.attach_file_rounded),
+                  label: Text(proof?.name ?? 'Choose receipt or screenshot'),
+                ),
+                if (localError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    localError!,
+                    style: sans(11, color: context.srColors.red),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final pesos = double.tryParse(amountController.text.trim());
+                if (pesos == null ||
+                    pesos <= 0 ||
+                    proof == null ||
+                    referenceController.text.trim().length < 6) {
+                  setDialogState(() {
+                    localError = 'Enter a valid amount, reference, and proof.';
+                  });
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
+              child: const Text('Submit proof'),
+            ),
+          ],
+        ),
+      ),
+    );
+    try {
+      if (submitted == true && proof != null) {
+        final amountCentavos =
+            (double.parse(amountController.text.trim()) * 100).round();
+        await state.submitReservationPayment(
+          request: request,
+          purpose:
+              request.lifecycleStatus ==
+                  ReservationLifecycleStatus.awaitingPayment
+              ? PaymentPurpose.downPayment
+              : PaymentPurpose.balance,
+          amountCentavos: amountCentavos,
+          referenceNumber: referenceController.text,
+          proof: proof!,
+        );
+      }
+    } finally {
+      amountController.dispose();
+      referenceController.dispose();
+    }
   }
 
   Future<void> _editAndResubmit(
@@ -981,7 +1693,7 @@ class _StudentAppState extends State<StudentApp> {
                     ],
                   ),
                 ),
-                const Divider(height: 1, color: SR.border),
+                Divider(height: 1, color: context.srColors.border),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.all(compact ? 16 : 22),
@@ -1044,7 +1756,7 @@ class _StudentAppState extends State<StudentApp> {
                     ),
                   ),
                 ),
-                const Divider(height: 1, color: SR.border),
+                Divider(height: 1, color: context.srColors.border),
                 Padding(
                   padding: EdgeInsets.all(compact ? 16 : 18),
                   child: compact
@@ -1165,12 +1877,15 @@ class _StudentAppState extends State<StudentApp> {
                               const SizedBox(height: 2),
                               Text(
                                 account.email,
-                                style: mono(11, color: SR.muted),
+                                style: mono(11, color: context.srColors.muted),
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 'Joined ${account.joined}',
-                                style: mono(10.5, color: SR.muted),
+                                style: mono(
+                                  10.5,
+                                  color: context.srColors.muted,
+                                ),
                               ),
                             ],
                           ),
@@ -1207,12 +1922,12 @@ class _StudentAppState extends State<StudentApp> {
                             account.email,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: mono(11, color: SR.muted),
+                            style: mono(11, color: context.srColors.muted),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             'Joined ${account.joined}',
-                            style: mono(10.5, color: SR.muted),
+                            style: mono(10.5, color: context.srColors.muted),
                           ),
                         ],
                       ),
@@ -1238,7 +1953,7 @@ class _StudentAppState extends State<StudentApp> {
                           'verification submission.'
                     : 'Anything drawn from a verified document is fixed — '
                           're-submit to correct it.',
-                style: sans(11, color: SR.muted),
+                style: sans(11, color: context.srColors.muted),
               ),
               const SizedBox(height: 12),
               _detailsGrid(state, account),
@@ -1265,6 +1980,18 @@ class _StudentAppState extends State<StudentApp> {
         ),
         const SizedBox(height: 12),
         _Panel(
+          child: SrListRow(
+            key: const Key('student-loyalty-entry'),
+            icon: Icons.stars_rounded,
+            label: 'Rewards & points',
+            value: '${state.loyalty?.balance ?? 0} pts',
+            valueMono: true,
+            trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+            onTap: () => _openLoyalty(context),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1285,6 +2012,25 @@ class _StudentAppState extends State<StudentApp> {
                     ],
                   ),
                 ),
+            ],
+          ),
+        ),
+        _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Appearance', style: sans(12.5, w: 600)),
+              const SizedBox(height: 4),
+              Text(
+                'Follow this device or choose a theme for SmartReserve.',
+                style: sans(11, color: context.srColors.muted),
+              ),
+              const SizedBox(height: 12),
+              SrThemeSelector(
+                value: state.themePreference,
+                compact: compact,
+                onChanged: state.setThemePreference,
+              ),
             ],
           ),
         ),
@@ -1339,39 +2085,41 @@ class _StudentAppState extends State<StudentApp> {
       cta,
     ) = switch (account.verification) {
       VerificationState.verified => (
-        SR.greenTint,
-        const Color(0xFFB7E9CD),
-        SR.greenDark,
+        context.srColors.greenTint,
+        context.srColors.greenLine,
+        context.srColors.greenDark,
         'Verified campus member',
-        'You reserve free of charge, subject to the registrar approving '
-            'the slot. Verification runs to the end of the academic year.',
+        'New requests use the internal-admin lane and this facility’s '
+            'published campus-member rate. Verification runs to the end of '
+            'the academic year.',
         null,
       ),
       VerificationState.pending => (
-        SR.amberTint,
-        SR.amberLine,
-        SR.amber,
+        context.srColors.amberTint,
+        context.srColors.amberLine,
+        context.srColors.amber,
         'Awaiting review',
         'Documents are reviewed each morning, usually within one business '
-            'day. Requests you make now are held and released '
-            'automatically.',
+            'day. Requests submitted now use the external-admin lane; later '
+            'verification does not transfer an existing case.',
         null,
       ),
       VerificationState.rejected => (
-        SR.redTint,
-        SR.redLine,
-        SR.red,
+        context.srColors.redTint,
+        context.srColors.redLine,
+        context.srColors.red,
         'Campus claim not approved',
-        'You can still reserve at the external rate. One appeal with a '
-            'different document is allowed.',
+        'You can still reserve through the guest/unverified lane at each '
+            'facility’s guest rate. One appeal with a different document is '
+            'allowed.',
         'Appeal with another document',
       ),
       VerificationState.none => (
-        SR.blueTint2,
-        SR.blueLine,
-        SR.blueDark,
+        context.srColors.primaryTint2,
+        context.srColors.primaryLine,
+        SR.primaryHover,
         'Booking as a guest',
-        'Students and faculty of CSU Aparri reserve free. If that is you, '
+        'Campus members may have a different facility rate. If that is you, '
             'verification takes about a minute.',
         'I am a campus member',
       ),
@@ -1385,7 +2133,10 @@ class _StudentAppState extends State<StudentApp> {
         children: [
           Text(title, style: sans(13.5, w: 600, tracking: -.01, color: accent)),
           const SizedBox(height: 6),
-          Text(body, style: sans(12, height: 1.65, color: SR.ink4)),
+          Text(
+            body,
+            style: sans(12, height: 1.65, color: context.srColors.ink4),
+          ),
           if (cta != null) ...[
             const SizedBox(height: 13),
             SrButton(
@@ -1445,9 +2196,9 @@ class _StudentAppState extends State<StudentApp> {
     ];
     return Container(
       decoration: BoxDecoration(
-        color: SR.hairline,
+        color: context.srColors.hairline,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SR.hairline),
+        border: Border.all(color: context.srColors.hairline),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1473,7 +2224,7 @@ class _StudentAppState extends State<StudentApp> {
   }) {
     final editing = _editingField == field;
     return Container(
-      color: SR.surface,
+      color: context.srColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1508,7 +2259,10 @@ class _StudentAppState extends State<StudentApp> {
                       ),
                       if (locked && lockedNote != null) ...[
                         const SizedBox(height: 2),
-                        Text(lockedNote, style: sans(10.5, color: SR.muted)),
+                        Text(
+                          lockedNote,
+                          style: sans(10.5, color: context.srColors.muted),
+                        ),
                       ],
                     ],
                   ),
@@ -1584,9 +2338,9 @@ class _BottomNav extends StatelessWidget {
                 height: 58,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
-                  color: SR.surface,
+                  color: context.srColors.surface,
                   borderRadius: BorderRadius.circular(SR.rFull),
-                  border: Border.all(color: SR.border),
+                  border: Border.all(color: context.srColors.border),
                   boxShadow: SR.floatShadow,
                 ),
                 child: Stack(
@@ -1606,7 +2360,7 @@ class _BottomNav extends StatelessWidget {
                           ),
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: SR.primaryTint,
+                              color: context.srColors.primaryTint,
                               borderRadius: BorderRadius.circular(SR.rFull),
                             ),
                           ),
@@ -1660,14 +2414,14 @@ class _AssistantButton extends StatelessWidget {
           height: 58,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: hovered ? SR.primary : SR.primaryTint,
+            color: hovered ? SR.primary : context.srColors.primaryTint,
             shape: BoxShape.circle,
             boxShadow: hovered ? SR.popoverShadow : SR.floatShadow,
           ),
           child: Icon(
             Icons.auto_awesome_rounded,
             size: 22,
-            color: hovered ? SR.surface : SR.primary,
+            color: hovered ? SR.onDark : SR.primary,
           ),
         ),
       ),
@@ -1699,7 +2453,9 @@ class _BottomNavItemState extends State<_BottomNavItem> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.selected ? SR.primaryDeep : SR.ink4;
+    final color = widget.selected
+        ? context.srColors.primaryDeep
+        : context.srColors.ink4;
     return Semantics(
       button: true,
       selected: widget.selected,
@@ -1738,6 +2494,82 @@ class _BottomNavItemState extends State<_BottomNavItem> {
   }
 }
 
+class _CategoryShortcut extends StatelessWidget {
+  const _CategoryShortcut({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 9),
+    child: Semantics(
+      button: true,
+      selected: selected,
+      label: 'Show $label facilities',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SR.rLg),
+        child: AnimatedContainer(
+          duration: SR.stateChange,
+          width: 92,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? context.srColors.primaryTint
+                : context.srColors.surface,
+            borderRadius: BorderRadius.circular(SR.rLg),
+            border: Border.all(
+              color: selected
+                  ? context.srColors.primaryLine
+                  : context.srColors.border,
+            ),
+            boxShadow: selected ? null : SR.cardShadow,
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? SR.primary : context.srColors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(SR.rMd),
+                ),
+                child: Icon(
+                  icon,
+                  size: 19,
+                  color: selected ? Colors.white : SR.primary,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: sans(
+                  10.5,
+                  w: selected ? 600 : 500,
+                  color: selected
+                      ? context.srColors.primaryDeep
+                      : context.srColors.ink3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _AmenitiesFilter extends StatelessWidget {
   const _AmenitiesFilter({
     required this.amenities,
@@ -1753,7 +2585,7 @@ class _AmenitiesFilter extends StatelessWidget {
   Widget build(BuildContext context) => PopupMenuButton<String>(
     tooltip: 'Filter by amenities',
     onSelected: onToggle,
-    color: SR.surface,
+    color: context.srColors.surface,
     position: PopupMenuPosition.under,
     constraints: const BoxConstraints(maxHeight: 360, minWidth: 220),
     itemBuilder: (context) => [
@@ -1767,7 +2599,9 @@ class _AmenitiesFilter extends StatelessWidget {
                     ? Icons.check_box_rounded
                     : Icons.check_box_outline_blank_rounded,
                 size: 18,
-                color: selected.contains(amenity) ? SR.blue : SR.muted,
+                color: selected.contains(amenity)
+                    ? SR.primary
+                    : context.srColors.muted,
               ),
               const SizedBox(width: 9),
               Expanded(child: Text(amenity, style: sans(11.5, w: 500))),
@@ -1783,9 +2617,15 @@ class _AmenitiesFilter extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 11),
         decoration: BoxDecoration(
-          color: selected.isEmpty ? SR.surface : SR.blueTint,
+          color: selected.isEmpty
+              ? context.srColors.surface
+              : context.srColors.primaryTint,
           borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: selected.isEmpty ? SR.border : SR.blueSoft),
+          border: Border.all(
+            color: selected.isEmpty
+                ? context.srColors.border
+                : context.srColors.primarySoft,
+          ),
         ),
         child: Row(
           children: [
@@ -1796,14 +2636,14 @@ class _AmenitiesFilter extends StatelessWidget {
                     : 'Amenities (${selected.length})',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500, color: SR.ink3),
+                style: sans(11.5, w: 500, color: context.srColors.ink3),
               ),
             ),
             const SizedBox(width: 7),
-            const Icon(
+            Icon(
               Icons.keyboard_arrow_down_rounded,
               size: 16,
-              color: SR.muted,
+              color: context.srColors.muted,
             ),
           ],
         ),
@@ -1812,30 +2652,124 @@ class _AmenitiesFilter extends StatelessWidget {
   );
 }
 
-class _BrowseEmpty extends StatelessWidget {
-  const _BrowseEmpty({required this.onClear});
+enum _BrowseStatusKind { loading, error, empty, noMatch }
 
-  final VoidCallback onClear;
+class _BrowseStatus extends StatelessWidget {
+  const _BrowseStatus.loading()
+    : kind = _BrowseStatusKind.loading,
+      message = null,
+      onAction = null;
+
+  const _BrowseStatus.error({required this.message, required this.onAction})
+    : kind = _BrowseStatusKind.error;
+
+  const _BrowseStatus.empty()
+    : kind = _BrowseStatusKind.empty,
+      message = null,
+      onAction = null;
+
+  const _BrowseStatus.noMatch({required this.onAction})
+    : kind = _BrowseStatusKind.noMatch,
+      message = null;
+
+  final _BrowseStatusKind kind;
+  final String? message;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 44),
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       children: [
-        Text('No facilities match', style: sans(14, w: 600)),
+        if (kind == _BrowseStatusKind.loading)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          )
+        else
+          Icon(
+            switch (kind) {
+              _BrowseStatusKind.error => Icons.cloud_off_rounded,
+              _BrowseStatusKind.empty => Icons.apartment_rounded,
+              _BrowseStatusKind.noMatch => Icons.search_off_rounded,
+              _BrowseStatusKind.loading => Icons.apartment_rounded,
+            },
+            color: context.srColors.muted,
+            size: 28,
+          ),
+        const SizedBox(height: 8),
+        Text(switch (kind) {
+          _BrowseStatusKind.loading => 'Loading facilities',
+          _BrowseStatusKind.error => 'Facilities could not be loaded',
+          _BrowseStatusKind.empty => 'No public facilities yet',
+          _BrowseStatusKind.noMatch => 'No facilities match',
+        }, style: sans(14, w: 600)),
         const SizedBox(height: 5),
         Text(
-          'Try a different search, capacity, category, or amenity.',
+          message ??
+              switch (kind) {
+                _BrowseStatusKind.loading =>
+                  'The latest facility catalogue is being prepared.',
+                _BrowseStatusKind.error =>
+                  'Check your connection and try loading the catalogue again.',
+                _BrowseStatusKind.empty =>
+                  'There are no public, non-draft facility listings to show.',
+                _BrowseStatusKind.noMatch =>
+                  'Try a different search, capacity, category, or amenity.',
+              },
           textAlign: TextAlign.center,
-          style: sans(12, height: 1.6, color: SR.ink4),
+          style: sans(12, height: 1.6, color: context.srColors.ink4),
         ),
-        const SizedBox(height: 14),
-        SrButton(label: 'Clear filters', onPressed: onClear),
+        if (onAction != null) ...[
+          const SizedBox(height: 14),
+          SrButton(
+            label: kind == _BrowseStatusKind.error
+                ? 'Try again'
+                : 'Clear filters',
+            onPressed: onAction,
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _BrowseRefreshWarning extends StatelessWidget {
+  const _BrowseRefreshWarning({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+      color: context.srColors.amberTint,
+      borderRadius: BorderRadius.circular(SR.rMd),
+      border: Border.all(color: context.srColors.amberLine),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.sync_problem_rounded,
+          size: 18,
+          color: context.srColors.amberTitle,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '$message Showing the most recently loaded facilities.',
+            style: sans(11.5, color: context.srColors.amberTitle),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SrButton(label: 'Retry', dense: true, onPressed: onRetry),
       ],
     ),
   );
@@ -1844,15 +2778,28 @@ class _BrowseEmpty extends StatelessWidget {
 class _FacilityCard extends StatelessWidget {
   const _FacilityCard({
     required this.facility,
-    required this.free,
-    required this.quote,
+    required this.audience,
     required this.onTap,
   });
 
   final Facility facility;
-  final bool free;
-  final int quote;
+  final String audience;
   final VoidCallback onTap;
+
+  bool get _available =>
+      facility.state == FacilityState.active && facility.bookableForCurrentUser;
+
+  String get _availabilityLabel => switch (facility.state) {
+    FacilityState.maintenance => 'Unavailable · maintenance',
+    FacilityState.underReview => 'Unavailable · under review',
+    FacilityState.draft => 'Unavailable · draft',
+    FacilityState.active =>
+      facility.bookableForCurrentUser
+          ? (facility.approvalRequired
+                ? 'Approval required'
+                : 'Books instantly')
+          : 'Unavailable · no administrator',
+  };
 
   String get _factsLine =>
       '${facility.capacity} seats · ${facility.hours} · ${facility.days}';
@@ -1865,123 +2812,139 @@ class _FacilityCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: facility.name,
-    child: SrCard.bare(
-      onTap: onTap,
-      radius: SR.rMd,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(SR.rMd),
-            ),
-            child: SizedBox(
-              height: 132,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  facility.coverPhoto == null
-                      ? FacilityCoverArt(
-                          hue: facility.thumbHue,
-                          glyph: facility.categoryIcon,
-                        )
-                      : FacilityPhotoImage(photo: facility.coverPhoto!),
-                  Positioned(
-                    left: SR.space8,
-                    bottom: SR.space8,
-                    right: SR.space8,
-                    child: Row(
-                      children: [
-                        Flexible(child: _CoverChip(label: facility.category)),
-                        if (facility.state != FacilityState.active) ...[
-                          const SizedBox(width: SR.space6),
-                          _CoverChip(
-                            label: facility.state.label,
-                            dot: facility.state.tone.solid,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+  Widget build(BuildContext context) {
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+    return Semantics(
+      button: true,
+      label: facility.name,
+      child: SrCard.bare(
+        onTap: onTap,
+        radius: SR.rMd,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(SR.rMd),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              SR.space16,
-              SR.space12,
-              SR.space16,
-              SR.space12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  facility.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: SrType.subhead(),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  facility.whereLine,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: SrType.caption(color: SR.muted),
-                ),
-                const SizedBox(height: SR.space8),
-                Text(
-                  _factsLine,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: SrType.bodySm(w: 500, color: SR.ink3),
-                ),
-                if (_amenitiesLine case final amenitiesLine?) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    amenitiesLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: SrType.caption(),
-                  ),
-                ],
-                const SizedBox(height: SR.space12),
-                const Divider(height: 1, color: SR.hairline),
-                const SizedBox(height: SR.space8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: SizedBox(
+                height: compact ? 98 : 132,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Flexible(
-                      child: SrStatusChip(
-                        label: facility.approvalRequired
-                            ? 'Approval required'
-                            : 'Books instantly',
-                        tone: facility.approvalRequired
-                            ? SrTone.warning
-                            : SrTone.success,
-                        dense: true,
-                      ),
-                    ),
-                    const SizedBox(width: SR.space8),
-                    Text(
-                      free ? 'Free' : '₱$quote / 2 h',
-                      style: SrType.subhead(
-                        color: free ? SR.greenDark : SR.ink,
+                    facility.coverPhoto == null
+                        ? FacilityCoverArt(
+                            hue: facility.thumbHue,
+                            glyph: facility.categoryIcon,
+                          )
+                        : FacilityPhotoImage(photo: facility.coverPhoto!),
+                    Positioned(
+                      left: SR.space8,
+                      bottom: SR.space8,
+                      right: SR.space8,
+                      child: Row(
+                        children: [
+                          Flexible(child: _CoverChip(label: facility.category)),
+                          if (facility.state != FacilityState.active) ...[
+                            const SizedBox(width: SR.space6),
+                            _CoverChip(
+                              label: facility.state.label,
+                              dot: facility.state.tone.solid,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                SR.space16,
+                SR.space12,
+                SR.space16,
+                SR.space12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    facility.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SrType.subhead(),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    facility.whereLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SrType.caption(color: context.srColors.muted),
+                  ),
+                  const SizedBox(height: SR.space8),
+                  Text(
+                    _factsLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SrType.bodySm(w: 500, color: context.srColors.ink3),
+                  ),
+                  if (facility.hasRatings) ...[
+                    const SizedBox(height: 3),
+                    SrRatingStars(
+                      average: facility.ratingAverage,
+                      count: facility.ratingCount,
+                      dense: true,
+                      compact: true,
+                    ),
+                  ],
+                  if (_amenitiesLine case final amenitiesLine?) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      amenitiesLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: SrType.caption(),
+                    ),
+                  ],
+                  const SizedBox(height: SR.space12),
+                  Divider(height: 1, color: context.srColors.hairline),
+                  const SizedBox(height: SR.space8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: SrStatusChip(
+                          label: _availabilityLabel,
+                          tone: !_available
+                              ? SrTone.neutral
+                              : facility.approvalRequired
+                              ? SrTone.warning
+                              : SrTone.success,
+                          dense: true,
+                        ),
+                      ),
+                      const SizedBox(width: SR.space8),
+                      Text(
+                        facility.hourlyRateCentavosFor(audience) == 0
+                            ? 'Included rate'
+                            : '${pesoFromCentavos(facility.hourlyRateCentavosFor(audience) * 2)} / 2 h',
+                        style: SrType.subhead(
+                          color: facility.hourlyRateCentavosFor(audience) == 0
+                              ? context.srColors.greenDark
+                              : context.srColors.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _CoverChip extends StatelessWidget {
@@ -1994,9 +2957,9 @@ class _CoverChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: SR.space8, vertical: 4),
     decoration: BoxDecoration(
-      color: SR.glass,
+      color: context.srColors.glass,
       borderRadius: BorderRadius.circular(SR.rFull),
-      border: Border.all(color: SR.glassLine2),
+      border: Border.all(color: context.srColors.glassLine2),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -2014,7 +2977,7 @@ class _CoverChip extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: SrType.caption(w: 600, color: SR.ink2),
+            style: SrType.caption(w: 600, color: context.srColors.ink2),
           ),
         ),
       ],
@@ -2023,24 +2986,20 @@ class _CoverChip extends StatelessWidget {
 }
 
 class _Panel extends StatelessWidget {
-  const _Panel({
-    required this.child,
-    this.background = SR.surface,
-    this.border = SR.border,
-  });
+  const _Panel({required this.child, this.background, this.border});
 
   final Widget child;
-  final Color background;
-  final Color border;
+  final Color? background;
+  final Color? border;
 
   @override
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     decoration: BoxDecoration(
-      color: background,
+      color: background ?? context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: border),
+      border: Border.all(color: border ?? context.srColors.border),
     ),
     child: child,
   );
@@ -2094,7 +3053,10 @@ class _Banner extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 3),
-        Text(body, style: sans(11.5, height: 1.6, color: SR.ink4)),
+        Text(
+          body,
+          style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+        ),
       ],
     ),
   );

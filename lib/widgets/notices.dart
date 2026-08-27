@@ -5,6 +5,8 @@ import '../theme/sr_tokens.dart';
 import 'responsive_dialog.dart';
 import 'sr_controls.dart';
 
+import '../theme/sr_theme.dart';
+
 class ErrorBar extends StatelessWidget {
   const ErrorBar({
     super.key,
@@ -25,15 +27,9 @@ class ErrorBar extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 620),
       padding: const EdgeInsets.fromLTRB(15, 11, 13, 11),
       decoration: BoxDecoration(
-        color: SR.ink,
+        color: context.srColors.ink,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x4D10141A),
-            blurRadius: 40,
-            offset: Offset(0, 16),
-          ),
-        ],
+        boxShadow: SR.popoverShadow,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -48,7 +44,10 @@ class ErrorBar extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: Text(text, style: sans(12, height: 1.5, color: SR.surface)),
+            child: Text(
+              text,
+              style: sans(12, height: 1.5, color: context.srColors.surface),
+            ),
           ),
           const SizedBox(width: 12),
           DarkBarButton(label: actionLabel, onPressed: onJumpToFirst),
@@ -107,13 +106,13 @@ class DarkBarButton extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
-          color: solid ? SR.surface : Color(hovered ? 0x33FFFFFF : 0x1AFFFFFF),
+          color: solid ? SR.onDark : Color(hovered ? 0x33FFFFFF : 0x1AFFFFFF),
           borderRadius: BorderRadius.circular(7),
           border: solid ? null : Border.all(color: const Color(0x33FFFFFF)),
         ),
         child: Text(
           label,
-          style: sans(11, w: 600, color: solid ? SR.ink : SR.surface),
+          style: sans(11, w: 600, color: solid ? SR.neutralDark : SR.onDark),
         ),
       ),
     ),
@@ -121,145 +120,139 @@ class DarkBarButton extends StatelessWidget {
 }
 
 class SrToast extends StatelessWidget {
-  const SrToast({super.key, required this.message});
-
-  final ToastMessage message;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    liveRegion: true,
-    child: TweenAnimationBuilder<double>(
-      key: ValueKey(message.text),
-      tween: Tween(begin: 0, end: 1),
-      duration: SR.entrance,
-      curve: SR.easing,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          offset: Offset(0, (1 - t) * -6),
-          child: child,
-        ),
-      ),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: SR.surface,
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: SR.border),
-          boxShadow: SR.toastShadow,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              margin: const EdgeInsets.only(top: 6),
-              decoration: BoxDecoration(
-                color: toneDot(message.tone),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 9),
-            Flexible(
-              child: Text(
-                message.text,
-                style: sans(12, height: 1.5, color: SR.ink2),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-Color toneDot(AdvisoryTone tone) => switch (tone) {
-  AdvisoryTone.good => SR.green,
-  AdvisoryTone.info => SR.blue,
-  AdvisoryTone.warn => SR.orange,
-  AdvisoryTone.block => SR.red,
-};
-
-class UndoBar extends StatelessWidget {
-  const UndoBar({
+  const SrToast({
     super.key,
-    required this.offer,
-    required this.onUndo,
+    required this.message,
     required this.onDismiss,
+    required this.onAction,
   });
 
-  final UndoOffer offer;
-  final VoidCallback onUndo;
+  final ToastMessage message;
   final VoidCallback onDismiss;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) => Semantics(
+    container: true,
     liveRegion: true,
-    child: TweenAnimationBuilder<double>(
-      key: ValueKey(offer.label),
-      tween: Tween(begin: 0, end: 1),
-      duration: SR.entrance,
-      curve: SR.easing,
-      builder: (context, t, child) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          offset: Offset(0, (1 - t) * 6),
-          child: child,
-        ),
+    label: '${toneLabel(message.tone)}: ${message.text}',
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: context.srColors.surface,
+        borderRadius: BorderRadius.circular(SR.rMd),
+        border: Border.all(color: context.srColors.border),
+        boxShadow: SR.toastShadow,
       ),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
-        padding: const EdgeInsets.fromLTRB(15, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: SR.ink,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: SR.toastShadow,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                offer.label,
-                style: sans(12, height: 1.5, color: SR.surface),
-              ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: toneTint(context, message.tone),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 14),
-            DarkBarButton(label: '↺ Undo', onPressed: onUndo, solid: true),
+            child: Icon(
+              toneIcon(message.tone),
+              size: 17,
+              color: toneDot(context, message.tone),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message.text,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: sans(12, height: 1.45, color: context.srColors.ink2),
+            ),
+          ),
+          if (message.action case final action?) ...[
             const SizedBox(width: 8),
-            Semantics(
-              button: true,
-              label: 'Dismiss',
-              child: SizedBox.square(
-                dimension: SR.isCompact(MediaQuery.sizeOf(context).width)
-                    ? 44
-                    : 20,
-                child: Hoverable(
-                  builder: (context, hovered) => GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onDismiss,
-                    child: Center(
-                      child: Text(
-                        '✕',
-                        style: sans(
-                          12,
-                          color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
-                        ),
-                      ),
-                    ),
-                  ),
+            LightBarButton(label: action.label, onPressed: onAction),
+          ],
+          Semantics(
+            button: true,
+            label: 'Dismiss notification',
+            child: SizedBox.square(
+              dimension: 44,
+              child: IconButton(
+                onPressed: onDismiss,
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: context.srColors.ink3,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );
 }
+
+class LightBarButton extends StatelessWidget {
+  const LightBarButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 44,
+    child: TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        foregroundColor: context.srColors.primaryDeep,
+        side: BorderSide(color: context.srColors.border),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+      child: Text(
+        label,
+        style: sans(11, w: 600, color: context.srColors.primaryDeep),
+      ),
+    ),
+  );
+}
+
+Color toneDot(BuildContext context, AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => SR.green,
+  AdvisoryTone.info => SR.primary,
+  AdvisoryTone.warn => SR.orange,
+  AdvisoryTone.block => context.srColors.red,
+};
+
+Color toneTint(BuildContext context, AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => context.srColors.greenTint,
+  AdvisoryTone.info => context.srColors.primaryTint,
+  AdvisoryTone.warn => context.srColors.amberTint,
+  AdvisoryTone.block => context.srColors.redTint,
+};
+
+IconData toneIcon(AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => Icons.check_rounded,
+  AdvisoryTone.info => Icons.info_outline_rounded,
+  AdvisoryTone.warn => Icons.warning_amber_rounded,
+  AdvisoryTone.block => Icons.error_outline_rounded,
+};
+
+String toneLabel(AdvisoryTone tone) => switch (tone) {
+  AdvisoryTone.good => 'Success',
+  AdvisoryTone.info => 'Information',
+  AdvisoryTone.warn => 'Warning',
+  AdvisoryTone.block => 'Error',
+};
 
 class GuardDialog extends StatelessWidget {
   const GuardDialog({
@@ -297,7 +290,7 @@ class GuardDialog extends StatelessWidget {
               : 'This facility is not published yet. Keep the draft and '
                     'everything, including the map pin, is waiting when you '
                     'come back.',
-          style: sans(12.5, height: 1.65, color: SR.ink4),
+          style: sans(12.5, height: 1.65, color: context.srColors.ink4),
         ),
         const SizedBox(height: 18),
         Wrap(

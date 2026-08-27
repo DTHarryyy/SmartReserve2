@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 
+import '../theme/sr_theme.dart';
+
 class SectionCard extends StatelessWidget {
   const SectionCard({
     super.key,
@@ -31,9 +33,9 @@ class SectionCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(compact ? 14 : (dense ? 16 : 20)),
       decoration: BoxDecoration(
-        color: SR.surface,
+        color: context.srColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: SR.border),
+        border: Border.all(color: context.srColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -43,7 +45,7 @@ class SectionCard extends StatelessWidget {
             spacing: 9,
             runSpacing: 2,
             children: [
-              Text(number, style: mono(10, w: 500, color: SR.blue)),
+              Text(number, style: mono(10, w: 500, color: SR.primary)),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -51,7 +53,7 @@ class SectionCard extends StatelessWidget {
                   ?titleSuffix,
                 ],
               ),
-              Text(caption, style: sans(11, color: SR.muted)),
+              Text(caption, style: sans(11, color: context.srColors.muted)),
             ],
           ),
           const SizedBox(height: 16),

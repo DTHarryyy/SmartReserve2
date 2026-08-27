@@ -132,7 +132,7 @@ const designNotes = <DesignNote>[
   DesignNote('05', 'Design system recommendations', [
     NoteItem(
       'Type',
-      'IBM Plex Sans for interface, IBM Plex Mono for coordinates, IDs and '
+      'Poppins for interface, IBM Plex Mono for coordinates, IDs and '
           'measurements. Monospace for numbers is functional: digits align while '
           'a pin is dragged, so change is legible.',
     ),
@@ -418,18 +418,17 @@ const designNotes = <DesignNote>[
     NoteItem(
       'Three roles',
       'Internal admin (registrar / OSA staff): approves campus verifications, '
-          'manages facilities, decides reservations, sees student documents. '
-          'External admin: manages non-campus clients — rates, quotes, invoices, '
-          'refunds and their bookings — and never sees student or faculty '
-          'documents. User: books facilities, in one of two states below.',
+          'manages assigned facilities, and handles verified-user bookings. '
+          'External admin has the same assigned-facility operations for guest '
+          'and unverified bookings, but never sees campus documents. User: '
+          'books facilities through the lane derived at submission.',
     ),
     NoteItem(
       'Two user states',
-      'Verified campus member (student or faculty of CSU Aparri) reserves '
-          'without payment, subject to approval only. External guest reserves at '
-          'the published external rate and pays before the slot is held. The '
-          'state is a property of the account, not of each booking, so a user '
-          'never has to explain who they are twice.',
+      'A verified student, faculty member, or staff member submits into the '
+          'internal lane; everyone else submits into the external lane. Each '
+          'facility publishes an audience rate, including zero when desired. '
+          'The derived lane and price are snapshotted on each reservation.',
     ),
     NoteItem(
       'Onboarding — the one question',
@@ -442,10 +441,10 @@ const designNotes = <DesignNote>[
     NoteItem(
       'While pending',
       'The account is usable immediately: browse facilities, see the map, '
-          'prepare a request. What is held is the confirmation — a request '
-          'submitted while pending sits in the queue and is released the moment '
-          'verification passes. Nobody stares at a blocked screen, and nobody '
-          'gets a free booking before the check is done.',
+          'prepare a request, and book facilities with external-lane coverage. '
+          'A request submitted while verification is pending stays with the '
+          'external administrator; only new requests use the internal lane '
+          'after verification succeeds.',
     ),
     NoteItem(
       'Internal admin — verification queue',
@@ -472,10 +471,10 @@ const designNotes = <DesignNote>[
     ),
     NoteItem(
       'Payment rules',
-      'Guest flow: quote at request time, payment authorised on approval and '
-          'captured at check-in, automatic refund if the facility goes into '
-          'maintenance or the booking is declined. Verified members never see a '
-          'payment step at all — no zero-peso invoices, no empty cart.',
+      'Any positive authoritative quote uses the payment flow. Approval creates '
+          'a temporary hold; the requester submits a GCash reference and proof; '
+          'an assigned matching-lane administrator verifies it. Verified funds '
+          'confirm the slot, while a zero total confirms without payment.',
     ),
   ]),
   DesignNote('12', 'Authentication & account entry', [

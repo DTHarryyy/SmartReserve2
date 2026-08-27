@@ -7,28 +7,36 @@ import '../../../data/campus_data.dart';
 import '../../../theme/sr_tokens.dart';
 import '../add_facility_controller.dart';
 
+import '../../../theme/sr_theme.dart';
+
 TileLayer srTileLayer(
   MapLayer layer,
   int generation, {
+  bool dark = false,
   VoidCallback? onTileError,
 }) => TileLayer(
   key: ValueKey('${layer.name}-$generation'),
   urlTemplate: switch (layer) {
-    MapLayer.street => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    MapLayer.street =>
+      dark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     MapLayer.satellite =>
       'https://server.arcgisonline.com/ArcGIS/rest/services/'
           'World_Imagery/MapServer/tile/{z}/{y}/{x}',
     MapLayer.light =>
       'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
   },
-  subdomains: layer == MapLayer.light ? const ['a', 'b', 'c', 'd'] : const [],
+  subdomains: layer == MapLayer.light || (layer == MapLayer.street && dark)
+      ? const ['a', 'b', 'c', 'd']
+      : const [],
   maxNativeZoom: 19,
   userAgentPackageName: 'ph.edu.csu.smartreserve',
   errorTileCallback: onTileError == null ? null : (_, _, _) => onTileError(),
 );
 
 String attributionFor(MapLayer layer) => switch (layer) {
-  MapLayer.street => '© OpenStreetMap contributors',
+  MapLayer.street => '© OpenStreetMap · © CARTO',
   MapLayer.satellite => 'Imagery © Esri',
   MapLayer.light => '© OpenStreetMap · © CARTO',
 };
@@ -89,7 +97,7 @@ class _CampusMapState extends State<CampusMap> {
         initialZoom: c.zoom,
         minZoom: 3,
         maxZoom: 21,
-        backgroundColor: SR.mapBg,
+        backgroundColor: context.srColors.mapBg,
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
         ),
@@ -110,6 +118,7 @@ class _CampusMapState extends State<CampusMap> {
         srTileLayer(
           c.layer,
           c.tileGeneration,
+          dark: Theme.of(context).brightness == Brightness.dark,
           onTileError: () {
             _tileErrors++;
 
@@ -126,8 +135,8 @@ class _CampusMapState extends State<CampusMap> {
             polygons: [
               Polygon(
                 points: campus.boundary,
-                color: SR.blue.withValues(alpha: .10),
-                borderColor: SR.blue.withValues(alpha: .9),
+                color: SR.primary.withValues(alpha: .10),
+                borderColor: SR.primary.withValues(alpha: .9),
                 borderStrokeWidth: 2.5,
               ),
             ],
@@ -140,8 +149,8 @@ class _CampusMapState extends State<CampusMap> {
                 point: pin,
                 radius: c.draft.accuracy!.toDouble(),
                 useRadiusInMeter: true,
-                color: SR.blue.withValues(alpha: .12),
-                borderColor: SR.blue.withValues(alpha: .45),
+                color: SR.primary.withValues(alpha: .12),
+                borderColor: SR.primary.withValues(alpha: .45),
                 borderStrokeWidth: 1,
               ),
             ],
@@ -193,18 +202,18 @@ class _CampusMapState extends State<CampusMap> {
         Scalebar(
           alignment: Alignment.bottomRight,
           padding: const EdgeInsets.only(right: 12, bottom: 24),
-          lineColor: const Color(0xFF98A2B3),
-          textStyle: mono(10, w: 500, color: SR.ink2),
+          lineColor: context.srColors.muted,
+          textStyle: mono(10, w: 500, color: context.srColors.ink2),
         ),
 
         Align(
           alignment: Alignment.bottomRight,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            color: const Color(0xB8FFFFFF),
+            color: context.srColors.glass,
             child: Text(
               attributionFor(c.layer),
-              style: sans(9, color: SR.ink3),
+              style: sans(9, color: context.srColors.ink3),
             ),
           ),
         ),
@@ -222,9 +231,9 @@ class _ExistingDot extends StatelessWidget {
       width: 9,
       height: 9,
       decoration: BoxDecoration(
-        color: SR.muted,
+        color: context.srColors.muted,
         shape: BoxShape.circle,
-        border: Border.all(color: SR.surface, width: 1.5),
+        border: Border.all(color: context.srColors.surface, width: 1.5),
       ),
     ),
   );
@@ -243,10 +252,10 @@ class _BuildingChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: selected ? SR.blue : const Color(0xE6FFFFFF),
+          color: selected ? SR.primary : context.srColors.glass,
           borderRadius: BorderRadius.circular(5),
           border: Border.all(
-            color: selected ? SR.blueDark : const Color(0x1A10141A),
+            color: selected ? SR.primaryHover : context.srColors.glassLine,
           ),
         ),
         child: Text(
@@ -254,7 +263,11 @@ class _BuildingChip extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: sans(9, w: 500, color: selected ? SR.surface : SR.ink3),
+          style: sans(
+            9,
+            w: 500,
+            color: selected ? SR.onDark : context.srColors.ink3,
+          ),
         ),
       ),
     ),
@@ -301,7 +314,7 @@ class _DraggablePinState extends State<_DraggablePin>
   @override
   Widget build(BuildContext context) {
     final camera = MapCamera.of(context);
-    final color = widget.valid ? SR.blue : SR.red;
+    final color = widget.valid ? SR.primary : context.srColors.red;
 
     return MouseRegion(
       cursor: SystemMouseCursors.grab,
@@ -360,7 +373,10 @@ class _DraggablePinState extends State<_DraggablePin>
                 margin: const EdgeInsets.only(bottom: 4),
                 decoration: BoxDecoration(
                   color: color,
-                  border: Border.all(color: SR.surface, width: 2.5),
+                  border: Border.all(
+                    color: context.srColors.surface,
+                    width: 2.5,
+                  ),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(13),
                     topRight: Radius.circular(13),

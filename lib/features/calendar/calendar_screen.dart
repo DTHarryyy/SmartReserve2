@@ -11,6 +11,8 @@ import '../../widgets/filter_bar.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 
+import '../../theme/sr_theme.dart';
+
 const _minimumStartHour = 7;
 const _minimumEndHour = 20;
 const _hourHeight = 48.0;
@@ -87,9 +89,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
           SizedBox(
             width: 330,
             child: DecoratedBox(
-              decoration: const BoxDecoration(
-                color: SR.surface,
-                border: Border(left: BorderSide(color: SR.border)),
+              decoration: BoxDecoration(
+                color: context.srColors.surface,
+                border: Border(
+                  left: BorderSide(color: context.srColors.border),
+                ),
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
@@ -122,14 +126,17 @@ class _Toolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: EdgeInsets.fromLTRB(compact ? 14 : 20, 10, compact ? 14 : 20, 10),
-    decoration: const BoxDecoration(
-      color: SR.surface,
-      border: Border(bottom: BorderSide(color: SR.border)),
+    decoration: BoxDecoration(
+      color: context.srColors.surface,
+      border: Border(bottom: BorderSide(color: context.srColors.border)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (compact) _compactNavigation(context) else _expandedNavigation(),
+        if (compact)
+          _compactNavigation(context)
+        else
+          _expandedNavigation(context),
         SizedBox(height: compact ? 8 : 9),
         if (compact)
           Row(
@@ -203,12 +210,12 @@ class _Toolbar extends StatelessWidget {
     ),
   );
 
-  Widget _expandedNavigation() => Wrap(
+  Widget _expandedNavigation(BuildContext context) => Wrap(
     spacing: 8,
     runSpacing: 8,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      _modeSegment(expand: false),
+      _modeSegment(context, expand: false),
       SrIconButton(
         icon: Icons.chevron_left_rounded,
         fontSize: 14,
@@ -236,7 +243,7 @@ class _Toolbar extends StatelessWidget {
     height: 44,
     child: Row(
       children: [
-        Expanded(child: _modeSegment(expand: true, compact: true)),
+        Expanded(child: _modeSegment(context, expand: true, compact: true)),
         const SizedBox(width: 3),
         _CompactCalendarNavButton(
           key: const Key('compact-calendar-previous'),
@@ -263,7 +270,7 @@ class _Toolbar extends StatelessWidget {
                       _compactRangeLabel(state),
                       maxLines: 1,
                       textAlign: TextAlign.center,
-                      style: sans(11.5, w: 500, color: SR.ink2),
+                      style: sans(11.5, w: 500, color: context.srColors.ink2),
                     ),
                   ),
                 ),
@@ -283,36 +290,39 @@ class _Toolbar extends StatelessWidget {
     ),
   );
 
-  Widget _modeSegment({required bool expand, bool compact = false}) =>
-      Container(
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: SR.dividerSoft,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Row(
-          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-          children: [
-            for (final mode in CalendarViewMode.values)
-              expand
-                  ? Expanded(
-                      child: _ModeTab(
-                        key: ValueKey('calendar-mode-${mode.name}'),
-                        label: mode.label,
-                        selected: state.calendarViewMode == mode,
-                        onTap: () => state.setCalendarViewMode(mode),
-                        compact: compact,
-                      ),
-                    )
-                  : _ModeTab(
-                      key: ValueKey('calendar-mode-${mode.name}'),
-                      label: mode.label,
-                      selected: state.calendarViewMode == mode,
-                      onTap: () => state.setCalendarViewMode(mode),
-                    ),
-          ],
-        ),
-      );
+  Widget _modeSegment(
+    BuildContext context, {
+    required bool expand,
+    bool compact = false,
+  }) => Container(
+    padding: const EdgeInsets.all(3),
+    decoration: BoxDecoration(
+      color: context.srColors.dividerSoft,
+      borderRadius: BorderRadius.circular(9),
+    ),
+    child: Row(
+      mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+      children: [
+        for (final mode in CalendarViewMode.values)
+          expand
+              ? Expanded(
+                  child: _ModeTab(
+                    key: ValueKey('calendar-mode-${mode.name}'),
+                    label: mode.label,
+                    selected: state.calendarViewMode == mode,
+                    onTap: () => state.setCalendarViewMode(mode),
+                    compact: compact,
+                  ),
+                )
+              : _ModeTab(
+                  key: ValueKey('calendar-mode-${mode.name}'),
+                  label: mode.label,
+                  selected: state.calendarViewMode == mode,
+                  onTap: () => state.setCalendarViewMode(mode),
+                ),
+      ],
+    ),
+  );
 
   Future<void> _openFilters(BuildContext context) => showSrFilterSheet(
     context,
@@ -405,7 +415,7 @@ class _ModeTab extends StatelessWidget {
           vertical: 6,
         ),
         decoration: BoxDecoration(
-          color: selected ? SR.surface : Colors.transparent,
+          color: selected ? context.srColors.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(7),
           boxShadow: selected ? SR.cardShadow : null,
         ),
@@ -415,7 +425,7 @@ class _ModeTab extends StatelessWidget {
           style: sans(
             compact ? 10.5 : 11.5,
             w: 500,
-            color: selected ? SR.ink : SR.ink4,
+            color: selected ? context.srColors.ink : context.srColors.ink4,
           ),
         ),
       ),
@@ -450,11 +460,11 @@ class _CompactCalendarNavButton extends StatelessWidget {
           height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: SR.surface,
+            color: context.srColors.surface,
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: SR.border),
+            border: Border.all(color: context.srColors.border),
           ),
-          child: Icon(icon, size: 17, color: SR.ink2),
+          child: Icon(icon, size: 17, color: context.srColors.ink2),
         ),
       ),
     ),
@@ -623,9 +633,9 @@ class _CalendarEmptyStateCard extends StatelessWidget {
           vertical: compact ? 16 : 40,
         ),
         decoration: BoxDecoration(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: SR.border),
+          border: Border.all(color: context.srColors.border),
         ),
         child: compact
             ? Row(
@@ -661,14 +671,14 @@ class _CalendarEmptyIcon extends StatelessWidget {
     height: compact ? 40 : 48,
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: SR.blueTint,
+      color: context.srColors.primaryTint,
       borderRadius: BorderRadius.circular(compact ? 11 : 14),
-      border: Border.all(color: SR.blueLine),
+      border: Border.all(color: context.srColors.primaryLine),
     ),
     child: Icon(
       Icons.calendar_month_outlined,
       size: compact ? 19 : 22,
-      color: SR.blueDark,
+      color: SR.primaryHover,
     ),
   );
 }
@@ -703,7 +713,7 @@ class _CalendarEmptyCopy extends StatelessWidget {
         child: Text(
           body,
           textAlign: centered ? TextAlign.center : TextAlign.start,
-          style: sans(12, height: 1.55, color: SR.ink4),
+          style: sans(12, height: 1.55, color: context.srColors.ink4),
         ),
       ),
     ],
@@ -744,7 +754,7 @@ class _CompactAgenda extends StatelessWidget {
                 padding: EdgeInsets.only(top: index == 0 ? 0 : 12, bottom: 7),
                 child: Text(
                   formatCampusDate(day),
-                  style: sans(12.5, w: 600, color: SR.ink2),
+                  style: sans(12.5, w: 600, color: context.srColors.ink2),
                 ),
               ),
             Semantics(
@@ -757,7 +767,7 @@ class _CompactAgenda extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(13),
                   decoration: BoxDecoration(
-                    color: SR.surface,
+                    color: context.srColors.surface,
                     borderRadius: BorderRadius.circular(11),
                     border: Border.all(color: event.state.border),
                   ),
@@ -768,7 +778,11 @@ class _CompactAgenda extends StatelessWidget {
                         width: 70,
                         child: Text(
                           event.timeLabel,
-                          style: mono(10.5, w: 500, color: SR.ink3),
+                          style: mono(
+                            10.5,
+                            w: 500,
+                            color: context.srColors.ink3,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -785,7 +799,11 @@ class _CompactAgenda extends StatelessWidget {
                               '${event.requester} · ${event.purpose}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: sans(11, height: 1.45, color: SR.ink4),
+                              style: sans(
+                                11,
+                                height: 1.45,
+                                color: context.srColors.ink4,
+                              ),
                             ),
                           ],
                         ),
@@ -825,7 +843,7 @@ class _MonthView extends StatelessWidget {
           final narrow = availableWidth < 760;
           final grid = SizedBox(
             width: narrow ? 760 : availableWidth,
-            child: _grid(start, events, narrow ? 104 : 118),
+            child: _grid(context, start, events, narrow ? 104 : 118),
           );
           return narrow
               ? SingleChildScrollView(
@@ -838,63 +856,69 @@ class _MonthView extends StatelessWidget {
     );
   }
 
-  Widget _grid(DateTime start, List<CalendarEvent> events, double height) =>
-      Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: SR.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: SR.border),
-        ),
-        child: Column(
+  Widget _grid(
+    BuildContext context,
+    DateTime start,
+    List<CalendarEvent> events,
+    double height,
+  ) => Container(
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: context.srColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.srColors.border),
+    ),
+    child: Column(
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                for (final day in weekdayNames)
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(color: SR.hairline)),
-                      ),
-                      child: Text(day.toUpperCase(), style: keyLabel),
+            for (final day in weekdayNames)
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: context.srColors.hairline),
                     ),
                   ),
-              ],
-            ),
-            for (var week = 0; week < 6; week++)
-              SizedBox(
-                height: height,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var index = 0; index < 7; index++)
-                      Expanded(
-                        child: _MonthCell(
-                          day: start.add(Duration(days: week * 7 + index)),
-                          currentMonth: state.calendarAnchor.month,
-                          events: [
-                            for (final event in events)
-                              if (event.overlapsDay(
-                                start.add(Duration(days: week * 7 + index)),
-                              ))
-                                event,
-                          ],
-                          onSelectDay: () => state.selectCalendarDate(
-                            start.add(Duration(days: week * 7 + index)),
-                            mode: CalendarViewMode.day,
-                          ),
-                          onSelectEvent: (event) =>
-                              state.selectCalendarEvent(event.id),
-                        ),
-                      ),
-                  ],
+                  child: Text(day.toUpperCase(), style: keyLabel),
                 ),
               ),
           ],
         ),
-      );
+        for (var week = 0; week < 6; week++)
+          SizedBox(
+            height: height,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var index = 0; index < 7; index++)
+                  Expanded(
+                    child: _MonthCell(
+                      day: start.add(Duration(days: week * 7 + index)),
+                      currentMonth: state.calendarAnchor.month,
+                      events: [
+                        for (final event in events)
+                          if (event.overlapsDay(
+                            start.add(Duration(days: week * 7 + index)),
+                          ))
+                            event,
+                      ],
+                      onSelectDay: () => state.selectCalendarDate(
+                        start.add(Duration(days: week * 7 + index)),
+                        mode: CalendarViewMode.day,
+                      ),
+                      onSelectEvent: (event) =>
+                          state.selectCalendarEvent(event.id),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class _MonthCell extends StatelessWidget {
@@ -917,10 +941,10 @@ class _MonthCell extends StatelessWidget {
     final shown = events.take(2).toList();
     return Container(
       padding: const EdgeInsets.all(5),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          right: BorderSide(color: SR.divider),
-          bottom: BorderSide(color: SR.divider),
+          right: BorderSide(color: context.srColors.divider),
+          bottom: BorderSide(color: context.srColors.divider),
         ),
       ),
       child: Column(
@@ -935,7 +959,7 @@ class _MonthCell extends StatelessWidget {
                 height: 23,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: _isToday(day) ? SR.blue : Colors.transparent,
+                  color: _isToday(day) ? SR.primary : Colors.transparent,
                   shape: BoxShape.circle,
                 ),
                 child: Text(
@@ -944,8 +968,10 @@ class _MonthCell extends StatelessWidget {
                     10,
                     w: 500,
                     color: _isToday(day)
-                        ? SR.surface
-                        : (outside ? SR.mutedLight : SR.ink3),
+                        ? context.srColors.surface
+                        : (outside
+                              ? context.srColors.mutedLight
+                              : context.srColors.ink3),
                   ),
                 ),
               ),
@@ -967,7 +993,7 @@ class _MonthCell extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 3, top: 1),
                 child: Text(
                   '+${events.length - shown.length} more',
-                  style: sans(9.5, w: 500, color: SR.blue),
+                  style: sans(9.5, w: 500, color: SR.primary),
                 ),
               ),
             ),
@@ -997,7 +1023,7 @@ class _WeekView extends StatelessWidget {
     return SrScrollView(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final content = _weekGrid(days, events, range, height);
+          final content = _weekGrid(context, days, events, range, height);
           return constraints.maxWidth < 820
               ? SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -1010,6 +1036,7 @@ class _WeekView extends StatelessWidget {
   }
 
   Widget _weekGrid(
+    BuildContext context,
     List<DateTime> days,
     List<CalendarEvent> events,
     (double, double) range,
@@ -1017,9 +1044,9 @@ class _WeekView extends StatelessWidget {
   ) => Container(
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       children: [
@@ -1031,10 +1058,10 @@ class _WeekView extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
-                      left: BorderSide(color: SR.divider),
-                      bottom: BorderSide(color: SR.hairline),
+                      left: BorderSide(color: context.srColors.divider),
+                      bottom: BorderSide(color: context.srColors.hairline),
                     ),
                   ),
                   child: Column(
@@ -1045,7 +1072,7 @@ class _WeekView extends StatelessWidget {
                       ),
                       Text(
                         '${day.day} ${monthNames[day.month - 1]}',
-                        style: mono(9.5, color: SR.muted),
+                        style: mono(9.5, color: context.srColors.muted),
                       ),
                     ],
                   ),
@@ -1098,7 +1125,7 @@ class _DayView extends StatelessWidget {
     return SrScrollView(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final grid = _dayGrid(day, facilities, events, range);
+          final grid = _dayGrid(context, day, facilities, events, range);
           return constraints.maxWidth < 760
               ? SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -1111,6 +1138,7 @@ class _DayView extends StatelessWidget {
   }
 
   Widget _dayGrid(
+    BuildContext context,
     DateTime day,
     List<String> facilities,
     List<CalendarEvent> events,
@@ -1118,16 +1146,18 @@ class _DayView extends StatelessWidget {
   ) => Container(
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
-      color: SR.surface,
+      color: context.srColors.surface,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: SR.border),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Column(
       children: [
         Container(
           height: 36,
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: SR.hairline)),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: context.srColors.hairline),
+            ),
           ),
           child: Row(
             children: [
@@ -1181,8 +1211,8 @@ class _TimedDayColumn extends StatelessWidget {
     final segments = _segmentsForDay(events, day, range);
     final height = (range.$2 - range.$1) * _hourHeight;
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(left: BorderSide(color: SR.divider)),
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: context.srColors.divider)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) => Stack(
@@ -1193,7 +1223,7 @@ class _TimedDayColumn extends StatelessWidget {
                 right: 0,
                 top: (hour - range.$1) * _hourHeight,
                 height: 1,
-                child: const ColoredBox(color: SR.dividerSoft),
+                child: ColoredBox(color: context.srColors.dividerSoft),
               ),
             for (final segment in segments)
               Positioned(
@@ -1238,7 +1268,7 @@ class _TimeLabels extends StatelessWidget {
             top: (hour - range.$1) * _hourHeight - 5,
             child: Text(
               '${hour.toString().padLeft(2, '0')}:00',
-              style: mono(9, color: SR.mutedLight),
+              style: mono(9, color: context.srColors.mutedLight),
             ),
           ),
       ],
@@ -1262,7 +1292,7 @@ class _HorizontalTimeLabels extends StatelessWidget {
             top: 10,
             child: Text(
               '${hour.toString().padLeft(2, '0')}:00',
-              style: mono(9, color: SR.mutedLight),
+              style: mono(9, color: context.srColors.mutedLight),
             ),
           ),
       ],
@@ -1299,25 +1329,27 @@ class _FacilityRow extends StatelessWidget {
               height: double.infinity,
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(
-                  right: BorderSide(color: SR.divider),
-                  bottom: BorderSide(color: SR.dividerSoft),
+                  right: BorderSide(color: context.srColors.divider),
+                  bottom: BorderSide(color: context.srColors.dividerSoft),
                 ),
               ),
               child: Text(
                 facility,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500, color: SR.ink2),
+                style: sans(11.5, w: 500, color: context.srColors.ink2),
               ),
             ),
           ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => Container(
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: SR.dividerSoft)),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: context.srColors.dividerSoft),
+                  ),
                 ),
                 child: Stack(
                   children: [
@@ -1334,7 +1366,7 @@ class _FacilityRow extends StatelessWidget {
                         top: 0,
                         bottom: 0,
                         width: 1,
-                        child: const ColoredBox(color: SR.dividerSoft),
+                        child: ColoredBox(color: context.srColors.dividerSoft),
                       ),
                     for (final segment in segments)
                       Positioned(
@@ -1449,7 +1481,7 @@ class _EventDetails extends StatelessWidget {
             event.building,
             event.room,
           ].where((part) => part.isNotEmpty).join(' · '),
-          style: sans(11.5, color: SR.ink4),
+          style: sans(11.5, color: context.srColors.ink4),
         ),
       ],
       const SizedBox(height: 17),
@@ -1468,7 +1500,10 @@ class _EventDetails extends StatelessWidget {
       const SizedBox(height: 14),
       Text('Purpose', style: keyLabel),
       const SizedBox(height: 5),
-      Text(event.purpose, style: sans(12, height: 1.55, color: SR.ink3)),
+      Text(
+        event.purpose,
+        style: sans(12, height: 1.55, color: context.srColors.ink3),
+      ),
       const SizedBox(height: 20),
       if (onOpenRequest != null)
         SrButton(
@@ -1480,7 +1515,7 @@ class _EventDetails extends StatelessWidget {
       else
         Text(
           'This imported booking has no reservation record to open.',
-          style: sans(11, height: 1.5, color: SR.muted),
+          style: sans(11, height: 1.5, color: context.srColors.muted),
         ),
     ],
   );
@@ -1501,7 +1536,7 @@ class _MobileDetails extends StatelessWidget {
       Positioned.fill(
         child: GestureDetector(
           onTap: onClose,
-          child: const ColoredBox(color: Color(0x6B10141A)),
+          child: ColoredBox(color: context.srColors.scrim),
         ),
       ),
       Positioned(
@@ -1510,7 +1545,7 @@ class _MobileDetails extends StatelessWidget {
         bottom: 0,
         top: 70,
         child: Material(
-          color: SR.surface,
+          color: context.srColors.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
@@ -1559,7 +1594,7 @@ class _DetailRow extends StatelessWidget {
       children: [
         Text(label.toUpperCase(), style: keyLabel),
         const SizedBox(height: 2),
-        Text(value, style: sans(12, height: 1.4, color: SR.ink3)),
+        Text(value, style: sans(12, height: 1.4, color: context.srColors.ink3)),
       ],
     ),
   );
@@ -1572,7 +1607,7 @@ class _EmptyCalendar extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 44),
     child: Center(
-      child: Text(message, style: sans(12, color: SR.ink4)),
+      child: Text(message, style: sans(12, color: context.srColors.ink4)),
     ),
   );
 }

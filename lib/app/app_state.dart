@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../backend/supabase_service.dart';
 import '../data/campus_data.dart';
 import '../data/seed_accounts.dart';
 import '../data/seed_audit.dart';
 import '../data/seed_facilities.dart';
+import '../data/seed_loyalty.dart';
 import '../data/seed_reservations.dart';
 import '../model/account.dart';
 import '../model/audit_diff.dart';
@@ -15,15 +17,21 @@ import '../model/audit_entry.dart';
 import '../model/calendar_event.dart';
 import '../model/facility.dart';
 import '../model/facility_draft.dart';
+import '../model/feedback.dart';
+import '../model/loyalty.dart';
 import '../model/notice.dart';
+import '../model/payment.dart';
 import '../model/reservation.dart';
 import '../model/verification.dart';
 import '../features/assistant/assistant_availability.dart';
 import '../features/reports/reports_data.dart';
 import '../features/reservations/conflict_engine.dart';
+import '../util/backend_errors.dart';
 import '../util/campus_calendar.dart';
 import '../util/geo.dart';
+import '../theme/sr_theme.dart';
 import 'app_view.dart';
+import 'sr_toast_controller.dart';
 
 class AdministratorCredentials {
   const AdministratorCredentials({
@@ -69,25 +77,40 @@ class AppState extends ChangeNotifier {
   final bool _useDemoData;
   bool get usesDemoData => _useDemoData;
 
+  final SrToastController toasts = SrToastController();
+
+  static const _themePreferenceKey = 'sr.theme_mode.v1';
+
+  SrThemePreference themePreference = SrThemePreference.system;
+
+  Future<void> loadThemePreference() async {
+    final preferences = await SharedPreferences.getInstance();
+    themePreference = SrThemePreference.fromStorage(
+      preferences.getString(_themePreferenceKey),
+    );
+    notifyListeners();
+  }
+
+  Future<void> setThemePreference(SrThemePreference preference) async {
+    if (themePreference == preference) return;
+    themePreference = preference;
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_themePreferenceKey, preference.name);
+  }
+
   AppView view = AppView.auth;
 
   AppView _profileOrigin = AppView.auth;
 
   void goTo(AppView next) {
     if (isExternalAdmin &&
-        (next == AppView.verifications || next == AppView.audit)) {
+        (next == AppView.verifications ||
+            next == AppView.audit ||
+            next == AppView.loyalty)) {
       showToast(
         const ToastMessage(
           'This administrator role cannot access that area.',
-          tone: AdvisoryTone.block,
-        ),
-      );
-      return;
-    }
-    if (isExternalAdmin && next == AppView.addFacility) {
-      showToast(
-        const ToastMessage(
-          'External administrators have read-only facility access.',
           tone: AdvisoryTone.block,
         ),
       );
@@ -107,6 +130,8 @@ class AppState extends ChangeNotifier {
     view = next;
     if (next == AppView.reports) unawaited(refreshReports());
     if (next == AppView.audit) unawaited(refreshAudit());
+    if (next == AppView.feedback) unawaited(refreshFeedback());
+    if (next == AppView.loyalty) unawaited(refreshLoyaltyBalances());
     closeOverlays();
     notifyListeners();
   }
@@ -272,8 +297,36 @@ class AppState extends ChangeNotifier {
     'Reminder the day before': true,
     'New facilities on campus': false,
   };
+
+  final Set<String> feedbackSubmitting = {};
+  FeedbackQuery feedbackQuery = const FeedbackQuery();
+  List<FeedbackEntry> feedbackEntries = [];
+  int feedbackEntriesTotal = 0;
+  FeedbackSummary feedbackSummaryData = const FeedbackSummary();
+  bool feedbackLoading = false;
+  String? feedbackError;
+  int _feedbackRequestId = 0;
+
+  // Loyalty
+  LoyaltySummary? loyalty;
+  bool loyaltyLoading = false;
+  String? loyaltyError;
+  final Set<String> redemptionsPending = {};
+  List<LoyaltyBalanceRow> loyaltyBalances = [];
+  bool loyaltyBalancesLoading = false;
+  String? loyaltyBalancesError;
+  bool pendingLoyaltyOpen = false;
+
   final Map<String, BackendReservation> _backendReservations = {};
   SmartReserveBackend? backend;
+  SmartReserveCoreBackend? get _coreBackend {
+    final service = backend;
+    if (service is SmartReserveCoreBackend) {
+      return service as SmartReserveCoreBackend;
+    }
+    return null;
+  }
+
   SessionProfile? sessionProfile;
   BackendVerification? myVerification;
   Account? _sessionAccount;
@@ -282,6 +335,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<BackendAccount>>? _accountSubscription;
   StreamSubscription<List<BackendReservation>>? _reservationSubscription;
   StreamSubscription<List<BackendNotification>>? _notificationSubscription;
+  StreamSubscription<List<BackendLoyaltyTransaction>>? _loyaltySubscription;
 
   bool get hasSession => sessionProfile != null;
   bool get isInternalAdmin => sessionProfile?.isInternalAdmin ?? false;
@@ -293,6 +347,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> initializeBackend() async {
+    await loadThemePreference();
     final service = backend;
     if (service == null) return;
     await applyBackendProfile(await service.currentProfile());
@@ -311,6 +366,8 @@ class AppState extends ChangeNotifier {
     _reservationSubscription = null;
     _notificationSubscription?.cancel();
     _notificationSubscription = null;
+    _loyaltySubscription?.cancel();
+    _loyaltySubscription = null;
     if (profile == null) {
       _reportRequestId++;
       reportSnapshot = null;
@@ -332,6 +389,8 @@ class AppState extends ChangeNotifier {
       if (!_useDemoData) accounts = [];
       accountsLoading = false;
       accountsError = null;
+      loyalty = null;
+      loyaltyError = null;
       notifyListeners();
       return;
     }
@@ -412,6 +471,14 @@ class AppState extends ChangeNotifier {
         },
         onError: (Object error) =>
             debugPrint('Verification live refresh failed: $error'),
+      );
+      await refreshLoyalty();
+      _loyaltySubscription = _coreBackend?.loyaltyTransactionStream().listen(
+        (_) {
+          unawaited(refreshLoyalty());
+        },
+        onError: (Object error) =>
+            debugPrint('Loyalty live refresh failed: $error'),
       );
       view = myVerification != null || !profile.onboardingComplete
           ? AppView.auth
@@ -758,58 +825,18 @@ class AppState extends ChangeNotifier {
 
   int get catalogueTotal => facilities.length;
 
-  ToastMessage? toast;
-  Timer? _toastTimer;
-
-  UndoOffer? undo;
-  Timer? _undoTimer;
-
-  void showToast(
-    ToastMessage message, {
-    Duration duration = const Duration(seconds: 4),
-  }) {
-    _toastTimer?.cancel();
-    toast = message;
-    notifyListeners();
-    _toastTimer = Timer(duration, () {
-      toast = null;
-      notifyListeners();
-    });
-  }
-
-  void offerUndo(
-    UndoOffer offer, {
-    Duration window = const Duration(seconds: 8),
-  }) {
-    _undoTimer?.cancel();
-    undo = offer;
-    notifyListeners();
-    _undoTimer = Timer(window, dismissUndo);
-  }
-
-  void dismissUndo() {
-    if (undo == null) return;
-    _undoTimer?.cancel();
-    undo = null;
-    notifyListeners();
-  }
-
-  void takeUndo() {
-    final offer = undo;
-    if (offer == null) return;
-    dismissUndo();
-    offer.onUndo();
-  }
+  void showToast(ToastMessage message, {Duration? duration}) =>
+      toasts.show(message, duration: duration);
 
   @override
   void dispose() {
-    _toastTimer?.cancel();
-    _undoTimer?.cancel();
+    toasts.dispose();
     _verificationSubscription?.cancel();
     _facilitySubscription?.cancel();
     _accountSubscription?.cancel();
     _reservationSubscription?.cancel();
     _notificationSubscription?.cancel();
+    _loyaltySubscription?.cancel();
     super.dispose();
   }
 
@@ -861,9 +888,17 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  List<Facility> get bookableFacilities => [
+  List<Facility> get browsableFacilities => [
     for (final f in facilities)
       if (f.publicListing && f.state != FacilityState.draft) f,
+  ];
+
+  List<Facility> get bookableFacilities => [
+    for (final f in facilities)
+      if (f.publicListing &&
+          f.state == FacilityState.active &&
+          (isAdmin || f.bookableForCurrentUser))
+        f,
   ];
 
   List<Facility> searchFacilities({
@@ -872,9 +907,38 @@ class AppState extends ChangeNotifier {
     int minCapacity = 0,
     Set<String> amenities = const {},
   }) {
+    return _filterFacilities(
+      bookableFacilities,
+      query: query,
+      category: category,
+      minCapacity: minCapacity,
+      amenities: amenities,
+    );
+  }
+
+  List<Facility> searchBrowsableFacilities({
+    String query = '',
+    String category = 'All categories',
+    int minCapacity = 0,
+    Set<String> amenities = const {},
+  }) => _filterFacilities(
+    browsableFacilities,
+    query: query,
+    category: category,
+    minCapacity: minCapacity,
+    amenities: amenities,
+  );
+
+  static List<Facility> _filterFacilities(
+    Iterable<Facility> source, {
+    required String query,
+    required String category,
+    required int minCapacity,
+    required Set<String> amenities,
+  }) {
     final normalizedQuery = query.trim().toLowerCase();
     return [
-      for (final facility in bookableFacilities)
+      for (final facility in source)
         if ((category == 'All categories' || facility.category == category) &&
             facility.capacity >= minCapacity &&
             amenities.every(facility.amenities.contains) &&
@@ -1050,6 +1114,39 @@ class AppState extends ChangeNotifier {
             storagePath: file.storagePath,
           ),
       ],
+      amenities: row.amenities,
+      adminLane: row.adminLane,
+      lifecycleStatus: ReservationLifecycleStatus.fromRaw(
+        row.reservationStatus,
+      ),
+      pricingAudience: row.pricingAudience,
+      facilityAmountCentavos: row.facilityAmountCentavos,
+      amenityAmountCentavos: row.amenityAmountCentavos,
+      discountAmountCentavos: row.discountAmountCentavos,
+      totalAmountCentavos: row.totalAmountCentavos,
+      requiredDownPaymentCentavos: row.requiredDownPaymentCentavos,
+      downPaymentPercent: row.downPaymentPercent,
+      paymentExemption: row.paymentExemption,
+      paymentDueAt: row.paymentDueAt,
+      balanceDueAt: row.balanceDueAt,
+      legacyFinancialState: row.legacyFinancialState,
+      paymentTransactions: row.payments,
+      paymentMethod: row.paymentMethod,
+      permit: row.permit,
+      priceLines: [
+        for (final line in row.priceLines)
+          PriceSnapshotLine(
+            type: line.type,
+            label: line.label,
+            quantity: line.quantity,
+            unitAmountCentavos: line.unitAmountCentavos,
+            totalCentavos: line.lineTotalCentavos,
+          ),
+      ],
+      acceptedTerms: row.acceptedTerms,
+      feedbackRating: row.feedback?.rating,
+      feedbackComment: row.feedback?.comment ?? '',
+      feedbackAt: row.feedback?.createdAt,
     );
   }
 
@@ -1110,6 +1207,16 @@ class AppState extends ChangeNotifier {
       await service.markNotificationRead(notification.id);
       await refreshNotifications();
     }
+    if (notification.kind == 'feedback_low_rating' && isAdmin) {
+      goTo(AppView.feedback);
+      return;
+    }
+    if (notification.kind.startsWith('loyalty_') && !isAdmin) {
+      pendingLoyaltyOpen = true;
+      goTo(AppView.userApp);
+      notifyListeners();
+      return;
+    }
     final requestId = notification.requestId;
     if (requestId == null) return;
     if (isAdmin) {
@@ -1130,11 +1237,19 @@ class AppState extends ChangeNotifier {
     String? editingId,
   }) async {
     final service = backend;
-    if (service == null || !isInternalAdmin) {
+    if (service == null || !isAdmin) {
       if (service != null) {
-        throw StateError('Only internal administrators can edit facilities.');
+        throw StateError(
+          'Administrator access is required to edit facilities.',
+        );
       }
       return saveFromDraft(draft, editingId: editingId);
+    }
+    if (editingId != null) {
+      final existing = facilities.where((item) => item.id == editingId);
+      if (existing.isEmpty || !existing.first.canManage) {
+        throw StateError('You are not assigned to manage this facility.');
+      }
     }
 
     final row = await service.saveFacility(draft, editingId: editingId);
@@ -1317,16 +1432,16 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteFacility(Facility facility, {String reason = ''}) async {
     final service = backend;
-    if (service != null && !isInternalAdmin) {
+    if (service != null && (!isAdmin || !facility.canManage)) {
       showToast(
         const ToastMessage(
-          'Only internal administrators can archive facilities.',
+          'You are not assigned to archive this facility.',
           tone: AdvisoryTone.block,
         ),
       );
       return;
     }
-    if (service != null && isInternalAdmin) {
+    if (service != null && isAdmin && facility.canManage) {
       if (!archivingFacilityIds.add(facility.id)) return;
       notifyListeners();
       try {
@@ -1358,12 +1473,13 @@ class AppState extends ChangeNotifier {
       recordId: facility.id,
     );
     notifyListeners();
-    offerUndo(
-      UndoOffer(
-        label: '${facility.name} archived',
-        onUndo: () {
-          unawaited(_restoreFacility(facility));
-        },
+    toasts.show(
+      ToastMessage.success(
+        '${facility.name} archived.',
+        action: ToastAction(
+          label: 'Undo',
+          onPressed: () => unawaited(_restoreFacility(facility)),
+        ),
       ),
     );
   }
@@ -1371,7 +1487,7 @@ class AppState extends ChangeNotifier {
   Future<void> _restoreFacility(Facility facility) async {
     final service = backend;
     try {
-      if (service != null && isInternalAdmin) {
+      if (service != null && isAdmin && facility.canManage) {
         await service.restoreFacility(facility.id);
       }
       facilities = [
@@ -1769,25 +1885,28 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     if (!announce) return;
-    offerUndo(
-      UndoOffer(
-        label: '${outcome.label} — ${request.requester}',
-        onUndo: () {
-          request
-            ..status = before
-            ..reason = beforeReason
-            ..decidedBy = null
-            ..decidedAt = null;
-          _syncHoldsForRequest(request);
-          log(
-            action: 'undid the decision on',
-            target: '${request.purpose.split('.').first} — ${request.org}',
-            kind: AuditKind.reservation,
-            diff: ['${outcome.label}  →  ${before.label}'],
-            recordId: request.id,
-          );
-          notifyListeners();
-        },
+    toasts.show(
+      ToastMessage.success(
+        '${outcome.label} — ${request.requester}',
+        action: ToastAction(
+          label: 'Undo',
+          onPressed: () {
+            request
+              ..status = before
+              ..reason = beforeReason
+              ..decidedBy = null
+              ..decidedAt = null;
+            _syncHoldsForRequest(request);
+            log(
+              action: 'undid the decision on',
+              target: '${request.purpose.split('.').first} — ${request.org}',
+              kind: AuditKind.reservation,
+              diff: ['${outcome.label}  →  ${before.label}'],
+              recordId: request.id,
+            );
+            notifyListeners();
+          },
+        ),
       ),
     );
   }
@@ -1945,9 +2064,27 @@ class AppState extends ChangeNotifier {
     bool announce = true,
     bool reversible = true,
   }) async {
+    await _runReservationActionWithResult(
+      request,
+      action,
+      reason: reason,
+      payload: payload,
+      announce: announce,
+      reversible: reversible,
+    );
+  }
+
+  Future<bool> _runReservationActionWithResult(
+    ReservationRequest request,
+    String action, {
+    String reason = '',
+    Map<String, dynamic> payload = const {},
+    bool announce = true,
+    bool reversible = true,
+  }) async {
     final service = backend;
     if (service == null || reservationActionsPending.contains(request.id)) {
-      return;
+      return false;
     }
     reservationActionsPending.add(request.id);
     notifyListeners();
@@ -1962,23 +2099,27 @@ class AppState extends ChangeNotifier {
         ),
       );
       await refreshReservations();
-      if (announce) {
-        showToast(ToastMessage('${_actionLabel(action)} saved.'));
-      }
       final actionId = result.actionId;
       if (reversible && actionId != null) {
-        offerUndo(
-          UndoOffer(
-            label: '${_actionLabel(action)} — ${request.requester}',
-            onUndo: () => unawaited(_undoBackendReservation(actionId)),
+        toasts.show(
+          ToastMessage.success(
+            '${_actionLabel(action)} — ${request.requester}',
+            action: ToastAction(
+              label: 'Undo',
+              onPressed: () => unawaited(_undoBackendReservation(actionId)),
+            ),
           ),
         );
+      } else if (announce) {
+        toasts.show(ToastMessage.success('${_actionLabel(action)} saved.'));
       }
+      return true;
     } catch (error) {
       showToast(
         ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
       );
       await refreshReservations();
+      return false;
     } finally {
       reservationActionsPending.remove(request.id);
       notifyListeners();
@@ -2007,15 +2148,20 @@ class AppState extends ChangeNotifier {
       final result = await service.bulkApproveReservations(rows);
       selectedRequestIds.clear();
       await refreshReservations();
-      showToast(ToastMessage('${ids.length} requests approved.'));
       if (result.actionIds.isNotEmpty) {
-        offerUndo(
-          UndoOffer(
-            label: '${ids.length} approvals',
-            onUndo: () =>
-                unawaited(_undoBackendReservations(result.actionIds.reversed)),
+        toasts.show(
+          ToastMessage.success(
+            '${ids.length} approvals',
+            action: ToastAction(
+              label: 'Undo',
+              onPressed: () => unawaited(
+                _undoBackendReservations(result.actionIds.reversed),
+              ),
+            ),
           ),
         );
+      } else {
+        toasts.show(ToastMessage.success('${ids.length} requests approved.'));
       }
     } catch (error) {
       showToast(
@@ -2080,7 +2226,11 @@ class AppState extends ChangeNotifier {
     if (message.contains('40001') || message.contains('changed')) {
       return 'This reservation changed in another session. It has been refreshed.';
     }
-    return message.replaceFirst(RegExp(r'^.*?message:\s*'), '');
+    if (message.contains('23514')) {
+      return 'One of those values is out of range. Check the attendee count '
+          'and times, then try again.';
+    }
+    return friendlyBackendMessage(message);
   }
 
   ReservationRequest? requestById(String id) {
@@ -2228,16 +2378,19 @@ class AppState extends ChangeNotifier {
       recordId: request.id,
     );
     notifyListeners();
-    offerUndo(
-      UndoOffer(
-        label: 'Expired — ${request.requester}',
-        onUndo: () {
-          request
-            ..status = before
-            ..decidedBy = null
-            ..decidedAt = null;
-          notifyListeners();
-        },
+    toasts.show(
+      ToastMessage.success(
+        'Expired — ${request.requester}',
+        action: ToastAction(
+          label: 'Undo',
+          onPressed: () {
+            request
+              ..status = before
+              ..decidedBy = null
+              ..decidedAt = null;
+            notifyListeners();
+          },
+        ),
       ),
     );
   }
@@ -2421,26 +2574,29 @@ class AppState extends ChangeNotifier {
       );
     }
     if (!announce) return true;
-    offerUndo(
-      UndoOffer(
-        label: '${verificationLabel(outcome)} — ${submission.name}',
-        onUndo: () {
-          submission
-            ..decision = before
-            ..reason = null
-            ..decidedAt = null;
-          _applyVerificationToAccount(submission, before);
-          log(
-            action: 'undid the verification decision for',
-            target: submission.name,
-            kind: AuditKind.account,
-            diff: [
-              '${verificationLabel(outcome)}  →  '
-                  '${verificationLabel(before)}',
-            ],
-          );
-          notifyListeners();
-        },
+    toasts.show(
+      ToastMessage.success(
+        '${verificationLabel(outcome)} — ${submission.name}',
+        action: ToastAction(
+          label: 'Undo',
+          onPressed: () {
+            submission
+              ..decision = before
+              ..reason = null
+              ..decidedAt = null;
+            _applyVerificationToAccount(submission, before);
+            log(
+              action: 'undid the verification decision for',
+              target: submission.name,
+              kind: AuditKind.account,
+              diff: [
+                '${verificationLabel(outcome)}  →  '
+                    '${verificationLabel(before)}',
+              ],
+            );
+            notifyListeners();
+          },
+        ),
       ),
     );
     return true;
@@ -2511,39 +2667,7 @@ class AppState extends ChangeNotifier {
     if (outcome == VerificationDecision.approved) {
       account.role = AccountRole.user;
     }
-
-    if (outcome == VerificationDecision.changesRequested ||
-        outcome == VerificationDecision.pending) {
-      return 0;
-    }
-    var released = 0;
-    for (final request in requests) {
-      if (request.requester == submission.name && request.heldForVerification) {
-        request.heldForVerification = false;
-        if (outcome == VerificationDecision.approved) {
-          request
-            ..paymentAmountCentavos = 0
-            ..paymentStatus = PaymentTrackingStatus.notRequired;
-        } else {
-          final facility = facilities.cast<Facility?>().firstWhere(
-            (item) => item?.name == request.facility,
-            orElse: () => null,
-          );
-          if (facility != null) {
-            request
-              ..paymentAmountCentavos =
-                  quoteFor(
-                    facility,
-                    (parseClock(request.end) - parseClock(request.start)).abs(),
-                  ) *
-                  100
-              ..paymentStatus = PaymentTrackingStatus.quoted;
-          }
-        }
-        released++;
-      }
-    }
-    return released;
+    return 0;
   }
 
   static String verificationLabel(VerificationDecision d) => switch (d) {
@@ -2741,27 +2865,6 @@ class AppState extends ChangeNotifier {
       return null;
     }
     account.verification = VerificationState.pending;
-    for (final request in requests) {
-      if (request.requester != account.name ||
-          request.status != RequestStatus.pending) {
-        continue;
-      }
-      final facility = facilities.cast<Facility?>().firstWhere(
-        (item) => item?.name == request.facility,
-        orElse: () => null,
-      );
-      request.heldForVerification = true;
-      if (facility != null) {
-        request
-          ..paymentAmountCentavos =
-              quoteFor(
-                facility,
-                (parseClock(request.end) - parseClock(request.start)).abs(),
-              ) *
-              100
-          ..paymentStatus = PaymentTrackingStatus.quoted;
-      }
-    }
     verifications = [
       VerificationSubmission(
         id: 'v-${DateTime.now().microsecondsSinceEpoch}',
@@ -3115,8 +3218,382 @@ class AppState extends ChangeNotifier {
 
   List<ReservationRequest> get myRequests => [
     for (final r in requests)
-      if (r.requester == userAccount.name) r,
+      if (r.requesterId == userAccount.id ||
+          (r.requesterId == null && r.requester == userAccount.name))
+        r,
   ];
+
+  bool canLeaveFeedback(ReservationRequest request) =>
+      request.lifecycleStatus == ReservationLifecycleStatus.completed &&
+      request.feedbackRating == null &&
+      request.occurrences.any((o) => o.stage == BookingStage.completed);
+
+  Future<bool> submitFeedback(
+    ReservationRequest request, {
+    required int rating,
+    String comment = '',
+    int? cleanliness,
+    int? condition,
+    int? equipment,
+  }) async {
+    if (_useDemoData) {
+      if (feedbackSubmitting.contains(request.id)) return false;
+      feedbackSubmitting.add(request.id);
+      notifyListeners();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      request.feedbackRating = rating;
+      request.feedbackComment = comment;
+      request.feedbackAt = DateTime.now();
+      feedbackEntries = [
+        FeedbackEntry(
+          feedback: ReservationFeedback(
+            id: 'fb-demo-${DateTime.now().microsecondsSinceEpoch}',
+            reservationId: request.id,
+            facilityId: request.facilityId ?? '',
+            facilityName: request.facility,
+            userId: userAccount.id,
+            rating: rating,
+            cleanlinessRating: cleanliness,
+            conditionRating: condition,
+            equipmentRating: equipment,
+            comment: comment,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+          reviewerName: userAccount.name,
+        ),
+        ...feedbackEntries,
+      ];
+      loyalty = LoyaltySummary(
+        balance: (loyalty?.balance ?? 0) + LoyaltyPoints.feedbackSubmitted,
+        lifetimeEarned:
+            (loyalty?.lifetimeEarned ?? 0) + LoyaltyPoints.feedbackSubmitted,
+        lifetimeRedeemed: loyalty?.lifetimeRedeemed ?? 0,
+        rules: loyalty?.rules ?? const {},
+        transactions: [
+          LoyaltyTransaction(
+            id: 'lt-demo-${DateTime.now().microsecondsSinceEpoch}',
+            userId: userAccount.id,
+            points: LoyaltyPoints.feedbackSubmitted,
+            type: LoyaltyTransactionType.feedbackSubmitted,
+            sourceType: 'feedback',
+            sourceId: request.id,
+            description: 'Feedback for ${request.facility}',
+            createdAt: DateTime.now(),
+          ),
+          ...(loyalty?.transactions ?? const []),
+        ],
+        redemptions: loyalty?.redemptions ?? const [],
+        rewards: loyalty?.rewards ?? const [],
+      );
+      feedbackSubmitting.remove(request.id);
+      notifyListeners();
+      toasts.show(
+        ToastMessage.success(
+          'Thanks for rating ${request.facility} — you earned '
+          '${LoyaltyPoints.feedbackSubmitted} points.',
+        ),
+      );
+      return true;
+    }
+    final service = _coreBackend;
+    if (service == null || feedbackSubmitting.contains(request.id)) {
+      return false;
+    }
+    feedbackSubmitting.add(request.id);
+    notifyListeners();
+    try {
+      final saved = await service.submitFeedback(
+        reservationId: request.id,
+        rating: rating,
+        comment: comment,
+        cleanliness: cleanliness,
+        condition: condition,
+        equipment: equipment,
+      );
+      request.feedbackRating = saved.rating;
+      request.feedbackComment = saved.comment;
+      request.feedbackAt = saved.createdAt;
+      notifyListeners();
+      unawaited(refreshLoyalty());
+      unawaited(refreshReservations());
+      unawaited(refreshFacilities());
+      toasts.show(
+        ToastMessage.success('Thanks for rating ${request.facility}.'),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    } finally {
+      feedbackSubmitting.remove(request.id);
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshFeedback({FeedbackQuery? query}) async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isAdmin) return;
+    final requested = query ?? feedbackQuery;
+    final requestId = ++_feedbackRequestId;
+    feedbackQuery = requested;
+    feedbackLoading = true;
+    feedbackError = null;
+    notifyListeners();
+    try {
+      final page = await service.feedbackEntries(requested);
+      final summary = await service.feedbackSummary(requested);
+      if (requestId != _feedbackRequestId) return;
+      feedbackEntries = [
+        for (final row in page.entries)
+          FeedbackEntry(
+            feedback: row.toModel(),
+            reviewerName: row.requesterName,
+          ),
+      ];
+      feedbackEntriesTotal = page.total;
+      feedbackSummaryData = summary.toModel();
+    } catch (error) {
+      if (requestId != _feedbackRequestId) return;
+      feedbackError = friendlyBackendMessage('$error');
+    } finally {
+      if (requestId == _feedbackRequestId) {
+        feedbackLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void setFeedbackQuery(FeedbackQuery query) {
+    unawaited(refreshFeedback(query: query));
+  }
+
+  Future<void> refreshLoyalty() async {
+    if (_useDemoData) {
+      loyalty ??= seedLoyalty();
+      notifyListeners();
+      return;
+    }
+    final service = _coreBackend;
+    if (service == null || !hasSession) return;
+    loyaltyLoading = true;
+    notifyListeners();
+    try {
+      final summary = await service.loyaltySummary();
+      loyalty = summary.toModel();
+      loyaltyError = null;
+    } catch (error) {
+      loyaltyError = friendlyBackendMessage('$error');
+    } finally {
+      loyaltyLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> redeemReward(LoyaltyReward reward) async {
+    if (redemptionsPending.contains(reward.id)) return false;
+    redemptionsPending.add(reward.id);
+    notifyListeners();
+    if (_useDemoData) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final balance = loyalty?.balance ?? 0;
+      if (balance < reward.pointsCost) {
+        redemptionsPending.remove(reward.id);
+        notifyListeners();
+        showToast(
+          const ToastMessage(
+            'You do not have enough points for this reward yet.',
+            tone: AdvisoryTone.block,
+          ),
+        );
+        return false;
+      }
+      loyalty = LoyaltySummary(
+        balance: balance - reward.pointsCost,
+        lifetimeEarned: loyalty?.lifetimeEarned ?? 0,
+        lifetimeRedeemed: (loyalty?.lifetimeRedeemed ?? 0) + reward.pointsCost,
+        rules: loyalty?.rules ?? const {},
+        transactions: [
+          LoyaltyTransaction(
+            id: 'lt-demo-${DateTime.now().microsecondsSinceEpoch}',
+            userId: userAccount.id,
+            points: -reward.pointsCost,
+            type: LoyaltyTransactionType.rewardRedeemed,
+            sourceType: 'redemption',
+            sourceId: reward.id,
+            description: reward.name,
+            createdAt: DateTime.now(),
+          ),
+          ...(loyalty?.transactions ?? const []),
+        ],
+        redemptions: [
+          LoyaltyRedemption(
+            id: 'lr-demo-${DateTime.now().microsecondsSinceEpoch}',
+            userId: userAccount.id,
+            rewardId: reward.id,
+            rewardName: reward.name,
+            pointsSpent: reward.pointsCost,
+            status: RedemptionStatus.issued,
+            redemptionCode: 'DEMO${(1000 + Random().nextInt(9000))}',
+            createdAt: DateTime.now(),
+          ),
+          ...(loyalty?.redemptions ?? const []),
+        ],
+        rewards: loyalty?.rewards ?? const [],
+      );
+      redemptionsPending.remove(reward.id);
+      notifyListeners();
+      toasts.show(ToastMessage.success('Redeemed ${reward.name}.'));
+      return true;
+    }
+    final service = _coreBackend;
+    if (service == null) {
+      redemptionsPending.remove(reward.id);
+      notifyListeners();
+      return false;
+    }
+    try {
+      final redemption = await service.redeemLoyaltyReward(reward.id);
+      await refreshLoyalty();
+      toasts.show(
+        ToastMessage.success(
+          'Redeemed ${reward.name} — code ${redemption.redemptionCode}.',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    } finally {
+      redemptionsPending.remove(reward.id);
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshLoyaltyBalances({String search = ''}) async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isInternalAdmin) return;
+    loyaltyBalancesLoading = true;
+    loyaltyBalancesError = null;
+    notifyListeners();
+    try {
+      final rows = await service.loyaltyBalances(search: search);
+      loyaltyBalances = [for (final row in rows) row.toModel()];
+    } catch (error) {
+      loyaltyBalancesError = friendlyBackendMessage('$error');
+    } finally {
+      loyaltyBalancesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> adjustLoyaltyPoints({
+    required String userId,
+    required int points,
+    required String reason,
+  }) async {
+    final service = _coreBackend;
+    if (service == null || !isInternalAdmin) return false;
+    try {
+      await service.adjustLoyaltyPoints(
+        userId: userId,
+        points: points,
+        reason: reason,
+      );
+      await refreshLoyaltyBalances();
+      toasts.show(
+        ToastMessage.success(
+          '${points > 0 ? '+' : ''}$points points — $reason',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> saveLoyaltyReward({
+    String? id,
+    required String name,
+    String description = '',
+    required int pointsCost,
+    bool active = true,
+    int? stock,
+  }) async {
+    final service = _coreBackend;
+    if (service == null || !isInternalAdmin) return false;
+    try {
+      await service.saveLoyaltyReward(
+        id: id,
+        name: name,
+        description: description,
+        pointsCost: pointsCost,
+        active: active,
+        stock: stock,
+      );
+      showToast(
+        ToastMessage.success(id == null ? 'Reward created.' : 'Reward saved.'),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> setLoyaltyRewardActive(String rewardId, bool active) async {
+    final service = _coreBackend;
+    if (service == null || !isInternalAdmin) return false;
+    try {
+      await service.setLoyaltyRewardActive(rewardId, active);
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<void> refreshFacilityActivity(Facility facility) async {
+    final service = _coreBackend;
+    if (service == null || !facility.canManage) return;
+    try {
+      final rows = await service.facilityActivity(facility.id);
+      audit = [
+        ...rows,
+        for (final entry in audit)
+          if (entry.recordId != facility.id) entry,
+      ];
+      notifyListeners();
+    } catch (_) {
+      debugPrint('Failed to refresh activity for ${facility.name}.');
+    }
+  }
 
   static const hourlyRate = 500;
 
@@ -3127,6 +3604,62 @@ class AppState extends ChangeNotifier {
     return (hourlyRate * size * hours).round();
   }
 
+  Future<BackendReservationQuote?> quoteReservation({
+    required Facility facility,
+    required List<DateTime> startsAt,
+    required List<DateTime> endsAt,
+    int? headcount,
+    List<String> amenities = const [],
+  }) async {
+    final service = _coreBackend;
+    if (service == null || _useDemoData || !hasSession) {
+      final duration = startsAt.isEmpty || endsAt.isEmpty
+          ? 0.0
+          : endsAt.first.difference(startsAt.first).inMinutes / 60;
+      final exempt = userAccount.isPaymentExempt;
+      final total = exempt ? 0 : quoteFor(facility, duration) * 100;
+      final percent = facility.downPaymentPercent;
+      return BackendReservationQuote(
+        facilityId: facility.id,
+        audience: userAccount.pricingAudience,
+        adminLane: userAccount.verification == VerificationState.verified
+            ? 'internal'
+            : 'external',
+        facilityAmountCentavos: total,
+        amenityAmountCentavos: 0,
+        discountAmountCentavos: 0,
+        totalAmountCentavos: total,
+        requiredDownPaymentCentavos: (total * percent + 99) ~/ 100,
+        pricingFingerprint: 'demo',
+        lines: const [],
+        terms: const [],
+        downPaymentPercent: percent,
+        paymentExemption: switch (userAccount.pricingAudience) {
+          'student' when exempt => 'verified_student',
+          'faculty' when exempt => 'verified_faculty',
+          _ => 'none',
+        },
+      );
+    }
+    final selected = {
+      for (final label in amenities)
+        for (final option in facility.amenityOptions)
+          if (option.name == label) option.id,
+    }.toList();
+    try {
+      return await service.reservationQuote(
+        facilityId: facility.id,
+        startsAt: startsAt,
+        endsAt: endsAt,
+        headcount: headcount ?? 1,
+        amenityIds: selected,
+      );
+    } catch (error) {
+      lastReservationError = _reservationError(error);
+      return null;
+    }
+  }
+
   Future<bool> submitReservationRequest({
     required Facility facility,
     required List<DateTime> startsAt,
@@ -3134,6 +3667,9 @@ class AppState extends ChangeNotifier {
     required int heads,
     required String purpose,
     List<ReservationUpload> attachments = const [],
+    List<String> amenities = const [],
+    BackendReservationQuote? quote,
+    bool acceptedTerms = false,
   }) async {
     final service = backend;
     if (_useDemoData || service == null || !hasSession) {
@@ -3144,6 +3680,11 @@ class AppState extends ChangeNotifier {
         end: _clock(campusWallTime(endsAt.first)),
         heads: heads,
         purpose: purpose,
+        amenities: amenities,
+        occurrenceStartsAt: [
+          for (final value in startsAt) campusWallTime(value),
+        ],
+        occurrenceEndsAt: [for (final value in endsAt) campusWallTime(value)],
       );
       lastReservationError = null;
       return true;
@@ -3152,7 +3693,34 @@ class AppState extends ChangeNotifier {
     reservationActionsPending.add('submit');
     notifyListeners();
     try {
+      final core = service is SmartReserveCoreBackend ? service : null;
+      final authoritativeQuote =
+          quote ??
+          await quoteReservation(
+            facility: facility,
+            startsAt: startsAt,
+            endsAt: endsAt,
+            headcount: heads,
+            amenities: amenities,
+          );
+      if (core != null && authoritativeQuote == null) {
+        throw StateError(
+          lastReservationError ?? 'The price could not be calculated.',
+        );
+      }
+      if (core != null &&
+          authoritativeQuote!.terms.isNotEmpty &&
+          !acceptedTerms) {
+        throw const FormatException(
+          'Accept the current reservation and payment terms before submitting.',
+        );
+      }
       final duration = endsAt.first.difference(startsAt.first).inMinutes / 60;
+      final amenityIds = {
+        for (final label in amenities)
+          for (final option in facility.amenityOptions)
+            if (option.name == label) option.id,
+      }.toList();
       await service.submitReservation(
         ReservationDraft(
           facilityId: facility.id,
@@ -3161,18 +3729,26 @@ class AppState extends ChangeNotifier {
           startsAt: startsAt,
           endsAt: endsAt,
           attachments: attachments,
-          paymentAmountCentavos: userAccount.reservesFree
-              ? 0
-              : quoteFor(facility, duration) * 100,
+          paymentAmountCentavos:
+              authoritativeQuote?.totalAmountCentavos ??
+              quoteFor(facility, duration) * 100,
+          amenities: amenities,
+          amenityIds: amenityIds,
+          termsVersionIds: [
+            for (final term
+                in authoritativeQuote?.terms ?? const <BackendTermsVersion>[])
+              term.id,
+          ],
+          pricingFingerprint: core == null
+              ? null
+              : authoritativeQuote!.pricingFingerprint,
         ),
       );
       await refreshReservations();
       lastReservationError = null;
       showToast(
         ToastMessage(
-          userAccount.verification == VerificationState.pending
-              ? 'Request sent and held until verification is approved.'
-              : 'Request sent to the registrar.',
+          'Request sent to the assigned ${authoritativeQuote?.adminLane ?? 'facility'} administrator.',
         ),
       );
       return true;
@@ -3183,6 +3759,220 @@ class AppState extends ChangeNotifier {
     } finally {
       reservationActionsPending.remove('submit');
       notifyListeners();
+    }
+  }
+
+  Future<bool> submitReservationPayment({
+    required ReservationRequest request,
+    required PaymentPurpose purpose,
+    required int amountCentavos,
+    required String referenceNumber,
+    required ReservationUpload proof,
+  }) async {
+    final service = _coreBackend;
+    if (service == null || !hasSession || _useDemoData) {
+      showToast(
+        const ToastMessage(
+          'Payment submission requires the connected Supabase backend.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+    final key = 'payment:${request.id}';
+    if (reservationActionsPending.contains(key)) return false;
+    reservationActionsPending.add(key);
+    notifyListeners();
+    try {
+      await service.submitPayment(
+        PaymentSubmissionDraft(
+          requestId: request.id,
+          purpose: purpose,
+          amountCentavos: amountCentavos,
+          referenceNumber: referenceNumber.trim(),
+          proof: proof,
+        ),
+      );
+      await refreshReservations();
+      showToast(
+        const ToastMessage('GCash proof submitted for administrator review.'),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    } finally {
+      reservationActionsPending.remove(key);
+      notifyListeners();
+    }
+  }
+
+  Future<bool> decideReservationPayment({
+    required PaymentTransaction payment,
+    required String decision,
+    String? reason,
+  }) async {
+    final service = _coreBackend;
+    if (service == null || !hasSession || _useDemoData) {
+      return false;
+    }
+    final key = 'payment:${payment.id}';
+    if (reservationActionsPending.contains(key)) return false;
+    reservationActionsPending.add(key);
+    notifyListeners();
+    try {
+      await service.decidePayment(
+        paymentId: payment.id,
+        decision: decision,
+        reason: reason,
+      );
+      await refreshReservations();
+      showToast(
+        ToastMessage(
+          decision == 'verify'
+              ? 'Payment verified.'
+              : 'Payment rejected and returned for correction.',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    } finally {
+      reservationActionsPending.remove(key);
+      notifyListeners();
+    }
+  }
+
+  Future<String?> reservationPaymentProofUrl(PaymentTransaction payment) async {
+    final service = _coreBackend;
+    if (service == null || !hasSession) return null;
+    try {
+      return await service.paymentProofUrl(payment.proofPath);
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return null;
+    }
+  }
+
+  Future<bool> issuePermit(String requestId) async {
+    final service = _coreBackend;
+    if (service == null) return false;
+    try {
+      await service.issuePermit(requestId);
+      await refreshReservations();
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<void> uploadPermitPdf({
+    required String requestId,
+    required String requesterId,
+    required String permitNumber,
+    required int version,
+    required Uint8List bytes,
+  }) async {
+    final service = _coreBackend;
+    if (service == null) return;
+    try {
+      await service.uploadPermitPdf(
+        requestId: requestId,
+        requesterId: requesterId,
+        permitNumber: permitNumber,
+        version: version,
+        bytes: bytes,
+      );
+    } catch (_) {}
+  }
+
+  Future<bool> saveFacilityConfiguration(
+    FacilityConfigurationDraft draft,
+  ) async {
+    final service = _coreBackend;
+    if (service == null) return false;
+    try {
+      await service.saveFacilityConfiguration(draft);
+      await refreshFacilities();
+      showToast(const ToastMessage('Facility settings saved.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<List<FacilityAssignmentOption>> facilityAssignmentDirectory(
+    String facilityId,
+  ) async {
+    final service = _coreBackend;
+    if (service == null) return const [];
+    try {
+      return await service.facilityAssignmentDirectory(facilityId);
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return const [];
+    }
+  }
+
+  Future<bool> setFacilityAssignment({
+    required String facilityId,
+    required String adminId,
+    required String assignmentRole,
+  }) async {
+    final service = _coreBackend;
+    if (service == null) return false;
+    try {
+      await service.setFacilityAssignment(
+        facilityId: facilityId,
+        adminId: adminId,
+        assignmentRole: assignmentRole,
+      );
+      await refreshFacilities();
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> removeFacilityAssignment({
+    required String facilityId,
+    required String adminId,
+  }) async {
+    final service = _coreBackend;
+    if (service == null) return false;
+    try {
+      await service.removeFacilityAssignment(
+        facilityId: facilityId,
+        adminId: adminId,
+      );
+      await refreshFacilities();
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
     }
   }
 
@@ -3278,7 +4068,11 @@ class AppState extends ChangeNotifier {
   ) {
     final ids = {for (final facility in targets) facility.id};
     for (final request in requests) {
-      if (request.requester != userAccount.name) continue;
+      if (request.requesterId != userAccount.id &&
+          !(request.requesterId == null &&
+              request.requester == userAccount.name)) {
+        continue;
+      }
       final facilityId = _facilityIdFor(request);
       if (facilityId == null || !ids.contains(facilityId)) continue;
       for (final occurrence in request.occurrences) {
@@ -3359,24 +4153,111 @@ class AppState extends ChangeNotifier {
     _busyCacheAt.remove(key);
   }
 
-  void cancelReservation(
+  static const _cancellableBookingStates = {
+    'requested',
+    'held',
+    'booked',
+    'changes_requested',
+    'bumped',
+  };
+
+  bool canCancelOccurrence(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    DateTime? now,
+  }) {
+    if (request.status == RequestStatus.cancelled ||
+        request.status == RequestStatus.declined ||
+        request.status == RequestStatus.expired ||
+        request.lifecycleStatus == ReservationLifecycleStatus.cancelled ||
+        request.lifecycleStatus == ReservationLifecycleStatus.declined ||
+        request.lifecycleStatus == ReservationLifecycleStatus.expired ||
+        request.lifecycleStatus == ReservationLifecycleStatus.completed) {
+      return false;
+    }
+    return occurrence.startsAt.isAfter(now ?? campusNow()) &&
+        occurrence.stage == BookingStage.booked &&
+        _cancellableBookingStates.contains(occurrence.bookingState);
+  }
+
+  List<ReservationOccurrence> cancellableOccurrences(
+    ReservationRequest request, {
+    DateTime? now,
+  }) => [
+    for (final occurrence in request.occurrences)
+      if (canCancelOccurrence(request, occurrence, now: now)) occurrence,
+  ];
+
+  bool canCancelReservation(ReservationRequest request, {DateTime? now}) =>
+      cancellableOccurrences(request, now: now).isNotEmpty;
+
+  bool _hasFutureActiveOccurrence(ReservationRequest request, {DateTime? now}) {
+    final current = now ?? campusNow();
+    return request.occurrences.any(
+      (occurrence) =>
+          occurrence.startsAt.isAfter(current) &&
+          (occurrence.stage == BookingStage.booked ||
+              occurrence.stage == BookingStage.checkedIn) &&
+          _cancellableBookingStates.contains(occurrence.bookingState),
+    );
+  }
+
+  Future<bool> cancelReservation(
     ReservationRequest request, {
     String reason = '',
     String? occurrenceId,
-  }) {
+  }) async {
+    final eligible = cancellableOccurrences(request);
+    if (eligible.isEmpty ||
+        (occurrenceId != null &&
+            !eligible.any((occurrence) => occurrence.id == occurrenceId))) {
+      showToast(
+        const ToastMessage(
+          'Only future reservations that have not started can be cancelled.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
     if (_useDemoData || backend == null) {
-      decideRequest(request.id, RequestStatus.cancelled, reason: reason);
-      return;
+      final cancelledIds = {
+        for (final occurrence in eligible)
+          if (occurrenceId == null || occurrence.id == occurrenceId)
+            occurrence.id,
+      };
+      for (var i = 0; i < request.occurrences.length; i++) {
+        final occurrence = request.occurrences[i];
+        if (!cancelledIds.contains(occurrence.id)) continue;
+        request.occurrences[i] = ReservationOccurrence(
+          id: occurrence.id,
+          startsAt: occurrence.startsAt,
+          endsAt: occurrence.endsAt,
+          bookingState: 'cancelled',
+          stage: occurrence.stage,
+          proposedStartsAt: occurrence.proposedStartsAt,
+          proposedEndsAt: occurrence.proposedEndsAt,
+          reason: reason.trim().isEmpty ? 'Cancelled by requester' : reason,
+        );
+      }
+      if (!_hasFutureActiveOccurrence(request)) {
+        request
+          ..status = RequestStatus.cancelled
+          ..lifecycleStatus = ReservationLifecycleStatus.cancelled
+          ..reason = reason.trim().isEmpty
+              ? 'Cancelled by requester'
+              : reason.trim();
+      }
+      notifyListeners();
+      showToast(const ToastMessage.success('Cancellation saved.'));
+      return true;
     }
     final payload = <String, dynamic>{};
     if (occurrenceId != null) payload['occurrence_id'] = occurrenceId;
-    unawaited(
-      _runReservationAction(
-        request,
-        'cancel',
-        reason: reason,
-        payload: payload,
-      ),
+    return _runReservationActionWithResult(
+      request,
+      'cancel',
+      reason: reason,
+      payload: payload,
     );
   }
 
@@ -3430,6 +4311,9 @@ class AppState extends ChangeNotifier {
     required String end,
     required int heads,
     required String purpose,
+    List<String> amenities = const [],
+    List<DateTime> occurrenceStartsAt = const [],
+    List<DateTime> occurrenceEndsAt = const [],
   }) {
     final account = userAccount;
     if (account.status == AccountStatus.suspended) {
@@ -3438,7 +4322,34 @@ class AppState extends ChangeNotifier {
             'This account is suspended and cannot submit new requests.',
       );
     }
-    final held = account.verification == VerificationState.pending;
+    final audience = account.pricingAudience;
+    final configuredRate = facility.hourlyRateCentavosFor(audience);
+    final amountCentavos = account.isPaymentExempt
+        ? 0
+        : facility.audienceRates.isNotEmpty
+        ? (configuredRate * (parseClock(end) - parseClock(start)).abs()).round()
+        : quoteFor(facility, (parseClock(end) - parseClock(start)).abs()) * 100;
+    final fallbackDay = parseCampusDate(date) ?? campusNow();
+    DateTime at(String clock) {
+      final minutes = (parseClock(clock) * 60).round();
+      return DateTime(
+        fallbackDay.year,
+        fallbackDay.month,
+        fallbackDay.day,
+        minutes ~/ 60,
+        minutes % 60,
+      );
+    }
+
+    final starts = occurrenceStartsAt.isEmpty
+        ? [at(start)]
+        : occurrenceStartsAt;
+    final fallbackDuration = Duration(
+      minutes: ((parseClock(end) - parseClock(start)) * 60).round(),
+    );
+    final ends = occurrenceEndsAt.length == starts.length
+        ? occurrenceEndsAt
+        : [for (final value in starts) value.add(fallbackDuration)];
     final request = ReservationRequest(
       id: 'r-${DateTime.now().microsecondsSinceEpoch}',
       facility: facility.name,
@@ -3458,14 +4369,34 @@ class AppState extends ChangeNotifier {
       attachments: 0,
       noShows: account.noShows,
       status: RequestStatus.pending,
-      heldForVerification: held,
-      paymentAmountCentavos: account.reservesFree
-          ? 0
-          : quoteFor(facility, (parseClock(end) - parseClock(start)).abs()) *
-                100,
-      paymentStatus: account.reservesFree
+      heldForVerification: false,
+      paymentAmountCentavos: amountCentavos,
+      paymentStatus: amountCentavos == 0
           ? PaymentTrackingStatus.notRequired
           : PaymentTrackingStatus.quoted,
+      amenities: amenities,
+      adminLane: account.verification == VerificationState.verified
+          ? 'internal'
+          : 'external',
+      pricingAudience: audience,
+      facilityAmountCentavos: amountCentavos,
+      totalAmountCentavos: amountCentavos,
+      downPaymentPercent: facility.downPaymentPercent,
+      paymentExemption: switch (audience) {
+        'student' when account.isPaymentExempt => 'verified_student',
+        'faculty' when account.isPaymentExempt => 'verified_faculty',
+        _ => 'none',
+      },
+      requiredDownPaymentCentavos:
+          (amountCentavos * facility.downPaymentPercent + 99) ~/ 100,
+      occurrences: [
+        for (var i = 0; i < starts.length; i++)
+          ReservationOccurrence(
+            id: 'demo-occ-${DateTime.now().microsecondsSinceEpoch}-$i',
+            startsAt: starts[i],
+            endsAt: ends[i],
+          ),
+      ],
     );
     requests = [request, ...requests];
     account.reservations += 1;
@@ -3475,17 +4406,15 @@ class AppState extends ChangeNotifier {
       kind: AuditKind.reservation,
       diff: [
         '$date · $start–$end · $heads people',
-        if (held) 'Held until campus verification passes',
+        'Admin lane: ${account.verification == VerificationState.verified ? 'internal' : 'external'}',
+        if (amenities.isNotEmpty) 'Amenities: ${amenities.join(', ')}',
       ],
       material: false,
     );
     notifyListeners();
     showToast(
-      ToastMessage(
-        held
-            ? 'Request sent and held. It reaches the registrar the moment your '
-                  'verification passes.'
-            : 'Request sent to the registrar.',
+      const ToastMessage(
+        'Request sent to the assigned facility administrator.',
       ),
     );
     return request;
