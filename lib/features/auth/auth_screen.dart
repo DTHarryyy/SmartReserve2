@@ -328,7 +328,9 @@ class AuthScreen extends StatelessWidget {
       _Lede(
         'Reserve CSU Aparri facilities and follow every request in one place.',
       ),
-      const SizedBox(height: 16),
+
+      const SizedBox(height: 22),
+
       const SrLabel('Email address'),
       SrTextField(
         controller: controller.emailField,
@@ -341,24 +343,55 @@ class AuthScreen extends StatelessWidget {
         autocorrect: false,
       ),
       SrErrorText(controller.emailError),
-      SrLabel(
-        'Password',
-        meta: _InlineLink(
-          label: 'Forgot password',
-          onTap: () => controller.goTo(AuthStep.forgot),
-        ),
-      ),
+
+      const SizedBox(height: 10),
+
+      const SrLabel('Password'),
       _PasswordField(
         controller: controller,
         placeholder: 'Enter your password',
         onSubmitted: (_) => controller.busy ? null : controller.submitSignIn(),
       ),
-      const SizedBox(height: 16),
-      _submitButton(context, 'Sign in', 'Signing in…', controller.submitSignIn),
-      SrErrorText(controller.operationError),
+
+      Align(
+        alignment: Alignment.centerLeft,
+        child: _InlineLink(
+          label: 'Forgot password?',
+          onTap: () => controller.goTo(AuthStep.forgot),
+        ),
+      ),
+
       const SizedBox(height: 12),
+
+      _submitButton(context, 'Sign in', 'Signing in…', controller.submitSignIn),
+
+      SrErrorText(controller.operationError),
+
+      const SizedBox(height: 18),
+
+      Row(
+        children: [
+          Expanded(child: Divider(height: 1, color: context.srColors.hairline)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'NEW TO SMARTRESERVE?',
+              style: mono(
+                9,
+                w: 500,
+                tracking: .05,
+                color: context.srColors.muted,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(height: 1, color: context.srColors.hairline)),
+        ],
+      ),
+
+      const SizedBox(height: 14),
+
       _FooterLink(
-        prefix: 'New here?',
+        prefix: 'Don\'t have an account?',
         label: 'Create an account',
         onTap: () => controller.goTo(AuthStep.signUp),
       ),
