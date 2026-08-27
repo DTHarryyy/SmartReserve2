@@ -28,12 +28,19 @@ import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 import '../assistant/assistant_chat_page.dart';
 import '../assistant/assistant_controller.dart';
+import '../calendar/calendar_screen.dart';
 import 'booking_sheet.dart';
 import 'feedback_dialog.dart';
 import 'loyalty_page.dart';
 
 enum StudentTab {
   browse('Browse', 'Browse', Icons.grid_view_outlined, Icons.grid_view_rounded),
+  calendar(
+    'Calendar',
+    'Calendar',
+    Icons.calendar_month_outlined,
+    Icons.calendar_month_rounded,
+  ),
   mine(
     'My reservations',
     'Mine',
@@ -100,7 +107,9 @@ class _StudentAppState extends State<StudentApp> {
     if (state.pendingLoyaltyOpen) {
       state.pendingLoyaltyOpen = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openLoyalty(context);
+        if (!mounted) return;
+        unawaited(state.refreshLoyalty());
+        _openLoyalty(context);
       });
     }
   }
@@ -138,6 +147,9 @@ class _StudentAppState extends State<StudentApp> {
                 width,
                 narrow,
                 key: const ValueKey(StudentTab.mine),
+              ),
+              StudentTab.calendar => const PublicCalendarScreen(
+                key: ValueKey(StudentTab.calendar),
               ),
               StudentTab.account => _scrollable(
                 _account(state, account),
@@ -267,38 +279,40 @@ class _StudentAppState extends State<StudentApp> {
                     ],
                   ),
                 ),
-                InkWell(
-                  key: const Key('student-loyalty-chip'),
-                  borderRadius: BorderRadius.circular(SR.rFull),
-                  onTap: () => _openLoyalty(context),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: narrow ? 7 : 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .16),
-                      borderRadius: BorderRadius.circular(SR.rFull),
-                      border: Border.all(color: SR.onDarkLine),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.stars_rounded,
-                          size: 15,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${state.loyalty?.balance ?? 0}',
-                          style: mono(11, w: 600, color: Colors.white),
-                        ),
-                      ],
+                if (state.loyaltyAvailableForCurrentUser) ...[
+                  InkWell(
+                    key: const Key('student-loyalty-chip'),
+                    borderRadius: BorderRadius.circular(SR.rFull),
+                    onTap: () => _openLoyalty(context),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: narrow ? 7 : 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .16),
+                        borderRadius: BorderRadius.circular(SR.rFull),
+                        border: Border.all(color: SR.onDarkLine),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.stars_rounded,
+                            size: 15,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${state.loyalty?.balance ?? 0}',
+                            style: mono(11, w: 600, color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: narrow ? 2 : 6),
+                  SizedBox(width: narrow ? 2 : 6),
+                ],
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -565,7 +579,7 @@ class _StudentAppState extends State<StudentApp> {
                     crossAxisCount: columns,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    mainAxisExtent: narrow ? 262 : 296,
+                    mainAxisExtent: narrow ? 270 : 304,
                   ),
                   itemBuilder: (context, index) => _FacilityCard(
                     facility: visible[index],
@@ -1979,18 +1993,20 @@ class _StudentAppState extends State<StudentApp> {
           ],
         ),
         const SizedBox(height: 12),
-        _Panel(
-          child: SrListRow(
-            key: const Key('student-loyalty-entry'),
-            icon: Icons.stars_rounded,
-            label: 'Rewards & points',
-            value: '${state.loyalty?.balance ?? 0} pts',
-            valueMono: true,
-            trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-            onTap: () => _openLoyalty(context),
+        if (state.loyaltyAvailableForCurrentUser) ...[
+          _Panel(
+            child: SrListRow(
+              key: const Key('student-loyalty-entry'),
+              icon: Icons.stars_rounded,
+              label: 'Rewards & points',
+              value: '${state.loyalty?.balance ?? 0} pts',
+              valueMono: true,
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () => _openLoyalty(context),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         _Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2319,6 +2335,7 @@ class _BottomNav extends StatelessWidget {
 
   static const _pillTabs = [
     StudentTab.browse,
+    StudentTab.calendar,
     StudentTab.mine,
     StudentTab.account,
   ];

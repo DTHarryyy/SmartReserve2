@@ -1,10 +1,10 @@
 import '../model/loyalty.dart';
 
-LoyaltySummary seedLoyalty() {
+LoyaltySummary seedLoyalty({String userId = 'u5'}) {
   final transactions = [
     LoyaltyTransaction(
       id: 'lt1',
-      userId: 'u1',
+      userId: userId,
       points: LoyaltyPoints.reservationCompleted,
       type: LoyaltyTransactionType.reservationCompleted,
       sourceType: 'reservation',
@@ -14,7 +14,7 @@ LoyaltySummary seedLoyalty() {
     ),
     LoyaltyTransaction(
       id: 'lt2',
-      userId: 'u1',
+      userId: userId,
       points: LoyaltyPoints.feedbackSubmitted,
       type: LoyaltyTransactionType.feedbackSubmitted,
       sourceType: 'feedback',
@@ -24,7 +24,7 @@ LoyaltySummary seedLoyalty() {
     ),
     LoyaltyTransaction(
       id: 'lt3',
-      userId: 'u1',
+      userId: userId,
       points: LoyaltyPoints.reservationCompleted,
       type: LoyaltyTransactionType.reservationCompleted,
       sourceType: 'reservation',
@@ -69,6 +69,7 @@ LoyaltySummary seedLoyalty() {
       .where((item) => item.isCredit)
       .fold<int>(0, (value, item) => value + item.points);
   return LoyaltySummary(
+    eligible: true,
     balance: balance,
     lifetimeEarned: earned,
     lifetimeRedeemed: 0,

@@ -72,6 +72,7 @@ class AppState extends ChangeNotifier {
     accounts = useDemoData ? seedAccounts() : [];
     audit = useDemoData ? seedAudit() : [];
     calendarAnchor = useDemoData ? campusToday : campusNow();
+    userCalendarAnchor = calendarAnchor;
   }
 
   final bool _useDemoData;
@@ -341,6 +342,18 @@ class AppState extends ChangeNotifier {
   bool get isInternalAdmin => sessionProfile?.isInternalAdmin ?? false;
   bool get isExternalAdmin => sessionProfile?.isExternalAdmin ?? false;
   bool get isAdmin => sessionProfile?.isAdmin ?? false;
+  bool get _currentUserIsGuestPriced =>
+      !isAdmin &&
+      userAccount.role == AccountRole.user &&
+      userAccount.status == AccountStatus.active &&
+      userAccount.pricingAudience == 'guest';
+  bool get loyaltyAvailableForCurrentUser =>
+      _currentUserIsGuestPriced && (loyalty?.eligible ?? _useDemoData);
+  bool get shouldRefreshLoyaltyForCurrentUser => _currentUserIsGuestPriced;
+
+  static const LoyaltySummary _ineligibleLoyalty = LoyaltySummary(
+    eligible: false,
+  );
 
   void configureBackend(SmartReserveBackend service) {
     backend = service;
@@ -386,6 +399,10 @@ class AppState extends ChangeNotifier {
           : [];
       notifications = [];
       _backendReservations.clear();
+      userCalendarSlots = [];
+      userCalendarError = null;
+      userCalendarLoading = false;
+      _userCalendarRequestId++;
       if (!_useDemoData) accounts = [];
       accountsLoading = false;
       accountsError = null;
@@ -473,16 +490,10 @@ class AppState extends ChangeNotifier {
             debugPrint('Verification live refresh failed: $error'),
       );
       await refreshLoyalty();
-      _loyaltySubscription = _coreBackend?.loyaltyTransactionStream().listen(
-        (_) {
-          unawaited(refreshLoyalty());
-        },
-        onError: (Object error) =>
-            debugPrint('Loyalty live refresh failed: $error'),
-      );
-      view = myVerification != null || !profile.onboardingComplete
-          ? AppView.auth
-          : AppView.userApp;
+      _syncLoyaltySubscription();
+      view = profile.isActive && profile.onboardingComplete
+          ? AppView.userApp
+          : AppView.auth;
     }
     notifyListeners();
   }
@@ -493,7 +504,25 @@ class AppState extends ChangeNotifier {
         ? []
         : [_toVerification(myVerification!)];
     _syncSessionAccount();
+    await refreshLoyalty();
+    _syncLoyaltySubscription();
     notifyListeners();
+  }
+
+  void _syncLoyaltySubscription() {
+    _loyaltySubscription?.cancel();
+    _loyaltySubscription = null;
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !loyaltyAvailableForCurrentUser) {
+      return;
+    }
+    _loyaltySubscription = service.loyaltyTransactionStream().listen(
+      (_) {
+        unawaited(refreshLoyalty());
+      },
+      onError: (Object error) =>
+          debugPrint('Loyalty live refresh failed: $error'),
+    );
   }
 
   VerificationState get _sessionVerification {
@@ -731,6 +760,10 @@ class AppState extends ChangeNotifier {
     facilities = [
       for (final row in rows) row.toFacility(service.facilityPhotoUrl),
     ];
+    if (userCalendarFacilityFilter != 'All facilities' &&
+        !userCalendarFacilities.contains(userCalendarFacilityFilter)) {
+      userCalendarFacilityFilter = 'All facilities';
+    }
     facilitiesLoading = false;
     facilitiesError = null;
     notifyListeners();
@@ -1000,6 +1033,10 @@ class AppState extends ChangeNotifier {
     if (calendarFacilityFilter != 'All facilities' &&
         !calendarFacilities.contains(calendarFacilityFilter)) {
       calendarFacilityFilter = 'All facilities';
+    }
+    if (userCalendarFacilityFilter != 'All facilities' &&
+        !userCalendarFacilities.contains(userCalendarFacilityFilter)) {
+      userCalendarFacilityFilter = 'All facilities';
     }
     final nonReservation = audit
         .where((entry) => entry.kind != AuditKind.reservation)
@@ -1538,6 +1575,14 @@ class AppState extends ChangeNotifier {
   };
   String? selectedCalendarEventId;
 
+  late DateTime userCalendarAnchor;
+  CalendarViewMode userCalendarViewMode = CalendarViewMode.month;
+  String userCalendarFacilityFilter = 'All facilities';
+  bool userCalendarLoading = false;
+  String? userCalendarError;
+  List<PublicCalendarSlot> userCalendarSlots = [];
+  int _userCalendarRequestId = 0;
+
   List<String> get calendarFacilities => [
     'All facilities',
     ...scheduleFacilities,
@@ -1646,6 +1691,58 @@ class AppState extends ChangeNotifier {
     ];
   }
 
+  List<Facility> get publicCalendarFacilities => [
+    for (final f in facilities)
+      if (f.publicListing && f.state == FacilityState.active) f,
+  ];
+
+  List<String> get userCalendarFacilities => [
+    'All facilities',
+    ...{for (final f in publicCalendarFacilities) f.name}.toList()..sort(),
+  ];
+
+  List<CalendarEvent> get userCalendarEvents {
+    final facilitiesById = {for (final facility in facilities) facility.id: facility};
+    final events = <CalendarEvent>[];
+    for (final slot in userCalendarSlots) {
+      final facility = facilitiesById[slot.facilityId];
+      if (facility == null ||
+          !facility.publicListing ||
+          facility.state != FacilityState.active) {
+        continue;
+      }
+      events.add(
+        CalendarEvent(
+          id:
+              'public:${slot.facilityId}:${slot.startsAt.toIso8601String()}:${slot.endsAt.toIso8601String()}',
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          facility: facility.name,
+          building: facility.building,
+          room: facility.room,
+          requester: 'Reserved',
+          organization: '',
+          purpose: 'Reserved',
+          headcount: 0,
+          state: CalendarEventState.confirmed,
+          lifecycle: BookingStage.booked,
+          statusLabel: 'Reserved',
+          summaryLabel: 'Reserved',
+          privacyMasked: true,
+        ),
+      );
+    }
+    events.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return events;
+  }
+
+  List<CalendarEvent> get visibleUserCalendarEvents => [
+    for (final event in userCalendarEvents)
+      if (userCalendarFacilityFilter == 'All facilities' ||
+          event.facility == userCalendarFacilityFilter)
+        event,
+  ];
+
   CalendarEvent? get selectedCalendarEvent {
     final id = selectedCalendarEventId;
     if (id == null) return null;
@@ -1732,6 +1829,224 @@ class AppState extends ChangeNotifier {
     view = AppView.reservations;
     closeOverlays();
     notifyListeners();
+  }
+
+  Future<void> ensureUserCalendarLoaded() async {
+    if (userCalendarSlots.isNotEmpty || userCalendarLoading) return;
+    await refreshUserCalendar();
+  }
+
+  Future<void> refreshUserCalendar() async {
+    final requestId = ++_userCalendarRequestId;
+    userCalendarLoading = true;
+    userCalendarError = null;
+    notifyListeners();
+    try {
+      final slots = _useDemoData
+          ? _localPublicCalendarSlots()
+          : await _remotePublicCalendarSlots();
+      if (requestId != _userCalendarRequestId) return;
+      userCalendarSlots = slots;
+      userCalendarError = null;
+    } catch (error) {
+      if (requestId != _userCalendarRequestId) return;
+      userCalendarError = 'Reserved dates could not load: $error';
+    } finally {
+      if (requestId == _userCalendarRequestId) {
+        userCalendarLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<List<PublicCalendarSlot>> _remotePublicCalendarSlots() async {
+    final service = backend;
+    if (service == null || !hasSession || isAdmin) return const [];
+    if (userAccount.status != AccountStatus.active) return const [];
+    final targets = _selectedPublicCalendarFacilities();
+    if (targets.isEmpty) return const [];
+    final (fromWall, toWall) = _calendarRange(
+      userCalendarAnchor,
+      userCalendarViewMode,
+    );
+    final slots = <PublicCalendarSlot>[];
+    for (var i = 0; i < targets.length; i += 40) {
+      final batch = targets
+          .skip(i)
+          .take(40)
+          .map((facility) => facility.id)
+          .toList();
+      final rows = await service.publicReservationCalendar(
+        facilityIds: batch,
+        from: campusInstant(fromWall),
+        to: campusInstant(toWall),
+      );
+      slots.addAll([
+        for (final row in rows)
+          PublicCalendarSlot(
+            facilityId: row.facilityId,
+            startsAt: campusWallTime(row.startsAt),
+            endsAt: campusWallTime(row.endsAt),
+          ),
+      ]);
+    }
+    slots.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return slots;
+  }
+
+  List<Facility> _selectedPublicCalendarFacilities() {
+    if (userCalendarFacilityFilter == 'All facilities') {
+      return publicCalendarFacilities;
+    }
+    return [
+      for (final facility in publicCalendarFacilities)
+        if (facility.name == userCalendarFacilityFilter) facility,
+    ];
+  }
+
+  List<PublicCalendarSlot> _localPublicCalendarSlots() {
+    final targets = _selectedPublicCalendarFacilities();
+    if (targets.isEmpty) return const [];
+    final targetIds = {for (final facility in targets) facility.id};
+    final targetNames = {for (final facility in targets) facility.name};
+    final (from, to) = _calendarRange(
+      userCalendarAnchor,
+      userCalendarViewMode,
+    );
+    final slots = <PublicCalendarSlot>[];
+
+    for (final booking in bookings) {
+      final facility = booking.facilityId == null
+          ? facilityNamed(booking.facility)
+          : facilities.cast<Facility?>().firstWhere(
+              (item) => item?.id == booking.facilityId,
+              orElse: () => null,
+            );
+      final facilityId = facility?.id ?? booking.facilityId;
+      if (facilityId == null ||
+          (!targetIds.contains(facilityId) &&
+              !targetNames.contains(booking.facility))) {
+        continue;
+      }
+      if (!booking.startsAt.isBefore(to) || !booking.endsAt.isAfter(from)) {
+        continue;
+      }
+      slots.add(
+        PublicCalendarSlot(
+          facilityId: facilityId,
+          startsAt: booking.startsAt,
+          endsAt: booking.endsAt,
+        ),
+      );
+    }
+
+    for (final request in requests) {
+      final facilityId = _facilityIdFor(request);
+      if (facilityId == null || !targetIds.contains(facilityId)) continue;
+      if (request.occurrences.isEmpty) {
+        if (request.status != RequestStatus.approved) continue;
+        final date = parseCampusDate(request.date);
+        if (date == null) continue;
+        final startsAt = _dateAtClock(date, request.start);
+        final endsAt = _dateAtClock(date, request.end);
+        final normalizedEnd = endsAt.isAfter(startsAt)
+            ? endsAt
+            : endsAt.add(const Duration(days: 1));
+        if (!startsAt.isBefore(to) || !normalizedEnd.isAfter(from)) continue;
+        slots.add(
+          PublicCalendarSlot(
+            facilityId: facilityId,
+            startsAt: startsAt,
+            endsAt: normalizedEnd,
+          ),
+        );
+        continue;
+      }
+      for (final occurrence in request.occurrences) {
+        if (occurrence.bookingState != 'held' &&
+            occurrence.bookingState != 'booked') {
+          continue;
+        }
+        if (!occurrence.startsAt.isBefore(to) ||
+            !occurrence.endsAt.isAfter(from)) {
+          continue;
+        }
+        slots.add(
+          PublicCalendarSlot(
+            facilityId: facilityId,
+            startsAt: occurrence.startsAt,
+            endsAt: occurrence.endsAt,
+          ),
+        );
+      }
+    }
+    slots.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return slots;
+  }
+
+  void setUserCalendarViewMode(CalendarViewMode mode) {
+    if (userCalendarViewMode == mode) return;
+    userCalendarViewMode = mode;
+    notifyListeners();
+    unawaited(refreshUserCalendar());
+  }
+
+  void setUserCalendarFacilityFilter(String facility) {
+    userCalendarFacilityFilter = facility;
+    notifyListeners();
+    unawaited(refreshUserCalendar());
+  }
+
+  void navigateUserCalendar(int direction) {
+    userCalendarAnchor = switch (userCalendarViewMode) {
+      CalendarViewMode.month => DateTime(
+        userCalendarAnchor.year,
+        userCalendarAnchor.month + direction,
+        1,
+      ),
+      CalendarViewMode.week => userCalendarAnchor.add(
+        Duration(days: 7 * direction),
+      ),
+      CalendarViewMode.day => userCalendarAnchor.add(Duration(days: direction)),
+    };
+    notifyListeners();
+    unawaited(refreshUserCalendar());
+  }
+
+  void goToUserCalendarToday() {
+    userCalendarAnchor = calendarToday;
+    notifyListeners();
+    unawaited(refreshUserCalendar());
+  }
+
+  void selectUserCalendarDate(DateTime date, {CalendarViewMode? mode}) {
+    userCalendarAnchor = DateTime(date.year, date.month, date.day);
+    if (mode != null) userCalendarViewMode = mode;
+    notifyListeners();
+    unawaited(refreshUserCalendar());
+  }
+
+  static (DateTime, DateTime) _calendarRange(
+    DateTime anchor,
+    CalendarViewMode mode,
+  ) => switch (mode) {
+    CalendarViewMode.month => (
+      DateTime(anchor.year, anchor.month),
+      DateTime(anchor.year, anchor.month + 1),
+    ),
+    CalendarViewMode.week => (
+      _weekStartDate(anchor),
+      _weekStartDate(anchor).add(const Duration(days: 7)),
+    ),
+    CalendarViewMode.day => (
+      DateTime(anchor.year, anchor.month, anchor.day),
+      DateTime(anchor.year, anchor.month, anchor.day + 1),
+    ),
+  };
+
+  static DateTime _weekStartDate(DateTime day) {
+    final date = DateTime(day.year, day.month, day.day);
+    return date.subtract(Duration(days: date.weekday - 1));
   }
 
   static DateTime _dateAtClock(DateTime date, String clock) {
@@ -3194,6 +3509,11 @@ class AppState extends ChangeNotifier {
 
   void signInAsUser(String accountId) {
     userAccountId = accountId;
+    if (_useDemoData) {
+      loyalty = _currentUserIsGuestPriced
+          ? seedLoyalty(userId: userAccount.id)
+          : _ineligibleLoyalty;
+    }
     notifyListeners();
   }
 
@@ -3264,34 +3584,43 @@ class AppState extends ChangeNotifier {
         ),
         ...feedbackEntries,
       ];
-      loyalty = LoyaltySummary(
-        balance: (loyalty?.balance ?? 0) + LoyaltyPoints.feedbackSubmitted,
-        lifetimeEarned:
-            (loyalty?.lifetimeEarned ?? 0) + LoyaltyPoints.feedbackSubmitted,
-        lifetimeRedeemed: loyalty?.lifetimeRedeemed ?? 0,
-        rules: loyalty?.rules ?? const {},
-        transactions: [
-          LoyaltyTransaction(
-            id: 'lt-demo-${DateTime.now().microsecondsSinceEpoch}',
-            userId: userAccount.id,
-            points: LoyaltyPoints.feedbackSubmitted,
-            type: LoyaltyTransactionType.feedbackSubmitted,
-            sourceType: 'feedback',
-            sourceId: request.id,
-            description: 'Feedback for ${request.facility}',
-            createdAt: DateTime.now(),
-          ),
-          ...(loyalty?.transactions ?? const []),
-        ],
-        redemptions: loyalty?.redemptions ?? const [],
-        rewards: loyalty?.rewards ?? const [],
-      );
+      final earnsLoyalty =
+          loyaltyAvailableForCurrentUser && request.pricingAudience == 'guest';
+      if (earnsLoyalty) {
+        loyalty = LoyaltySummary(
+          eligible: true,
+          balance: (loyalty?.balance ?? 0) + LoyaltyPoints.feedbackSubmitted,
+          lifetimeEarned:
+              (loyalty?.lifetimeEarned ?? 0) + LoyaltyPoints.feedbackSubmitted,
+          lifetimeRedeemed: loyalty?.lifetimeRedeemed ?? 0,
+          rules: loyalty?.rules ?? const {},
+          transactions: [
+            LoyaltyTransaction(
+              id: 'lt-demo-${DateTime.now().microsecondsSinceEpoch}',
+              userId: userAccount.id,
+              points: LoyaltyPoints.feedbackSubmitted,
+              type: LoyaltyTransactionType.feedbackSubmitted,
+              sourceType: 'feedback',
+              sourceId: request.id,
+              description: 'Feedback for ${request.facility}',
+              createdAt: DateTime.now(),
+            ),
+            ...(loyalty?.transactions ?? const []),
+          ],
+          redemptions: loyalty?.redemptions ?? const [],
+          rewards: loyalty?.rewards ?? const [],
+        );
+      } else {
+        loyalty = _ineligibleLoyalty;
+      }
       feedbackSubmitting.remove(request.id);
       notifyListeners();
       toasts.show(
         ToastMessage.success(
-          'Thanks for rating ${request.facility} — you earned '
-          '${LoyaltyPoints.feedbackSubmitted} points.',
+          earnsLoyalty
+              ? 'Thanks for rating ${request.facility} — you earned '
+                    '${LoyaltyPoints.feedbackSubmitted} points.'
+              : 'Thanks for rating ${request.facility}.',
         ),
       );
       return true;
@@ -3315,7 +3644,7 @@ class AppState extends ChangeNotifier {
       request.feedbackComment = saved.comment;
       request.feedbackAt = saved.createdAt;
       notifyListeners();
-      unawaited(refreshLoyalty());
+      if (_currentUserIsGuestPriced) unawaited(refreshLoyalty());
       unawaited(refreshReservations());
       unawaited(refreshFacilities());
       toasts.show(
@@ -3374,8 +3703,18 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshLoyalty() async {
+    if (!_currentUserIsGuestPriced) {
+      _loyaltySubscription?.cancel();
+      _loyaltySubscription = null;
+      loyalty = _ineligibleLoyalty;
+      loyaltyLoading = false;
+      loyaltyError = null;
+      notifyListeners();
+      return;
+    }
     if (_useDemoData) {
-      loyalty ??= seedLoyalty();
+      loyalty = seedLoyalty(userId: userAccount.id);
+      loyaltyError = null;
       notifyListeners();
       return;
     }
@@ -3385,8 +3724,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final summary = await service.loyaltySummary();
-      loyalty = summary.toModel();
+      final model = summary.toModel();
+      loyalty = model;
       loyaltyError = null;
+      if (!model.eligible) {
+        _loyaltySubscription?.cancel();
+        _loyaltySubscription = null;
+      }
     } catch (error) {
       loyaltyError = friendlyBackendMessage('$error');
     } finally {
@@ -3396,6 +3740,15 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> redeemReward(LoyaltyReward reward) async {
+    if (!loyaltyAvailableForCurrentUser) {
+      showToast(
+        const ToastMessage(
+          'Loyalty rewards are available to guest renters only.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
     if (redemptionsPending.contains(reward.id)) return false;
     redemptionsPending.add(reward.id);
     notifyListeners();

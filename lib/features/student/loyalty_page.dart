@@ -29,13 +29,17 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = AppScope.read(context);
 
-      if (state.loyalty == null && !state.loyaltyLoading) {
+      if (state.shouldRefreshLoyaltyForCurrentUser &&
+          state.loyalty == null &&
+          !state.loyaltyLoading) {
         unawaited(state.refreshLoyalty());
       }
     });
   }
 
   Future<void> _redeem(AppState state, LoyaltyReward reward) async {
+    if (!state.loyaltyAvailableForCurrentUser) return;
+
     final balance = state.loyalty?.balance ?? 0;
 
     final confirmed = await showDialog<bool>(
@@ -69,26 +73,36 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
         final state = AppScope.of(context);
         final loyalty = state.loyalty;
         final c = context.srColors;
+        final unavailable =
+            !state.shouldRefreshLoyaltyForCurrentUser ||
+            loyalty?.eligible == false;
+        final failedInitialLoad =
+            state.loyaltyError != null && loyalty == null;
+        final loadingInitial =
+            state.loyaltyLoading ||
+            (loyalty == null && state.loyaltyError == null);
 
         return Scaffold(
           backgroundColor: c.canvas,
           appBar: AppBar(
-            title: const Text('Loyalty & rewards'),
+            title: Text(unavailable ? 'Unavailable' : 'Loyalty & rewards'),
             backgroundColor: c.canvas,
             surfaceTintColor: Colors.transparent,
             elevation: 0,
           ),
           body: SafeArea(
-            child: state.loyaltyLoading && loyalty == null
-                ? const SrLoadingState()
-                : state.loyaltyError != null && loyalty == null
+            child: unavailable
+                ? const _LoyaltyUnavailableState()
+                : failedInitialLoad
                 ? SrErrorState(
                     message: state.loyaltyError!,
                     onRetry: () {
                       unawaited(state.refreshLoyalty());
                     },
                   )
-                : _content(context, state, loyalty ?? const LoyaltySummary()),
+                : loadingInitial
+                ? const SrLoadingState()
+                : _content(context, state, loyalty!),
           ),
         );
       },
@@ -165,6 +179,30 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
 
               SizedBox(height: mobile ? 24 : 36),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoyaltyUnavailableState extends StatelessWidget {
+  const _LoyaltyUnavailableState();
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+
+    return SrScrollView(
+      padding: SR.pageInsets(width),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: const _LoyaltyEmptyState(
+            icon: Icons.lock_outline_rounded,
+            title: 'Loyalty is available to guest renters',
+            body:
+                'Verified students, faculty, and staff use campus pricing, so rewards and points are not available on this account.',
           ),
         ),
       ),

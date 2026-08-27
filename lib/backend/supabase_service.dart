@@ -614,6 +614,25 @@ class BackendBusyWindow {
       );
 }
 
+class BackendPublicReservationSlot {
+  const BackendPublicReservationSlot({
+    required this.facilityId,
+    required this.startsAt,
+    required this.endsAt,
+  });
+
+  final String facilityId;
+  final DateTime startsAt;
+  final DateTime endsAt;
+
+  factory BackendPublicReservationSlot.fromJson(Map<String, dynamic> json) =>
+      BackendPublicReservationSlot(
+        facilityId: '${json['facility_id']}',
+        startsAt: DateTime.parse('${json['starts_at']}').toUtc(),
+        endsAt: DateTime.parse('${json['ends_at']}').toUtc(),
+      );
+}
+
 class BackendReservation {
   const BackendReservation({
     required this.id,
@@ -1365,6 +1384,7 @@ class BackendLoyaltyRedemption {
 
 class BackendLoyaltySummary {
   const BackendLoyaltySummary({
+    this.eligible = true,
     this.balance = 0,
     this.lifetimeEarned = 0,
     this.lifetimeRedeemed = 0,
@@ -1374,6 +1394,7 @@ class BackendLoyaltySummary {
     this.rewards = const [],
   });
 
+  final bool eligible;
   final int balance;
   final int lifetimeEarned;
   final int lifetimeRedeemed;
@@ -1384,6 +1405,7 @@ class BackendLoyaltySummary {
 
   factory BackendLoyaltySummary.fromJson(Map<String, dynamic> json) =>
       BackendLoyaltySummary(
+        eligible: json['eligible'] as bool? ?? true,
         balance: (json['balance'] as num?)?.toInt() ?? 0,
         lifetimeEarned: (json['lifetime_earned'] as num?)?.toInt() ?? 0,
         lifetimeRedeemed: (json['lifetime_redeemed'] as num?)?.toInt() ?? 0,
@@ -1416,6 +1438,7 @@ class BackendLoyaltySummary {
       );
 
   LoyaltySummary toModel() => LoyaltySummary(
+    eligible: eligible,
     balance: balance,
     lifetimeEarned: lifetimeEarned,
     lifetimeRedeemed: lifetimeRedeemed,
@@ -1504,6 +1527,11 @@ abstract interface class SmartReserveBackend {
   Future<List<BackendReservation>> reservations();
   Stream<List<BackendReservation>> reservationStream();
   Future<List<BackendBusyWindow>> facilityBusyWindows({
+    required List<String> facilityIds,
+    required DateTime from,
+    required DateTime to,
+  });
+  Future<List<BackendPublicReservationSlot>> publicReservationCalendar({
     required List<String> facilityIds,
     required DateTime from,
     required DateTime to,
@@ -2276,6 +2304,29 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     return [
       for (final row in (data as List? ?? const []))
         BackendBusyWindow.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<List<BackendPublicReservationSlot>> publicReservationCalendar({
+    required List<String> facilityIds,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (facilityIds.isEmpty) return const [];
+    final data = await _client.rpc(
+      'public_reservation_calendar',
+      params: {
+        'p_facility_ids': facilityIds,
+        'p_from': from.toUtc().toIso8601String(),
+        'p_to': to.toUtc().toIso8601String(),
+      },
+    );
+    return [
+      for (final row in (data as List? ?? const []))
+        BackendPublicReservationSlot.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
     ];
   }
 

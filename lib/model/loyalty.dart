@@ -146,6 +146,7 @@ class LoyaltyRedemption {
 /// One round trip's worth of everything the student loyalty page needs.
 class LoyaltySummary {
   const LoyaltySummary({
+    this.eligible = true,
     this.balance = 0,
     this.lifetimeEarned = 0,
     this.lifetimeRedeemed = 0,
@@ -155,6 +156,7 @@ class LoyaltySummary {
     this.rewards = const [],
   });
 
+  final bool eligible;
   final int balance;
   final int lifetimeEarned;
   final int lifetimeRedeemed;
