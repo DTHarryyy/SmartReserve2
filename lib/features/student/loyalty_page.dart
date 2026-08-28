@@ -456,11 +456,10 @@ class _DesktopContent extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.description, this.trailing});
+  const _SectionHeader({required this.title, this.description});
 
   final String title;
   final String? description;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -481,7 +480,6 @@ class _SectionHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
       ],
     );
   }
@@ -696,8 +694,6 @@ class _RewardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.srColors;
-
     final affordable =
         reward.canAfford(balance) && reward.active && !reward.isOutOfStock;
 

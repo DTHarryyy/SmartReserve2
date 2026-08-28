@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(11);
+select plan(12);
 
 create temp table public_calendar_actors as
 select
@@ -183,6 +183,16 @@ select results_eq(
   $$values ('2030-01-07 00:00+00'::timestamptz),
            ('2030-01-07 02:00+00'::timestamptz)$$,
   'only held and booked public active occurrences are returned'
+);
+
+select results_eq(
+  $$select starts_at from public.facility_busy_windows(
+      array['97000000-0000-0000-0000-000000000001'::uuid],
+      '2030-01-07 00:00+00', '2030-01-08 00:00+00'
+    ) order by starts_at$$,
+  $$values ('2030-01-07 00:00+00'::timestamptz),
+           ('2030-01-07 02:00+00'::timestamptz)$$,
+  'assistant busy windows expose held and booked but not requested slots'
 );
 
 select throws_ok(

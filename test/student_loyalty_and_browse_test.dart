@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/app/app_scope.dart';
 import 'package:smartreserve/app/app_state.dart';
+import 'package:smartreserve/backend/supabase_service.dart';
 import 'package:smartreserve/features/calendar/calendar_screen.dart';
 import 'package:smartreserve/features/student/loyalty_page.dart';
 import 'package:smartreserve/features/student/student_app.dart';
+import 'package:smartreserve/features/users/users_screen.dart';
 import 'package:smartreserve/model/facility.dart';
 import 'package:smartreserve/theme/sr_theme.dart';
 
@@ -259,5 +261,40 @@ void main() {
     expect(find.text('Search reservations'), findsOneWidget);
     expect(find.text('Needs decision'), findsWidgets);
     expect(find.text('Confirmed'), findsWidgets);
+  });
+
+  testWidgets('external admin clients page uses shared directory wording', (
+    tester,
+  ) async {
+    final state = AppState()
+      ..sessionProfile = SessionProfile(
+        id: 'u10',
+        email: 'g.villanueva@csu.edu.ph',
+        fullName: 'Grace Villanueva',
+        role: 'external_admin',
+        campusClaim: 'none',
+        campusId: null,
+        unit: 'Business Affairs',
+        verificationStatus: 'verified',
+        onboardingComplete: true,
+        accountStatus: 'active',
+        createdAt: DateTime(2025, 11),
+      );
+
+    await _pumpScoped(
+      tester,
+      state,
+      const UsersScreen(),
+      size: const Size(1180, 840),
+    );
+
+    expect(find.text('Clients'), findsOneWidget);
+    expect(
+      find.text(
+        'This shared directory includes all active guest or unverified clients with reservation or payment activity. Campus records, administrator accounts, and verification documents are excluded.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('assigned facilities'), findsNothing);
   });
 }

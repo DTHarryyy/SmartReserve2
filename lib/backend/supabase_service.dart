@@ -1490,6 +1490,69 @@ class BackendLoyaltyBalanceRow {
   );
 }
 
+class BackendAssistantConversation {
+  const BackendAssistantConversation({
+    required this.id,
+    required this.title,
+    required this.activeDraft,
+    required this.createdAt,
+    required this.lastActivityAt,
+  });
+
+  final String id;
+  final String title;
+  final Map<String, dynamic> activeDraft;
+  final DateTime createdAt;
+  final DateTime lastActivityAt;
+
+  factory BackendAssistantConversation.fromJson(Map<String, dynamic> json) =>
+      BackendAssistantConversation(
+        id: '${json['id']}',
+        title: '${json['title'] ?? 'New chat'}',
+        activeDraft: Map<String, dynamic>.from(
+          json['active_draft'] as Map? ?? const <String, dynamic>{},
+        ),
+        createdAt: DateTime.parse('${json['created_at']}'),
+        lastActivityAt: DateTime.parse('${json['last_activity_at']}'),
+      );
+}
+
+class BackendAssistantMessage {
+  const BackendAssistantMessage({
+    required this.id,
+    required this.sender,
+    required this.messageType,
+    required this.text,
+    required this.payload,
+    required this.createdAt,
+    this.reservationId,
+    this.action,
+  });
+
+  final String id;
+  final String sender;
+  final String messageType;
+  final String text;
+  final Map<String, dynamic> payload;
+  final String? reservationId;
+  final String? action;
+  final DateTime createdAt;
+
+  factory BackendAssistantMessage.fromJson(Map<String, dynamic> json) =>
+      BackendAssistantMessage(
+        id: '${json['id']}',
+        sender: '${json['sender']}',
+        messageType: '${json['message_type']}',
+        text: '${json['text'] ?? ''}',
+        payload: Map<String, dynamic>.from(
+          json['payload'] as Map? ?? const <String, dynamic>{},
+        ),
+        reservationId: json['reservation_id'] as String?,
+        action: json['action'] as String?,
+        createdAt: DateTime.parse('${json['created_at']}'),
+      );
+}
+
 abstract interface class SmartReserveBackend {
   User? get user;
   Stream<AuthState> get authChanges;
@@ -1543,6 +1606,21 @@ abstract interface class SmartReserveBackend {
   Future<ReservationActionResult> bulkApproveReservations(
     List<BackendReservation> reservations,
   );
+  Future<List<BackendAssistantConversation>> assistantConversations();
+  Future<BackendAssistantConversation> createAssistantConversation({
+    required String title,
+    Map<String, dynamic> activeDraft,
+  });
+  Future<List<BackendAssistantMessage>> assistantMessages(String conversationId);
+  Future<void> appendAssistantMessages(
+    String conversationId,
+    List<BackendAssistantMessage> messages,
+  );
+  Future<void> updateAssistantConversation(
+    String conversationId, {
+    String? title,
+    Map<String, dynamic>? activeDraft,
+  });
   Future<void> undoReservationAction(String actionId);
   Future<String> reservationAttachmentUrl(String path);
   Future<List<BackendNotification>> notifications();
@@ -2285,6 +2363,92 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       .from('reservation_requests')
       .stream(primaryKey: ['id'])
       .asyncMap((_) => reservations());
+
+  @override
+  Future<List<BackendAssistantConversation>> assistantConversations() async {
+    final rows = await _client
+        .from('assistant_conversations')
+        .select()
+        .order('last_activity_at', ascending: false)
+        .order('id', ascending: false);
+    return [
+      for (final row in rows as List)
+        BackendAssistantConversation.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
+    ];
+  }
+
+  @override
+  Future<BackendAssistantConversation> createAssistantConversation({
+    required String title,
+    Map<String, dynamic> activeDraft = const {},
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    final row = await _client
+        .from('assistant_conversations')
+        .insert({
+          'owner_id': currentUser.id,
+          'title': title.trim().isEmpty ? 'New chat' : title.trim(),
+          'active_draft': activeDraft,
+        })
+        .select()
+        .single();
+    return BackendAssistantConversation.fromJson(
+      Map<String, dynamic>.from(row),
+    );
+  }
+
+  @override
+  Future<List<BackendAssistantMessage>> assistantMessages(
+    String conversationId,
+  ) async {
+    final rows = await _client
+        .from('assistant_messages')
+        .select()
+        .eq('conversation_id', conversationId)
+        .order('created_at')
+        .order('id');
+    return [
+      for (final row in rows as List)
+        BackendAssistantMessage.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<void> appendAssistantMessages(
+    String conversationId,
+    List<BackendAssistantMessage> messages,
+  ) async {
+    if (messages.isEmpty) return;
+    await _client.from('assistant_messages').insert([
+      for (final message in messages)
+        {
+          'conversation_id': conversationId,
+          'sender': message.sender,
+          'message_type': message.messageType,
+          'text': message.text,
+          'payload': message.payload,
+          'reservation_id': message.reservationId,
+          'action': message.action,
+          'created_at': message.createdAt.toUtc().toIso8601String(),
+        },
+    ]);
+  }
+
+  @override
+  Future<void> updateAssistantConversation(
+    String conversationId, {
+    String? title,
+    Map<String, dynamic>? activeDraft,
+  }) async {
+    final values = <String, dynamic>{};
+    if (title != null) values['title'] = title.trim().isEmpty ? 'New chat' : title.trim();
+    if (activeDraft != null) values['active_draft'] = activeDraft;
+    if (values.isEmpty) return;
+    await _client.from('assistant_conversations').update(values).eq('id', conversationId);
+  }
 
   @override
   Future<List<BackendBusyWindow>> facilityBusyWindows({

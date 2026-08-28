@@ -64,8 +64,10 @@ SmartReserve has exactly three account roles: `user`, `internal_admin`, and
 `external_admin`. Student, faculty, staff, and outside-user selections are
 verification claim categories, not roles. Only a verified active `user`
 reserves without payment. Internal admins control facilities, verification,
-accounts, and audit; external admins receive read-only facility access and
-only released paid clients, reservations, calendar entries, and reports.
+accounts, and audit. External admins share read-only access to all feedback
+and a sanitized directory of eligible external clients, while reservation,
+calendar, payment, and report operations stay limited to their assigned
+facilities and external-lane records.
 
 Reservation prices are calculated in Supabase from duration and facility
 capacity. Client-provided amounts are ignored, so free access cannot be gained

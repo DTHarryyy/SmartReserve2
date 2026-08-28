@@ -57,7 +57,7 @@ class _PublicCalendarScreenState extends State<PublicCalendarScreen> {
 enum _CalendarSurface { admin, public }
 
 class _CalendarFrame extends StatefulWidget {
-  const _CalendarFrame({this.surface = _CalendarSurface.admin, super.key});
+  const _CalendarFrame({this.surface = _CalendarSurface.admin});
 
   final _CalendarSurface surface;
 

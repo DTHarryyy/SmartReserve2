@@ -546,8 +546,9 @@ const designNotes = <DesignNote>[
       'Users and administrators are rows in the same account table. Student, '
           'faculty, staff and outside-user labels belong to the verification '
           'claim, never the authorization role. Internal admins see the full '
-          'directory; external admins receive a separate sanitized list of '
-          'paying clients.',
+          'directory; external admins receive a shared sanitized list of '
+          'active guest or unverified clients with reservation or payment '
+          'activity.',
     ),
     NoteItem(
       'Actions on a user',

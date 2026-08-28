@@ -63,6 +63,23 @@ class AdministratorCreationResult {
   final String? error;
 }
 
+enum AvailabilitySource { live, demo, localFallback }
+
+class AvailabilitySnapshot {
+  const AvailabilitySnapshot({
+    required this.windows,
+    required this.source,
+    required this.fetchedAt,
+  });
+
+  final Map<String, List<BusyWindow>> windows;
+  final AvailabilitySource source;
+  final DateTime fetchedAt;
+
+  bool get isTrusted =>
+      source == AvailabilitySource.live || source == AvailabilitySource.demo;
+}
+
 class AppState extends ChangeNotifier {
   AppState({bool useDemoData = true}) : _useDemoData = useDemoData {
     facilities = useDemoData ? seedFacilities() : [];
@@ -357,6 +374,56 @@ class AppState extends ChangeNotifier {
 
   void configureBackend(SmartReserveBackend service) {
     backend = service;
+  }
+
+  bool get assistantHistoryAvailable =>
+      !_useDemoData && backend != null && hasSession;
+
+  Future<List<BackendAssistantConversation>> assistantConversations() async {
+    if (!assistantHistoryAvailable) return const [];
+    return backend!.assistantConversations();
+  }
+
+  Future<BackendAssistantConversation> createAssistantConversation({
+    required String title,
+    Map<String, dynamic> activeDraft = const {},
+  }) {
+    final service = backend;
+    if (!assistantHistoryAvailable || service == null) {
+      throw StateError('Chat history requires a signed-in account.');
+    }
+    return service.createAssistantConversation(
+      title: title,
+      activeDraft: activeDraft,
+    );
+  }
+
+  Future<List<BackendAssistantMessage>> assistantMessages(
+    String conversationId,
+  ) async {
+    if (!assistantHistoryAvailable) return const [];
+    return backend!.assistantMessages(conversationId);
+  }
+
+  Future<void> appendAssistantMessages(
+    String conversationId,
+    List<BackendAssistantMessage> messages,
+  ) async {
+    if (!assistantHistoryAvailable) return;
+    await backend!.appendAssistantMessages(conversationId, messages);
+  }
+
+  Future<void> updateAssistantConversation(
+    String conversationId, {
+    String? title,
+    Map<String, dynamic>? activeDraft,
+  }) async {
+    if (!assistantHistoryAvailable) return;
+    await backend!.updateAssistantConversation(
+      conversationId,
+      title: title,
+      activeDraft: activeDraft,
+    );
   }
 
   Future<void> initializeBackend() async {
@@ -4333,6 +4400,7 @@ class AppState extends ChangeNotifier {
 
   final Map<String, List<BusyWindow>> _busyCache = {};
   final Map<String, DateTime> _busyCacheAt = {};
+  final Map<String, AvailabilitySource> _busyCacheSource = {};
   static const _busyCacheTtl = Duration(seconds: 60);
 
   bool busyWindowsDegraded = false;
@@ -4360,56 +4428,107 @@ class AppState extends ChangeNotifier {
     required DateTime fromWall,
     required DateTime toWall,
   }) async {
-    if (targets.isEmpty) return {};
+    return (await availabilitySnapshotFor(
+      targets,
+      fromWall: fromWall,
+      toWall: toWall,
+    )).windows;
+  }
+
+  Future<AvailabilitySnapshot> availabilitySnapshotFor(
+    List<Facility> targets, {
+    required DateTime fromWall,
+    required DateTime toWall,
+    bool forceRefresh = false,
+  }) async {
+    if (targets.isEmpty) {
+      return AvailabilitySnapshot(
+        windows: const {},
+        source: _useDemoData
+            ? AvailabilitySource.demo
+            : AvailabilitySource.live,
+        fetchedAt: DateTime.now(),
+      );
+    }
     final keys = _busyKeysFor(targets, fromWall, toWall);
     final now = DateTime.now();
     final allCached = keys.every((key) {
       final cachedAt = _busyCacheAt[key];
       return cachedAt != null && now.difference(cachedAt) < _busyCacheTtl;
     });
-    if (allCached) {
-      return {for (final key in keys) key: _busyCache[key] ?? const []};
+    if (!forceRefresh && allCached) {
+      final sources = {for (final key in keys) _busyCacheSource[key]};
+      final source = sources.contains(AvailabilitySource.localFallback)
+          ? AvailabilitySource.localFallback
+          : _useDemoData
+          ? AvailabilitySource.demo
+          : AvailabilitySource.live;
+      return AvailabilitySnapshot(
+        windows: {for (final key in keys) key: _busyCache[key] ?? const []},
+        source: source,
+        fetchedAt: now,
+      );
     }
 
     var byKey = <String, List<BusyWindow>>{for (final key in keys) key: []};
+    var source = _useDemoData
+        ? AvailabilitySource.demo
+        : AvailabilitySource.localFallback;
     final service = backend;
     if (!_useDemoData && service != null && hasSession) {
       try {
         final ids = {for (final facility in targets) facility.id}.toList();
-        final rows = await service.facilityBusyWindows(
-          facilityIds: ids,
-          from: campusInstant(fromWall),
-          to: campusInstant(toWall),
-        );
-        for (final row in rows) {
-          final startWall = campusWallTime(row.startsAt);
-          final endWall = campusWallTime(row.endsAt);
-          final key = '${row.facilityId}|${dayKey(startWall)}';
-          byKey
-              .putIfAbsent(key, () => [])
-              .add(
-                BusyWindow(
-                  startWall.hour + startWall.minute / 60,
-                  endWall.hour + endWall.minute / 60,
-                ),
-              );
+        var cursor = DateTime(fromWall.year, fromWall.month, fromWall.day);
+        while (cursor.isBefore(toWall)) {
+          final chunkEnd = cursor.add(const Duration(days: 120));
+          final cappedEnd = chunkEnd.isBefore(toWall) ? chunkEnd : toWall;
+          final rows = await service.facilityBusyWindows(
+            facilityIds: ids,
+            from: campusInstant(cursor),
+            to: campusInstant(cappedEnd),
+          );
+          for (final row in rows) {
+            final startWall = campusWallTime(row.startsAt);
+            final endWall = campusWallTime(row.endsAt);
+            final key = '${row.facilityId}|${dayKey(startWall)}';
+            byKey
+                .putIfAbsent(key, () => [])
+                .add(
+                  BusyWindow(
+                    startWall.hour + startWall.minute / 60,
+                    endWall.hour + endWall.minute / 60,
+                  ),
+                );
+          }
+          cursor = cappedEnd;
         }
         _addOwnRequestsToBusyMap(targets, byKey);
         busyWindowsDegraded = false;
+        source = AvailabilitySource.live;
       } catch (_) {
         busyWindowsDegraded = true;
         byKey = _localBusyWindows(targets, fromWall, toWall);
+        source = AvailabilitySource.localFallback;
       }
     } else {
       byKey = _localBusyWindows(targets, fromWall, toWall);
+      source = _useDemoData
+          ? AvailabilitySource.demo
+          : AvailabilitySource.localFallback;
+      busyWindowsDegraded = !_useDemoData;
     }
 
     final stamped = now;
-    for (final entry in byKey.entries) {
-      _busyCache[entry.key] = entry.value;
-      _busyCacheAt[entry.key] = stamped;
+    for (final key in keys) {
+      _busyCache[key] = byKey[key] ?? const [];
+      _busyCacheAt[key] = stamped;
+      _busyCacheSource[key] = source;
     }
-    return {for (final key in keys) key: byKey[key] ?? const []};
+    return AvailabilitySnapshot(
+      windows: {for (final key in keys) key: byKey[key] ?? const []},
+      source: source,
+      fetchedAt: stamped,
+    );
   }
 
   String? _facilityIdFor(ReservationRequest request) =>
@@ -4429,8 +4548,8 @@ class AppState extends ChangeNotifier {
       final facilityId = _facilityIdFor(request);
       if (facilityId == null || !ids.contains(facilityId)) continue;
       for (final occurrence in request.occurrences) {
-        if (occurrence.bookingState == 'cancelled' ||
-            occurrence.bookingState == 'expired') {
+        if (occurrence.bookingState != 'held' &&
+            occurrence.bookingState != 'booked') {
           continue;
         }
         final startWall = campusWallTime(occurrence.startsAt);
@@ -4504,6 +4623,7 @@ class AppState extends ChangeNotifier {
     final key = '$facilityId|${dayKey(day)}';
     _busyCache.remove(key);
     _busyCacheAt.remove(key);
+    _busyCacheSource.remove(key);
   }
 
   static const _cancellableBookingStates = {
