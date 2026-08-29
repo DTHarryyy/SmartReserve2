@@ -74,6 +74,13 @@ class _FeedbackFormState extends State<_FeedbackForm> {
 
   Future<void> _submit() async {
     if (_rating == 0 || _submitting) return;
+    if (_commentController.text.trim().length > FeedbackLimits.commentMax) {
+      setState(() {
+        _error =
+            'Keep your comment under ${FeedbackLimits.commentMax} characters.';
+      });
+      return;
+    }
     setState(() => _error = null);
     final ok = await widget.state.submitFeedback(
       widget.request,
@@ -89,8 +96,7 @@ class _FeedbackFormState extends State<_FeedbackForm> {
     } else {
       setState(
         () => _error =
-            widget.state.feedbackError ??
-            'That could not be sent. Try again.',
+            widget.state.feedbackError ?? 'That could not be sent. Try again.',
       );
     }
   }
@@ -132,6 +138,9 @@ class _FeedbackFormState extends State<_FeedbackForm> {
     final c = context.srColors;
     final request = widget.request;
     final tier = FeedbackRating.fromValue(_rating);
+    final commentTooLong =
+        _commentController.text.trim().length > FeedbackLimits.commentMax;
+    final commentLength = _commentController.text.trim().length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -140,7 +149,10 @@ class _FeedbackFormState extends State<_FeedbackForm> {
           child: Row(
             children: [
               Expanded(
-                child: Text('Rate your visit', style: SrType.title(color: c.text)),
+                child: Text(
+                  'Rate your visit',
+                  style: SrType.title(color: c.text),
+                ),
               ),
               IconButton(
                 tooltip: 'Close',
@@ -242,21 +254,23 @@ class _FeedbackFormState extends State<_FeedbackForm> {
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      '${_commentController.text.length}/'
-                      '${FeedbackLimits.commentMax}',
+                      '$commentLength/${FeedbackLimits.commentMax}',
                       style: sans(
                         11,
                         w: 500,
-                        color:
-                            _commentController.text.length >
-                                FeedbackLimits.commentMax
+                        color: commentLength > FeedbackLimits.commentMax
                             ? c.error
                             : c.textMuted,
                       ),
                     ),
                   ),
                 ),
-                SrErrorText(_error),
+                SrErrorText(
+                  _error ??
+                      (commentTooLong
+                          ? 'Keep your comment under ${FeedbackLimits.commentMax} characters.'
+                          : null),
+                ),
               ],
             ),
           ),
@@ -268,7 +282,9 @@ class _FeedbackFormState extends State<_FeedbackForm> {
             label: _submitting ? 'Submitting…' : 'Submit feedback',
             kind: SrButtonKind.primary,
             expand: true,
-            onPressed: (_rating == 0 || _submitting) ? null : _submit,
+            onPressed: (_rating == 0 || _submitting || commentTooLong)
+                ? null
+                : _submit,
           ),
         ),
       ],

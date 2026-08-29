@@ -17,23 +17,27 @@ void main() {
     controller.stage = AssistantStage.needHeads;
   });
 
-  test('six-digit attendee input is rejected once without repeating prompt', () async {
-    await controller.send('213213', state);
+  test(
+    'six-digit attendee input is rejected once without repeating prompt',
+    () async {
+      await controller.send('213213', state);
 
-    expect(controller.draft.heads, isNull);
-    expect(controller.stage, AssistantStage.needHeads);
-    expect(
-      controller.messages
-          .where((message) => message.text.contains('exceeds'))
-          .length,
-      1,
-    );
-    expect(
-      controller.messages
-          .where((message) => message.text == 'About how many people?'),
-      isEmpty,
-    );
-  });
+      expect(controller.draft.heads, isNull);
+      expect(controller.stage, AssistantStage.needHeads);
+      expect(
+        controller.messages
+            .where((message) => message.text.contains('exceeds'))
+            .length,
+        1,
+      );
+      expect(
+        controller.messages.where(
+          (message) => message.text == 'About how many people?',
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   test('selected facility capacity is enforced for attendee input', () async {
     final overCapacity = controller.draft.facility!.capacity + 1;
@@ -48,15 +52,18 @@ void main() {
     );
   });
 
-  test('negative and decimal attendee inputs do not advance the draft', () async {
-    await controller.send('-5', state);
-    expect(controller.draft.heads, isNull);
-    expect(controller.stage, AssistantStage.needHeads);
-    expect(controller.messages.last.text, contains('cannot be negative'));
+  test(
+    'negative and decimal attendee inputs do not advance the draft',
+    () async {
+      await controller.send('-5', state);
+      expect(controller.draft.heads, isNull);
+      expect(controller.stage, AssistantStage.needHeads);
+      expect(controller.messages.last.text, contains('cannot be negative'));
 
-    await controller.send('12.5', state);
-    expect(controller.draft.heads, isNull);
-    expect(controller.stage, AssistantStage.needHeads);
-    expect(controller.messages.last.text, contains('whole number'));
-  });
+      await controller.send('12.5', state);
+      expect(controller.draft.heads, isNull);
+      expect(controller.stage, AssistantStage.needHeads);
+      expect(controller.messages.last.text, contains('whole number'));
+    },
+  );
 }

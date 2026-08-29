@@ -122,6 +122,28 @@ The `manage-users` function must be deployed before releasing a client that
 uses live account management. Keep `invite-admin` deployed during that rollout
 for compatibility with older clients.
 
+Feedback sentiment analysis is an asynchronous administrator-only analytics
+feature. Deploy `feedback-sentiment` with `SENTIMENT_ENABLED=false`, then set
+these Supabase Edge Function secrets before enabling it:
+
+```bash
+supabase secrets set GROQ_API_KEY=...
+supabase secrets set SENTIMENT_PROVIDER=groq
+supabase secrets set SENTIMENT_MODEL=openai/gpt-oss-20b
+supabase secrets set SENTIMENT_ANALYSIS_VERSION=1
+supabase secrets set SENTIMENT_WORKER_KEY=...
+supabase secrets set SENTIMENT_ENABLED=false
+```
+
+Store `smartreserve_function_url` and `smartreserve_sentiment_worker_key` in
+Supabase Vault for the scheduled Cron call. The worker sends only written
+feedback text to Groq, never ratings, identities, reservation metadata,
+payment data or loyalty data. Enable Groq Zero Data Retention and complete the
+institutional privacy review before setting `SENTIMENT_ENABLED=true`.
+Feedback submission remains valid if the worker, provider or schedule is
+disabled. Historical feedback can be queued later through the bounded
+backfill RPC after the new-feedback path has been observed.
+
 The final bootstrap migration creates `admin@csu.edu.ph` as the initial active
 internal administrator when that Auth email does not already exist. Its
 initial password is `admin123`; change it immediately through the password

@@ -73,130 +73,140 @@ void _makeGymplexCardDemanding(AppState state) {
 }
 
 void main() {
-  testWidgets('loyalty entry points are visible only for guest-priced renters', (
-    tester,
-  ) async {
-    final verified = AppState();
-    await verified.refreshLoyalty();
-    await _pumpScoped(
-      tester,
-      verified,
-      const StudentApp(),
-      size: const Size(900, 760),
-    );
-
-    expect(find.byKey(const Key('student-loyalty-chip')), findsNothing);
-    await _openAccountTab(tester);
-    expect(find.byKey(const Key('student-loyalty-entry')), findsNothing);
-
-    final guest = AppState()..signInAsUser('u5');
-    await _pumpScoped(
-      tester,
-      guest,
-      const StudentApp(),
-      size: const Size(900, 760),
-    );
-
-    expect(find.byKey(const Key('student-loyalty-chip')), findsOneWidget);
-    await _openAccountTab(tester);
-    expect(find.byKey(const Key('student-loyalty-entry')), findsOneWidget);
-
-    final pending = AppState()..signInAsUser('u3');
-    await _pumpScoped(
-      tester,
-      pending,
-      const StudentApp(),
-      size: const Size(900, 760),
-    );
-
-    expect(find.byKey(const Key('student-loyalty-chip')), findsOneWidget);
-  });
-
-  testWidgets('stale loyalty navigation for verified renters shows unavailable', (
-    tester,
-  ) async {
-    final state = AppState();
-    await state.refreshLoyalty();
-
-    await _pumpScoped(
-      tester,
-      state,
-      const LoyaltyPage(),
-      size: const Size(430, 760),
-    );
-
-    expect(find.text('Loyalty is available to guest renters'), findsOneWidget);
-    expect(find.text('Available balance'), findsNothing);
-    expect(find.text('Redeem'), findsNothing);
-  });
-
-  testWidgets('browse cards with ratings and amenities do not overflow compact', (
-    tester,
-  ) async {
-    final errors = <FlutterErrorDetails>[];
-    final previous = _collectFlutterErrors(errors);
-    addTearDown(() => _restoreFlutterErrors(previous));
-
-    final state = AppState();
-    _makeGymplexCardDemanding(state);
-
-    await _pumpScoped(
-      tester,
-      state,
-      const StudentApp(),
-      size: const Size(430, 760),
-    );
-
-    expect(find.text('Gymplex'), findsOneWidget);
-    expect(
-      errors.where(
-        (error) => error.exceptionAsString().contains('RenderFlex overflowed'),
-      ),
-      isEmpty,
-    );
-  });
-
-  testWidgets('browse cards with ratings and amenities do not overflow desktop', (
-    tester,
-  ) async {
-    final errors = <FlutterErrorDetails>[];
-    final previous = _collectFlutterErrors(errors);
-    addTearDown(() => _restoreFlutterErrors(previous));
-
-    final state = AppState();
-    _makeGymplexCardDemanding(state);
-
-    await _pumpScoped(
-      tester,
-      state,
-      const StudentApp(),
-      size: const Size(1180, 840),
-    );
-
-    expect(find.text('Gymplex'), findsOneWidget);
-    expect(
-      errors.where(
-        (error) => error.exceptionAsString().contains('RenderFlex overflowed'),
-      ),
-      isEmpty,
-    );
-  });
-
-  testWidgets('calendar tab is available for active users in every verification state', (
-    tester,
-  ) async {
-    for (final userId in ['u1', 'u3', 'u5', 'u6']) {
-      final state = AppState()..signInAsUser(userId);
+  testWidgets(
+    'loyalty entry points are visible only for guest-priced renters',
+    (tester) async {
+      final verified = AppState();
+      await verified.refreshLoyalty();
       await _pumpScoped(
         tester,
-        state,
+        verified,
         const StudentApp(),
         size: const Size(900, 760),
       );
 
-      expect(find.text('Calendar'), findsWidgets);
-    }
-  });
+      expect(find.byKey(const Key('student-loyalty-chip')), findsNothing);
+      await _openAccountTab(tester);
+      expect(find.byKey(const Key('student-loyalty-entry')), findsNothing);
+
+      final guest = AppState()..signInAsUser('u5');
+      await _pumpScoped(
+        tester,
+        guest,
+        const StudentApp(),
+        size: const Size(900, 760),
+      );
+
+      expect(find.byKey(const Key('student-loyalty-chip')), findsOneWidget);
+      await _openAccountTab(tester);
+      expect(find.byKey(const Key('student-loyalty-entry')), findsOneWidget);
+
+      final pending = AppState()..signInAsUser('u3');
+      await _pumpScoped(
+        tester,
+        pending,
+        const StudentApp(),
+        size: const Size(900, 760),
+      );
+
+      expect(find.byKey(const Key('student-loyalty-chip')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'stale loyalty navigation for verified renters shows unavailable',
+    (tester) async {
+      final state = AppState();
+      await state.refreshLoyalty();
+
+      await _pumpScoped(
+        tester,
+        state,
+        const LoyaltyPage(),
+        size: const Size(430, 760),
+      );
+
+      expect(
+        find.text('Loyalty is available to guest renters'),
+        findsOneWidget,
+      );
+      expect(find.text('Available balance'), findsNothing);
+      expect(find.text('Redeem'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'browse cards with ratings and amenities do not overflow compact',
+    (tester) async {
+      final errors = <FlutterErrorDetails>[];
+      final previous = _collectFlutterErrors(errors);
+      addTearDown(() => _restoreFlutterErrors(previous));
+
+      final state = AppState();
+      _makeGymplexCardDemanding(state);
+
+      await _pumpScoped(
+        tester,
+        state,
+        const StudentApp(),
+        size: const Size(430, 760),
+      );
+
+      expect(find.text('Gymplex'), findsOneWidget);
+      expect(
+        errors.where(
+          (error) =>
+              error.exceptionAsString().contains('RenderFlex overflowed'),
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'browse cards with ratings and amenities do not overflow desktop',
+    (tester) async {
+      final errors = <FlutterErrorDetails>[];
+      final previous = _collectFlutterErrors(errors);
+      addTearDown(() => _restoreFlutterErrors(previous));
+
+      final state = AppState();
+      _makeGymplexCardDemanding(state);
+
+      await _pumpScoped(
+        tester,
+        state,
+        const StudentApp(),
+        size: const Size(1180, 840),
+      );
+
+      expect(find.text('Gymplex'), findsOneWidget);
+      expect(
+        errors.where(
+          (error) =>
+              error.exceptionAsString().contains('RenderFlex overflowed'),
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'calendar tab is available for active users in every verification state',
+    (tester) async {
+      for (final userId in ['u1', 'u3', 'u5', 'u6']) {
+        final state = AppState()..signInAsUser(userId);
+        await _pumpScoped(
+          tester,
+          state,
+          const StudentApp(),
+          size: const Size(900, 760),
+        );
+
+        expect(find.text('Calendar'), findsWidgets);
+      }
+    },
+  );
 
   testWidgets('public calendar masks reservation details on compact layout', (
     tester,

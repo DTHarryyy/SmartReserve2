@@ -87,11 +87,11 @@ class CalendarEvent {
 
   String get effectiveStatusLabel => statusLabel ?? state.label;
 
-  String get effectiveSummaryLabel =>
-      summaryLabel ?? '$requester · $purpose';
+  String get effectiveSummaryLabel => summaryLabel ?? '$requester · $purpose';
 
-  String get eventChipLabel =>
-      privacyMasked ? '$facility · $effectiveStatusLabel' : '$facility · $requester';
+  String get eventChipLabel => privacyMasked
+      ? '$facility · $effectiveStatusLabel'
+      : '$facility · $requester';
 
   bool overlapsDay(DateTime day) {
     final start = DateTime(day.year, day.month, day.day);

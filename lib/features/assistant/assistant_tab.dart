@@ -15,11 +15,7 @@ import 'assistant_controller.dart';
 import '../../theme/sr_theme.dart';
 
 class AssistantTab extends StatefulWidget {
-  const AssistantTab({
-    super.key,
-    required this.controller,
-    this.onOpenPicker,
-  });
+  const AssistantTab({super.key, required this.controller, this.onOpenPicker});
 
   final AssistantController controller;
   final Future<void> Function()? onOpenPicker;
@@ -87,51 +83,58 @@ class _AssistantTabState extends State<AssistantTab> {
             child: controller.historyLoading
                 ? const Center(child: CircularProgressIndicator())
                 : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: ListView.builder(
-                  controller: _scroll,
-                  padding: EdgeInsets.fromLTRB(
-                    narrow ? 14 : 20,
-                    16,
-                    narrow ? 14 : 20,
-                    10,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: ListView.builder(
+                        controller: _scroll,
+                        padding: EdgeInsets.fromLTRB(
+                          narrow ? 14 : 20,
+                          16,
+                          narrow ? 14 : 20,
+                          10,
+                        ),
+                        itemCount: controller.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = controller.messages[index];
+                          if (message.kind == AssistantMessageKind.chips) {
+                            return const SizedBox.shrink();
+                          }
+                          final previous = index == 0
+                              ? null
+                              : controller.messages[index - 1];
+                          final showDate =
+                              previous == null ||
+                              !_sameChatDate(
+                                previous.createdAt,
+                                message.createdAt,
+                              );
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showDate) _dateDivider(message.createdAt),
+                              AssistantBubble(message: message),
+                              if (message.kind ==
+                                  AssistantMessageKind.facilities)
+                                AssistantFacilityListView(
+                                  facilities: message.facilities,
+                                  controller: controller,
+                                ),
+                              if (message.kind ==
+                                  AssistantMessageKind.reservations)
+                                AssistantReservationListView(
+                                  reservations: message.reservations,
+                                  controller: controller,
+                                ),
+                              if (message.kind == AssistantMessageKind.confirm)
+                                AssistantConfirmCard(controller: controller),
+                              if (message.kind == AssistantMessageKind.activity)
+                                AssistantActivityCard(message: message),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                  itemCount: controller.messages.length,
-                  itemBuilder: (context, index) {
-                    final message = controller.messages[index];
-                    if (message.kind == AssistantMessageKind.chips) {
-                      return const SizedBox.shrink();
-                    }
-                    final previous =
-                        index == 0 ? null : controller.messages[index - 1];
-                    final showDate = previous == null ||
-                        !_sameChatDate(previous.createdAt, message.createdAt);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (showDate) _dateDivider(message.createdAt),
-                        AssistantBubble(message: message),
-                        if (message.kind == AssistantMessageKind.facilities)
-                          AssistantFacilityListView(
-                            facilities: message.facilities,
-                            controller: controller,
-                          ),
-                        if (message.kind == AssistantMessageKind.reservations)
-                          AssistantReservationListView(
-                            reservations: message.reservations,
-                            controller: controller,
-                          ),
-                        if (message.kind == AssistantMessageKind.confirm)
-                          AssistantConfirmCard(controller: controller),
-                        if (message.kind == AssistantMessageKind.activity)
-                          AssistantActivityCard(message: message),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
           ),
           if (controller.busy) _typingIndicator(narrow),
           SafeArea(
@@ -143,7 +146,9 @@ class _AssistantTabState extends State<AssistantTab> {
     );
   }
 
-  List<AssistantChipOption> _latestQuickReplies(AssistantController controller) {
+  List<AssistantChipOption> _latestQuickReplies(
+    AssistantController controller,
+  ) {
     if (controller.messages.isEmpty) {
       return const <AssistantChipOption>[];
     }
@@ -190,7 +195,11 @@ class _AssistantTabState extends State<AssistantTab> {
     ),
     child: Row(
       children: [
-        Icon(Icons.history_toggle_off_rounded, size: 16, color: context.srColors.warning),
+        Icon(
+          Icons.history_toggle_off_rounded,
+          size: 16,
+          color: context.srColors.warning,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -198,7 +207,10 @@ class _AssistantTabState extends State<AssistantTab> {
             style: sans(10.5, color: context.srColors.amberInk),
           ),
         ),
-        TextButton(onPressed: controller.retryHistorySave, child: const Text('Retry')),
+        TextButton(
+          onPressed: controller.retryHistorySave,
+          child: const Text('Retry'),
+        ),
       ],
     ),
   );

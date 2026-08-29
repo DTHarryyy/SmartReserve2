@@ -316,7 +316,8 @@ class ReservationRequest {
   /// this getter only decides what the UI offers, never what is allowed.
   bool get permitEligible =>
       lifecycleStatus == ReservationLifecycleStatus.confirmed &&
-      (totalAmountCentavos == 0 || verifiedAmountCentavos >= totalAmountCentavos);
+      (totalAmountCentavos == 0 ||
+          verifiedAmountCentavos >= totalAmountCentavos);
 
   String get initials => requester
       .replaceAll(RegExp(r'^(Prof\.|Dr\.|Atty\.|Ms\.|Mr\.|Dean|Coach)\s+'), '')

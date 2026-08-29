@@ -1,3 +1,5 @@
+// ignore_for_file: control_flow_in_finally
+
 library;
 
 import 'dart:async';
@@ -167,12 +169,16 @@ class _AssistantChatPageState extends State<AssistantChatPage> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text('Chat history', style: sans(18, w: 600)),
+                              child: Text(
+                                'Chat history',
+                                style: sans(18, w: 600),
+                              ),
                             ),
                             IconButton(
                               tooltip: 'Refresh chat history',
                               onPressed: state.assistantHistoryAvailable
-                                  ? () => widget.controller.refreshHistory(state)
+                                  ? () =>
+                                        widget.controller.refreshHistory(state)
                                   : null,
                               icon: const Icon(Icons.refresh_rounded),
                             ),
@@ -186,7 +192,9 @@ class _AssistantChatPageState extends State<AssistantChatPage> {
                           child: FilledButton.icon(
                             onPressed: () async {
                               await widget.controller.newConversation(state);
-                              if (sheetContext.mounted) Navigator.pop(sheetContext);
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
                             },
                             icon: const Icon(Icons.edit_note_rounded),
                             label: const Text('New chat'),
@@ -201,7 +209,10 @@ class _AssistantChatPageState extends State<AssistantChatPage> {
                                   state.assistantHistoryAvailable
                                       ? 'No saved chats yet.'
                                       : 'Chat history is available after you sign in.',
-                                  style: sans(12.5, color: context.srColors.textMuted),
+                                  style: sans(
+                                    12.5,
+                                    color: context.srColors.textMuted,
+                                  ),
                                   textAlign: TextAlign.center,
                                 ),
                               )
@@ -213,23 +224,39 @@ class _AssistantChatPageState extends State<AssistantChatPage> {
                                 ),
                                 itemBuilder: (context, index) {
                                   final item = conversations[index];
-                                  final selected = item.id == widget.controller.conversationId;
+                                  final selected =
+                                      item.id ==
+                                      widget.controller.conversationId;
                                   return ListTile(
                                     selected: selected,
                                     leading: Icon(
                                       selected
                                           ? Icons.forum_rounded
                                           : Icons.chat_bubble_outline_rounded,
-                                      color: selected ? context.srColors.brand : null,
+                                      color: selected
+                                          ? context.srColors.brand
+                                          : null,
                                     ),
-                                    title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    title: Text(
+                                      item.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                     subtitle: Text(
                                       _historyDate(item.lastActivityAt),
-                                      style: sans(11, color: context.srColors.textMuted),
+                                      style: sans(
+                                        11,
+                                        color: context.srColors.textMuted,
+                                      ),
                                     ),
                                     onTap: () async {
-                                      await widget.controller.openConversation(item, state);
-                                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                                      await widget.controller.openConversation(
+                                        item,
+                                        state,
+                                      );
+                                      if (sheetContext.mounted) {
+                                        Navigator.pop(sheetContext);
+                                      }
                                     },
                                   );
                                 },
@@ -320,7 +347,11 @@ class _ChatHeader extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: LinearGradient(colors: [colors.brand, colors.accent]),
             ),
-            child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Colors.white),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              size: 18,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -328,17 +359,26 @@ class _ChatHeader extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('SmartReserve AI', style: sans(15, w: 600, tracking: -.02)),
+                Text(
+                  'SmartReserve AI',
+                  style: sans(15, w: 600, tracking: -.02),
+                ),
                 const SizedBox(height: 1),
                 Row(
                   children: [
                     Container(
                       width: 6,
                       height: 6,
-                      decoration: BoxDecoration(color: colors.accent, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: colors.accent,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                     const SizedBox(width: 5),
-                    Text('Reservation assistant', style: sans(10.5, color: colors.textMuted)),
+                    Text(
+                      'Reservation assistant',
+                      style: sans(10.5, color: colors.textMuted),
+                    ),
                   ],
                 ),
               ],

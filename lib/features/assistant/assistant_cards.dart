@@ -93,13 +93,18 @@ class AssistantBubble extends StatelessWidget {
                   colors: [context.srColors.brand, context.srColors.accent],
                 ),
               ),
-              child: const Icon(Icons.auto_awesome_rounded, size: 13, color: Colors.white),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                size: 13,
+                color: Colors.white,
+              ),
             ),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 bubble,
                 const SizedBox(height: 3),
@@ -132,41 +137,49 @@ class AssistantActivityCard extends StatelessWidget {
       }
     }
     return Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      decoration: BoxDecoration(
-        color: context.srColors.successContainer,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.srColors.greenLine),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.check_circle_rounded, size: 17, color: context.srColors.success),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  message.text,
-                  style: sans(11.5, w: 500, color: context.srColors.greenDeep),
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(
+          color: context.srColors.successContainer,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: context.srColors.greenLine),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 17,
+                  color: context.srColors.success,
                 ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    message.text,
+                    style: sans(
+                      11.5,
+                      w: 500,
+                      color: context.srColors.greenDeep,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (linked != null) ...[
+              const SizedBox(height: 8),
+              SrPill(
+                label: 'Current status: ${linked.status.label}',
+                background: linked.status.background,
+                foreground: linked.status.foreground,
               ),
             ],
-          ),
-          if (linked != null) ...[
-            const SizedBox(height: 8),
-            SrPill(
-              label: 'Current status: ${linked.status.label}',
-              background: linked.status.background,
-              foreground: linked.status.foreground,
-            ),
           ],
-        ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }
 

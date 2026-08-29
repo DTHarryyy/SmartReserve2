@@ -149,10 +149,18 @@ class SrColors extends ThemeExtension<SrColors> {
       BoxShadow(color: Color(0x1A0B1B33), blurRadius: 18, offset: Offset(0, 5)),
     ],
     popoverShadow: [
-      BoxShadow(color: Color(0x290B1B33), blurRadius: 34, offset: Offset(0, 16)),
+      BoxShadow(
+        color: Color(0x290B1B33),
+        blurRadius: 34,
+        offset: Offset(0, 16),
+      ),
     ],
     dialogShadow: [
-      BoxShadow(color: Color(0x520B1B33), blurRadius: 70, offset: Offset(0, 30)),
+      BoxShadow(
+        color: Color(0x520B1B33),
+        blurRadius: 70,
+        offset: Offset(0, 30),
+      ),
     ],
   );
 
@@ -216,10 +224,18 @@ class SrColors extends ThemeExtension<SrColors> {
       BoxShadow(color: Color(0x66000000), blurRadius: 18, offset: Offset(0, 6)),
     ],
     popoverShadow: [
-      BoxShadow(color: Color(0x8A000000), blurRadius: 34, offset: Offset(0, 16)),
+      BoxShadow(
+        color: Color(0x8A000000),
+        blurRadius: 34,
+        offset: Offset(0, 16),
+      ),
     ],
     dialogShadow: [
-      BoxShadow(color: Color(0xB3000000), blurRadius: 70, offset: Offset(0, 30)),
+      BoxShadow(
+        color: Color(0xB3000000),
+        blurRadius: 70,
+        offset: Offset(0, 30),
+      ),
     ],
   );
 
@@ -717,11 +733,10 @@ abstract final class SrThemeData {
 /// (including whatever the root [Navigator]/[Overlay] is currently showing,
 /// so open dialogs and bottom sheets repaint too) on the next frame.
 ///
-/// TODO(theme-migration): delete this bridge once every `SR.*` colour read
-/// has been migrated to `context.srColors` (see the theming implementation
-/// plan, Stage 7). At that point every colour will be resolved from
-/// [BuildContext] directly and Flutter's normal dependency tracking is
-/// enough on its own.
+/// Migration note: delete this bridge once every `SR.*` colour read has been
+/// migrated to `context.srColors` (see the theming implementation plan,
+/// Stage 7). At that point every colour will be resolved from [BuildContext]
+/// directly and Flutter's normal dependency tracking is enough on its own.
 class SrThemeBridge extends StatefulWidget {
   const SrThemeBridge({super.key, required this.child});
 

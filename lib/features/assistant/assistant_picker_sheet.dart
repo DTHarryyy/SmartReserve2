@@ -44,12 +44,11 @@ class AssistantPickerResult {
         facility: facility,
       );
 
-  factory AssistantPickerResult.date(DateTime date) =>
-      AssistantPickerResult._(
-        kind: AssistantPickerKind.date,
-        action: AssistantPickerResultAction.select,
-        date: date,
-      );
+  factory AssistantPickerResult.date(DateTime date) => AssistantPickerResult._(
+    kind: AssistantPickerKind.date,
+    action: AssistantPickerResultAction.select,
+    date: date,
+  );
 
   factory AssistantPickerResult.time(double startHour, double endHour) =>
       AssistantPickerResult._(
@@ -193,9 +192,9 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
               widget.prompt.error ??
               'Please retry so I can scan the current schedule.',
           actionLabel: 'Retry',
-          onAction: () => Navigator.of(context).pop(
-            AssistantPickerResult.retry(widget.prompt.kind),
-          ),
+          onAction: () => Navigator.of(
+            context,
+          ).pop(AssistantPickerResult.retry(widget.prompt.kind)),
         );
       case AssistantPickerStatus.empty:
         return _StatusPanel(
@@ -205,9 +204,9 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
               widget.prompt.error ??
               'Try changing the facility, date, or attendee count.',
           actionLabel: 'Retry',
-          onAction: () => Navigator.of(context).pop(
-            AssistantPickerResult.retry(widget.prompt.kind),
-          ),
+          onAction: () => Navigator.of(
+            context,
+          ).pop(AssistantPickerResult.retry(widget.prompt.kind)),
         );
       case AssistantPickerStatus.ready:
         return switch (widget.prompt) {
@@ -256,9 +255,9 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
             _FacilityOption(
               facility: facility,
               state: widget.state,
-              onTap: () => Navigator.of(context).pop(
-                AssistantPickerResult.facility(facility),
-              ),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(AssistantPickerResult.facility(facility)),
             ),
           if (matches.isEmpty)
             Padding(
@@ -280,9 +279,9 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
           _FacilityOption(
             facility: facility,
             state: widget.state,
-            onTap: () => Navigator.of(context).pop(
-              AssistantPickerResult.facility(facility),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).pop(AssistantPickerResult.facility(facility)),
           ),
         _WideActionButton(
           icon: Icons.manage_search_rounded,
@@ -313,9 +312,8 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
             selectableDayPredicate: (day) => prompt.availableDays.contains(
               DateTime(day.year, day.month, day.day),
             ),
-            onDateChanged: (date) => Navigator.of(context).pop(
-              AssistantPickerResult.date(date),
-            ),
+            onDateChanged: (date) =>
+                Navigator.of(context).pop(AssistantPickerResult.date(date)),
           ),
         ],
       );
@@ -327,9 +325,8 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
         for (final day in prompt.recommended)
           _DateOption(
             day: day,
-            onTap: () => Navigator.of(context).pop(
-              AssistantPickerResult.date(day.day),
-            ),
+            onTap: () =>
+                Navigator.of(context).pop(AssistantPickerResult.date(day.day)),
           ),
         _WideActionButton(
           icon: Icons.calendar_month_rounded,
@@ -348,9 +345,9 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
         for (final slot in prompt.recommended)
           _TimeOption(
             slot: slot,
-            onTap: () => Navigator.of(context).pop(
-              AssistantPickerResult.time(slot.startHour, slot.endHour),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).pop(AssistantPickerResult.time(slot.startHour, slot.endHour)),
           ),
         _WideActionButton(
           icon: Icons.schedule_rounded,
@@ -370,8 +367,14 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
   }
 
   Widget _customTimeBody(BuildContext context, TimePickerPrompt prompt) {
-    final starts = _halfHours(prompt.openHour.toDouble(), prompt.closeHour.toDouble());
-    final ends = _halfHours(prompt.openHour.toDouble() + .5, prompt.closeHour.toDouble());
+    final starts = _halfHours(
+      prompt.openHour.toDouble(),
+      prompt.closeHour.toDouble(),
+    );
+    final ends = _halfHours(
+      prompt.openHour.toDouble() + .5,
+      prompt.closeHour.toDouble(),
+    );
     final start = _startHour;
     final end = _endHour;
     final String statusText;
@@ -383,9 +386,8 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
       final problem = _customTimeProblem(prompt, start, end);
       if (problem == null) {
         statusText = 'Available for ${((end - start) * 60).round()} minutes.';
-        useTime = () => Navigator.of(context).pop(
-          AssistantPickerResult.time(start, end),
-        );
+        useTime = () =>
+            Navigator.of(context).pop(AssistantPickerResult.time(start, end));
       } else {
         statusText = problem;
         useTime = null;
@@ -441,7 +443,9 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
                   for (final hour in ends)
                     DropdownMenuItem<double>(
                       value: hour,
-                      enabled: start != null && _validCustomTime(prompt, start, hour),
+                      enabled:
+                          start != null &&
+                          _validCustomTime(prompt, start, hour),
                       child: Text(formatClockHour(hour)),
                     ),
                 ],
@@ -483,7 +487,8 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
   bool _startSelectable(TimePickerPrompt prompt, double start) {
     if (start < prompt.openHour || start >= prompt.closeHour) return false;
     final now = campusNow();
-    final sameDay = now.year == prompt.day.year &&
+    final sameDay =
+        now.year == prompt.day.year &&
         now.month == prompt.day.month &&
         now.day == prompt.day.day;
     if (!sameDay) return true;
@@ -494,7 +499,11 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
   bool _validCustomTime(TimePickerPrompt prompt, double start, double end) =>
       _customTimeProblem(prompt, start, end) == null;
 
-  String? _customTimeProblem(TimePickerPrompt prompt, double start, double end) {
+  String? _customTimeProblem(
+    TimePickerPrompt prompt,
+    double start,
+    double end,
+  ) {
     if (!_startSelectable(prompt, start)) {
       return 'Start time is outside the bookable window.';
     }
@@ -527,7 +536,9 @@ class _FacilityOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rate = facility.hourlyRateCentavosFor(state.userAccount.pricingAudience);
+    final rate = facility.hourlyRateCentavosFor(
+      state.userAccount.pricingAudience,
+    );
     return _OptionShell(
       key: ValueKey(assistantFacilityOptionId(facility)),
       semanticLabel: 'Choose ${facility.name}',
@@ -560,7 +571,9 @@ class _FacilityOption extends StatelessWidget {
                 monospace: true,
               ),
               SrPill(
-                label: rate == 0 ? 'Included' : '${pesoFromCentavos(rate * 2)} / 2h',
+                label: rate == 0
+                    ? 'Included'
+                    : '${pesoFromCentavos(rate * 2)} / 2h',
                 background: context.srColors.primaryTint,
                 foreground: context.srColors.primaryDeep,
               ),

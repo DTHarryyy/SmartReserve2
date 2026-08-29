@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 
 import 'file_export_web.dart' if (dart.library.io) 'file_export_io.dart';
@@ -51,7 +50,8 @@ Future<FileExportResult> saveBinaryFile({
   required String baseName,
   required String extension,
   required Uint8List bytes,
-}) => saveBinaryFileImpl(baseName: baseName, extension: extension, bytes: bytes);
+}) =>
+    saveBinaryFileImpl(baseName: baseName, extension: extension, bytes: bytes);
 
 /// Opens the OS file manager with [path] pre-selected. Only call this when
 /// the [FileExportResult] that produced [path] had `revealSupported: true` —

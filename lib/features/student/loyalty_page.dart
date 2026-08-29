@@ -76,8 +76,7 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
         final unavailable =
             !state.shouldRefreshLoyaltyForCurrentUser ||
             loyalty?.eligible == false;
-        final failedInitialLoad =
-            state.loyaltyError != null && loyalty == null;
+        final failedInitialLoad = state.loyaltyError != null && loyalty == null;
         final loadingInitial =
             state.loyaltyLoading ||
             (loyalty == null && state.loyaltyError == null);

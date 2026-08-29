@@ -153,7 +153,8 @@ class TimePickerPrompt extends AssistantPickerPrompt {
   final double requiredDurationHours;
 }
 
-String assistantFacilityOptionId(Facility facility) => 'facility:${facility.id}';
+String assistantFacilityOptionId(Facility facility) =>
+    'facility:${facility.id}';
 
 String assistantDateOptionId(DateTime day) => 'date:${dayKey(day)}';
 
@@ -371,10 +372,7 @@ class AssistantController extends ChangeNotifier {
   bool get submitting => _submitting;
   bool get hasHistory => conversationId != null;
 
-  Future<void> initialize(
-    AppState state, {
-    bool freshVisit = false,
-  }) async {
+  Future<void> initialize(AppState state, {bool freshVisit = false}) async {
     final accountId = state.userAccount.id;
     if (freshVisit && _accountId == accountId && _isResumableStage(stage)) {
       _state = state;
@@ -405,7 +403,9 @@ class AssistantController extends ChangeNotifier {
       if (state.assistantHistoryAvailable) {
         conversations.addAll(await state.assistantConversations());
         final resumable = conversations
-            .where((conversation) => _isResumableDraft(conversation.activeDraft))
+            .where(
+              (conversation) => _isResumableDraft(conversation.activeDraft),
+            )
             .firstOrNull;
         if (resumable != null) {
           await _loadConversation(resumable, state);
@@ -755,8 +755,7 @@ class AssistantController extends ChangeNotifier {
       return const _HeadcountParse(problem: _HeadcountProblem.ambiguous);
     }
     final token = matches.single.group(0)!;
-    if (token.contains(',') &&
-        !RegExp(r'^\d{1,3}(,\d{3})+$').hasMatch(token)) {
+    if (token.contains(',') && !RegExp(r'^\d{1,3}(,\d{3})+$').hasMatch(token)) {
       return const _HeadcountParse(problem: _HeadcountProblem.fractional);
     }
     final value = int.tryParse(token.replaceAll(',', ''));
@@ -810,8 +809,7 @@ class AssistantController extends ChangeNotifier {
     final message = switch (parsed.problem) {
       _HeadcountProblem.negative =>
         'Attendee count cannot be negative. Enter a whole number, like 25.',
-      _HeadcountProblem.fractional =>
-        'Use a whole number of people, like 25.',
+      _HeadcountProblem.fractional => 'Use a whole number of people, like 25.',
       _HeadcountProblem.ambiguous =>
         'I saw more than one number. Enter just the attendee count, like 25.',
       _HeadcountProblem.missing =>
@@ -1617,8 +1615,7 @@ class AssistantController extends ChangeNotifier {
             startHour: start,
             endHour: end,
             heads: draft.heads ?? 1,
-            busy:
-                snapshot.windows['${facility.id}|${dayKey(day)}'] ?? const [],
+            busy: snapshot.windows['${facility.id}|${dayKey(day)}'] ?? const [],
             nowWall: campusNow(),
           ).ok)
             facility,
@@ -1650,7 +1647,8 @@ class AssistantController extends ChangeNotifier {
     final today = DateTime(now.year, now.month, now.day);
     final lastDate = today.add(Duration(days: facility.advanceBookingDays));
     final duration = _requestedDurationHours();
-    final key = 'date|${facility.id}|${dayKey(today)}|${duration.toStringAsFixed(2)}';
+    final key =
+        'date|${facility.id}|${dayKey(today)}|${duration.toStringAsFixed(2)}';
     if (!force && _lastPromptKey == key && activePicker != null) return;
 
     _sayStageQuestion('Choose a date for ${facility.name}.');
@@ -1747,7 +1745,8 @@ class AssistantController extends ChangeNotifier {
       _setTimeErrorPrompt(facility, day, revision: revision);
       return;
     }
-    final windows = snapshot.windows['${facility.id}|${dayKey(day)}'] ?? const [];
+    final windows =
+        snapshot.windows['${facility.id}|${dayKey(day)}'] ?? const [];
     final slots = freeSlotsForDay(
       facility: facility,
       day: day,
@@ -1808,11 +1807,7 @@ class AssistantController extends ChangeNotifier {
     );
   }
 
-  void _setTimeErrorPrompt(
-    Facility facility,
-    DateTime day, {
-    int? revision,
-  }) {
+  void _setTimeErrorPrompt(Facility facility, DateTime day, {int? revision}) {
     activePicker = TimePickerPrompt(
       revision: revision ?? _nextPickerRevision(),
       status: AssistantPickerStatus.error,
@@ -1898,10 +1893,7 @@ class AssistantController extends ChangeNotifier {
               : '${_formatCount(heads)} people exceeds ${facility.name}\'s capacity of ${_formatCount(facility.capacity)}. Enter 1-${_formatCount(facility.capacity)}, or choose another facility.',
           tone: AdvisoryTone.block,
         );
-        _suggestBiggerFacilities(
-          (draft.heads ?? facility.capacity) + 1,
-          state,
-        );
+        _suggestBiggerFacilities((draft.heads ?? facility.capacity) + 1, state);
         draft.heads = null;
         break;
       case SlotIssue.clash:
@@ -2350,9 +2342,7 @@ class AssistantController extends ChangeNotifier {
       nowWall: campusNow(),
     );
     if (slots.isEmpty) {
-      _say(
-        '${facility.name} looks fully booked on ${formatCampusDate(day)}.',
-      );
+      _say('${facility.name} looks fully booked on ${formatCampusDate(day)}.');
       return;
     }
     _say('${facility.name} is open ${formatCampusDate(day)}:');

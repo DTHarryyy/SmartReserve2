@@ -937,6 +937,12 @@ double? _decimal(Object? value) => switch (value) {
   _ => null,
 };
 
+int _int(Object? value) => switch (value) {
+  num n => n.toInt(),
+  String s => int.tryParse(s) ?? 0,
+  _ => 0,
+};
+
 Map<String, dynamic>? _embeddedOne(Object? value) {
   if (value is Map) return Map<String, dynamic>.from(value);
   if (value is List && value.isNotEmpty) {
@@ -1023,6 +1029,119 @@ class AuditPage {
   );
 }
 
+class BackendFeedbackTopicSentiment {
+  const BackendFeedbackTopicSentiment({
+    required this.topic,
+    required this.sentiment,
+  });
+
+  final FeedbackTopic topic;
+  final SentimentLabel sentiment;
+
+  factory BackendFeedbackTopicSentiment.fromJson(Map<String, dynamic> json) {
+    final topic = FeedbackTopic.fromValue('${json['topic'] ?? ''}');
+    final sentiment = SentimentLabel.fromValue('${json['sentiment'] ?? ''}');
+    if (topic == null ||
+        sentiment == null ||
+        sentiment == SentimentLabel.unknown) {
+      throw const FormatException('Feedback topic sentiment is invalid.');
+    }
+    return BackendFeedbackTopicSentiment(topic: topic, sentiment: sentiment);
+  }
+
+  FeedbackTopicSentiment toModel() =>
+      FeedbackTopicSentiment(topic: topic, sentiment: sentiment);
+}
+
+class BackendFeedbackSentimentAnalysis {
+  const BackendFeedbackSentimentAnalysis({
+    required this.id,
+    required this.feedbackId,
+    required this.analysisVersion,
+    required this.status,
+    this.sentiment,
+    this.confidence,
+    this.topics = const [],
+    this.provider,
+    this.model,
+    this.attemptCount = 0,
+    this.lastErrorCode,
+    this.processingStartedAt,
+    this.analyzedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String feedbackId;
+  final int analysisVersion;
+  final SentimentAnalysisStatus status;
+  final SentimentLabel? sentiment;
+  final double? confidence;
+  final List<BackendFeedbackTopicSentiment> topics;
+  final String? provider;
+  final String? model;
+  final int attemptCount;
+  final String? lastErrorCode;
+  final DateTime? processingStartedAt;
+  final DateTime? analyzedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory BackendFeedbackSentimentAnalysis.fromJson(Map<String, dynamic> json) {
+    final status = SentimentAnalysisStatus.fromValue('${json['status'] ?? ''}');
+    final sentiment = SentimentLabel.fromValue(json['sentiment'] as String?);
+    return BackendFeedbackSentimentAnalysis(
+      id: '${json['id']}',
+      feedbackId: '${json['feedback_id']}',
+      analysisVersion: _int(json['analysis_version']),
+      status: status,
+      sentiment: sentiment,
+      confidence: _decimal(json['confidence']),
+      topics: ((json['topic_sentiments'] as List?) ?? const [])
+          .map(
+            (row) => BackendFeedbackTopicSentiment.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(),
+      provider: json['provider'] as String?,
+      model: json['model'] as String?,
+      attemptCount: _int(json['attempt_count']),
+      lastErrorCode: json['last_error_code'] as String?,
+      processingStartedAt: _date(json['processing_started_at']),
+      analyzedAt: _date(json['analyzed_at']),
+      createdAt: DateTime.parse('${json['created_at']}'),
+      updatedAt: DateTime.parse('${json['updated_at']}'),
+    );
+  }
+
+  static BackendFeedbackSentimentAnalysis? maybeFromJson(Object? value) {
+    if (value is! Map) return null;
+    return BackendFeedbackSentimentAnalysis.fromJson(
+      Map<String, dynamic>.from(value),
+    );
+  }
+
+  FeedbackSentimentAnalysis toModel() => FeedbackSentimentAnalysis(
+    id: id,
+    feedbackId: feedbackId,
+    analysisVersion: analysisVersion,
+    status: status,
+    sentiment: sentiment,
+    confidence: confidence,
+    topics: [for (final topic in topics) topic.toModel()],
+    provider: provider,
+    model: model,
+    attemptCount: attemptCount,
+    lastErrorCode: lastErrorCode,
+    processingStartedAt: processingStartedAt,
+    analyzedAt: analyzedAt,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
 class BackendFeedback {
   const BackendFeedback({
     required this.id,
@@ -1038,6 +1157,9 @@ class BackendFeedback {
     required this.updatedAt,
     this.facilityName = '',
     this.requesterName = '',
+    this.reservationStartsAt,
+    this.pricingAudience = '',
+    this.sentimentAnalysis,
   });
 
   final String id;
@@ -1054,6 +1176,9 @@ class BackendFeedback {
 
   final String facilityName;
   final String requesterName;
+  final DateTime? reservationStartsAt;
+  final String pricingAudience;
+  final BackendFeedbackSentimentAnalysis? sentimentAnalysis;
 
   factory BackendFeedback.fromJson(Map<String, dynamic> json) =>
       BackendFeedback(
@@ -1070,6 +1195,11 @@ class BackendFeedback {
         updatedAt: DateTime.parse(json['updated_at'] as String),
         facilityName: '${json['facility_name'] ?? ''}',
         requesterName: '${json['requester_name'] ?? ''}',
+        reservationStartsAt: _date(json['reservation_starts_at']),
+        pricingAudience: '${json['pricing_audience'] ?? ''}',
+        sentimentAnalysis: BackendFeedbackSentimentAnalysis.maybeFromJson(
+          json['sentiment_analysis'],
+        ),
       );
 
   ReservationFeedback toModel() => ReservationFeedback(
@@ -1085,6 +1215,7 @@ class BackendFeedback {
     comment: comment,
     createdAt: createdAt,
     updatedAt: updatedAt,
+    sentimentAnalysis: sentimentAnalysis?.toModel(),
   );
 }
 
@@ -1185,6 +1316,239 @@ class BackendFeedbackSummary {
   );
 }
 
+class BackendFeedbackSentimentTrendPoint {
+  const BackendFeedbackSentimentTrendPoint({
+    required this.bucketStart,
+    this.positive = 0,
+    this.neutral = 0,
+    this.negative = 0,
+    this.mixed = 0,
+    this.classified = 0,
+    this.averageRating,
+  });
+
+  final DateTime bucketStart;
+  final int positive;
+  final int neutral;
+  final int negative;
+  final int mixed;
+  final int classified;
+  final double? averageRating;
+
+  factory BackendFeedbackSentimentTrendPoint.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendFeedbackSentimentTrendPoint(
+    bucketStart: DateTime.parse('${json['bucket_start']}'),
+    positive: _int(json['positive']),
+    neutral: _int(json['neutral']),
+    negative: _int(json['negative']),
+    mixed: _int(json['mixed']),
+    classified: _int(json['classified']),
+    averageRating: _decimal(json['average_rating']),
+  );
+
+  FeedbackSentimentTrendPoint toModel() => FeedbackSentimentTrendPoint(
+    bucketStart: bucketStart,
+    positive: positive,
+    neutral: neutral,
+    negative: negative,
+    mixed: mixed,
+    classified: classified,
+    averageRating: averageRating,
+  );
+}
+
+class BackendFacilitySentimentInsight {
+  const BackendFacilitySentimentInsight({
+    required this.facilityId,
+    required this.facilityName,
+    this.classified = 0,
+    this.positive = 0,
+    this.neutral = 0,
+    this.negative = 0,
+    this.mixed = 0,
+    this.needsReview = 0,
+    this.averageRating,
+  });
+
+  final String facilityId;
+  final String facilityName;
+  final int classified;
+  final int positive;
+  final int neutral;
+  final int negative;
+  final int mixed;
+  final int needsReview;
+  final double? averageRating;
+
+  factory BackendFacilitySentimentInsight.fromJson(Map<String, dynamic> json) =>
+      BackendFacilitySentimentInsight(
+        facilityId: '${json['facility_id']}',
+        facilityName: '${json['facility_name'] ?? ''}',
+        classified: _int(json['classified']),
+        positive: _int(json['positive']),
+        neutral: _int(json['neutral']),
+        negative: _int(json['negative']),
+        mixed: _int(json['mixed']),
+        needsReview: _int(json['needs_review']),
+        averageRating: _decimal(json['average_rating']),
+      );
+
+  FacilitySentimentInsight toModel() => FacilitySentimentInsight(
+    facilityId: facilityId,
+    facilityName: facilityName,
+    classified: classified,
+    positive: positive,
+    neutral: neutral,
+    negative: negative,
+    mixed: mixed,
+    needsReview: needsReview,
+    averageRating: averageRating,
+  );
+}
+
+class BackendComplaintTopicInsight {
+  const BackendComplaintTopicInsight({
+    required this.topic,
+    this.count = 0,
+    this.facilityCount = 0,
+  });
+
+  final FeedbackTopic topic;
+  final int count;
+  final int facilityCount;
+
+  factory BackendComplaintTopicInsight.fromJson(Map<String, dynamic> json) {
+    final topic = FeedbackTopic.fromValue('${json['topic'] ?? ''}');
+    if (topic == null) {
+      throw const FormatException('Feedback complaint topic is invalid.');
+    }
+    return BackendComplaintTopicInsight(
+      topic: topic,
+      count: _int(json['count']),
+      facilityCount: _int(json['facility_count']),
+    );
+  }
+
+  ComplaintTopicInsight toModel() => ComplaintTopicInsight(
+    topic: topic,
+    count: count,
+    facilityCount: facilityCount,
+  );
+}
+
+class BackendFeedbackSentimentAnalytics {
+  const BackendFeedbackSentimentAnalytics({
+    this.totalFeedback = 0,
+    this.writtenFeedback = 0,
+    this.classifiedFeedback = 0,
+    this.pending = 0,
+    this.processing = 0,
+    this.failed = 0,
+    this.skipped = 0,
+    this.notAnalyzed = 0,
+    this.averageRating,
+    this.positive = 0,
+    this.neutral = 0,
+    this.negative = 0,
+    this.mixed = 0,
+    this.unknown = 0,
+    this.needsReview = 0,
+    this.ratingMismatch = 0,
+    this.trendBucket = 'day',
+    this.trend = const [],
+    this.facilities = const [],
+    this.complaints = const [],
+  });
+
+  final int totalFeedback;
+  final int writtenFeedback;
+  final int classifiedFeedback;
+  final int pending;
+  final int processing;
+  final int failed;
+  final int skipped;
+  final int notAnalyzed;
+  final double? averageRating;
+  final int positive;
+  final int neutral;
+  final int negative;
+  final int mixed;
+  final int unknown;
+  final int needsReview;
+  final int ratingMismatch;
+  final String trendBucket;
+  final List<BackendFeedbackSentimentTrendPoint> trend;
+  final List<BackendFacilitySentimentInsight> facilities;
+  final List<BackendComplaintTopicInsight> complaints;
+
+  factory BackendFeedbackSentimentAnalytics.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendFeedbackSentimentAnalytics(
+    totalFeedback: _int(json['total_feedback']),
+    writtenFeedback: _int(json['written_feedback']),
+    classifiedFeedback: _int(json['classified_feedback']),
+    pending: _int(json['pending']),
+    processing: _int(json['processing']),
+    failed: _int(json['failed']),
+    skipped: _int(json['skipped']),
+    notAnalyzed: _int(json['not_analyzed']),
+    averageRating: _decimal(json['average_rating']),
+    positive: _int(json['positive']),
+    neutral: _int(json['neutral']),
+    negative: _int(json['negative']),
+    mixed: _int(json['mixed']),
+    unknown: _int(json['unknown']),
+    needsReview: _int(json['needs_review']),
+    ratingMismatch: _int(json['rating_mismatch']),
+    trendBucket: '${json['trend_bucket'] ?? 'day'}',
+    trend: ((json['trend'] as List?) ?? const [])
+        .map(
+          (row) => BackendFeedbackSentimentTrendPoint.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+    facilities: ((json['facilities'] as List?) ?? const [])
+        .map(
+          (row) => BackendFacilitySentimentInsight.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+    complaints: ((json['complaints'] as List?) ?? const [])
+        .map(
+          (row) => BackendComplaintTopicInsight.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+  );
+
+  FeedbackSentimentAnalytics toModel() => FeedbackSentimentAnalytics(
+    totalFeedback: totalFeedback,
+    writtenFeedback: writtenFeedback,
+    classifiedFeedback: classifiedFeedback,
+    pending: pending,
+    processing: processing,
+    failed: failed,
+    skipped: skipped,
+    notAnalyzed: notAnalyzed,
+    averageRating: averageRating,
+    positive: positive,
+    neutral: neutral,
+    negative: negative,
+    mixed: mixed,
+    unknown: unknown,
+    needsReview: needsReview,
+    ratingMismatch: ratingMismatch,
+    trendBucket: trendBucket,
+    trend: [for (final point in trend) point.toModel()],
+    facilities: [for (final facility in facilities) facility.toModel()],
+    complaints: [for (final complaint in complaints) complaint.toModel()],
+  );
+}
+
 /// Server-side query object for the admin feedback list, modelled on
 /// [AuditQuery].
 class FeedbackQuery {
@@ -1195,6 +1559,10 @@ class FeedbackQuery {
     this.maxRating,
     this.from,
     this.to,
+    this.sentiment,
+    this.topic,
+    this.analysisStatus,
+    this.needsReview,
     this.sort = FeedbackSort.newest,
     this.limit = 50,
     this.offset = 0,
@@ -1206,9 +1574,19 @@ class FeedbackQuery {
   final int? maxRating;
   final DateTime? from;
   final DateTime? to;
+  final SentimentLabel? sentiment;
+  final FeedbackTopic? topic;
+  final SentimentAnalysisStatus? analysisStatus;
+  final bool? needsReview;
   final FeedbackSort sort;
   final int limit;
   final int offset;
+
+  bool get hasSentimentOnlyFilters =>
+      sentiment != null ||
+      topic != null ||
+      analysisStatus != null ||
+      needsReview != null;
 
   FeedbackQuery copyWith({
     String? search,
@@ -1220,6 +1598,14 @@ class FeedbackQuery {
     DateTime? from,
     DateTime? to,
     bool clearDateRange = false,
+    SentimentLabel? sentiment,
+    bool clearSentiment = false,
+    FeedbackTopic? topic,
+    bool clearTopic = false,
+    SentimentAnalysisStatus? analysisStatus,
+    bool clearAnalysisStatus = false,
+    bool? needsReview,
+    bool clearNeedsReview = false,
     FeedbackSort? sort,
     int? limit,
     int? offset,
@@ -1230,6 +1616,12 @@ class FeedbackQuery {
     maxRating: clearRatingRange ? null : (maxRating ?? this.maxRating),
     from: clearDateRange ? null : (from ?? this.from),
     to: clearDateRange ? null : (to ?? this.to),
+    sentiment: clearSentiment ? null : (sentiment ?? this.sentiment),
+    topic: clearTopic ? null : (topic ?? this.topic),
+    analysisStatus: clearAnalysisStatus
+        ? null
+        : (analysisStatus ?? this.analysisStatus),
+    needsReview: clearNeedsReview ? null : (needsReview ?? this.needsReview),
     sort: sort ?? this.sort,
     limit: limit ?? this.limit,
     offset: offset ?? this.offset,
@@ -1241,6 +1633,24 @@ class FeedbackQuery {
     FeedbackSort.highest => 'highest',
     FeedbackSort.lowest => 'lowest',
   };
+}
+
+Map<String, dynamic> _legacyFeedbackListParams(FeedbackQuery query) => {
+  'p_search': query.search.isEmpty ? null : query.search,
+  'p_facility_id': query.facilityId,
+  'p_min_rating': query.minRating,
+  'p_max_rating': query.maxRating,
+  'p_from': query.from?.toUtc().toIso8601String(),
+  'p_to': query.to?.toUtc().toIso8601String(),
+  'p_sort': query.sortParam,
+  'p_limit': query.limit,
+  'p_offset': query.offset,
+};
+
+bool _isMissingRpc(PostgrestException error) {
+  final message = error.message.toLowerCase();
+  return error.code == 'PGRST202' ||
+      message.contains('could not find the function');
 }
 
 class BackendLoyaltyTransaction {
@@ -1611,7 +2021,9 @@ abstract interface class SmartReserveBackend {
     required String title,
     Map<String, dynamic> activeDraft,
   });
-  Future<List<BackendAssistantMessage>> assistantMessages(String conversationId);
+  Future<List<BackendAssistantMessage>> assistantMessages(
+    String conversationId,
+  );
   Future<void> appendAssistantMessages(
     String conversationId,
     List<BackendAssistantMessage> messages,
@@ -1727,6 +2139,13 @@ abstract interface class SmartReserveCoreBackend {
   });
   Future<BackendFeedbackPage> feedbackEntries(FeedbackQuery query);
   Future<BackendFeedbackSummary> feedbackSummary(FeedbackQuery query);
+  Future<BackendFeedbackSentimentAnalytics> feedbackSentimentAnalytics(
+    FeedbackQuery query,
+  );
+  Future<BackendFeedbackSentimentAnalysis?> retryFeedbackSentiment(
+    String feedbackId,
+  );
+  Stream<void> feedbackSentimentAnalysisStream();
   Future<BackendLoyaltySummary> loyaltySummary();
   Stream<List<BackendLoyaltyTransaction>> loyaltyTransactionStream();
   Future<BackendLoyaltyRedemption> redeemLoyaltyReward(String rewardId);
@@ -2444,10 +2863,14 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     Map<String, dynamic>? activeDraft,
   }) async {
     final values = <String, dynamic>{};
-    if (title != null) values['title'] = title.trim().isEmpty ? 'New chat' : title.trim();
+    if (title != null)
+      values['title'] = title.trim().isEmpty ? 'New chat' : title.trim();
     if (activeDraft != null) values['active_draft'] = activeDraft;
     if (values.isEmpty) return;
-    await _client.from('assistant_conversations').update(values).eq('id', conversationId);
+    await _client
+        .from('assistant_conversations')
+        .update(values)
+        .eq('id', conversationId);
   }
 
   @override
@@ -2883,20 +3306,25 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<BackendFeedbackPage> feedbackEntries(FeedbackQuery query) async {
-    final data = await _client.rpc(
-      'feedback_admin_list',
-      params: {
-        'p_search': query.search.isEmpty ? null : query.search,
-        'p_facility_id': query.facilityId,
-        'p_min_rating': query.minRating,
-        'p_max_rating': query.maxRating,
-        'p_from': query.from?.toUtc().toIso8601String(),
-        'p_to': query.to?.toUtc().toIso8601String(),
-        'p_sort': query.sortParam,
-        'p_limit': query.limit,
-        'p_offset': query.offset,
-      },
-    );
+    late final Object? data;
+    try {
+      data = await _client.rpc(
+        'feedback_admin_list',
+        params: {
+          ..._legacyFeedbackListParams(query),
+          'p_sentiment': query.sentiment?.value,
+          'p_topic': query.topic?.value,
+          'p_analysis_status': query.analysisStatus?.value,
+          'p_needs_review': query.needsReview,
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (!_isMissingRpc(error) || query.hasSentimentOnlyFilters) rethrow;
+      data = await _client.rpc(
+        'feedback_admin_list',
+        params: _legacyFeedbackListParams(query),
+      );
+    }
     return BackendFeedbackPage.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
@@ -2914,6 +3342,56 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       Map<String, dynamic>.from(data as Map),
     );
   }
+
+  @override
+  Future<BackendFeedbackSentimentAnalytics> feedbackSentimentAnalytics(
+    FeedbackQuery query,
+  ) async {
+    late final Object? data;
+    try {
+      data = await _client.rpc(
+        'feedback_sentiment_analytics',
+        params: {
+          'p_search': query.search.isEmpty ? null : query.search,
+          'p_facility_id': query.facilityId,
+          'p_min_rating': query.minRating,
+          'p_max_rating': query.maxRating,
+          'p_from': query.from?.toUtc().toIso8601String(),
+          'p_to': query.to?.toUtc().toIso8601String(),
+          'p_sentiment': query.sentiment?.value,
+          'p_topic': query.topic?.value,
+          'p_analysis_status': query.analysisStatus?.value,
+          'p_needs_review': query.needsReview,
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (!_isMissingRpc(error)) rethrow;
+      return const BackendFeedbackSentimentAnalytics();
+    }
+    return BackendFeedbackSentimentAnalytics.fromJson(
+      Map<String, dynamic>.from(data as Map),
+    );
+  }
+
+  @override
+  Future<BackendFeedbackSentimentAnalysis?> retryFeedbackSentiment(
+    String feedbackId,
+  ) async {
+    final data = await _client.rpc(
+      'feedback_sentiment_retry',
+      params: {'p_feedback_id': feedbackId, 'p_version': 1},
+    );
+    if (data is! Map) return null;
+    return BackendFeedbackSentimentAnalysis.fromJson(
+      Map<String, dynamic>.from(data),
+    );
+  }
+
+  @override
+  Stream<void> feedbackSentimentAnalysisStream() => _client
+      .from('feedback_sentiment_analyses')
+      .stream(primaryKey: ['id'])
+      .map<void>((_) {});
 
   @override
   Future<BackendLoyaltySummary> loyaltySummary() async {

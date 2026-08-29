@@ -50,7 +50,8 @@ class _LoyaltyAdminScreenState extends State<LoyaltyAdminScreen> {
             children: [
               const SrPageHeader(
                 title: 'Loyalty',
-                description: 'Balances, ledger history, and the rewards catalog.',
+                description:
+                    'Balances, ledger history, and the rewards catalog.',
               ),
               const SizedBox(height: 16),
               SrTabs(
@@ -122,7 +123,8 @@ class _BalancesTab extends StatelessWidget {
               ? const ListEmptyState(
                   icon: Icons.stars_rounded,
                   title: 'No balances yet',
-                  body: 'Once users start completing reservations, their '
+                  body:
+                      'Once users start completing reservations, their '
                       'loyalty balances will appear here.',
                 )
               : SingleChildScrollView(
@@ -144,11 +146,18 @@ class _BalancesTab extends StatelessWidget {
                               row.email,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: mono(11, color: context.srColors.textMuted),
+                              style: mono(
+                                11,
+                                color: context.srColors.textMuted,
+                              ),
                             ),
                             Text(
                               '${row.balance}',
-                              style: mono(12, w: 600, color: context.srColors.text),
+                              style: mono(
+                                12,
+                                w: 600,
+                                color: context.srColors.text,
+                              ),
                             ),
                             Text('${row.lifetimeEarned}', style: mono(12)),
                             Text('${row.lifetimeRedeemed}', style: mono(12)),
@@ -269,8 +278,14 @@ class _BalanceDetailDialogState extends State<_BalanceDetailDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(widget.row.fullName, style: SrType.title(color: c.text)),
-                            Text(widget.row.email, style: SrType.caption(color: c.textMuted)),
+                            Text(
+                              widget.row.fullName,
+                              style: SrType.title(color: c.text),
+                            ),
+                            Text(
+                              widget.row.email,
+                              style: SrType.caption(color: c.textMuted),
+                            ),
                           ],
                         ),
                       ),
@@ -291,13 +306,25 @@ class _BalanceDetailDialogState extends State<_BalanceDetailDialog> {
                         SrCellGrid(
                           columns: 3,
                           children: [
-                            SrKeyCell(label: 'BALANCE', value: '${widget.row.balance}'),
-                            SrKeyCell(label: 'EARNED', value: '${widget.row.lifetimeEarned}'),
-                            SrKeyCell(label: 'REDEEMED', value: '${widget.row.lifetimeRedeemed}'),
+                            SrKeyCell(
+                              label: 'BALANCE',
+                              value: '${widget.row.balance}',
+                            ),
+                            SrKeyCell(
+                              label: 'EARNED',
+                              value: '${widget.row.lifetimeEarned}',
+                            ),
+                            SrKeyCell(
+                              label: 'REDEEMED',
+                              value: '${widget.row.lifetimeRedeemed}',
+                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
-                        Text('Adjust points', style: SrType.subhead(color: c.text)),
+                        Text(
+                          'Adjust points',
+                          style: SrType.subhead(color: c.text),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           'Creates a ledger entry and an audit record. Use a '
@@ -308,7 +335,9 @@ class _BalanceDetailDialogState extends State<_BalanceDetailDialog> {
                         SrTextField(
                           controller: _pointsController,
                           placeholder: 'Points (e.g. 50 or -20)',
-                          keyboardType: const TextInputType.numberWithOptions(signed: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            signed: true,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         SrTextField(
@@ -370,7 +399,8 @@ class _RewardsTab extends StatelessWidget {
               ? const ListEmptyState(
                   icon: Icons.card_giftcard_rounded,
                   title: 'No rewards yet',
-                  body: 'Create the first reward for students to redeem '
+                  body:
+                      'Create the first reward for students to redeem '
                       'with their loyalty points.',
                 )
               : SingleChildScrollView(
@@ -390,7 +420,9 @@ class _RewardsTab extends StatelessWidget {
                             ),
                             Text('${reward.pointsCost}', style: mono(12)),
                             Text(
-                              reward.isUnlimited ? 'Unlimited' : '${reward.stock}',
+                              reward.isUnlimited
+                                  ? 'Unlimited'
+                                  : '${reward.stock}',
                               style: mono(12),
                             ),
                             SrToggle(
@@ -409,7 +441,11 @@ class _RewardsTab extends StatelessWidget {
     );
   }
 
-  void _openEditor(BuildContext context, AppState state, LoyaltyReward? reward) {
+  void _openEditor(
+    BuildContext context,
+    AppState state,
+    LoyaltyReward? reward,
+  ) {
     showDialog<void>(
       context: context,
       builder: (_) => _RewardEditorDialog(state: state, reward: reward),
@@ -432,7 +468,10 @@ class _CompactRewardCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(reward.name, style: sans(13.5, w: 600)),
-              Text('${reward.pointsCost} points', style: SrType.caption(color: c.textMuted)),
+              Text(
+                '${reward.pointsCost} points',
+                style: SrType.caption(color: c.textMuted),
+              ),
             ],
           ),
         ),
@@ -458,8 +497,9 @@ class _RewardEditorDialog extends StatefulWidget {
 
 class _RewardEditorDialogState extends State<_RewardEditorDialog> {
   late final _name = TextEditingController(text: widget.reward?.name ?? '');
-  late final _description =
-      TextEditingController(text: widget.reward?.description ?? '');
+  late final _description = TextEditingController(
+    text: widget.reward?.description ?? '',
+  );
   late final _points = TextEditingController(
     text: widget.reward == null ? '' : '${widget.reward!.pointsCost}',
   );
@@ -494,7 +534,9 @@ class _RewardEditorDialogState extends State<_RewardEditorDialog> {
       description: _description.text.trim(),
       pointsCost: points,
       active: widget.reward?.active ?? true,
-      stock: _stock.text.trim().isEmpty ? null : int.tryParse(_stock.text.trim()),
+      stock: _stock.text.trim().isEmpty
+          ? null
+          : int.tryParse(_stock.text.trim()),
     );
     if (!mounted) return;
     setState(() => _saving = false);

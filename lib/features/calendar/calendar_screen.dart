@@ -205,9 +205,8 @@ class _CalendarData {
         onSelectDate: state.selectUserCalendarDate,
         onSelectEvent: null,
         onRefresh: state.refreshUserCalendar,
-        resetFilters: () => state.setUserCalendarFacilityFilter(
-          'All facilities',
-        ),
+        resetFilters: () =>
+            state.setUserCalendarFacilityFilter('All facilities'),
       );
     }
     return _CalendarData(
@@ -384,9 +383,9 @@ class _Toolbar extends StatelessWidget {
                 for (final status in CalendarEventState.values)
                   FilterPill(
                     label: status.label,
-                    selected: AppScope.of(context).calendarStates.contains(
-                      status,
-                    ),
+                    selected: AppScope.of(
+                      context,
+                    ).calendarStates.contains(status),
                     onTap: () =>
                         AppScope.of(context).toggleCalendarState(status),
                   ),
@@ -859,12 +858,12 @@ class _CalendarEmptyStateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = switch (emptyState) {
-      _CalendarEmptyState.noData => data.isPublic
-          ? 'No reserved slots yet'
-          : 'No reservations yet',
-      _CalendarEmptyState.noMatches => data.isPublic
-          ? 'No reserved slots match this facility'
-          : 'No reservations match your filters',
+      _CalendarEmptyState.noData =>
+        data.isPublic ? 'No reserved slots yet' : 'No reservations yet',
+      _CalendarEmptyState.noMatches =>
+        data.isPublic
+            ? 'No reserved slots match this facility'
+            : 'No reservations match your filters',
       _CalendarEmptyState.emptyRange =>
         data.isPublic
             ? 'No reserved slots this ${data.viewMode.label.toLowerCase()}'
@@ -1113,10 +1112,7 @@ class _MonthView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final first = DateTime(
-      data.anchor.year,
-      data.anchor.month,
-    );
+    final first = DateTime(data.anchor.year, data.anchor.month);
     final start = first.subtract(Duration(days: first.weekday - 1));
     final events = data.visibleEvents;
     return SrScrollView(
@@ -1268,9 +1264,7 @@ class _MonthCell extends StatelessWidget {
             _EventChip(
               event: event,
               compact: true,
-              onTap: onSelectEvent == null
-                  ? null
-                  : () => onSelectEvent!(event),
+              onTap: onSelectEvent == null ? null : () => onSelectEvent!(event),
             ),
             const SizedBox(height: 3),
           ],
@@ -1399,11 +1393,7 @@ class _DayView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final day = DateTime(
-      data.anchor.year,
-      data.anchor.month,
-      data.anchor.day,
-    );
+    final day = DateTime(data.anchor.year, data.anchor.month, data.anchor.day);
     final events = [
       for (final event in data.visibleEvents)
         if (event.overlapsDay(day)) event,
@@ -1536,7 +1526,9 @@ class _TimedDayColumn extends StatelessWidget {
                 child: _EventChip(
                   event: segment.event,
                   compact: false,
-                  onTap: onSelect == null ? null : () => onSelect!(segment.event),
+                  onTap: onSelect == null
+                      ? null
+                      : () => onSelect!(segment.event),
                 ),
               ),
           ],

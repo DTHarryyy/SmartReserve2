@@ -321,8 +321,13 @@ class AppState extends ChangeNotifier {
   List<FeedbackEntry> feedbackEntries = [];
   int feedbackEntriesTotal = 0;
   FeedbackSummary feedbackSummaryData = const FeedbackSummary();
+  FeedbackSentimentAnalytics feedbackSentimentAnalyticsData =
+      const FeedbackSentimentAnalytics();
   bool feedbackLoading = false;
+  bool feedbackAnalyticsLoading = false;
   String? feedbackError;
+  String? feedbackAnalyticsError;
+  final Set<String> feedbackSentimentRetrying = {};
   int _feedbackRequestId = 0;
 
   // Loyalty
@@ -354,6 +359,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<BackendReservation>>? _reservationSubscription;
   StreamSubscription<List<BackendNotification>>? _notificationSubscription;
   StreamSubscription<List<BackendLoyaltyTransaction>>? _loyaltySubscription;
+  StreamSubscription<void>? _feedbackSentimentSubscription;
 
   bool get hasSession => sessionProfile != null;
   bool get isInternalAdmin => sessionProfile?.isInternalAdmin ?? false;
@@ -448,8 +454,11 @@ class AppState extends ChangeNotifier {
     _notificationSubscription = null;
     _loyaltySubscription?.cancel();
     _loyaltySubscription = null;
+    _feedbackSentimentSubscription?.cancel();
+    _feedbackSentimentSubscription = null;
     if (profile == null) {
       _reportRequestId++;
+      _feedbackRequestId++;
       reportSnapshot = null;
       reportScope = null;
       reportsLoading = false;
@@ -473,6 +482,15 @@ class AppState extends ChangeNotifier {
       if (!_useDemoData) accounts = [];
       accountsLoading = false;
       accountsError = null;
+      feedbackEntries = [];
+      feedbackEntriesTotal = 0;
+      feedbackSummaryData = const FeedbackSummary();
+      feedbackSentimentAnalyticsData = const FeedbackSentimentAnalytics();
+      feedbackLoading = false;
+      feedbackAnalyticsLoading = false;
+      feedbackError = null;
+      feedbackAnalyticsError = null;
+      feedbackSentimentRetrying.clear();
       loyalty = null;
       loyaltyError = null;
       notifyListeners();
@@ -505,6 +523,7 @@ class AppState extends ChangeNotifier {
       },
     );
     if (profile.isInternalAdmin) {
+      _syncFeedbackSentimentSubscription();
       await refreshAccounts();
       _accountSubscription = backend?.accountStream().listen(
         _applyBackendAccounts,
@@ -524,6 +543,7 @@ class AppState extends ChangeNotifier {
       );
       view = AppView.facilities;
     } else if (profile.isExternalAdmin) {
+      _syncFeedbackSentimentSubscription();
       if (_useDemoData) {
         final paidRequesterNames = {
           for (final request in requests)
@@ -590,6 +610,22 @@ class AppState extends ChangeNotifier {
       onError: (Object error) =>
           debugPrint('Loyalty live refresh failed: $error'),
     );
+  }
+
+  void _syncFeedbackSentimentSubscription() {
+    _feedbackSentimentSubscription?.cancel();
+    _feedbackSentimentSubscription = null;
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isAdmin) return;
+    _feedbackSentimentSubscription = service
+        .feedbackSentimentAnalysisStream()
+        .listen(
+          (_) {
+            if (view == AppView.feedback) unawaited(refreshFeedback());
+          },
+          onError: (Object error) =>
+              debugPrint('Feedback sentiment live refresh failed: $error'),
+        );
   }
 
   VerificationState get _sessionVerification {
@@ -937,6 +973,7 @@ class AppState extends ChangeNotifier {
     _reservationSubscription?.cancel();
     _notificationSubscription?.cancel();
     _loyaltySubscription?.cancel();
+    _feedbackSentimentSubscription?.cancel();
     super.dispose();
   }
 
@@ -1769,7 +1806,9 @@ class AppState extends ChangeNotifier {
   ];
 
   List<CalendarEvent> get userCalendarEvents {
-    final facilitiesById = {for (final facility in facilities) facility.id: facility};
+    final facilitiesById = {
+      for (final facility in facilities) facility.id: facility,
+    };
     final events = <CalendarEvent>[];
     for (final slot in userCalendarSlots) {
       final facility = facilitiesById[slot.facilityId];
@@ -1780,8 +1819,7 @@ class AppState extends ChangeNotifier {
       }
       events.add(
         CalendarEvent(
-          id:
-              'public:${slot.facilityId}:${slot.startsAt.toIso8601String()}:${slot.endsAt.toIso8601String()}',
+          id: 'public:${slot.facilityId}:${slot.startsAt.toIso8601String()}:${slot.endsAt.toIso8601String()}',
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
           facility: facility.name,
@@ -1976,10 +2014,7 @@ class AppState extends ChangeNotifier {
     if (targets.isEmpty) return const [];
     final targetIds = {for (final facility in targets) facility.id};
     final targetNames = {for (final facility in targets) facility.name};
-    final (from, to) = _calendarRange(
-      userCalendarAnchor,
-      userCalendarViewMode,
-    );
+    final (from, to) = _calendarRange(userCalendarAnchor, userCalendarViewMode);
     final slots = <PublicCalendarSlot>[];
 
     for (final booking in bookings) {
@@ -3739,27 +3774,58 @@ class AppState extends ChangeNotifier {
     final requestId = ++_feedbackRequestId;
     feedbackQuery = requested;
     feedbackLoading = true;
+    feedbackAnalyticsLoading = true;
     feedbackError = null;
+    feedbackAnalyticsError = null;
     notifyListeners();
+
+    Object? analyticsError;
+    final analyticsFuture = service
+        .feedbackSentimentAnalytics(requested)
+        .catchError((Object error) {
+          analyticsError = error;
+          return const BackendFeedbackSentimentAnalytics();
+        });
+
     try {
-      final page = await service.feedbackEntries(requested);
-      final summary = await service.feedbackSummary(requested);
-      if (requestId != _feedbackRequestId) return;
-      feedbackEntries = [
-        for (final row in page.entries)
-          FeedbackEntry(
-            feedback: row.toModel(),
-            reviewerName: row.requesterName,
-          ),
-      ];
-      feedbackEntriesTotal = page.total;
-      feedbackSummaryData = summary.toModel();
-    } catch (error) {
-      if (requestId != _feedbackRequestId) return;
-      feedbackError = friendlyBackendMessage('$error');
+      try {
+        final results = await Future.wait<Object>([
+          service.feedbackEntries(requested),
+          service.feedbackSummary(requested),
+        ]);
+        final page = results[0] as BackendFeedbackPage;
+        final summary = results[1] as BackendFeedbackSummary;
+        if (requestId == _feedbackRequestId) {
+          feedbackEntries = [
+            for (final row in page.entries)
+              FeedbackEntry(
+                feedback: row.toModel(),
+                reviewerName: row.requesterName,
+                reservationStartsAt: row.reservationStartsAt,
+                pricingAudience: row.pricingAudience,
+              ),
+          ];
+          feedbackEntriesTotal = page.total;
+          feedbackSummaryData = summary.toModel();
+        }
+      } catch (error) {
+        if (requestId == _feedbackRequestId) {
+          feedbackError = friendlyBackendMessage('$error');
+        }
+      }
+
+      final analytics = await analyticsFuture;
+      if (requestId == _feedbackRequestId) {
+        if (analyticsError == null) {
+          feedbackSentimentAnalyticsData = analytics.toModel();
+        } else {
+          feedbackAnalyticsError = friendlyBackendMessage('$analyticsError');
+        }
+      }
     } finally {
       if (requestId == _feedbackRequestId) {
         feedbackLoading = false;
+        feedbackAnalyticsLoading = false;
         notifyListeners();
       }
     }
@@ -3767,6 +3833,31 @@ class AppState extends ChangeNotifier {
 
   void setFeedbackQuery(FeedbackQuery query) {
     unawaited(refreshFeedback(query: query));
+  }
+
+  Future<bool> retryFeedbackSentiment(String feedbackId) async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isAdmin) return false;
+    if (feedbackSentimentRetrying.contains(feedbackId)) return false;
+    feedbackSentimentRetrying.add(feedbackId);
+    notifyListeners();
+    try {
+      await service.retryFeedbackSentiment(feedbackId);
+      await refreshFeedback();
+      toasts.show(const ToastMessage.success('Sentiment analysis was queued.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    } finally {
+      feedbackSentimentRetrying.remove(feedbackId);
+      notifyListeners();
+    }
   }
 
   Future<void> refreshLoyalty() async {
