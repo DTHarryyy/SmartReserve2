@@ -1582,12 +1582,6 @@ class FeedbackQuery {
   final int limit;
   final int offset;
 
-  bool get hasSentimentOnlyFilters =>
-      sentiment != null ||
-      topic != null ||
-      analysisStatus != null ||
-      needsReview != null;
-
   FeedbackQuery copyWith({
     String? search,
     String? facilityId,
@@ -1633,24 +1627,6 @@ class FeedbackQuery {
     FeedbackSort.highest => 'highest',
     FeedbackSort.lowest => 'lowest',
   };
-}
-
-Map<String, dynamic> _legacyFeedbackListParams(FeedbackQuery query) => {
-  'p_search': query.search.isEmpty ? null : query.search,
-  'p_facility_id': query.facilityId,
-  'p_min_rating': query.minRating,
-  'p_max_rating': query.maxRating,
-  'p_from': query.from?.toUtc().toIso8601String(),
-  'p_to': query.to?.toUtc().toIso8601String(),
-  'p_sort': query.sortParam,
-  'p_limit': query.limit,
-  'p_offset': query.offset,
-};
-
-bool _isMissingRpc(PostgrestException error) {
-  final message = error.message.toLowerCase();
-  return error.code == 'PGRST202' ||
-      message.contains('could not find the function');
 }
 
 class BackendLoyaltyTransaction {
@@ -2863,8 +2839,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     Map<String, dynamic>? activeDraft,
   }) async {
     final values = <String, dynamic>{};
-    if (title != null)
+    if (title != null) {
       values['title'] = title.trim().isEmpty ? 'New chat' : title.trim();
+    }
     if (activeDraft != null) values['active_draft'] = activeDraft;
     if (values.isEmpty) return;
     await _client
@@ -3306,25 +3283,24 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<BackendFeedbackPage> feedbackEntries(FeedbackQuery query) async {
-    late final Object? data;
-    try {
-      data = await _client.rpc(
-        'feedback_admin_list',
-        params: {
-          ..._legacyFeedbackListParams(query),
-          'p_sentiment': query.sentiment?.value,
-          'p_topic': query.topic?.value,
-          'p_analysis_status': query.analysisStatus?.value,
-          'p_needs_review': query.needsReview,
-        },
-      );
-    } on PostgrestException catch (error) {
-      if (!_isMissingRpc(error) || query.hasSentimentOnlyFilters) rethrow;
-      data = await _client.rpc(
-        'feedback_admin_list',
-        params: _legacyFeedbackListParams(query),
-      );
-    }
+    final data = await _client.rpc(
+      'feedback_admin_list',
+      params: {
+        'p_search': query.search.isEmpty ? null : query.search,
+        'p_facility_id': query.facilityId,
+        'p_min_rating': query.minRating,
+        'p_max_rating': query.maxRating,
+        'p_from': query.from?.toUtc().toIso8601String(),
+        'p_to': query.to?.toUtc().toIso8601String(),
+        'p_sort': query.sortParam,
+        'p_limit': query.limit,
+        'p_offset': query.offset,
+        'p_sentiment': query.sentiment?.value,
+        'p_topic': query.topic?.value,
+        'p_analysis_status': query.analysisStatus?.value,
+        'p_needs_review': query.needsReview,
+      },
+    );
     return BackendFeedbackPage.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
@@ -3347,27 +3323,21 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   Future<BackendFeedbackSentimentAnalytics> feedbackSentimentAnalytics(
     FeedbackQuery query,
   ) async {
-    late final Object? data;
-    try {
-      data = await _client.rpc(
-        'feedback_sentiment_analytics',
-        params: {
-          'p_search': query.search.isEmpty ? null : query.search,
-          'p_facility_id': query.facilityId,
-          'p_min_rating': query.minRating,
-          'p_max_rating': query.maxRating,
-          'p_from': query.from?.toUtc().toIso8601String(),
-          'p_to': query.to?.toUtc().toIso8601String(),
-          'p_sentiment': query.sentiment?.value,
-          'p_topic': query.topic?.value,
-          'p_analysis_status': query.analysisStatus?.value,
-          'p_needs_review': query.needsReview,
-        },
-      );
-    } on PostgrestException catch (error) {
-      if (!_isMissingRpc(error)) rethrow;
-      return const BackendFeedbackSentimentAnalytics();
-    }
+    final data = await _client.rpc(
+      'feedback_sentiment_analytics',
+      params: {
+        'p_search': query.search.isEmpty ? null : query.search,
+        'p_facility_id': query.facilityId,
+        'p_min_rating': query.minRating,
+        'p_max_rating': query.maxRating,
+        'p_from': query.from?.toUtc().toIso8601String(),
+        'p_to': query.to?.toUtc().toIso8601String(),
+        'p_sentiment': query.sentiment?.value,
+        'p_topic': query.topic?.value,
+        'p_analysis_status': query.analysisStatus?.value,
+        'p_needs_review': query.needsReview,
+      },
+    );
     return BackendFeedbackSentimentAnalytics.fromJson(
       Map<String, dynamic>.from(data as Map),
     );
