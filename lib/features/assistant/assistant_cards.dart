@@ -14,6 +14,7 @@ import '../../util/campus_calendar.dart';
 import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_logo.dart';
 import 'assistant_availability.dart';
 import 'assistant_controller.dart';
 
@@ -84,21 +85,9 @@ class AssistantBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser) ...[
-            Container(
-              width: 26,
-              height: 26,
-              margin: const EdgeInsets.only(right: 7, bottom: 2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [context.srColors.brand, context.srColors.accent],
-                ),
-              ),
-              child: const Icon(
-                Icons.auto_awesome_rounded,
-                size: 13,
-                color: Colors.white,
-              ),
+            const Padding(
+              padding: EdgeInsets.only(right: 7, bottom: 2),
+              child: SrLogo(size: 26, radius: 13),
             ),
           ],
           Flexible(

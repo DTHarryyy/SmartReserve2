@@ -520,7 +520,7 @@ class _QuickReplyChip extends StatelessWidget {
   }
 }
 
-class _ComposerField extends StatefulWidget {
+class _ComposerField extends StatelessWidget {
   const _ComposerField({
     required this.controller,
     required this.focusNode,
@@ -532,31 +532,6 @@ class _ComposerField extends StatefulWidget {
   final ValueChanged<String> onSubmitted;
 
   @override
-  State<_ComposerField> createState() => _ComposerFieldState();
-}
-
-class _ComposerFieldState extends State<_ComposerField> {
-  bool _focused = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.focusNode.addListener(_sync);
-  }
-
-  void _sync() {
-    if (widget.focusNode.hasFocus != _focused) {
-      setState(() => _focused = widget.focusNode.hasFocus);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.focusNode.removeListener(_sync);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) => AnimatedContainer(
     duration: SR.stateChange,
     constraints: const BoxConstraints(minHeight: 46),
@@ -564,29 +539,31 @@ class _ComposerFieldState extends State<_ComposerField> {
     decoration: BoxDecoration(
       color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(23),
-      border: Border.all(
-        color: _focused ? context.srColors.focus : context.srColors.glassLine2,
-        width: _focused ? 1.4 : 1,
-      ),
     ),
     child: Semantics(
       textField: true,
       label: 'Message the assistant',
       child: TextField(
-        controller: widget.controller,
-        focusNode: widget.focusNode,
+        controller: controller,
+        focusNode: focusNode,
         minLines: 1,
         maxLines: 4,
         textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.send,
-        onSubmitted: widget.onSubmitted,
+        onSubmitted: onSubmitted,
         cursorColor: SR.primary,
         cursorWidth: 1.5,
         style: sans(13.5, height: 1.4),
         decoration: InputDecoration(
           isDense: true,
           isCollapsed: true,
+          filled: false,
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
           hintText: 'Ask about facilities or reservations…',
           hintStyle: sans(13.5, color: context.srColors.mutedLight),
         ),
