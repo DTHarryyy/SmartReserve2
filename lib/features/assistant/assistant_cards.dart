@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../model/account.dart';
+import '../../model/amenity_request.dart';
 import '../../model/facility.dart';
 import '../../model/notice.dart';
 import '../../model/payment.dart';
@@ -426,6 +427,10 @@ class AssistantConfirmCard extends StatelessWidget {
     if (facility == null || draft.day == null || !draft.hasTime) {
       return const SizedBox.shrink();
     }
+    final requestedAmenities = normalizeRequestedAmenityLabels(
+      facility,
+      draft.amenities,
+    );
     final hours = draft.endHour! - draft.startHour!;
     final quoteCentavos =
         (facility.hourlyRateCentavosFor(state.userAccount.pricingAudience) *
@@ -460,9 +465,9 @@ class AssistantConfirmCard extends StatelessWidget {
                 ),
                 SrKeyCell(
                   label: 'AMENITIES',
-                  value: draft.amenities.isEmpty
+                  value: requestedAmenities.isEmpty
                       ? 'None'
-                      : draft.amenities.join(' · '),
+                      : requestedAmenities.join(' · '),
                 ),
               ],
             ),
@@ -478,9 +483,9 @@ class AssistantConfirmCard extends StatelessWidget {
             const SizedBox(height: 10),
             AmenityRequestField(
               dense: true,
-              facilityAmenities: facility.amenities,
-              amenityOptions: facility.amenityOptions,
-              selected: draft.amenities,
+              includedAmenities: includedFacilityAmenities(facility),
+              requestableAmenities: requestableAmenityLabels(facility),
+              selectedRequestedAmenities: requestedAmenities.toSet(),
               onToggle: controller.toggleDraftAmenity,
               onRemove: controller.removeDraftAmenity,
             ),

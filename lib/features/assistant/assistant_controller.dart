@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
+import '../../model/amenity_request.dart';
 import '../../model/facility.dart';
 import '../../model/notice.dart';
 import '../../model/reservation.dart';
@@ -1272,8 +1273,12 @@ class AssistantController extends ChangeNotifier {
     }
 
     if (p.amenities.isNotEmpty) {
-      final newOnes = p.amenities.difference(draft.amenities);
-      draft.amenities.addAll(p.amenities);
+      final accepted = draft.facility == null
+          ? p.amenities
+          : normalizeRequestedAmenityLabels(draft.facility!, p.amenities)
+                .toSet();
+      final newOnes = accepted.difference(draft.amenities);
+      draft.amenities.addAll(accepted);
       if (newOnes.isNotEmpty && draft.facility != null) {
         _say("Noted — I'll ask for ${newOnes.join(' and ')} with it.");
       }
@@ -2067,13 +2072,15 @@ class AssistantController extends ChangeNotifier {
     stage = AssistantStage.submitting;
     notifyListeners();
 
-    final requestedAmenities = draft.amenities.toList();
+    final requestedAmenities = normalizeRequestedAmenityLabels(
+      facility,
+      draft.amenities,
+    );
     final quote = await state.quoteReservation(
       facility: facility,
       startsAt: [campusInstant(startWall)],
       endsAt: [campusInstant(endWall)],
       headcount: heads,
-      amenities: requestedAmenities,
     );
     if (quote == null || quote.terms.isNotEmpty) {
       _submitting = false;
@@ -2140,7 +2147,7 @@ class AssistantController extends ChangeNotifier {
       endsAt: [campusInstant(endWall)],
       heads: heads,
       purpose: purpose.trim(),
-      amenities: requestedAmenities,
+      requestedAmenities: requestedAmenities,
       quote: quote,
       acceptedTerms: true,
     );

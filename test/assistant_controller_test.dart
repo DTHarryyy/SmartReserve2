@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/app/app_state.dart';
+import 'package:smartreserve/data/campus_data.dart';
 import 'package:smartreserve/features/assistant/assistant_controller.dart';
+import 'package:smartreserve/features/assistant/assistant_nlu.dart';
+import 'package:smartreserve/model/amenity_request.dart';
 
 void main() {
   late AppState state;
@@ -66,4 +69,27 @@ void main() {
       expect(controller.messages.last.text, contains('whole number'));
     },
   );
+
+  test('amenity parsing and normalization use the shared catalog', () {
+    final parsed = parseMessage(
+      'Book with coffee and wifi projector cctv',
+      nowWall: DateTime(2026, 8, 30),
+    );
+
+    expect(knownAmenityLabels, standardAmenityLabels);
+    expect(
+      parsed.amenities,
+      containsAll(['Wi-Fi', 'Projector', 'Security Cameras']),
+    );
+    expect(parsed.unknownAmenityWords, contains('coffee'));
+
+    final facility = state.bookableFacilities.first;
+    final normalized = normalizeRequestedAmenityLabels(facility, [
+      ...parsed.amenities,
+      'Generator',
+      'Custom tag',
+    ]);
+
+    expect(normalized, ['Security Cameras', 'Generator']);
+  });
 }

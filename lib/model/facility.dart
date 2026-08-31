@@ -73,20 +73,28 @@ class FacilityAudienceRate {
   final bool enabled;
 }
 
-class FacilityAssignmentOption {
-  const FacilityAssignmentOption({
-    required this.adminId,
-    required this.name,
-    required this.email,
-    required this.adminLane,
-    this.assignmentRole,
-  });
+/// Why a facility currently cannot be booked by the signed-in account, as
+/// reported by `my_facility_access.booking_unavailability_code`. This is a
+/// requester-eligibility signal, not an administrator-assignment one: a
+/// facility has no per-facility owner any more, only a global lane of
+/// active administrators.
+enum FacilityBookingBlockReason {
+  noActiveInternalAdmin('no_active_internal_admin'),
+  noActiveExternalAdmin('no_active_external_admin'),
+  notAvailableForAccountType('facility_not_available_for_account_type'),
+  facilityInactive('facility_inactive');
 
-  final String adminId;
-  final String name;
-  final String email;
-  final String adminLane;
-  final String? assignmentRole;
+  const FacilityBookingBlockReason(this.code);
+
+  final String code;
+
+  static FacilityBookingBlockReason? fromCode(String? code) {
+    if (code == null) return null;
+    for (final value in values) {
+      if (value.code == code) return value;
+    }
+    return null;
+  }
 }
 
 class Facility {
@@ -135,7 +143,7 @@ class Facility {
     this.bookableForCurrentUser = true,
     this.supportsInternalLane = true,
     this.supportsExternalLane = true,
-    this.assignmentRole,
+    this.bookingBlockReason,
     this.facilityClassification = 'shared',
     this.depositWindowMinutes = 1440,
     this.balanceDueLeadDays = 3,
@@ -197,7 +205,7 @@ class Facility {
   bool bookableForCurrentUser;
   bool supportsInternalLane;
   bool supportsExternalLane;
-  String? assignmentRole;
+  FacilityBookingBlockReason? bookingBlockReason;
   String facilityClassification;
   int depositWindowMinutes;
   int balanceDueLeadDays;

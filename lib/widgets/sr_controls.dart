@@ -145,7 +145,10 @@ class _SrButtonState extends State<SrButton> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (widget.icon != null) ...[
-              widget.icon!,
+              IconTheme.merge(
+                data: IconThemeData(color: enabled ? fg : c.muted),
+                child: widget.icon!,
+              ),
               const SizedBox(width: 8),
             ],
             Flexible(
@@ -167,7 +170,10 @@ class _SrButtonState extends State<SrButton> {
             ),
             if (widget.trailing != null) ...[
               const SizedBox(width: 8),
-              widget.trailing!,
+              IconTheme.merge(
+                data: IconThemeData(color: enabled ? fg : c.muted),
+                child: widget.trailing!,
+              ),
             ],
           ],
         ),

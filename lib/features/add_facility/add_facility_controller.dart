@@ -15,7 +15,9 @@ import '../../model/facility_draft.dart';
 import '../../model/facility_photo.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_theme.dart';
+import '../../theme/sr_tokens.dart';
 import '../../util/geo.dart';
+import 'facility_editor_focus.dart';
 export '../../model/notice.dart' show AdvisoryTone, ToastMessage;
 
 enum MapTab { map, preview }
@@ -142,6 +144,7 @@ class AddFacilityController extends ChangeNotifier {
   double zoom = 17;
 
   int pinDropCount = 0;
+  FacilityEditorReason? qualityReason;
 
   String amenityQuery = '';
   bool amenityOpen = false;
@@ -306,6 +309,7 @@ class AddFacilityController extends ChangeNotifier {
 
   void dropPin(LatLng at, {bool announce = true}) {
     final isFirst = draft.pin == null;
+    qualityReason = null;
     _edit(() {
       draft.pin = at;
       draft.accuracy = accuracyForZoom(zoom);
@@ -320,6 +324,7 @@ class AddFacilityController extends ChangeNotifier {
 
   void movePin(LatLng to) {
     if (draft.pin == null) return;
+    qualityReason = null;
     _edit(() {
       draft.pin = to;
       draft.accuracy = accuracyForZoom(zoom);
@@ -330,6 +335,7 @@ class AddFacilityController extends ChangeNotifier {
 
   void dragPinTo(LatLng to) {
     if (draft.pin == null) return;
+    qualityReason = null;
     draft.pin = to;
     draft.confirmedOutside = false;
     notifyListeners();
@@ -338,6 +344,7 @@ class AddFacilityController extends ChangeNotifier {
   void endPinDrag() {
     final pin = draft.pin;
     if (pin == null) return;
+    qualityReason = null;
     _edit(() => draft.accuracy = accuracyForZoom(zoom));
     _resolveAddress(pin);
   }
@@ -345,6 +352,7 @@ class AddFacilityController extends ChangeNotifier {
   void nudgePin({double north = 0, double east = 0}) {
     final pin = draft.pin;
     if (pin == null) return;
+    qualityReason = null;
     final next = nudge(pin, north: north, east: east);
     _edit(() {
       draft.pin = next;
@@ -357,6 +365,7 @@ class AddFacilityController extends ChangeNotifier {
 
   void clearPin() {
     _geoTimer?.cancel();
+    qualityReason = null;
     _edit(() {
       draft.pin = null;
       draft.accuracy = null;
@@ -389,6 +398,7 @@ class AddFacilityController extends ChangeNotifier {
   }
 
   void confirmOutsideBoundary() {
+    qualityReason = null;
     _edit(() => draft.confirmedOutside = true);
     showToast(
       const ToastMessage(
@@ -399,6 +409,7 @@ class AddFacilityController extends ChangeNotifier {
   }
 
   Future<void> useGps() async {
+    qualityReason = null;
     showToast(
       const ToastMessage('Reading GPS…', tone: AdvisoryTone.info),
       duration: const Duration(seconds: 8),
@@ -562,7 +573,18 @@ class AddFacilityController extends ChangeNotifier {
 
   MapAdvisory? get advisory {
     final pin = draft.pin;
-    if (pin == null) return null;
+    if (pin == null) {
+      if (qualityReason == FacilityEditorReason.missingPin) {
+        return const MapAdvisory(
+          tone: AdvisoryTone.block,
+          icon: Icons.add_location_alt_rounded,
+          title: 'Map pin is missing',
+          body:
+              'Place a pin for this facility so students can open reliable walking directions.',
+        );
+      }
+      return null;
+    }
 
     if (!insideBoundary && !draft.confirmedOutside) {
       final d = formatMetres(metresFromCenter ?? 0);
@@ -584,6 +606,39 @@ class AddFacilityController extends ChangeNotifier {
       );
     }
 
+    if (qualityReason == FacilityEditorReason.outsideCampus ||
+        draft.confirmedOutside) {
+      return MapAdvisory(
+        tone: AdvisoryTone.warn,
+        icon: Icons.flag_outlined,
+        title: draft.confirmedOutside
+            ? 'Out-of-boundary pin confirmed'
+            : 'Pin needs a boundary review',
+        body:
+            'This record is marked for review because the pin was saved outside the normal campus boundary. Move it inside the mapped campus, or keep it only when the location is intentionally outside.',
+      );
+    }
+
+    if (qualityReason == FacilityEditorReason.unverifiedPin) {
+      return const MapAdvisory(
+        tone: AdvisoryTone.info,
+        icon: Icons.fact_check_outlined,
+        title: 'Existing pin needs confirmation',
+        body:
+            'The pin already exists, but it has not been verified by an administrator. Confirm it if the marker is correct, or move it deliberately if it is wrong.',
+      );
+    }
+
+    if (qualityReason == FacilityEditorReason.lowCoordinateAccuracy) {
+      return MapAdvisory(
+        tone: AdvisoryTone.info,
+        icon: Icons.adjust_rounded,
+        title: 'Improve pin precision',
+        body:
+            'The current precision is +/-${draft.accuracy} m. Zoom in and re-drop, drag, or nudge the pin until the target precision is ${accuracyWarnLimit.round()} m or better.',
+      );
+    }
+
     final check = buildingCheck;
     if (check != null && check.metres > buildingProximityLimit) {
       final direction = compassFrom(check.building.coords, pin);
@@ -600,17 +655,6 @@ class AddFacilityController extends ChangeNotifier {
         actions: [
           AdvisoryAction('Snap to building', snapToBuilding, primary: true),
         ],
-      );
-    }
-
-    if (draft.confirmedOutside) {
-      return MapAdvisory(
-        tone: AdvisoryTone.info,
-        icon: Icons.flag_outlined,
-        title: 'Out-of-boundary pin confirmed',
-        body:
-            'Saved records keep this flag so a reviewer can see the pin was '
-            'deliberate rather than a mis-click.',
       );
     }
 
@@ -1058,13 +1102,15 @@ class AddFacilityController extends ChangeNotifier {
 
   void startNewRecord() {
     editingId = null;
+    qualityReason = null;
     saved = false;
     savedName = '';
     _resetFields(keepBuilding: false);
   }
 
-  void loadForEditing(Facility facility) {
+  void loadForEditing(Facility facility, {FacilityEditorReason? reason}) {
     editingId = facility.id;
+    qualityReason = reason;
     saved = false;
     savedName = '';
     draftFound = false;
@@ -1141,6 +1187,31 @@ class AddFacilityController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void focusEditorSection(
+    FacilityEditorFocus? focus, {
+    FacilityEditorReason? reason,
+  }) {
+    if (focus == null) return;
+    qualityReason = reason ?? qualityReason;
+    final item = switch (focus) {
+      FacilityEditorFocus.location ||
+      FacilityEditorFocus.locationAccuracy => RequiredItem.pin,
+      FacilityEditorFocus.photos => RequiredItem.photos,
+    };
+    if (focus != FacilityEditorFocus.photos) tab = MapTab.map;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = sectionKeys[item]?.currentContext;
+      if (target == null) return;
+      Scrollable.ensureVisible(
+        target,
+        duration: SR.entrance,
+        curve: SR.easing,
+        alignment: .08,
+      );
+    });
+    notifyListeners();
+  }
+
   static List<bool> _daysFromLabel(String label) {
     const order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     if (label.contains('–')) {
@@ -1177,6 +1248,7 @@ class AddFacilityController extends ChangeNotifier {
 
   void _resetFields({required bool keepBuilding}) {
     final keptBuilding = keepBuilding ? draft.building : '';
+    qualityReason = null;
     final keepCampus = draft.campusName;
     final blank = FacilityDraft();
     draft

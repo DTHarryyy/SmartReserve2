@@ -1,4 +1,5 @@
 import '../../data/campus_data.dart';
+import '../add_facility/facility_editor_focus.dart';
 import '../../model/facility.dart';
 import '../../model/reservation.dart';
 import '../../util/geo.dart';
@@ -55,6 +56,25 @@ class ReportScope {
       range == other.range && category == other.category;
 }
 
+enum ReportContractFailureCode {
+  unsupportedVersion,
+  scopeMismatch,
+  invalidResponse,
+  incompleteDemandGrid,
+  unreconciledFacility,
+  unreconciledTotals,
+  invalidOccurrence,
+}
+
+class ReportContractException implements Exception {
+  const ReportContractException(this.code);
+
+  final ReportContractFailureCode code;
+
+  @override
+  String toString() => 'ReportContractException(${code.name})';
+}
+
 class ReportSnapshot {
   const ReportSnapshot({
     required this.scope,
@@ -82,71 +102,118 @@ class ReportSnapshot {
     Map<String, dynamic> json, {
     required ReportScope expectedScope,
   }) {
-    final from = _date(json, 'from');
-    final to = _date(json, 'to');
-    final category = _nullableString(json, 'category');
-    if (!from.isAtSameMomentAs(expectedScope.from) ||
-        !to.isAtSameMomentAs(expectedScope.to) ||
-        category != expectedScope.category) {
-      throw const FormatException('Report response did not match its request.');
+    try {
+      if (!json.containsKey('contract_version')) {
+        throw const ReportContractException(
+          ReportContractFailureCode.unsupportedVersion,
+        );
+      }
+      final version = _integer(json, 'contract_version', min: 1);
+      if (version != 2) {
+        throw const ReportContractException(
+          ReportContractFailureCode.unsupportedVersion,
+        );
+      }
+      final from = _date(json, 'from');
+      final to = _date(json, 'to');
+      final category = _nullableString(json, 'category');
+      if (!from.isAtSameMomentAs(expectedScope.from) ||
+          !to.isAtSameMomentAs(expectedScope.to) ||
+          category != expectedScope.category) {
+        throw const ReportContractException(
+          ReportContractFailureCode.scopeMismatch,
+        );
+      }
+      final summary = _map(json, 'summary');
+      final rows = _parseList(
+        json,
+        'utilisation',
+        ReportContractFailureCode.invalidResponse,
+        (row) => ReportUtilisation.fromJson(_asMap(row, 'utilisation row')),
+      );
+      final occurrences = _parseList(
+        json,
+        'booked_occurrences',
+        ReportContractFailureCode.invalidOccurrence,
+        (row) =>
+            ReportBookedOccurrence.fromJson(_asMap(row, 'booked occurrence')),
+      );
+      final demand = _parseList(
+        json,
+        'demand',
+        ReportContractFailureCode.incompleteDemandGrid,
+        (row) => ReportDemandCell.fromJson(_asMap(row, 'demand cell')),
+      );
+      final demandKeys = {
+        for (final cell in demand) '${cell.day}:${cell.hour}',
+      };
+      if (demand.length != 49 || demandKeys.length != 49) {
+        throw const ReportContractException(
+          ReportContractFailureCode.incompleteDemandGrid,
+        );
+      }
+      final bookedHours = _number(summary, 'booked_hours', min: 0);
+      final availableHours = _number(summary, 'available_hours', min: 0);
+      final fraction = _number(summary, 'fraction', min: 0, max: 1);
+      final rowIds = {for (final row in rows) row.facilityId};
+      if (rowIds.length != rows.length ||
+          occurrences.any((row) => !rowIds.contains(row.facilityId))) {
+        throw const ReportContractException(
+          ReportContractFailureCode.unreconciledFacility,
+        );
+      }
+      final rowBooked = rows.fold<double>(
+        0,
+        (sum, row) => sum + row.bookedHours,
+      );
+      final rowAvailable = rows.fold<double>(
+        0,
+        (sum, row) => sum + row.availableHours,
+      );
+      final occurrenceBooked = occurrences.fold<double>(
+        0,
+        (sum, row) => sum + row.bookedHours,
+      );
+      final roundingTolerance = .011 * (occurrences.length + rows.length + 1);
+      for (final row in rows) {
+        final expected = row.availableHours == 0
+            ? 0.0
+            : (row.bookedHours / row.availableHours).clamp(0.0, 1.0);
+        if ((expected - row.fraction).abs() > .0001) {
+          throw const ReportContractException(
+            ReportContractFailureCode.unreconciledTotals,
+          );
+        }
+      }
+      final expectedFraction = availableHours == 0
+          ? 0.0
+          : (bookedHours / availableHours).clamp(0.0, 1.0);
+      if ((rowBooked - bookedHours).abs() > roundingTolerance ||
+          (rowAvailable - availableHours).abs() > roundingTolerance ||
+          (occurrenceBooked - bookedHours).abs() > roundingTolerance ||
+          (expectedFraction - fraction).abs() > .0001) {
+        throw const ReportContractException(
+          ReportContractFailureCode.unreconciledTotals,
+        );
+      }
+      return ReportSnapshot(
+        scope: expectedScope,
+        generatedAt: _date(json, 'generated_at'),
+        bookedHours: bookedHours,
+        availableHours: availableHours,
+        fraction: fraction,
+        utilisation: rows,
+        bookedOccurrences: occurrences,
+        demand: demand,
+        performance: ReportPerformance.fromJson(_map(json, 'performance')),
+      );
+    } on ReportContractException {
+      rethrow;
+    } on FormatException {
+      throw const ReportContractException(
+        ReportContractFailureCode.invalidResponse,
+      );
     }
-    final summary = _map(json, 'summary');
-    final rows = _list(json, 'utilisation')
-        .map(
-          (row) => ReportUtilisation.fromJson(_asMap(row, 'utilisation row')),
-        )
-        .toList(growable: false);
-    final occurrences = _list(json, 'booked_occurrences')
-        .map(
-          (row) =>
-              ReportBookedOccurrence.fromJson(_asMap(row, 'booked occurrence')),
-        )
-        .toList(growable: false);
-    final demand = _list(json, 'demand')
-        .map((row) => ReportDemandCell.fromJson(_asMap(row, 'demand cell')))
-        .toList(growable: false);
-    final demandKeys = {for (final cell in demand) '${cell.day}:${cell.hour}'};
-    if (demand.length != 49 || demandKeys.length != 49) {
-      throw const FormatException('Report demand grid is incomplete.');
-    }
-    final bookedHours = _number(summary, 'booked_hours', min: 0);
-    final availableHours = _number(summary, 'available_hours', min: 0);
-    final fraction = _number(summary, 'fraction', min: 0, max: 1);
-    final rowIds = {for (final row in rows) row.facilityId};
-    if (rowIds.length != rows.length ||
-        occurrences.any((row) => !rowIds.contains(row.facilityId))) {
-      throw const FormatException('Report facility rows do not reconcile.');
-    }
-    final rowBooked = rows.fold<double>(0, (sum, row) => sum + row.bookedHours);
-    final rowAvailable = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.availableHours,
-    );
-    final occurrenceBooked = occurrences.fold<double>(
-      0,
-      (sum, row) => sum + row.bookedHours,
-    );
-    final expectedFraction = availableHours == 0
-        ? 0.0
-        : (bookedHours / availableHours).clamp(0.0, 1.0);
-    final roundingTolerance = .011 * (occurrences.length + rows.length + 1);
-    if ((rowBooked - bookedHours).abs() > roundingTolerance ||
-        (rowAvailable - availableHours).abs() > roundingTolerance ||
-        (occurrenceBooked - bookedHours).abs() > roundingTolerance ||
-        (expectedFraction - fraction).abs() > .0001) {
-      throw const FormatException('Report totals do not reconcile.');
-    }
-    return ReportSnapshot(
-      scope: expectedScope,
-      generatedAt: _date(json, 'generated_at'),
-      bookedHours: bookedHours,
-      availableHours: availableHours,
-      fraction: fraction,
-      utilisation: rows,
-      bookedOccurrences: occurrences,
-      demand: demand,
-      performance: ReportPerformance.fromJson(_map(json, 'performance')),
-    );
   }
 
   bool matches(ReportScope other) => scope.matches(other);
@@ -305,7 +372,7 @@ DemandHeatmap demandFromReport(ReportSnapshot snapshot) {
 ApprovalPerformance performanceFromReport(ReportSnapshot snapshot) =>
     ApprovalPerformance(
       medianHours: snapshot.performance.medianHours,
-      withinFortyEight: snapshot.performance.withinFortyEight ?? 0,
+      withinFortyEight: snapshot.performance.withinFortyEight,
       expired: snapshot.performance.expired,
       perAdmin: snapshot.performance.perAdmin,
     );
@@ -416,7 +483,7 @@ class ApprovalPerformance {
 
   final double? medianHours;
 
-  final double withinFortyEight;
+  final double? withinFortyEight;
   final int expired;
 
   final List<({String? id, String who, int decisions, double median})> perAdmin;
@@ -471,7 +538,7 @@ ApprovalPerformance performanceFor(List<ReservationRequest> requests) {
   return ApprovalPerformance(
     medianHours: median(latencies),
     withinFortyEight: latencies.isEmpty
-        ? 0
+        ? null
         : latencies.where((h) => h <= 48).length / latencies.length,
 
     expired: requests.where((r) => r.status == RequestStatus.expired).length,
@@ -488,25 +555,41 @@ ApprovalPerformance performanceFor(List<ReservationRequest> requests) {
 }
 
 enum QualitySeverity {
-  blocking('BLOCKING'),
-  warning('CHECK'),
-  minor('MINOR');
+  blocking('Blocking'),
+  warning('Needs review'),
+  minor('Minor');
 
   const QualitySeverity(this.label);
 
   final String label;
 }
 
+enum QualityIssueType {
+  missingPin,
+  pinOutsideCampus,
+  unverifiedPin,
+  lowCoordinateAccuracy,
+  missingPhotos,
+}
+
 class QualityIssue {
   const QualityIssue({
     required this.facility,
     required this.severity,
+    required this.type,
+    required this.focus,
     required this.issue,
+    required this.actionLabel,
+    required this.impact,
   });
 
   final Facility facility;
   final QualitySeverity severity;
+  final QualityIssueType type;
+  final FacilityEditorFocus focus;
   final String issue;
+  final String actionLabel;
+  final String impact;
 }
 
 List<QualityIssue> qualityIssuesFor(List<Facility> facilities) {
@@ -517,7 +600,11 @@ List<QualityIssue> qualityIssuesFor(List<Facility> facilities) {
         QualityIssue(
           facility: f,
           severity: QualitySeverity.blocking,
+          type: QualityIssueType.missingPin,
+          focus: FacilityEditorFocus.location,
           issue: 'No pin at all — students cannot get directions to this room.',
+          actionLabel: 'Add pin',
+          impact: 'Students cannot open reliable directions or find the room.',
         ),
       );
       continue;
@@ -527,37 +614,43 @@ List<QualityIssue> qualityIssuesFor(List<Facility> facilities) {
         QualityIssue(
           facility: f,
           severity: QualitySeverity.blocking,
+          type: QualityIssueType.pinOutsideCampus,
+          focus: FacilityEditorFocus.location,
           issue:
               'Pinned ${formatMetres(haversine(f.coords!, campus.center))} '
               'from the campus centre, outside the boundary.',
+          actionLabel: 'Correct pin',
+          impact: 'Wayfinding may send students outside the mapped campus.',
         ),
       );
       continue;
     }
-    final building = buildingNamed(f.building);
-    if (building != null && building.mapped) {
-      final metres = haversine(f.coords!, building.coords);
-      if (metres > buildingProximityLimit) {
-        issues.add(
-          QualityIssue(
-            facility: f,
-            severity: QualitySeverity.warning,
-            issue:
-                '${formatMetres(metres)} from ${building.name} — further than '
-                'a room in that building should be.',
-          ),
-        );
-        continue;
-      }
+    if (f.pinConfidence != PinConfidence.verified || f.confirmedOutside) {
+      issues.add(
+        QualityIssue(
+          facility: f,
+          severity: QualitySeverity.warning,
+          type: QualityIssueType.unverifiedPin,
+          focus: FacilityEditorFocus.location,
+          issue: 'This existing pin has not been verified.',
+          actionLabel: 'Review pin',
+          impact: 'Students may be directed to an unconfirmed location.',
+        ),
+      );
+      continue;
     }
     if ((f.accuracy ?? 0) > accuracyWarnLimit) {
       issues.add(
         QualityIssue(
           facility: f,
           severity: QualitySeverity.warning,
+          type: QualityIssueType.lowCoordinateAccuracy,
+          focus: FacilityEditorFocus.locationAccuracy,
           issue:
               'Pin precision is ±${f.accuracy} m — too loose to find a '
               'doorway.',
+          actionLabel: 'Improve precision',
+          impact: 'The map can be too vague for doorway-level guidance.',
         ),
       );
       continue;
@@ -567,7 +660,11 @@ List<QualityIssue> qualityIssuesFor(List<Facility> facilities) {
         QualityIssue(
           facility: f,
           severity: QualitySeverity.minor,
+          type: QualityIssueType.missingPhotos,
+          focus: FacilityEditorFocus.photos,
           issue: 'No photos, so the catalogue card has nothing to show.',
+          actionLabel: 'Add photos',
+          impact: 'Students cannot visually confirm the room before booking.',
         ),
       );
     }
@@ -581,42 +678,24 @@ String formatUtilisationPercent(double fraction) {
   return '${percent.toStringAsFixed(1)}%';
 }
 
-String reportCsv(ReportSnapshot snapshot, {required String exportedBy}) {
-  String cell(Object? value) {
-    final text = value?.toString() ?? '';
-    return '"${text.replaceAll('"', '""')}"';
-  }
-
-  final rows = <String>[
-    'facility,building,category,booked_hours,available_hours,utilisation',
-    for (final row in snapshot.utilisation)
-      [
-        cell(row.facilityName),
-        cell(row.building),
-        cell(row.category),
-        row.bookedHours.toStringAsFixed(2),
-        row.availableHours.toStringAsFixed(2),
-        (row.fraction * 100).toStringAsFixed(2),
-      ].join(','),
-    '',
-    'from,to,category,generated_at,exported_by,total_booked_hours,total_available_hours,overall_utilisation',
-    [
-      snapshot.scope.from.toUtc().toIso8601String(),
-      snapshot.scope.to.toUtc().toIso8601String(),
-      cell(snapshot.scope.category ?? 'All categories'),
-      snapshot.generatedAt.toUtc().toIso8601String(),
-      cell(exportedBy),
-      snapshot.bookedHours.toStringAsFixed(2),
-      snapshot.availableHours.toStringAsFixed(2),
-      (snapshot.fraction * 100).toStringAsFixed(2),
-    ].join(','),
-  ];
-  return rows.join('\n');
-}
-
 Map<String, dynamic> _asMap(Object? value, String label) {
   if (value is! Map) throw FormatException('Invalid $label.');
   return Map<String, dynamic>.from(value);
+}
+
+List<T> _parseList<T>(
+  Map<String, dynamic> json,
+  String key,
+  ReportContractFailureCode code,
+  T Function(Object? value) parse,
+) {
+  try {
+    return _list(json, key).map(parse).toList(growable: false);
+  } on ReportContractException {
+    rethrow;
+  } on FormatException {
+    throw ReportContractException(code);
+  }
 }
 
 Map<String, dynamic> _map(Map<String, dynamic> json, String key) =>

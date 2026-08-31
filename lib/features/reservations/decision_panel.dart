@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -17,6 +19,7 @@ import 'permit_panel.dart';
 import 'reservation_activity.dart';
 import 'reservation_checks.dart';
 import 'reservation_series.dart';
+import 'risk_summary_card.dart';
 
 import '../../theme/sr_theme.dart';
 
@@ -45,6 +48,7 @@ enum _Tab { review, activity }
 class _DecisionPanelState extends State<DecisionPanel> {
   _Prompt _prompt = _Prompt.none;
   _Tab _tab = _Tab.review;
+  String? _correctingOccurrenceId;
 
   @override
   void didUpdateWidget(DecisionPanel old) {
@@ -53,6 +57,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
     if (old.assessment.request.id != widget.assessment.request.id) {
       _prompt = _Prompt.none;
       _tab = _Tab.review;
+      _correctingOccurrenceId = null;
     }
   }
 
@@ -248,6 +253,8 @@ class _DecisionPanelState extends State<DecisionPanel> {
             ],
           ),
         ),
+
+        RiskSummaryCard(state: widget.state, requestId: _request.id),
 
         Padding(
           padding: const EdgeInsets.only(bottom: SR.space12),
@@ -556,74 +563,91 @@ class _DecisionPanelState extends State<DecisionPanel> {
             for (final occurrence in _request.occurrences)
               Padding(
                 padding: const EdgeInsets.only(bottom: SR.space8),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${occurrence.startsAt.day}/${occurrence.startsAt.month}/${occurrence.startsAt.year} · '
-                            '${_clock(occurrence.startsAt)}–${_clock(occurrence.endsAt)}',
-                            style: SrType.code(
-                              w: 500,
-                              color: context.srColors.ink3,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${occurrence.startsAt.day}/${occurrence.startsAt.month}/${occurrence.startsAt.year} · '
+                                '${_clock(occurrence.startsAt)}–${_clock(occurrence.endsAt)}',
+                                style: SrType.code(
+                                  w: 500,
+                                  color: context.srColors.ink3,
+                                ),
+                              ),
+                              Text(
+                                occurrence.stage.summary,
+                                style: SrType.caption(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (occurrence.isBooked &&
+                            occurrence.stage == BookingStage.booked) ...[
+                          SrButton(
+                            label: 'Check in',
+                            dense: true,
+                            onPressed:
+                                campusNow().isBefore(
+                                  occurrence.startsAt.subtract(
+                                    const Duration(minutes: 30),
+                                  ),
+                                )
+                                ? null
+                                : () => widget.state.advanceOccurrenceStage(
+                                    _request,
+                                    occurrence,
+                                    BookingStage.checkedIn,
+                                  ),
+                          ),
+                          const SizedBox(width: 5),
+                          SrButton(
+                            label: 'No-show',
+                            dense: true,
+                            kind: SrButtonKind.danger,
+                            onPressed:
+                                campusNow().isBefore(
+                                  occurrence.startsAt.add(
+                                    const Duration(minutes: 15),
+                                  ),
+                                )
+                                ? null
+                                : () => widget.state.advanceOccurrenceStage(
+                                    _request,
+                                    occurrence,
+                                    BookingStage.noShow,
+                                  ),
+                          ),
+                        ] else if (occurrence.stage == BookingStage.checkedIn)
+                          SrButton(
+                            label: 'Complete',
+                            dense: true,
+                            kind: SrButtonKind.success,
+                            onPressed: () => widget.state.advanceOccurrenceStage(
+                              _request,
+                              occurrence,
+                              BookingStage.completed,
+                            ),
+                          )
+                        else if (occurrence.stage == BookingStage.completed ||
+                            occurrence.stage == BookingStage.noShow)
+                          SrButton(
+                            label: 'Correct attendance',
+                            dense: true,
+                            fontSize: 11,
+                            onPressed: () => setState(
+                              () => _correctingOccurrenceId = occurrence.id,
                             ),
                           ),
-                          Text(
-                            occurrence.stage.summary,
-                            style: SrType.caption(),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
-                    if (occurrence.isBooked &&
-                        occurrence.stage == BookingStage.booked) ...[
-                      SrButton(
-                        label: 'Check in',
-                        dense: true,
-                        onPressed:
-                            campusNow().isBefore(
-                              occurrence.startsAt.subtract(
-                                const Duration(minutes: 30),
-                              ),
-                            )
-                            ? null
-                            : () => widget.state.advanceOccurrenceStage(
-                                _request,
-                                occurrence,
-                                BookingStage.checkedIn,
-                              ),
-                      ),
-                      const SizedBox(width: 5),
-                      SrButton(
-                        label: 'No-show',
-                        dense: true,
-                        kind: SrButtonKind.danger,
-                        onPressed:
-                            campusNow().isBefore(
-                              occurrence.startsAt.add(
-                                const Duration(minutes: 15),
-                              ),
-                            )
-                            ? null
-                            : () => widget.state.advanceOccurrenceStage(
-                                _request,
-                                occurrence,
-                                BookingStage.noShow,
-                              ),
-                      ),
-                    ] else if (occurrence.stage == BookingStage.checkedIn)
-                      SrButton(
-                        label: 'Complete',
-                        dense: true,
-                        kind: SrButtonKind.success,
-                        onPressed: () => widget.state.advanceOccurrenceStage(
-                          _request,
-                          occurrence,
-                          BookingStage.completed,
-                        ),
-                      ),
+                    if (_correctingOccurrenceId == occurrence.id)
+                      _attendanceCorrectionBox(occurrence),
                   ],
                 ),
               ),
@@ -726,6 +750,23 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 style: SrType.bodySm(color: context.srColors.greenDark),
               ),
             ),
+            if (_request.occurrences.isNotEmpty) ...[
+              const SizedBox(height: SR.space8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SrButton(
+                  label: 'Correct attendance',
+                  dense: true,
+                  fontSize: 11,
+                  onPressed: () => setState(
+                    () => _correctingOccurrenceId =
+                        _request.occurrences.first.id,
+                  ),
+                ),
+              ),
+              if (_correctingOccurrenceId == _request.occurrences.first.id)
+                _attendanceCorrectionBox(_request.occurrences.first),
+            ],
           ],
         ],
       ),
@@ -735,6 +776,32 @@ class _DecisionPanelState extends State<DecisionPanel> {
   static String _clock(DateTime value) =>
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
+
+  Widget _attendanceCorrectionBox(ReservationOccurrence occurrence) {
+    final targetStage = occurrence.stage == BookingStage.noShow
+        ? 'completed'
+        : 'no_show';
+    final targetLabel = targetStage == 'completed' ? 'completed' : 'no-show';
+    return ReasonBox(
+      tone: ReasonTone.neutral,
+      title: 'Reason for correcting this to $targetLabel',
+      placeholder:
+          'Explain what actually happened — this becomes part of the audit '
+          'trail and is visible to other assigned administrators.',
+      confirmLabel: 'Save correction',
+      onCancel: () => setState(() => _correctingOccurrenceId = null),
+      onConfirm: (reason) {
+        setState(() => _correctingOccurrenceId = null);
+        unawaited(
+          widget.state.correctOccurrenceAttendance(
+            occurrenceId: occurrence.id,
+            targetStage: targetStage,
+            reason: reason,
+          ),
+        );
+      },
+    );
+  }
 
   Widget _conflict(ReservationAssessment assessment) {
     final next = assessment.nextFreeSlot;

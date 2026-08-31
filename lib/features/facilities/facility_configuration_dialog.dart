@@ -50,7 +50,6 @@ class _FacilityConfigurationDialogState
   late final TextEditingController _correctionHours;
   late final TextEditingController _downPaymentPercent;
   late final List<_AmenityEdit> _amenities;
-  Future<List<FacilityAssignmentOption>>? _assignments;
   bool _saving = false;
   String? _error;
 
@@ -95,9 +94,6 @@ class _FacilityConfigurationDialogState
       ))
         _AmenityEdit(name: amenity.name, price: _pesos(amenity.priceCentavos)),
     ];
-    if (facility.assignmentRole == 'owner') {
-      _assignments = widget.state.facilityAssignmentDirectory(facility.id);
-    }
   }
 
   static String _pesos(int centavos) => (centavos / 100).toStringAsFixed(2);
@@ -311,69 +307,6 @@ class _FacilityConfigurationDialogState
                       ),
                     ],
                   ),
-                  if (_assignments != null) ...[
-                    const SizedBox(height: 22),
-                    _heading(
-                      'Administrators',
-                      'Owners assign either lane; managers operate within their role lane.',
-                    ),
-                    FutureBuilder<List<FacilityAssignmentOption>>(
-                      future: _assignments,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const LinearProgressIndicator();
-                        }
-                        return Column(
-                          children: [
-                            for (final option in snapshot.data!)
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(option.name),
-                                subtitle: Text(
-                                  '${option.adminLane} · ${option.email}',
-                                ),
-                                trailing: option.assignmentRole == null
-                                    ? PopupMenuButton<String>(
-                                        tooltip: 'Assign administrator',
-                                        onSelected: (role) =>
-                                            _setAssignment(option, role),
-                                        itemBuilder: (_) => const [
-                                          PopupMenuItem(
-                                            value: 'manager',
-                                            child: Text('Assign as manager'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'owner',
-                                            child: Text('Assign as owner'),
-                                          ),
-                                        ],
-                                        child: const Padding(
-                                          padding: EdgeInsets.all(8),
-                                          child: Text('Assign'),
-                                        ),
-                                      )
-                                    : Wrap(
-                                        spacing: 4,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: [
-                                          Text(option.assignmentRole!),
-                                          IconButton(
-                                            tooltip: 'Remove assignment',
-                                            onPressed: () =>
-                                                _removeAssignment(option),
-                                            icon: const Icon(
-                                              Icons.link_off_rounded,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(_error!, style: sans(11, color: context.srColors.red)),
@@ -492,33 +425,6 @@ class _FacilityConfigurationDialogState
     }
   }
 
-  Future<void> _setAssignment(
-    FacilityAssignmentOption option,
-    String role,
-  ) async {
-    await widget.state.setFacilityAssignment(
-      facilityId: facility.id,
-      adminId: option.adminId,
-      assignmentRole: role,
-    );
-    if (mounted) {
-      setState(() {
-        _assignments = widget.state.facilityAssignmentDirectory(facility.id);
-      });
-    }
-  }
-
-  Future<void> _removeAssignment(FacilityAssignmentOption option) async {
-    await widget.state.removeFacilityAssignment(
-      facilityId: facility.id,
-      adminId: option.adminId,
-    );
-    if (mounted) {
-      setState(() {
-        _assignments = widget.state.facilityAssignmentDirectory(facility.id);
-      });
-    }
-  }
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

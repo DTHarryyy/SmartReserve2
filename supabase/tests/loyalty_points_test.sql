@@ -2,24 +2,33 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(48);
+select plan(36);
 
 create temp table loyalty_test as
 select
   (select id from public.profiles where email = 'user@csu.edu.ph') user_id,
   (select id from public.profiles where role = 'internal_admin' order by created_at limit 1) internal_admin_id,
+  (select id from public.profiles where role = 'external_admin' order by created_at limit 1) external_admin_id,
   '10000000-0000-0000-0000-000000000001'::uuid facility_id;
 
-delete from public.loyalty_redemptions
-where user_id = (select user_id from loyalty_test);
+delete from public.loyalty_discount_applications
+where claim_id in (
+  select id from public.loyalty_discount_claims
+  where offer_name like 'PgTAP loyalty%'
+);
+delete from public.loyalty_discount_claims
+where offer_name like 'PgTAP loyalty%';
+delete from public.loyalty_discount_offers
+where name like 'PgTAP loyalty%';
+delete from public.reservation_requests
+where id in (
+  '97000000-0000-0000-0000-000000000001',
+  '97000000-0000-0000-0000-000000000002',
+  '97000000-0000-0000-0000-000000000003',
+  '97000000-0000-0000-0000-000000000004'
+);
 delete from public.loyalty_transactions
 where user_id = (select user_id from loyalty_test);
-delete from public.loyalty_rewards
-where name in (
-  'Priority booking slot',
-  'Sticker pack',
-  'Pending renter voucher'
-);
 
 update public.profiles
 set role = 'user',
@@ -30,78 +39,85 @@ set role = 'user',
 where id = (select user_id from loyalty_test);
 
 select is(
-  (select points from public.loyalty_point_rules where transaction_type = 'reservation_completed'),
-  10, 'the seeded reservation_completed rule is 10 points'
+  (select points::text from public.loyalty_point_rules where transaction_type = 'booking_completed'),
+  '1.0', 'completed bookings earn 1 point'
 );
 select is(
-  (select points from public.loyalty_point_rules where transaction_type = 'feedback_submitted'),
-  5, 'the seeded feedback_submitted rule is 5 points'
+  (select points::text from public.loyalty_point_rules where transaction_type = 'booking_duration_1_to_4_hours'),
+  '0.5', '1-4 hour bookings earn 0.5 duration points'
+);
+select is(
+  (select points::text from public.loyalty_point_rules where transaction_type = 'booking_duration_5_plus_hours'),
+  '1.0', '5+ hour bookings earn 1 capped duration point'
+);
+select is(
+  (select points::text from public.loyalty_point_rules where transaction_type = 'booking_with_amenity'),
+  '0.5', 'bookings with amenities earn 0.5 points'
+);
+select is(
+  (select points::text from public.loyalty_point_rules where transaction_type = 'feedback_submitted'),
+  '1.0', 'feedback earns 1 point'
 );
 
 select ok(
   public.loyalty_user_is_eligible((select user_id from loyalty_test)),
-  'unverified guest-priced renters are loyalty eligible'
+  'guest-priced renters are loyalty eligible'
 );
-update public.profiles
-set verification_status = 'pending', campus_claim = 'student', unit = 'BSIT'
-where id = (select user_id from loyalty_test);
-select ok(
-  public.loyalty_user_is_eligible((select user_id from loyalty_test)),
-  'pending campus claims remain guest-priced and loyalty eligible'
-);
-update public.profiles
-set verification_status = 'verified', campus_claim = 'student', unit = 'BSIT'
-where id = (select user_id from loyalty_test);
-select ok(
-  not public.loyalty_user_is_eligible((select user_id from loyalty_test)),
-  'verified students are not loyalty eligible'
-);
-update public.profiles
-set verification_status = 'verified', campus_claim = 'faculty', unit = 'College of Education'
-where id = (select user_id from loyalty_test);
-select ok(
-  not public.loyalty_user_is_eligible((select user_id from loyalty_test)),
-  'verified faculty are not loyalty eligible'
-);
-update public.profiles
-set verification_status = 'verified', campus_claim = 'staff', unit = 'Legal Office'
-where id = (select user_id from loyalty_test);
-select ok(
-  not public.loyalty_user_is_eligible((select user_id from loyalty_test)),
-  'verified staff are not loyalty eligible'
-);
-
-update public.profiles
-set verification_status = 'none', campus_claim = 'none', unit = null
-where id = (select user_id from loyalty_test);
 
 insert into public.reservation_requests(
   id, requester_id, facility_id, requester_name, requester_role,
   facility_name, facility_building, facility_capacity, purpose, headcount,
   status, reservation_status, admin_lane, pricing_audience, version, created_at
 )
-select '97000000-0000-0000-0000-000000000001', user_id, facility_id,
-  'Loyalty Guest', 'user', 'Computer Laboratory 1', 'CICS', 40,
-  'Completion award test', 10, 'approved', 'confirmed', 'external', 'guest', 1, now()
-from loyalty_test
-union all
-select '97000000-0000-0000-0000-000000000002', user_id, facility_id,
-  'Loyalty Guest', 'user', 'Computer Laboratory 1', 'CICS', 40,
-  'No-show award test', 10, 'approved', 'confirmed', 'external', 'guest', 1, now()
-from loyalty_test;
+select id, user_id, facility_id, 'Loyalty Guest', 'user',
+  'Computer Laboratory 1', 'CICS', 40, purpose, 10,
+  'approved', 'confirmed', 'external', 'guest', 1, now()
+from loyalty_test,
+(values
+  ('97000000-0000-0000-0000-000000000001'::uuid, 'Under one hour loyalty test'),
+  ('97000000-0000-0000-0000-000000000002'::uuid, 'Two hour amenity loyalty test'),
+  ('97000000-0000-0000-0000-000000000003'::uuid, 'Six hour loyalty test'),
+  ('97000000-0000-0000-0000-000000000004'::uuid, 'No show loyalty test')
+) as rows(id, purpose);
 
 insert into public.reservation_occurrences(
   id, request_id, facility_id, starts_at, ends_at, booking_state, lifecycle_stage
 )
-select '97100000-0000-0000-0000-000000000001',
-  '97000000-0000-0000-0000-000000000001', facility_id,
-  now() - interval '2 hours', now() - interval '1 hour', 'booked', 'booked'
-from loyalty_test
-union all
-select '97100000-0000-0000-0000-000000000002',
-  '97000000-0000-0000-0000-000000000002', facility_id,
-  now() - interval '2 hours', now() - interval '1 hour', 'booked', 'booked'
-from loyalty_test;
+select occurrence_id, request_id, facility_id, starts_at, ends_at, 'booked', 'booked'
+from loyalty_test,
+(values
+  (
+    '97100000-0000-0000-0000-000000000001'::uuid,
+    '97000000-0000-0000-0000-000000000001'::uuid,
+    now() - interval '90 minutes',
+    now() - interval '60 minutes'
+  ),
+  (
+    '97100000-0000-0000-0000-000000000002'::uuid,
+    '97000000-0000-0000-0000-000000000002'::uuid,
+    now() - interval '3 hours',
+    now() - interval '1 hour'
+  ),
+  (
+    '97100000-0000-0000-0000-000000000003'::uuid,
+    '97000000-0000-0000-0000-000000000003'::uuid,
+    now() - interval '8 hours',
+    now() - interval '2 hours'
+  ),
+  (
+    '97100000-0000-0000-0000-000000000004'::uuid,
+    '97000000-0000-0000-0000-000000000004'::uuid,
+    now() - interval '3 hours',
+    now() - interval '1 hour'
+  )
+) as rows(occurrence_id, request_id, starts_at, ends_at);
+
+insert into public.reservation_amenities(
+  request_id, name_snapshot, unit_price_centavos, quantity, line_total_centavos
+) values (
+  '97000000-0000-0000-0000-000000000002',
+  'Borrowed projector', 0, 1, 0
+);
 
 select set_config(
   'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
@@ -115,200 +131,26 @@ select public.reservation_action(
   '97000000-0000-0000-0000-000000000001', 'complete', null,
   jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000001'), 2
 );
-
 select is(
-  (select reservation_status from public.reservation_requests
-   where id = '97000000-0000-0000-0000-000000000001'),
-  'completed', 'the guest reservation reached completed through the real RPC path'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where transaction_type = 'reservation_completed'
-     and source_type = 'reservation'
-     and source_id = '97000000-0000-0000-0000-000000000001'),
-  1, 'guest-priced completion awards exactly one ledger row'
-);
-select is(
-  (select points from public.loyalty_transactions
-   where transaction_type = 'reservation_completed'
-     and source_id = '97000000-0000-0000-0000-000000000001'),
-  10, 'the guest completion award matches the configured rule'
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
+   where source_id = '97100000-0000-0000-0000-000000000001'),
+  '1.0', 'durations below one hour only earn the completed-booking point'
 );
 
 select public.reservation_action(
-  '97000000-0000-0000-0000-000000000002', 'no_show', null,
+  '97000000-0000-0000-0000-000000000002', 'check_in', null,
   jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000002'), 1
 );
-select is(
-  (select reservation_status from public.reservation_requests
-   where id = '97000000-0000-0000-0000-000000000002'),
-  'completed', 'an all-no-show series still reaches completed'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000002'),
-  0, 'an all-no-show completion awards nothing'
-);
-
-create temp table undo_target as
-select id from public.reservation_action_journal
-where request_ids @> array['97000000-0000-0000-0000-000000000001']::uuid[]
-  and action = 'complete'
-order by created_at desc limit 1;
-
-select public.undo_reservation_action((select id from undo_target));
-select is(
-  (select reservation_status from public.reservation_requests
-   where id = '97000000-0000-0000-0000-000000000001'),
-  'confirmed', 'undo restores the reservation to confirmed'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000001'),
-  1, 'undoing a completion does not claw back the award'
-);
-
 select public.reservation_action(
-  '97000000-0000-0000-0000-000000000001', 'complete', null,
-  jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000001'), 4
+  '97000000-0000-0000-0000-000000000002', 'complete', null,
+  jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000002'), 2
 );
 select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000001'),
-  1, 'undo then re-complete still yields exactly one award'
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
+   where source_id = '97100000-0000-0000-0000-000000000002'),
+  '2.0', 'a 1-4 hour amenity booking earns 2.0 total points'
 );
 
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.submit_reservation_feedback(
-  '97000000-0000-0000-0000-000000000001', 5, 'Perfect'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where transaction_type = 'feedback_submitted'
-     and source_type = 'feedback'),
-  1, 'guest-priced feedback awards exactly one ledger row'
-);
-select is(
-  public.loyalty_balance((select user_id from loyalty_test)),
-  15, 'the guest balance is the completion and feedback awards'
-);
-
-select set_config(
-  'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
-);
-select public.save_loyalty_reward(
-  null, 'Priority booking slot', 'Skip the queue once', 1000, true, null
-);
-create temp table reward_ref as
-select id from public.loyalty_rewards where name = 'Priority booking slot';
-
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select throws_ok(
-  format(
-    $$select public.redeem_loyalty_reward(%L::uuid)$$,
-    (select id::text from reward_ref)
-  ),
-  '22023', null,
-  'redeeming an unaffordable reward is rejected'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where user_id = (select user_id from loyalty_test)
-     and transaction_type = 'reward_redeemed'),
-  0, 'a rejected redemption leaves the ledger untouched'
-);
-
-select set_config(
-  'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
-);
-select public.save_loyalty_reward(
-  null, 'Sticker pack', 'A small campus sticker pack', 10, true, null
-);
-create temp table cheap_reward as
-select id from public.loyalty_rewards where name = 'Sticker pack';
-
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.redeem_loyalty_reward((select id from cheap_reward));
-select is(
-  public.loyalty_balance((select user_id from loyalty_test)),
-  5, 'the guest balance reflects the redemption'
-);
-select is(
-  (select count(*)::int from public.loyalty_redemptions
-   where user_id = (select user_id from loyalty_test)),
-  1, 'the guest redemption creates exactly one redemption record'
-);
-
-select set_config(
-  'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
-);
-select public.set_loyalty_reward_active((select id from cheap_reward), false);
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select throws_ok(
-  format($$select public.redeem_loyalty_reward(%L::uuid)$$, (select id::text from cheap_reward)),
-  '22023', 'This reward is not available',
-  'an inactive reward cannot be redeemed'
-);
-
-select throws_ok(
-  format(
-    $$select public.adjust_loyalty_points(%L::uuid, 50, 'not an admin')$$,
-    (select user_id::text from loyalty_test)
-  ),
-  '42501', 'Internal administrator access required',
-  'a non-internal-admin cannot adjust points'
-);
-
-select set_config(
-  'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
-);
-select public.adjust_loyalty_points(
-  (select user_id from loyalty_test), 50, 'University event participation'
-);
-select is(
-  public.loyalty_balance((select user_id from loyalty_test)),
-  55, 'an admin adjustment is reflected in an eligible guest balance'
-);
-select is(
-  (select count(*)::int from public.audit_entries
-   where source_type = 'loyalty_adjustment'
-     and entity_id = (select user_id from loyalty_test)),
-  1, 'an admin adjustment writes exactly one audit_entries row'
-);
-
-update public.profiles
-set verification_status = 'pending', campus_claim = 'student', unit = 'BSIT'
-where id = (select user_id from loyalty_test);
-
-insert into public.reservation_requests(
-  id, requester_id, facility_id, requester_name, requester_role,
-  facility_name, facility_building, facility_capacity, purpose, headcount,
-  status, reservation_status, admin_lane, pricing_audience, version, created_at
-)
-select '97000000-0000-0000-0000-000000000003', user_id, facility_id,
-  'Loyalty Pending', 'user', 'Computer Laboratory 1', 'CICS', 40,
-  'Pending renter award test', 10, 'approved', 'confirmed', 'external', 'guest', 1, now()
-from loyalty_test;
-
-insert into public.reservation_occurrences(
-  id, request_id, facility_id, starts_at, ends_at, booking_state, lifecycle_stage
-)
-select '97100000-0000-0000-0000-000000000003',
-  '97000000-0000-0000-0000-000000000003', facility_id,
-  now() - interval '2 hours', now() - interval '1 hour', 'booked', 'booked'
-from loyalty_test;
-
-select set_config(
-  'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
-);
 select public.reservation_action(
   '97000000-0000-0000-0000-000000000003', 'check_in', null,
   jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000003'), 1
@@ -318,242 +160,201 @@ select public.reservation_action(
   jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000003'), 2
 );
 select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000003'),
-  1, 'pending guest-priced completion awards points'
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
+   where source_id = '97100000-0000-0000-0000-000000000003'),
+  '2.0', 'a 5+ hour booking earns the capped duration tier'
 );
 
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.submit_reservation_feedback(
-  '97000000-0000-0000-0000-000000000003', 5, 'Still paying guest rate'
+select public.reservation_action(
+  '97000000-0000-0000-0000-000000000004', 'no_show', null,
+  jsonb_build_object('occurrence_id', '97100000-0000-0000-0000-000000000004'), 1
 );
 select is(
   (select count(*)::int from public.loyalty_transactions
-   where transaction_type = 'feedback_submitted'),
-  2, 'pending guest-priced feedback awards points'
+   where source_id = '97100000-0000-0000-0000-000000000004'),
+  0, 'no-shows earn no booking, duration, or amenity points'
 );
 
-select set_config(
-  'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
-);
-select public.save_loyalty_reward(
-  null, 'Pending renter voucher', 'Guest-rate renter voucher', 5, true, null
-);
-create temp table pending_reward as
-select id from public.loyalty_rewards where name = 'Pending renter voucher';
-
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.redeem_loyalty_reward((select id from pending_reward));
-select is(
-  public.loyalty_balance((select user_id from loyalty_test)),
-  65, 'pending guest-priced renters can redeem normally'
-);
-
-update public.profiles
-set verification_status = 'verified', campus_claim = 'student', unit = 'BSIT'
-where id = (select user_id from loyalty_test);
-
-insert into public.reservation_requests(
-  id, requester_id, facility_id, requester_name, requester_role,
-  facility_name, facility_building, facility_capacity, purpose, headcount,
-  status, reservation_status, admin_lane, pricing_audience, created_at
-)
-select '97000000-0000-0000-0000-000000000004', user_id, facility_id,
-  'Verified Student', 'user', 'Computer Laboratory 1', 'CICS', 40,
-  'Student award block test', 10, 'approved', 'confirmed', 'internal', 'student', now()
-from loyalty_test;
-insert into public.reservation_occurrences(
-  id, request_id, facility_id, starts_at, ends_at, booking_state, lifecycle_stage
-)
-select '97100000-0000-0000-0000-000000000004',
-  '97000000-0000-0000-0000-000000000004', facility_id,
-  now() - interval '2 hours', now() - interval '1 hour', 'booked', 'completed'
-from loyalty_test;
-update public.reservation_requests
-set reservation_status = 'completed'
-where id = '97000000-0000-0000-0000-000000000004';
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000004'),
-  0, 'verified student-priced completion awards no points'
-);
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.submit_reservation_feedback(
-  '97000000-0000-0000-0000-000000000004', 4, 'Campus-priced reservation'
+select public.correct_occurrence_attendance(
+  '97100000-0000-0000-0000-000000000002', 'no_show',
+  'PgTAP correction to no-show'
 );
 select is(
-  (select count(*)::int from public.loyalty_transactions
-   where transaction_type = 'feedback_submitted'),
-  2, 'verified student-priced feedback awards no points'
-);
-
-update public.profiles
-set verification_status = 'verified', campus_claim = 'faculty', unit = 'College of Education'
-where id = (select user_id from loyalty_test);
-insert into public.reservation_requests(
-  id, requester_id, facility_id, requester_name, requester_role,
-  facility_name, facility_building, facility_capacity, purpose, headcount,
-  status, reservation_status, admin_lane, pricing_audience, created_at
-)
-select '97000000-0000-0000-0000-000000000005', user_id, facility_id,
-  'Verified Faculty', 'user', 'Computer Laboratory 1', 'CICS', 40,
-  'Faculty award block test', 10, 'approved', 'confirmed', 'internal', 'faculty', now()
-from loyalty_test;
-insert into public.reservation_occurrences(
-  id, request_id, facility_id, starts_at, ends_at, booking_state, lifecycle_stage
-)
-select '97100000-0000-0000-0000-000000000005',
-  '97000000-0000-0000-0000-000000000005', facility_id,
-  now() - interval '2 hours', now() - interval '1 hour', 'booked', 'completed'
-from loyalty_test;
-update public.reservation_requests
-set reservation_status = 'completed'
-where id = '97000000-0000-0000-0000-000000000005';
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.submit_reservation_feedback(
-  '97000000-0000-0000-0000-000000000005', 4, 'Faculty campus pricing'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000005'),
-  0, 'verified faculty-priced completion awards no points'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where transaction_type = 'feedback_submitted'),
-  2, 'verified faculty-priced feedback awards no points'
-);
-
-update public.profiles
-set verification_status = 'verified', campus_claim = 'staff', unit = 'Legal Office'
-where id = (select user_id from loyalty_test);
-insert into public.reservation_requests(
-  id, requester_id, facility_id, requester_name, requester_role,
-  facility_name, facility_building, facility_capacity, purpose, headcount,
-  status, reservation_status, admin_lane, pricing_audience, created_at
-)
-select '97000000-0000-0000-0000-000000000006', user_id, facility_id,
-  'Verified Staff', 'user', 'Computer Laboratory 1', 'CICS', 40,
-  'Staff award block test', 10, 'approved', 'confirmed', 'internal', 'staff', now()
-from loyalty_test;
-insert into public.reservation_occurrences(
-  id, request_id, facility_id, starts_at, ends_at, booking_state, lifecycle_stage
-)
-select '97100000-0000-0000-0000-000000000006',
-  '97000000-0000-0000-0000-000000000006', facility_id,
-  now() - interval '2 hours', now() - interval '1 hour', 'booked', 'completed'
-from loyalty_test;
-update public.reservation_requests
-set reservation_status = 'completed'
-where id = '97000000-0000-0000-0000-000000000006';
-select set_config(
-  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
-);
-select public.submit_reservation_feedback(
-  '97000000-0000-0000-0000-000000000006', 4, 'Staff campus pricing'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where source_id = '97000000-0000-0000-0000-000000000006'),
-  0, 'verified staff-priced completion awards no points'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
-   where transaction_type = 'feedback_submitted'),
-  2, 'verified staff-priced feedback awards no points'
-);
-
-select is(
-  (public.loyalty_my_summary()->>'eligible')::boolean,
-  false, 'verified renters receive an ineligible loyalty summary'
-);
-select is(
-  jsonb_array_length(public.loyalty_my_summary()->'transactions'),
-  0, 'verified renters receive no loyalty transaction payload'
-);
-select is(
-  jsonb_array_length(public.loyalty_my_summary()->'rewards'),
-  0, 'verified renters receive no loyalty reward payload'
-);
-select is(
-  public.loyalty_balance((select user_id from loyalty_test)),
-  0, 'verified renters cannot use their retained balance'
-);
-select is(
-  (select count(*)::int from public.loyalty_transactions
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
    where user_id = (select user_id from loyalty_test)),
-  0, 'direct RLS hides retained ledger rows from verified renters'
+  '3.0', 'completed to no-show correction compensates the original award'
+);
+
+select public.correct_occurrence_attendance(
+  '97100000-0000-0000-0000-000000000002', 'completed',
+  'PgTAP correction back to completed'
+);
+select is(
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
+   where user_id = (select user_id from loyalty_test)),
+  '5.0', 'no-show to completed correction restores the occurrence award'
+);
+
+select set_config(
+  'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
+);
+select public.submit_reservation_feedback(
+  '97000000-0000-0000-0000-000000000002', 5, 'Good room.', 5, 5, 5
+);
+select is(
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
+   where user_id = (select user_id from loyalty_test)),
+  '6.0', 'feedback adds exactly one point after a completed occurrence'
 );
 select throws_ok(
-  format($$select public.redeem_loyalty_reward(%L::uuid)$$, (select id::text from pending_reward)),
-  '42501', 'Loyalty rewards are available to guest renters only',
-  'verified renters cannot redeem retained points'
+  $$select public.submit_reservation_feedback(
+    '97000000-0000-0000-0000-000000000002', 5, 'Again.', 5, 5, 5
+  )$$,
+  '23505', null, 'feedback cannot award points twice for the same reservation'
+);
+
+select set_config(
+  'request.jwt.claim.sub', (select external_admin_id::text from loyalty_test), false
+);
+select lives_ok(
+  $$create temp table loyalty_offer as
+    select * from public.save_loyalty_discount_offer(
+      null, 'PgTAP loyalty PHP 100 off', 'Created by an external admin',
+      2.5, 'fixed_amount', 10000, null, null,
+      (now() at time zone 'Asia/Manila')::date - 1,
+      (now() at time zone 'Asia/Manila')::date + 30, true
+    )$$,
+  'external admins can create fixed loyalty discount offers'
+);
+select is(
+  (select required_points::text from loyalty_offer),
+  '2.5', 'discount offers store half-point requirements'
+);
+select is(
+  (select fixed_amount_centavos from loyalty_offer),
+  10000, 'fixed discounts snapshot the centavo amount'
+);
+
+select lives_ok(
+  $$create temp table loyalty_huge_offer as
+    select * from public.save_loyalty_discount_offer(
+      null, 'PgTAP loyalty too expensive', 'Requires more than the renter has',
+      99.0, 'percentage', null, 10.0, null,
+      (now() at time zone 'Asia/Manila')::date - 1,
+      (now() at time zone 'Asia/Manila')::date + 30, true
+  )$$,
+  'external admins can create percentage loyalty discount offers'
+);
+select lives_ok(
+  $$create temp table loyalty_admin_balance_rows as
+    select * from public.loyalty_admin_balances('Loyalty Guest', 10)$$,
+  'external admins can view loyalty balances'
+);
+select lives_ok(
+  $$create temp table loyalty_admin_ledger_rows as
+    select * from public.loyalty_admin_ledger(
+      (select user_id from loyalty_test), 10
+    )$$,
+  'external admins can view renter loyalty ledgers'
+);
+select lives_ok(
+  $$create temp table loyalty_admin_redemption_rows as
+    select * from public.loyalty_admin_redemptions(null, 10)$$,
+  'external admins can view legacy redemption audit rows'
+);
+select lives_ok(
+  $$create temp table loyalty_admin_claim_rows as
+    select * from public.loyalty_admin_claims(null, null, 10)$$,
+  'external admins can view voucher claim history'
+);
+select lives_ok(
+  $$select public.adjust_loyalty_points(
+    (select user_id from loyalty_test), 0.5, 'PgTAP external adjustment'
+  )$$,
+  'external admins can manually adjust loyalty points'
+);
+select is(
+  (select actor_id from public.loyalty_transactions
+   where user_id = (select user_id from loyalty_test)
+     and transaction_type = 'admin_adjustment'
+   order by created_at desc
+   limit 1),
+  (select external_admin_id from loyalty_test),
+  'manual adjustments record the external admin actor'
 );
 
 select set_config(
   'request.jwt.claim.sub', (select internal_admin_id::text from loyalty_test), false
 );
 select throws_ok(
-  format(
-    $$select public.adjust_loyalty_points(%L::uuid, 5, 'verified user')$$,
-    (select user_id::text from loyalty_test)
-  ),
-  '42501', 'Loyalty adjustments are limited to guest renters',
-  'admins cannot manually adjust verified renter loyalty'
+  $$select * from public.loyalty_admin_balances(null, 10)$$,
+  '42501', null, 'internal admins cannot view loyalty balances'
 );
-select is(
-  (select count(*)::int
-   from public.loyalty_admin_balances('', 100)
-   where user_id = (select user_id from loyalty_test)),
-  0, 'admin balance lists exclude verified renters'
+select throws_ok(
+  $$select * from public.loyalty_admin_ledger(
+    (select user_id from loyalty_test), 10
+  )$$,
+  '42501', null, 'internal admins cannot view loyalty ledgers'
 );
-select ok(
-  (select count(*)::int
-   from public.loyalty_transactions
-   where user_id = (select user_id from loyalty_test)) > 0,
-  'internal admins can still audit retained ledger rows'
+select throws_ok(
+  $$select * from public.loyalty_admin_redemptions(null, 10)$$,
+  '42501', null, 'internal admins cannot view legacy loyalty redemptions'
+);
+select throws_ok(
+  $$select * from public.loyalty_admin_claims(null, null, 10)$$,
+  '42501', null, 'internal admins cannot view loyalty voucher history'
+);
+select throws_ok(
+  $$select public.adjust_loyalty_points(
+    (select user_id from loyalty_test), 0.5, 'Blocked internal adjustment'
+  )$$,
+  '42501', null, 'internal admins cannot manually adjust loyalty points'
+);
+select throws_ok(
+  $$select public.save_loyalty_discount_offer(
+    null, 'PgTAP loyalty blocked internal', '', 1.0, 'fixed_amount',
+    100, null, null,
+    (now() at time zone 'Asia/Manila')::date,
+    (now() at time zone 'Asia/Manila')::date + 1, true
+  )$$,
+  '42501', null, 'internal admins cannot mutate discount offers'
 );
 
-update public.profiles
-set verification_status = 'none', campus_claim = 'none', unit = null
-where id = (select user_id from loyalty_test);
 select set_config(
   'request.jwt.claim.sub', (select user_id::text from loyalty_test), false
 );
-select ok(
-  public.loyalty_user_is_eligible((select user_id from loyalty_test)),
-  'the same account becomes eligible again when it returns to guest pricing'
-);
-select is(
-  (public.loyalty_my_summary()->>'eligible')::boolean,
-  true, 'guest-priced renters receive an eligible loyalty summary again'
-);
-select is(
-  (public.loyalty_my_summary()->>'balance')::int,
-  65, 'the retained guest-earned balance becomes available again'
-);
-select is(
-  jsonb_array_length(public.loyalty_my_summary()->'redemptions'),
-  2, 'guest-priced renters can see their retained redemptions again'
-);
-
 select throws_ok(
-  format(
-    $$insert into public.loyalty_transactions(
-        user_id, points, transaction_type, source_type, source_id
-      ) values (%L::uuid, 999, 'admin_adjustment', 'admin', gen_random_uuid())$$,
-    (select user_id::text from loyalty_test)
-  ),
-  '42501', null,
-  'a direct insert into loyalty_transactions is rejected'
+  $$select public.set_loyalty_discount_offer_active((select id from loyalty_offer), false)$$,
+  '42501', null, 'renters cannot activate or deactivate discount offers'
+);
+select throws_ok(
+  $$select public.claim_loyalty_discount((select id from loyalty_huge_offer))$$,
+  '22023', null, 'renters cannot claim offers above their balance'
+);
+select lives_ok(
+  $$create temp table loyalty_claim as
+    select * from public.claim_loyalty_discount((select id from loyalty_offer))$$,
+  'eligible guest renters can claim affordable discounts'
+);
+select is(
+  (select status from loyalty_claim),
+  'claimed', 'new discount vouchers begin in claimed status'
+);
+select is(
+  (select coalesce(sum(points), 0)::text from public.loyalty_transactions
+   where user_id = (select user_id from loyalty_test)),
+  '4.0', 'claiming deducts points immediately and does not refund them'
+);
+select ok(
+  ((public.get_reservation_quote(
+    (select facility_id from loyalty_test),
+    array[(((now() at time zone 'Asia/Manila')::date + 2 + time '10:00') at time zone 'Asia/Manila')],
+    array[(((now() at time zone 'Asia/Manila')::date + 2 + time '12:00') at time zone 'Asia/Manila')],
+    '{}'::uuid[],
+    10,
+    (select id from loyalty_claim)
+  )->>'discount_amount_centavos')::integer > 0),
+  'reservation quotes preview an owned claimed voucher discount'
 );
 
 select * from finish();

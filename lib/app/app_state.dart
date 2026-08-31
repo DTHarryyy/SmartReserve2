@@ -12,6 +12,8 @@ import '../data/seed_facilities.dart';
 import '../data/seed_loyalty.dart';
 import '../data/seed_reservations.dart';
 import '../model/account.dart';
+import '../model/amenity_request.dart';
+import '../model/anomaly.dart';
 import '../model/audit_diff.dart';
 import '../model/audit_entry.dart';
 import '../model/calendar_event.dart';
@@ -30,6 +32,7 @@ import '../util/backend_errors.dart';
 import '../util/campus_calendar.dart';
 import '../util/geo.dart';
 import '../theme/sr_theme.dart';
+import '../features/reports/report_scope_url.dart';
 import 'app_view.dart';
 import 'sr_toast_controller.dart';
 
@@ -80,6 +83,71 @@ class AvailabilitySnapshot {
       source == AvailabilitySource.live || source == AvailabilitySource.demo;
 }
 
+class ReportFailure {
+  const ReportFailure({
+    required this.explanation,
+    required this.supportReference,
+  });
+
+  final String explanation;
+  final String supportReference;
+}
+
+sealed class ReportLoadState {
+  const ReportLoadState();
+
+  ReportSnapshot? get snapshot => switch (this) {
+    ReportReady(:final snapshot) ||
+    ReportRefreshing(:final snapshot) ||
+    ReportStale(:final snapshot) => snapshot,
+    _ => null,
+  };
+
+  ReportFailure? get failure => switch (this) {
+    ReportStale(:final failure) || ReportFailed(:final failure) => failure,
+    _ => null,
+  };
+
+  bool get isLoading => this is ReportInitialLoading || this is ReportRefreshing;
+  bool get isRefreshing => this is ReportRefreshing;
+  bool get isStale => this is ReportStale;
+  bool get hasVerifiedSnapshot => snapshot != null;
+}
+
+class ReportInitialLoading extends ReportLoadState {
+  const ReportInitialLoading();
+}
+
+class ReportReady extends ReportLoadState {
+  const ReportReady(this.snapshot);
+
+  @override
+  final ReportSnapshot snapshot;
+}
+
+class ReportRefreshing extends ReportLoadState {
+  const ReportRefreshing(this.snapshot);
+
+  @override
+  final ReportSnapshot snapshot;
+}
+
+class ReportStale extends ReportLoadState {
+  const ReportStale(this.snapshot, this.failure);
+
+  @override
+  final ReportSnapshot snapshot;
+  @override
+  final ReportFailure failure;
+}
+
+class ReportFailed extends ReportLoadState {
+  const ReportFailed(this.failure);
+
+  @override
+  final ReportFailure failure;
+}
+
 class AppState extends ChangeNotifier {
   AppState({bool useDemoData = true}) : _useDemoData = useDemoData {
     facilities = useDemoData ? seedFacilities() : [];
@@ -124,14 +192,24 @@ class AppState extends ChangeNotifier {
   void goTo(AppView next) {
     if (isExternalAdmin &&
         (next == AppView.verifications ||
-            next == AppView.audit ||
-            next == AppView.loyalty)) {
+            next == AppView.audit)) {
       showToast(
         const ToastMessage(
           'This administrator role cannot access that area.',
           tone: AdvisoryTone.block,
         ),
       );
+      return;
+    }
+    if (next == AppView.loyalty && !isExternalAdmin) {
+      _clearAdminLoyaltyState();
+      showToast(
+        const ToastMessage(
+          'This administrator role cannot access that area.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      notifyListeners();
       return;
     }
     if (hasSession && !isAdmin && next.usesAdminChrome) {
@@ -149,7 +227,10 @@ class AppState extends ChangeNotifier {
     if (next == AppView.reports) unawaited(refreshReports());
     if (next == AppView.audit) unawaited(refreshAudit());
     if (next == AppView.feedback) unawaited(refreshFeedback());
-    if (next == AppView.loyalty) unawaited(refreshLoyaltyBalances());
+    if (next == AppView.loyalty) {
+      unawaited(refreshExternalLoyaltyAdmin());
+    }
+    if (next == AppView.anomalies) unawaited(refreshAnomalyCenter());
     closeOverlays();
     notifyListeners();
   }
@@ -159,58 +240,116 @@ class AppState extends ChangeNotifier {
     if (_useDemoData || service == null || !isAdmin) return;
     final requested = scope ?? ReportScope.forRange(ReportRange.month);
     final requestId = ++_reportRequestId;
+    final prior = reportState.snapshot;
+    final canKeepPrior = prior?.hasSameSelection(requested) ?? false;
     reportScope = requested;
-    if (reportSnapshot != null &&
-        !reportSnapshot!.hasSameSelection(requested)) {
-      reportSnapshot = null;
-    }
-    reportsLoading = true;
-    reportsError = null;
-    reportsStale = false;
+    reportState = canKeepPrior
+        ? ReportRefreshing(prior!)
+        : const ReportInitialLoading();
     notifyListeners();
     try {
       final result = await service.adminReport(requested);
       if (requestId != _reportRequestId) return;
-      reportSnapshot = result;
-      reportsStale = false;
+      reportState = ReportReady(result);
     } catch (error) {
       if (requestId != _reportRequestId) return;
-      reportsError = _reportError(error);
-      reportsStale = reportSnapshot?.hasSameSelection(requested) ?? false;
+      final failure = _reportFailure(error);
+      reportState = canKeepPrior && prior != null
+          ? ReportStale(prior, failure)
+          : ReportFailed(failure);
     } finally {
       if (requestId == _reportRequestId) {
-        reportsLoading = false;
         notifyListeners();
       }
     }
   }
 
-  static String _reportError(Object error) {
+  static ReportFailure _reportFailure(Object error) {
     final text = error.toString().toLowerCase();
+    if (error is ReportContractException) {
+      return switch (error.code) {
+        ReportContractFailureCode.unreconciledFacility => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-FACILITY-SCOPE',
+          explanation:
+              'The report included data outside this report’s facility scope, so it was not shown.',
+        ),
+        ReportContractFailureCode.incompleteDemandGrid => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-DEMAND-GRID',
+          explanation:
+              'The demand analysis was incomplete, so the report was not shown.',
+        ),
+        ReportContractFailureCode.scopeMismatch => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-SCOPE',
+          explanation:
+              'The reporting service returned a result for a different filter selection.',
+        ),
+        ReportContractFailureCode.unsupportedVersion => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-VERSION',
+          explanation:
+              'The reporting service is still using an older report contract. Apply the latest report migration before loading this page.',
+        ),
+        ReportContractFailureCode.unreconciledTotals => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-TOTALS',
+          explanation:
+              'The report totals did not reconcile, so the report was not shown.',
+        ),
+        ReportContractFailureCode.invalidOccurrence => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-OCCURRENCE',
+          explanation:
+              'A booked occurrence in the report was invalid, so the report was not shown.',
+        ),
+        ReportContractFailureCode.invalidResponse => const ReportFailure(
+          supportReference: 'RPT-CONTRACT-RESPONSE',
+          explanation:
+              'The reporting service returned data that could not be verified.',
+        ),
+      };
+    }
     if (error is FormatException) {
-      return 'The reporting service returned data that could not be verified.';
+      return const ReportFailure(
+        supportReference: 'RPT-CONTRACT-RESPONSE',
+        explanation:
+            'The reporting service returned data that could not be verified.',
+      );
     }
     if (text.contains('pgrst202') ||
         text.contains('could not find the function') ||
         text.contains('schema cache')) {
-      return 'Reporting is temporarily unavailable while the database service is updated.';
+      return const ReportFailure(
+        supportReference: 'RPT-SERVICE-SCHEMA-CACHE',
+        explanation:
+            'Reporting is temporarily unavailable while the database service is updated.',
+      );
     }
     if (text.contains('42501') ||
         text.contains('administrator access required') ||
         text.contains('permission denied')) {
-      return 'Your account does not have permission to view this report.';
+      return const ReportFailure(
+        supportReference: 'RPT-AUTH-PERMISSION',
+        explanation: 'Your account does not have permission to view this report.',
+      );
     }
     if (text.contains('22023') || text.contains('invalid report range')) {
-      return 'The selected reporting range is invalid. Choose another range.';
+      return const ReportFailure(
+        supportReference: 'RPT-SCOPE-RANGE',
+        explanation: 'The selected reporting range is invalid. Choose another range.',
+      );
     }
     if (text.contains('socket') ||
         text.contains('network') ||
         text.contains('timeout') ||
         text.contains('failed host lookup') ||
         text.contains('connection')) {
-      return 'Reports could not connect to SmartReserve. Check the connection and retry.';
+      return const ReportFailure(
+        supportReference: 'RPT-NETWORK',
+        explanation:
+            'Reports could not connect to SmartReserve. Check the connection and retry.',
+      );
     }
-    return 'Reports could not be loaded. Retry in a moment.';
+    return const ReportFailure(
+      supportReference: 'RPT-SERVICE-UNKNOWN',
+      explanation: 'Reports could not be loaded. Retry in a moment.',
+    );
   }
 
   Future<void> refreshAudit({AuditQuery? query}) async {
@@ -296,12 +435,13 @@ class AppState extends ChangeNotifier {
   late List<Account> accounts;
   late List<AuditEntry> audit;
   late List<Booking> bookings;
-  ReportSnapshot? reportSnapshot;
   ReportScope? reportScope;
+  ReportLoadState reportState = const ReportInitialLoading();
   int _reportRequestId = 0;
-  bool reportsLoading = false;
-  String? reportsError;
-  bool reportsStale = false;
+  ReportSnapshot? get reportSnapshot => reportState.snapshot;
+  bool get reportsLoading => reportState.isLoading;
+  String? get reportsError => reportState.failure?.explanation;
+  bool get reportsStale => reportState.isStale;
   List<AuditEntry> remoteAudit = [];
   List<String> auditActors = [];
   int auditTotal = 0;
@@ -335,10 +475,350 @@ class AppState extends ChangeNotifier {
   bool loyaltyLoading = false;
   String? loyaltyError;
   final Set<String> redemptionsPending = {};
+  final Set<String> discountClaimsPending = {};
   List<LoyaltyBalanceRow> loyaltyBalances = [];
   bool loyaltyBalancesLoading = false;
   String? loyaltyBalancesError;
+  final Map<String, List<LoyaltyTransaction>> loyaltyLedgerByUser = {};
+  final Set<String> loyaltyLedgerLoading = {};
+  final Map<String, String> loyaltyLedgerErrors = {};
+  List<LoyaltyDiscountOffer> loyaltyDiscountOffers = [];
+  bool loyaltyDiscountOffersLoading = false;
+  String? loyaltyDiscountOffersError;
+  String? loyaltyDiscountOfferSaveError;
+  List<LoyaltyAdminClaimRow> loyaltyAdminClaims = [];
+  bool loyaltyAdminClaimsLoading = false;
+  String? loyaltyAdminClaimsError;
   bool pendingLoyaltyOpen = false;
+
+  // Anomalies
+  AnomalyFilters anomalyFilters = const AnomalyFilters();
+  List<ReservationAnomaly> anomalyRows = [];
+  AnomalyMetrics anomalyMetrics = const AnomalyMetrics();
+  Map<String, dynamic>? _anomalyCursor;
+  bool anomalyHasMore = false;
+  bool anomalyLoading = false;
+  bool anomalyLoadingMore = false;
+  String? anomalyError;
+  int _anomalyRequestId = 0;
+  String? selectedAnomalyId;
+  AnomalyDetail? selectedAnomalyDetail;
+  bool anomalyDetailLoading = false;
+  String? anomalyDetailError;
+  final Map<String, RenterRiskSummary> _riskSummaryByRequest = {};
+  final Set<String> _riskSummaryLoading = {};
+  final Map<String, Timer> _riskSummaryPollTimers = {};
+  final Map<String, int> _riskSummaryPollAttempts = {};
+  final Set<String> _riskSummaryPollExhausted = {};
+
+  static const _riskSummaryPollInterval = Duration(seconds: 5);
+  static const _riskSummaryPollMaxAttempts = 18; // ~90s: one missed 60s cron tick + margin
+
+  int get anomalyActiveHighCriticalCount =>
+      anomalyMetrics.highCount + anomalyMetrics.criticalCount;
+
+  RenterRiskSummary? riskSummaryFor(String requestId) =>
+      _riskSummaryByRequest[requestId];
+
+  bool riskSummaryLoading(String requestId) =>
+      _riskSummaryLoading.contains(requestId);
+
+  bool riskSummaryPollExhausted(String requestId) =>
+      _riskSummaryPollExhausted.contains(requestId);
+
+  void _cancelRiskSummaryPoll(String requestId) {
+    _riskSummaryPollTimers.remove(requestId)?.cancel();
+    _riskSummaryPollAttempts.remove(requestId);
+  }
+
+  void _cancelAllRiskSummaryPolls() {
+    for (final timer in _riskSummaryPollTimers.values) {
+      timer.cancel();
+    }
+    _riskSummaryPollTimers.clear();
+    _riskSummaryPollAttempts.clear();
+    _riskSummaryPollExhausted.clear();
+  }
+
+  void _scheduleRiskSummaryPoll(String requestId) {
+    if (_riskSummaryPollTimers.containsKey(requestId)) return;
+    final attempts = _riskSummaryPollAttempts[requestId] ?? 0;
+    if (attempts >= _riskSummaryPollMaxAttempts) {
+      if (_riskSummaryPollExhausted.add(requestId)) notifyListeners();
+      return;
+    }
+    _riskSummaryPollExhausted.remove(requestId);
+    _riskSummaryPollTimers[requestId] = Timer(_riskSummaryPollInterval, () {
+      _riskSummaryPollTimers.remove(requestId);
+      _riskSummaryPollAttempts[requestId] = attempts + 1;
+      unawaited(loadReservationRiskSummary(requestId));
+    });
+  }
+
+  /// Shared trigger for every call site that mutates `selectedRequestId`.
+  void _syncSelectedRequestRiskSummary(String? previousId, String? id) {
+    if (previousId != null && previousId != id) {
+      _cancelRiskSummaryPoll(previousId);
+    }
+    if (id == null || _useDemoData || !isAdmin) return;
+    final cached = _riskSummaryByRequest[id];
+    if (cached == null) {
+      unawaited(loadReservationRiskSummary(id));
+    } else if (cached.evaluationPending) {
+      _scheduleRiskSummaryPoll(id);
+    }
+  }
+
+  void _clearAnomalyState() {
+    _anomalyRequestId++;
+    anomalyFilters = const AnomalyFilters();
+    anomalyRows = [];
+    anomalyMetrics = const AnomalyMetrics();
+    _anomalyCursor = null;
+    anomalyHasMore = false;
+    anomalyLoading = false;
+    anomalyLoadingMore = false;
+    anomalyError = null;
+    selectedAnomalyId = null;
+    selectedAnomalyDetail = null;
+    anomalyDetailLoading = false;
+    anomalyDetailError = null;
+    _riskSummaryByRequest.clear();
+    _riskSummaryLoading.clear();
+    _cancelAllRiskSummaryPolls();
+  }
+
+  Future<void> refreshAnomalyCenter({AnomalyFilters? filters}) async {
+    final service = backend;
+    if (_useDemoData || service == null || !isAdmin) return;
+    final requested = filters ?? anomalyFilters;
+    final requestId = ++_anomalyRequestId;
+    anomalyFilters = requested;
+    anomalyLoading = true;
+    anomalyError = null;
+    notifyListeners();
+    try {
+      final page = await service.anomalyCenter(filters: requested, limit: 50);
+      if (requestId != _anomalyRequestId) return;
+      anomalyRows = page.rows;
+      anomalyMetrics = page.metrics;
+      _anomalyCursor = page.nextCursor;
+      anomalyHasMore = page.nextCursor != null;
+    } catch (error) {
+      if (requestId == _anomalyRequestId) {
+        anomalyError = friendlyBackendMessage('$error');
+      }
+    } finally {
+      if (requestId == _anomalyRequestId) {
+        anomalyLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void setAnomalyFilters(AnomalyFilters filters) {
+    unawaited(refreshAnomalyCenter(filters: filters));
+  }
+
+  Future<void> loadMoreAnomalies() async {
+    final service = backend;
+    final cursor = _anomalyCursor;
+    if (service == null ||
+        anomalyLoadingMore ||
+        !anomalyHasMore ||
+        cursor == null) {
+      return;
+    }
+    anomalyLoadingMore = true;
+    notifyListeners();
+    try {
+      final page = await service.anomalyCenter(
+        filters: anomalyFilters,
+        cursor: cursor,
+        limit: 50,
+      );
+      anomalyRows = [...anomalyRows, ...page.rows];
+      anomalyMetrics = page.metrics;
+      _anomalyCursor = page.nextCursor;
+      anomalyHasMore = page.nextCursor != null;
+    } catch (error) {
+      anomalyError = friendlyBackendMessage('$error');
+    } finally {
+      anomalyLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  void selectAnomaly(String? id) {
+    selectedAnomalyId = id;
+    selectedAnomalyDetail = null;
+    anomalyDetailError = null;
+    notifyListeners();
+    if (id != null) unawaited(loadAnomalyDetail(id));
+  }
+
+  Future<void> loadAnomalyDetail(String id) async {
+    final service = backend;
+    if (service == null) return;
+    anomalyDetailLoading = true;
+    anomalyDetailError = null;
+    notifyListeners();
+    try {
+      final detail = await service.anomalyDetail(id);
+      if (selectedAnomalyId != id) return;
+      selectedAnomalyDetail = detail;
+    } catch (error) {
+      if (selectedAnomalyId == id) {
+        anomalyDetailError = friendlyBackendMessage('$error');
+      }
+    } finally {
+      if (selectedAnomalyId == id) {
+        anomalyDetailLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  String _anomalyActionLabel(String action) => switch (action) {
+    'acknowledge' => 'Anomaly acknowledged.',
+    'resolve' => 'Anomaly resolved.',
+    'false_positive' => 'Marked as false positive.',
+    _ => 'Anomaly updated.',
+  };
+
+  Future<bool> transitionAnomaly({
+    required String anomalyId,
+    required String action,
+    String? reasonCode,
+    String? note,
+  }) async {
+    final service = backend;
+    if (service == null) return false;
+    try {
+      final detail = await service.transitionReservationAnomaly(
+        anomalyId: anomalyId,
+        action: action,
+        reasonCode: reasonCode,
+        note: note,
+      );
+      if (selectedAnomalyId == anomalyId) selectedAnomalyDetail = detail;
+      anomalyRows = [
+        for (final row in anomalyRows)
+          if (row.id == anomalyId) detail.anomaly else row,
+      ];
+      notifyListeners();
+      unawaited(refreshAnomalyCenter());
+      showToast(ToastMessage.success(_anomalyActionLabel(action)));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  void openReservationFromAnomaly(String? requestId) {
+    goTo(AppView.reservations);
+    if (requestId != null) selectRequest(requestId);
+  }
+
+  Future<void> loadReservationRiskSummary(String requestId) => _fetchRiskSummary(
+    requestId,
+    (service) => service.reservationRiskSummary(requestId),
+  );
+
+  /// Forces an immediate server-side evaluation (bypassing the pg_cron
+  /// queue) and applies the result — used by the risk card's manual
+  /// "Refresh" action once polling has been exhausted or is stalled.
+  Future<void> refreshReservationRiskSummary(String requestId) async {
+    _cancelRiskSummaryPoll(requestId);
+    _riskSummaryPollExhausted.remove(requestId);
+    await _fetchRiskSummary(
+      requestId,
+      (service) => service.evaluateReservationRiskNow(requestId),
+    );
+  }
+
+  Future<void> _fetchRiskSummary(
+    String requestId,
+    Future<RenterRiskSummary> Function(SmartReserveBackend service) fetch,
+  ) async {
+    final service = backend;
+    if (_useDemoData || service == null || !isAdmin) return;
+    if (_riskSummaryLoading.contains(requestId)) return;
+    _riskSummaryLoading.add(requestId);
+    notifyListeners();
+    try {
+      final summary = await fetch(service);
+      _riskSummaryByRequest[requestId] = summary;
+      final request = requestById(requestId);
+      if (request != null) request.noShows = summary.noShowOccurrences30d;
+      if (summary.evaluationPending) {
+        _scheduleRiskSummaryPoll(requestId);
+      } else {
+        _cancelRiskSummaryPoll(requestId);
+        _riskSummaryPollExhausted.remove(requestId);
+      }
+    } catch (error) {
+      debugPrint('Risk summary could not load: $error');
+      if (_riskSummaryByRequest[requestId]?.evaluationPending == true) {
+        _scheduleRiskSummaryPoll(requestId);
+      }
+    } finally {
+      _riskSummaryLoading.remove(requestId);
+      notifyListeners();
+    }
+  }
+
+  Future<bool> correctOccurrenceAttendance({
+    required String occurrenceId,
+    required String targetStage,
+    required String reason,
+  }) async {
+    final service = backend;
+    if (service == null) return false;
+    try {
+      await service.correctOccurrenceAttendance(
+        occurrenceId: occurrenceId,
+        targetStage: targetStage,
+        reason: reason,
+      );
+      await refreshReservations();
+      showToast(ToastMessage.success('Attendance corrected.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> checkReservationOverlaps({
+    required List<DateTime> startsAt,
+    required List<DateTime> endsAt,
+    String? excludeRequestId,
+  }) async {
+    final service = backend;
+    if (_useDemoData || service == null) return const [];
+    try {
+      return await service.checkMyReservationOverlaps(
+        startsAt: startsAt,
+        endsAt: endsAt,
+        excludeRequestId: excludeRequestId,
+      );
+    } catch (error) {
+      debugPrint('Overlap check could not load: $error');
+      return const [];
+    }
+  }
 
   final Map<String, BackendReservation> _backendReservations = {};
   SmartReserveBackend? backend;
@@ -377,6 +857,22 @@ class AppState extends ChangeNotifier {
   static const LoyaltySummary _ineligibleLoyalty = LoyaltySummary(
     eligible: false,
   );
+
+  void _clearAdminLoyaltyState() {
+    loyaltyBalances = [];
+    loyaltyBalancesLoading = false;
+    loyaltyBalancesError = null;
+    loyaltyLedgerByUser.clear();
+    loyaltyLedgerLoading.clear();
+    loyaltyLedgerErrors.clear();
+    loyaltyDiscountOffers = [];
+    loyaltyDiscountOffersLoading = false;
+    loyaltyDiscountOffersError = null;
+    loyaltyDiscountOfferSaveError = null;
+    loyaltyAdminClaims = [];
+    loyaltyAdminClaimsLoading = false;
+    loyaltyAdminClaimsError = null;
+  }
 
   void configureBackend(SmartReserveBackend service) {
     backend = service;
@@ -442,6 +938,7 @@ class AppState extends ChangeNotifier {
   Future<void> applyBackendProfile(SessionProfile? profile) async {
     sessionProfile = profile;
     _syncSessionAccount();
+    _clearAnomalyState();
     _verificationSubscription?.cancel();
     _verificationSubscription = null;
     _facilitySubscription?.cancel();
@@ -459,11 +956,9 @@ class AppState extends ChangeNotifier {
     if (profile == null) {
       _reportRequestId++;
       _feedbackRequestId++;
-      reportSnapshot = null;
       reportScope = null;
-      reportsLoading = false;
-      reportsError = null;
-      reportsStale = false;
+      reportState = const ReportInitialLoading();
+      initialReportFacilityId = null;
       view = AppView.auth;
       verifications = [];
       myVerification = null;
@@ -493,6 +988,7 @@ class AppState extends ChangeNotifier {
       feedbackSentimentRetrying.clear();
       loyalty = null;
       loyaltyError = null;
+      _clearAdminLoyaltyState();
       notifyListeners();
       return;
     }
@@ -523,6 +1019,7 @@ class AppState extends ChangeNotifier {
       },
     );
     if (profile.isInternalAdmin) {
+      _clearAdminLoyaltyState();
       _syncFeedbackSentimentSubscription();
       await refreshAccounts();
       _accountSubscription = backend?.accountStream().listen(
@@ -541,7 +1038,9 @@ class AppState extends ChangeNotifier {
         onError: (Object error) =>
             debugPrint('Verifications live refresh failed: $error'),
       );
+      unawaited(refreshAnomalyCenter());
       view = AppView.facilities;
+      await _applyInitialReportLink();
     } else if (profile.isExternalAdmin) {
       _syncFeedbackSentimentSubscription();
       if (_useDemoData) {
@@ -561,8 +1060,11 @@ class AppState extends ChangeNotifier {
       } else {
         await refreshAccounts();
       }
+      unawaited(refreshAnomalyCenter());
       view = AppView.facilities;
+      await _applyInitialReportLink();
     } else {
+      _clearAdminLoyaltyState();
       if (!_useDemoData) accounts = [];
       myVerification = await backend?.currentVerification();
       verifications = myVerification == null
@@ -583,6 +1085,22 @@ class AppState extends ChangeNotifier {
           : AppView.auth;
     }
     notifyListeners();
+  }
+
+  String? initialReportFacilityId;
+
+  Future<void> _applyInitialReportLink() async {
+    final link = readInitialReportLink();
+    if (link == null || !isAdmin) return;
+    final category = link.category != null &&
+            facilities.any((facility) => facility.category == link.category)
+        ? link.category
+        : null;
+    initialReportFacilityId = link.facilityId;
+    view = AppView.reports;
+    await refreshReports(
+      scope: ReportScope.forRange(link.range, category: category),
+    );
   }
 
   Future<void> refreshMyVerification() async {
@@ -967,6 +1485,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     toasts.dispose();
+    _cancelAllRiskSummaryPolls();
     _verificationSubscription?.cancel();
     _facilitySubscription?.cancel();
     _accountSubscription?.cancel();
@@ -1200,6 +1719,12 @@ class AppState extends ChangeNotifier {
               ? null
               : campusWallTime(occurrence.proposedEndsAt!),
           reason: occurrence.exceptionReason,
+          attendanceMarkedAt: occurrence.attendanceMarkedAt,
+          attendanceMarkedBy: occurrence.attendanceMarkedBy,
+          attendanceReason: occurrence.attendanceReason,
+          cancelledAt: occurrence.cancelledAt,
+          cancelledBy: occurrence.cancelledBy,
+          cancellationReason: occurrence.cancellationReason,
         ),
     ];
     final first = occurrences.isEmpty
@@ -1352,6 +1877,12 @@ class AppState extends ChangeNotifier {
       goTo(AppView.feedback);
       return;
     }
+    if (notification.kind.startsWith('anomaly_') && isAdmin) {
+      goTo(AppView.anomalies);
+      final anomalyId = notification.anomalyId;
+      if (anomalyId != null) selectAnomaly(anomalyId);
+      return;
+    }
     if (notification.kind.startsWith('loyalty_') && !isAdmin) {
       pendingLoyaltyOpen = true;
       goTo(AppView.userApp);
@@ -1363,11 +1894,13 @@ class AppState extends ChangeNotifier {
     if (isAdmin) {
       view = AppView.reservations;
       final request = requestById(requestId);
+      final previous = selectedRequestId;
       if (request != null) {
         requestTab = request.status;
         selectedRequestId = request.id;
       }
       notifyListeners();
+      _syncSelectedRequestRiskSummary(previous, selectedRequestId);
     } else {
       goTo(AppView.userApp);
     }
@@ -1389,7 +1922,7 @@ class AppState extends ChangeNotifier {
     if (editingId != null) {
       final existing = facilities.where((item) => item.id == editingId);
       if (existing.isEmpty || !existing.first.canManage) {
-        throw StateError('You are not assigned to manage this facility.');
+        throw StateError('Active administrator access required.');
       }
     }
 
@@ -1927,6 +2460,7 @@ class AppState extends ChangeNotifier {
     if (id == null) return;
     final request = requestById(id);
     if (request == null) return;
+    final previous = selectedRequestId;
     requestTab = request.status;
     selectedRequestId = request.id;
     selectedRequestIds.clear();
@@ -1934,6 +2468,7 @@ class AppState extends ChangeNotifier {
     view = AppView.reservations;
     closeOverlays();
     notifyListeners();
+    _syncSelectedRequestRiskSummary(previous, selectedRequestId);
   }
 
   Future<void> ensureUserCalendarLoaded() async {
@@ -2193,17 +2728,21 @@ class AppState extends ChangeNotifier {
   }
 
   void setRequestTab(RequestStatus tab) {
+    final previous = selectedRequestId;
     requestTab = tab;
     selectedRequestIds.clear();
     _requestAnchorId = null;
     final list = visibleRequests;
     selectedRequestId = list.isEmpty ? null : list.first.id;
     notifyListeners();
+    _syncSelectedRequestRiskSummary(previous, selectedRequestId);
   }
 
   void selectRequest(String? id) {
+    final previous = selectedRequestId;
     selectedRequestId = id;
     notifyListeners();
+    _syncSelectedRequestRiskSummary(previous, id);
   }
 
   void stepRequestSelection(int delta) {
@@ -2211,8 +2750,10 @@ class AppState extends ChangeNotifier {
     if (list.isEmpty) return;
     final index = list.indexWhere((r) => r.id == selectedRequestId);
     final next = (index < 0 ? 0 : index + delta).clamp(0, list.length - 1);
+    final previous = selectedRequestId;
     selectedRequestId = list[next].id;
     notifyListeners();
+    _syncSelectedRequestRiskSummary(previous, selectedRequestId);
   }
 
   void toggleRequestSelection(String id, {bool extend = false}) {
@@ -2516,11 +3057,15 @@ class AppState extends ChangeNotifier {
         ),
       );
       await refreshReservations();
+      final actionLabel = _reservationActionSuccessLabel(
+        action,
+        requestById(request.id),
+      );
       final actionId = result.actionId;
       if (reversible && actionId != null) {
         toasts.show(
           ToastMessage.success(
-            '${_actionLabel(action)} — ${request.requester}',
+            '$actionLabel — ${request.requester}',
             action: ToastAction(
               label: 'Undo',
               onPressed: () => unawaited(_undoBackendReservation(actionId)),
@@ -2528,7 +3073,7 @@ class AppState extends ChangeNotifier {
           ),
         );
       } else if (announce) {
-        toasts.show(ToastMessage.success('${_actionLabel(action)} saved.'));
+        toasts.show(ToastMessage.success('$actionLabel saved.'));
       }
       return true;
     } catch (error) {
@@ -2565,10 +3110,19 @@ class AppState extends ChangeNotifier {
       final result = await service.bulkApproveReservations(rows);
       selectedRequestIds.clear();
       await refreshReservations();
+      final approvedRequests = <ReservationRequest>[];
+      for (final id in ids) {
+        final request = requestById(id);
+        if (request != null) approvedRequests.add(request);
+      }
+      final successLabel = _bulkApprovalSuccessLabel(
+        ids.length,
+        approvedRequests,
+      );
       if (result.actionIds.isNotEmpty) {
         toasts.show(
           ToastMessage.success(
-            '${ids.length} approvals',
+            successLabel,
             action: ToastAction(
               label: 'Undo',
               onPressed: () => unawaited(
@@ -2578,7 +3132,7 @@ class AppState extends ChangeNotifier {
           ),
         );
       } else {
-        toasts.show(ToastMessage.success('${ids.length} requests approved.'));
+        toasts.show(ToastMessage.success(successLabel));
       }
     } catch (error) {
       showToast(
@@ -2634,6 +3188,57 @@ class AppState extends ChangeNotifier {
     'resubmit' => 'Resubmission',
     _ => 'Reservation update',
   };
+
+  static String _reservationActionSuccessLabel(
+    String action,
+    ReservationRequest? request,
+  ) {
+    final isAwaitingPayment =
+        request?.lifecycleStatus == ReservationLifecycleStatus.awaitingPayment;
+    if ((action == 'approve' ||
+            action == 'approve_partial' ||
+            action == 'approve_bump' ||
+            action == 'accept_alternative') &&
+        isAwaitingPayment) {
+      return 'Approved — awaiting payment';
+    }
+    return _actionLabel(action);
+  }
+
+  static String _bulkApprovalSuccessLabel(
+    int count,
+    List<ReservationRequest> requests,
+  ) {
+    final subject = '$count ${count == 1 ? 'reservation' : 'reservations'}';
+    if (requests.length != count) {
+      return '$subject approved.';
+    }
+
+    final awaitingPayment = requests
+        .where(
+          (request) =>
+              request.lifecycleStatus ==
+              ReservationLifecycleStatus.awaitingPayment,
+        )
+        .length;
+    final confirmed = requests
+        .where(
+          (request) =>
+              request.lifecycleStatus == ReservationLifecycleStatus.confirmed,
+        )
+        .length;
+
+    if (awaitingPayment == count) {
+      return '$subject approved — awaiting payment.';
+    }
+    if (confirmed == count) {
+      return '$subject approved and confirmed.';
+    }
+    if (awaitingPayment > 0 && confirmed > 0) {
+      return '$subject approved. Paid reservations are awaiting payment.';
+    }
+    return '$subject approved.';
+  }
 
   static String _reservationError(Object error) {
     final message = '$error';
@@ -3711,6 +4316,8 @@ class AppState extends ChangeNotifier {
           ],
           redemptions: loyalty?.redemptions ?? const [],
           rewards: loyalty?.rewards ?? const [],
+          offers: loyalty?.offers ?? const [],
+          claims: loyalty?.claims ?? const [],
         );
       } else {
         loyalty = _ineligibleLoyalty;
@@ -3721,7 +4328,7 @@ class AppState extends ChangeNotifier {
         ToastMessage.success(
           earnsLoyalty
               ? 'Thanks for rating ${request.facility} — you earned '
-                    '${LoyaltyPoints.feedbackSubmitted} points.'
+                    '${formatPoints(LoyaltyPoints.feedbackSubmitted)} points.'
               : 'Thanks for rating ${request.facility}.',
         ),
       );
@@ -3933,7 +4540,7 @@ class AppState extends ChangeNotifier {
           LoyaltyTransaction(
             id: 'lt-demo-${DateTime.now().microsecondsSinceEpoch}',
             userId: userAccount.id,
-            points: -reward.pointsCost,
+            points: -reward.pointsCost.toDouble(),
             type: LoyaltyTransactionType.rewardRedeemed,
             sourceType: 'redemption',
             sourceId: reward.id,
@@ -3956,6 +4563,8 @@ class AppState extends ChangeNotifier {
           ...(loyalty?.redemptions ?? const []),
         ],
         rewards: loyalty?.rewards ?? const [],
+        offers: loyalty?.offers ?? const [],
+        claims: loyalty?.claims ?? const [],
       );
       redemptionsPending.remove(reward.id);
       notifyListeners();
@@ -3993,7 +4602,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshLoyaltyBalances({String search = ''}) async {
     final service = _coreBackend;
-    if (_useDemoData || service == null || !isInternalAdmin) return;
+    if (_useDemoData || service == null || !isExternalAdmin) {
+      if (!isExternalAdmin) _clearAdminLoyaltyState();
+      return;
+    }
     loyaltyBalancesLoading = true;
     loyaltyBalancesError = null;
     notifyListeners();
@@ -4008,13 +4620,185 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshLoyaltyLedger(String userId, {int limit = 100}) async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isExternalAdmin) return;
+    loyaltyLedgerLoading.add(userId);
+    loyaltyLedgerErrors.remove(userId);
+    notifyListeners();
+    try {
+      final rows = await service.loyaltyLedger(userId, limit: limit);
+      loyaltyLedgerByUser[userId] = [for (final row in rows) row.toModel()];
+    } catch (error) {
+      loyaltyLedgerErrors[userId] = friendlyBackendMessage('$error');
+    } finally {
+      loyaltyLedgerLoading.remove(userId);
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshLoyaltyAdminClaims({
+    String search = '',
+    LoyaltyDiscountClaimStatus? status,
+  }) async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isExternalAdmin) {
+      if (!isExternalAdmin) _clearAdminLoyaltyState();
+      return;
+    }
+    loyaltyAdminClaimsLoading = true;
+    loyaltyAdminClaimsError = null;
+    notifyListeners();
+    try {
+      final rows = await service.loyaltyAdminClaims(
+        search: search,
+        status: status?.raw,
+      );
+      loyaltyAdminClaims = [for (final row in rows) row.toModel()];
+    } catch (error) {
+      loyaltyAdminClaimsError = friendlyBackendMessage('$error');
+    } finally {
+      loyaltyAdminClaimsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshExternalLoyaltyAdmin() async {
+    if (!isExternalAdmin) {
+      _clearAdminLoyaltyState();
+      notifyListeners();
+      return;
+    }
+    await Future.wait([
+      refreshLoyaltyBalances(),
+      refreshLoyaltyDiscountOffers(),
+      refreshLoyaltyAdminClaims(),
+    ]);
+  }
+
+  Future<bool> claimLoyaltyDiscount(LoyaltyDiscountOffer offer) async {
+    if (!loyaltyAvailableForCurrentUser) {
+      showToast(
+        const ToastMessage(
+          'Loyalty discounts are available to guest renters only.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+    if (discountClaimsPending.contains(offer.id)) return false;
+    discountClaimsPending.add(offer.id);
+    notifyListeners();
+    if (_useDemoData) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final balance = loyalty?.balance ?? 0;
+      if (balance < offer.requiredPoints) {
+        discountClaimsPending.remove(offer.id);
+        notifyListeners();
+        showToast(
+          const ToastMessage(
+            'You do not have enough points for this discount yet.',
+            tone: AdvisoryTone.block,
+          ),
+        );
+        return false;
+      }
+      final claim = LoyaltyDiscountClaim(
+        id: 'claim-demo-${DateTime.now().microsecondsSinceEpoch}',
+        userId: userAccount.id,
+        offerId: offer.id,
+        offerName: offer.name,
+        offerDescription: offer.description,
+        discountKind: offer.discountKind,
+        fixedAmountCentavos: offer.fixedAmountCentavos,
+        percentage: offer.percentage,
+        facilityId: offer.facilityId,
+        facilityName: offer.facilityName,
+        requiredPoints: offer.requiredPoints,
+        expiryDate: offer.validUntil,
+        pointsSpent: offer.requiredPoints,
+        status: LoyaltyDiscountClaimStatus.claimed,
+        claimedAt: DateTime.now(),
+      );
+      loyalty = LoyaltySummary(
+        eligible: true,
+        balance: balance - offer.requiredPoints,
+        lifetimeEarned: loyalty?.lifetimeEarned ?? 0,
+        lifetimeRedeemed:
+            (loyalty?.lifetimeRedeemed ?? 0) + offer.requiredPoints,
+        rules: loyalty?.rules ?? const {},
+        transactions: [
+          LoyaltyTransaction(
+            id: 'lt-demo-${DateTime.now().microsecondsSinceEpoch}',
+            userId: userAccount.id,
+            points: -offer.requiredPoints,
+            type: LoyaltyTransactionType.discountClaimed,
+            sourceType: 'discount_claim',
+            sourceId: claim.id,
+            description: 'Claimed discount - ${offer.name}',
+            createdAt: DateTime.now(),
+          ),
+          ...(loyalty?.transactions ?? const []),
+        ],
+        redemptions: loyalty?.redemptions ?? const [],
+        rewards: loyalty?.rewards ?? const [],
+        offers: loyalty?.offers ?? const [],
+        claims: [claim, ...(loyalty?.claims ?? const [])],
+      );
+      discountClaimsPending.remove(offer.id);
+      notifyListeners();
+      toasts.show(ToastMessage.success('Claimed ${offer.name}.'));
+      return true;
+    }
+    final service = _coreBackend;
+    if (service == null) {
+      discountClaimsPending.remove(offer.id);
+      notifyListeners();
+      return false;
+    }
+    try {
+      await service.claimLoyaltyDiscount(offer.id);
+      await refreshLoyalty();
+      toasts.show(ToastMessage.success('Claimed ${offer.name}.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    } finally {
+      discountClaimsPending.remove(offer.id);
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshLoyaltyDiscountOffers() async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isExternalAdmin) return;
+    loyaltyDiscountOffersLoading = true;
+    loyaltyDiscountOffersError = null;
+    notifyListeners();
+    try {
+      final rows = await service.loyaltyDiscountOffers();
+      loyaltyDiscountOffers = [for (final row in rows) row.toModel()];
+    } catch (error) {
+      loyaltyDiscountOffersError = friendlyBackendMessage('$error');
+    } finally {
+      loyaltyDiscountOffersLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> adjustLoyaltyPoints({
     required String userId,
-    required int points,
+    required double points,
     required String reason,
   }) async {
     final service = _coreBackend;
-    if (service == null || !isInternalAdmin) return false;
+    if (service == null || !isExternalAdmin) return false;
     try {
       await service.adjustLoyaltyPoints(
         userId: userId,
@@ -4022,9 +4806,10 @@ class AppState extends ChangeNotifier {
         reason: reason,
       );
       await refreshLoyaltyBalances();
+      await refreshLoyaltyLedger(userId);
       toasts.show(
         ToastMessage.success(
-          '${points > 0 ? '+' : ''}$points points — $reason',
+          '${points > 0 ? '+' : ''}${formatPoints(points)} points — $reason',
         ),
       );
       return true;
@@ -4039,45 +4824,71 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> saveLoyaltyReward({
+  Future<bool> saveLoyaltyDiscountOffer({
     String? id,
     required String name,
     String description = '',
-    required int pointsCost,
+    required double requiredPoints,
+    required DiscountKind discountKind,
+    int? fixedAmountCentavos,
+    double? percentage,
+    String? facilityId,
+    required DateTime validFrom,
+    required DateTime validUntil,
     bool active = true,
-    int? stock,
   }) async {
     final service = _coreBackend;
-    if (service == null || !isInternalAdmin) return false;
+    loyaltyDiscountOfferSaveError = null;
+    if (service == null || !isExternalAdmin) {
+      loyaltyDiscountOfferSaveError =
+          'External administrator access is required.';
+      notifyListeners();
+      return false;
+    }
     try {
-      await service.saveLoyaltyReward(
+      await service.saveLoyaltyDiscountOffer(
         id: id,
         name: name,
         description: description,
-        pointsCost: pointsCost,
+        requiredPoints: requiredPoints,
+        discountKind: discountKind,
+        fixedAmountCentavos: fixedAmountCentavos,
+        percentage: percentage,
+        facilityId: facilityId,
+        validFrom: validFrom,
+        validUntil: validUntil,
         active: active,
-        stock: stock,
       );
+      await refreshLoyaltyDiscountOffers();
       showToast(
-        ToastMessage.success(id == null ? 'Reward created.' : 'Reward saved.'),
+        ToastMessage.success(
+          id == null ? 'Discount created.' : 'Discount saved.',
+        ),
       );
       return true;
     } catch (error) {
+      final message = friendlyBackendMessage('$error');
+      loyaltyDiscountOfferSaveError = message;
       showToast(
         ToastMessage(
-          friendlyBackendMessage('$error'),
+          message,
           tone: AdvisoryTone.block,
         ),
       );
+      notifyListeners();
       return false;
     }
   }
 
-  Future<bool> setLoyaltyRewardActive(String rewardId, bool active) async {
+  Future<bool> setLoyaltyDiscountOfferActive(
+    String offerId,
+    bool active,
+  ) async {
     final service = _coreBackend;
-    if (service == null || !isInternalAdmin) return false;
+    if (service == null || !isExternalAdmin) return false;
     try {
-      await service.setLoyaltyRewardActive(rewardId, active);
+      await service.setLoyaltyDiscountOfferActive(offerId, active);
+      await refreshLoyaltyDiscountOffers();
       return true;
     } catch (error) {
       showToast(
@@ -4120,7 +4931,7 @@ class AppState extends ChangeNotifier {
     required List<DateTime> startsAt,
     required List<DateTime> endsAt,
     int? headcount,
-    List<String> amenities = const [],
+    String? discountClaimId,
   }) async {
     final service = _coreBackend;
     if (service == null || _useDemoData || !hasSession) {
@@ -4129,6 +4940,22 @@ class AppState extends ChangeNotifier {
           : endsAt.first.difference(startsAt.first).inMinutes / 60;
       final exempt = userAccount.isPaymentExempt;
       final total = exempt ? 0 : quoteFor(facility, duration) * 100;
+      LoyaltyDiscountClaim? discount;
+      for (final claim in loyalty?.claims ?? const <LoyaltyDiscountClaim>[]) {
+        if (claim.id == discountClaimId && claim.appliesTo(facility.id)) {
+          discount = claim;
+          break;
+        }
+      }
+      final int discountAmount = discount == null
+          ? 0
+          : switch (discount.discountKind) {
+              DiscountKind.fixedAmount =>
+                min(discount.fixedAmountCentavos ?? 0, total),
+              DiscountKind.percentage =>
+                (total * ((discount.percentage ?? 0) / 100)).round(),
+            };
+      final discountedTotal = max(0, total - discountAmount);
       final percent = facility.downPaymentPercent;
       return BackendReservationQuote(
         facilityId: facility.id,
@@ -4138,9 +4965,9 @@ class AppState extends ChangeNotifier {
             : 'external',
         facilityAmountCentavos: total,
         amenityAmountCentavos: 0,
-        discountAmountCentavos: 0,
-        totalAmountCentavos: total,
-        requiredDownPaymentCentavos: (total * percent + 99) ~/ 100,
+        discountAmountCentavos: discountAmount,
+        totalAmountCentavos: discountedTotal,
+        requiredDownPaymentCentavos: (discountedTotal * percent + 99) ~/ 100,
         pricingFingerprint: 'demo',
         lines: const [],
         terms: const [],
@@ -4150,20 +4977,28 @@ class AppState extends ChangeNotifier {
           'faculty' when exempt => 'verified_faculty',
           _ => 'none',
         },
+        discount: discount == null
+            ? null
+            : LoyaltyQuoteDiscount(
+                claimId: discount.id,
+                offerName: discount.offerName,
+                discountKind: discount.discountKind,
+                fixedAmountCentavos: discount.fixedAmountCentavos,
+                percentage: discount.percentage,
+                discountAmountCentavos: discountAmount,
+                expiryDate: discount.expiryDate,
+                facilityId: discount.facilityId,
+              ),
       );
     }
-    final selected = {
-      for (final label in amenities)
-        for (final option in facility.amenityOptions)
-          if (option.name == label) option.id,
-    }.toList();
     try {
       return await service.reservationQuote(
         facilityId: facility.id,
         startsAt: startsAt,
         endsAt: endsAt,
         headcount: headcount ?? 1,
-        amenityIds: selected,
+        amenityIds: const [],
+        discountClaimId: discountClaimId,
       );
     } catch (error) {
       lastReservationError = _reservationError(error);
@@ -4178,10 +5013,15 @@ class AppState extends ChangeNotifier {
     required int heads,
     required String purpose,
     List<ReservationUpload> attachments = const [],
-    List<String> amenities = const [],
+    List<String> requestedAmenities = const [],
     BackendReservationQuote? quote,
     bool acceptedTerms = false,
+    String? discountClaimId,
   }) async {
+    final normalizedRequestedAmenities = normalizeRequestedAmenityLabels(
+      facility,
+      requestedAmenities,
+    );
     final service = backend;
     if (_useDemoData || service == null || !hasSession) {
       submitBooking(
@@ -4191,7 +5031,7 @@ class AppState extends ChangeNotifier {
         end: _clock(campusWallTime(endsAt.first)),
         heads: heads,
         purpose: purpose,
-        amenities: amenities,
+        amenities: normalizedRequestedAmenities,
         occurrenceStartsAt: [
           for (final value in startsAt) campusWallTime(value),
         ],
@@ -4212,7 +5052,7 @@ class AppState extends ChangeNotifier {
             startsAt: startsAt,
             endsAt: endsAt,
             headcount: heads,
-            amenities: amenities,
+            discountClaimId: discountClaimId,
           );
       if (core != null && authoritativeQuote == null) {
         throw StateError(
@@ -4227,11 +5067,6 @@ class AppState extends ChangeNotifier {
         );
       }
       final duration = endsAt.first.difference(startsAt.first).inMinutes / 60;
-      final amenityIds = {
-        for (final label in amenities)
-          for (final option in facility.amenityOptions)
-            if (option.name == label) option.id,
-      }.toList();
       await service.submitReservation(
         ReservationDraft(
           facilityId: facility.id,
@@ -4243,8 +5078,8 @@ class AppState extends ChangeNotifier {
           paymentAmountCentavos:
               authoritativeQuote?.totalAmountCentavos ??
               quoteFor(facility, duration) * 100,
-          amenities: amenities,
-          amenityIds: amenityIds,
+          requestedAmenities: normalizedRequestedAmenities,
+          amenityIds: const [],
           termsVersionIds: [
             for (final term
                 in authoritativeQuote?.terms ?? const <BackendTermsVersion>[])
@@ -4253,6 +5088,7 @@ class AppState extends ChangeNotifier {
           pricingFingerprint: core == null
               ? null
               : authoritativeQuote!.pricingFingerprint,
+          discountClaimId: discountClaimId,
         ),
       );
       await refreshReservations();
@@ -4419,65 +5255,6 @@ class AppState extends ChangeNotifier {
       await service.saveFacilityConfiguration(draft);
       await refreshFacilities();
       showToast(const ToastMessage('Facility settings saved.'));
-      return true;
-    } catch (error) {
-      showToast(
-        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
-      );
-      return false;
-    }
-  }
-
-  Future<List<FacilityAssignmentOption>> facilityAssignmentDirectory(
-    String facilityId,
-  ) async {
-    final service = _coreBackend;
-    if (service == null) return const [];
-    try {
-      return await service.facilityAssignmentDirectory(facilityId);
-    } catch (error) {
-      showToast(
-        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
-      );
-      return const [];
-    }
-  }
-
-  Future<bool> setFacilityAssignment({
-    required String facilityId,
-    required String adminId,
-    required String assignmentRole,
-  }) async {
-    final service = _coreBackend;
-    if (service == null) return false;
-    try {
-      await service.setFacilityAssignment(
-        facilityId: facilityId,
-        adminId: adminId,
-        assignmentRole: assignmentRole,
-      );
-      await refreshFacilities();
-      return true;
-    } catch (error) {
-      showToast(
-        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
-      );
-      return false;
-    }
-  }
-
-  Future<bool> removeFacilityAssignment({
-    required String facilityId,
-    required String adminId,
-  }) async {
-    final service = _coreBackend;
-    if (service == null) return false;
-    try {
-      await service.removeFacilityAssignment(
-        facilityId: facilityId,
-        adminId: adminId,
-      );
-      await refreshFacilities();
       return true;
     } catch (error) {
       showToast(

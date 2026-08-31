@@ -108,6 +108,12 @@ class ReservationOccurrence {
     this.proposedStartsAt,
     this.proposedEndsAt,
     this.reason,
+    this.attendanceMarkedAt,
+    this.attendanceMarkedBy,
+    this.attendanceReason,
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancellationReason,
   });
 
   final String id;
@@ -118,6 +124,12 @@ class ReservationOccurrence {
   final DateTime? proposedStartsAt;
   final DateTime? proposedEndsAt;
   final String? reason;
+  final DateTime? attendanceMarkedAt;
+  final String? attendanceMarkedBy;
+  final String? attendanceReason;
+  final DateTime? cancelledAt;
+  final String? cancelledBy;
+  final String? cancellationReason;
 
   bool get isBooked => bookingState == 'booked';
   bool get needsNewTime =>
@@ -232,7 +244,7 @@ class ReservationRequest {
 
   final String? recurring;
 
-  final int noShows;
+  int noShows;
 
   RequestStatus status;
   String? decidedBy;

@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../../model/facility.dart';
-import '../../../model/facility_photo.dart';
+import '../../../model/facility_draft.dart';
+import '../../../theme/sr_theme.dart';
 import '../../../theme/sr_tokens.dart';
-import '../../../widgets/sr_components.dart';
-import '../../../widgets/sr_controls.dart';
+import '../../../widgets/facility_catalogue_card.dart';
 import '../add_facility_controller.dart';
 
-import '../../../theme/sr_theme.dart';
+const _previewDescriptionPlaceholder =
+    'No description yet. Students rely on this to decide whether the room '
+    'fits their session.';
 
 IconData _categoryIcon(String category) => switch (category) {
   'Computer Laboratory' => Icons.computer_rounded,
@@ -19,6 +20,35 @@ IconData _categoryIcon(String category) => switch (category) {
   _ => Icons.apartment_rounded,
 };
 
+FacilityCatalogueCardData _cardDataFromDraft(FacilityDraft draft) {
+  final trimmedName = draft.name.trim();
+  final name = trimmedName.isEmpty ? 'Untitled facility' : trimmedName;
+  final description = draft.description.trim();
+  return FacilityCatalogueCardData(
+    id: 'facility-draft-preview',
+    name: name,
+    category: draft.category.isEmpty ? 'Facility' : draft.category,
+    statusLabel: draft.status.label,
+    statusTone: draft.status.tone,
+    locationLabel: draft.whereLine,
+    description: description.isEmpty
+        ? _previewDescriptionPlaceholder
+        : description,
+    includedAmenities: List.unmodifiable(draft.amenities),
+    capacityLabel: draft.capacitySeats == null
+        ? '—'
+        : '${draft.capacitySeats} seats',
+    hoursLabel: draft.hoursLine,
+    approvalLabel: draft.requiresApproval ? 'Required' : 'Instant',
+    availabilityLabel: 'Preview only',
+    availabilityTone: SrTone.info,
+    rateLabel: 'Included rate',
+    coverPhoto: draft.photos.isEmpty ? null : draft.photos.first,
+    placeholderHue: name.hashCode.abs() % 360,
+    placeholderIcon: _categoryIcon(draft.category),
+  );
+}
+
 class StudentPreview extends StatelessWidget {
   const StudentPreview({super.key, required this.controller});
 
@@ -26,11 +56,8 @@ class StudentPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final draft = controller.draft;
-    final cover = draft.photos.isEmpty ? null : draft.photos.first;
-    final name = draft.name.trim().isEmpty
-        ? 'Untitled facility'
-        : draft.name.trim();
+    final data = _cardDataFromDraft(controller.draft);
+    final tooltip = 'Preview reserve action for ${data.name}';
 
     return Container(
       color: context.srColors.bg,
@@ -40,161 +67,25 @@ class StudentPreview extends StatelessWidget {
           children: [
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
-              child: Container(
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: context.srColors.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: context.srColors.border),
-                  boxShadow: SR.cardShadow,
+              child: FacilityCatalogueCard(
+                data: data,
+                reserveEnabled: true,
+                previewMode: true,
+                reserveTooltip: tooltip,
+                onReserve: () => controller.showToast(
+                  const ToastMessage(
+                    'Preview only — this is the student-facing button, not a '
+                    'live booking.',
+                    tone: AdvisoryTone.info,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 16 / 10,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (cover != null)
-                            FacilityPhotoImage(photo: cover)
-                          else
-                            FacilityCoverArt(
-                              hue: draft.name.hashCode.abs() % 360,
-                              glyph: _categoryIcon(draft.category),
-                            ),
-                          Positioned(
-                            left: 11,
-                            top: 11,
-                            child: SrStatusChip(
-                              label: draft.status.label,
-                              tone: FacilityState.fromLabel(
-                                draft.status.label,
-                              ).tone,
-                              dense: true,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(17, 16, 17, 17),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: sans(
-                              15,
-                              w: 600,
-                              height: 1.3,
-                              tracking: -.015,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            draft.whereLine,
-                            style: sans(11.5, color: context.srColors.ink4),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            draft.description.trim().isEmpty
-                                ? 'No description yet. Students rely on this '
-                                      'to decide whether the room fits their '
-                                      'session.'
-                                : draft.description.trim(),
-                            style: sans(
-                              12,
-                              height: 1.65,
-                              color: draft.description.trim().isEmpty
-                                  ? context.srColors.muted
-                                  : context.srColors.ink3,
-                            ),
-                          ),
-                          if (draft.amenities.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 5,
-                              runSpacing: 5,
-                              children: [
-                                for (final a in draft.amenities)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: context.srColors.dividerSoft,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      a,
-                                      style: sans(
-                                        10.5,
-                                        color: context.srColors.ink3,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                          const SizedBox(height: 14),
-                          Container(
-                            padding: const EdgeInsets.only(top: 13),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                top: BorderSide(
-                                  color: context.srColors.divider,
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _Stat(
-                                  label: 'CAPACITY',
-                                  value: draft.capacitySeats == null
-                                      ? '—'
-                                      : '${draft.capacitySeats} seats',
-                                ),
-                                _Stat(label: 'HOURS', value: draft.hoursLine),
-                                _Stat(
-                                  label: 'APPROVAL',
-                                  value: draft.requiresApproval
-                                      ? 'Required'
-                                      : 'Instant',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          SrButton(
-                            label: 'Reserve this facility',
-                            kind: SrButtonKind.primary,
-                            expand: true,
-                            fontSize: 12.5,
-                            minHeight: 40,
-
-                            onPressed: () => controller.showToast(
-                              const ToastMessage(
-                                'Preview only — this is the student-facing '
-                                'button, not a live booking.',
-                                tone: AdvisoryTone.info,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 9),
-                          Center(
-                            child: Text(
-                              controller.coordLabel,
-                              style: mono(10.5, color: context.srColors.muted),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              ),
+            ),
+            const SizedBox(height: 9),
+            Center(
+              child: Text(
+                controller.coordLabel,
+                style: mono(10.5, color: context.srColors.muted),
               ),
             ),
             const SizedBox(height: 10),
@@ -212,23 +103,4 @@ class StudentPreview extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: keyLabel),
-        const SizedBox(height: 2),
-        Text(value, style: sans(12.5, w: 500)),
-      ],
-    ),
-  );
 }

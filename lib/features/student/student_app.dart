@@ -10,7 +10,6 @@ import '../../app/app_view.dart';
 import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
-import '../../model/facility_photo.dart';
 import '../../model/notice.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
@@ -20,6 +19,7 @@ import '../../util/campus_calendar.dart';
 import '../reservations/permit_panel.dart';
 import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
+import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/responsive_dialog.dart';
@@ -30,6 +30,7 @@ import '../assistant/assistant_chat_page.dart';
 import '../assistant/assistant_controller.dart';
 import '../calendar/calendar_screen.dart';
 import 'booking_sheet.dart';
+import 'facility_preview.dart';
 import 'feedback_dialog.dart';
 import 'loyalty_page.dart';
 
@@ -569,7 +570,11 @@ class _StudentAppState extends State<StudentApp> {
               builder: (context, constraints) {
                 final columns = ((constraints.maxWidth + 12) / 300)
                     .floor()
-                    .clamp(1, 3);
+                    .clamp(1, 3)
+                    .toInt();
+                final cardWidth =
+                    (constraints.maxWidth - (12 * (columns - 1))) / columns;
+                final cardHeight = cardWidth / (16 / 10) + 335;
                 return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -579,17 +584,48 @@ class _StudentAppState extends State<StudentApp> {
                     crossAxisCount: columns,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    mainAxisExtent: narrow ? 270 : 304,
+                    mainAxisExtent: cardHeight,
                   ),
-                  itemBuilder: (context, index) => _FacilityCard(
-                    facility: visible[index],
-                    audience: account.pricingAudience,
-                    onTap: () => showBookingSheet(
-                      context,
-                      state: state,
-                      facility: visible[index],
-                    ),
-                  ),
+                  itemBuilder: (context, index) {
+                    final facility = visible[index];
+                    final reserveEnabled =
+                        facility.state == FacilityState.active &&
+                        facility.bookableForCurrentUser;
+                    final availabilityLabel = _facilityAvailabilityLabelFor(
+                      facility,
+                    );
+                    return FacilityCatalogueCard(
+                      data: _cardDataFromFacility(
+                        facility,
+                        account.pricingAudience,
+                      ),
+                      reserveEnabled: reserveEnabled,
+                      reserveTooltip: reserveEnabled
+                          ? 'Reserve now for ${facility.name}'
+                          : availabilityLabel,
+                      onViewDetails: () => showFacilityPreview(
+                        context,
+                        state: state,
+                        facility: facility,
+                        reserveEnabled: reserveEnabled,
+                        reserveReason:
+                            _facilityAdminUnavailabilityExplanationFor(
+                              facility,
+                            ) ??
+                            availabilityLabel,
+                        onReserve: (reserveContext) => showBookingSheet(
+                          reserveContext,
+                          state: state,
+                          facility: facility,
+                        ),
+                      ),
+                      onReserve: () => showBookingSheet(
+                        context,
+                        state: state,
+                        facility: facility,
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -2792,213 +2828,72 @@ class _BrowseRefreshWarning extends StatelessWidget {
   );
 }
 
-class _FacilityCard extends StatelessWidget {
-  const _FacilityCard({
-    required this.facility,
-    required this.audience,
-    required this.onTap,
-  });
+String _facilityAvailabilityLabelFor(Facility facility) =>
+    switch (facility.state) {
+      FacilityState.maintenance => 'Unavailable · maintenance',
+      FacilityState.underReview => 'Unavailable · under review',
+      FacilityState.draft => 'Unavailable · draft',
+      FacilityState.active => facility.bookableForCurrentUser
+          ? (facility.approvalRequired ? 'Approval required' : 'Books instantly')
+          : switch (facility.bookingBlockReason) {
+              FacilityBookingBlockReason.noActiveInternalAdmin =>
+                'Unavailable · no active internal administrator',
+              FacilityBookingBlockReason.noActiveExternalAdmin =>
+                'Unavailable · no active external administrator',
+              FacilityBookingBlockReason.notAvailableForAccountType =>
+                'Unavailable · not available for your account type',
+              _ => 'Unavailable · no administrator',
+            },
+    };
 
-  final Facility facility;
-  final String audience;
-  final VoidCallback onTap;
+/// The consistent explanation shown wherever a facility is unbookable
+/// specifically because its requester lane has no active administrator
+/// (as opposed to maintenance, classification mismatch, or draft status).
+String? _facilityAdminUnavailabilityExplanationFor(Facility facility) =>
+    switch (facility.bookingBlockReason) {
+      FacilityBookingBlockReason.noActiveInternalAdmin ||
+      FacilityBookingBlockReason.noActiveExternalAdmin =>
+        'Reservations are temporarily unavailable because no active '
+            'administrator is available for your account type. Contact '
+            'support.',
+      _ => null,
+    };
 
-  bool get _available =>
-      facility.state == FacilityState.active && facility.bookableForCurrentUser;
-
-  String get _availabilityLabel => switch (facility.state) {
-    FacilityState.maintenance => 'Unavailable · maintenance',
-    FacilityState.underReview => 'Unavailable · under review',
-    FacilityState.draft => 'Unavailable · draft',
-    FacilityState.active =>
-      facility.bookableForCurrentUser
-          ? (facility.approvalRequired
-                ? 'Approval required'
-                : 'Books instantly')
-          : 'Unavailable · no administrator',
-  };
-
-  String get _factsLine =>
-      '${facility.capacity} seats · ${facility.hours} · ${facility.days}';
-
-  String? get _amenitiesLine {
-    if (facility.amenities.isEmpty) return null;
-    final shown = facility.amenities.take(2).join(' · ');
-    final remaining = facility.amenities.length - 2;
-    return remaining > 0 ? '$shown · +$remaining' : shown;
+SrTone _facilityAvailabilityToneFor(Facility facility) {
+  if (facility.state != FacilityState.active ||
+      !facility.bookableForCurrentUser) {
+    return SrTone.neutral;
   }
-
-  @override
-  Widget build(BuildContext context) {
-    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
-    return Semantics(
-      button: true,
-      label: facility.name,
-      child: SrCard.bare(
-        onTap: onTap,
-        radius: SR.rMd,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(SR.rMd),
-              ),
-              child: SizedBox(
-                height: compact ? 98 : 132,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    facility.coverPhoto == null
-                        ? FacilityCoverArt(
-                            hue: facility.thumbHue,
-                            glyph: facility.categoryIcon,
-                          )
-                        : FacilityPhotoImage(photo: facility.coverPhoto!),
-                    Positioned(
-                      left: SR.space8,
-                      bottom: SR.space8,
-                      right: SR.space8,
-                      child: Row(
-                        children: [
-                          Flexible(child: _CoverChip(label: facility.category)),
-                          if (facility.state != FacilityState.active) ...[
-                            const SizedBox(width: SR.space6),
-                            _CoverChip(
-                              label: facility.state.label,
-                              dot: facility.state.tone.solid,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                SR.space16,
-                SR.space12,
-                SR.space16,
-                SR.space12,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    facility.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: SrType.subhead(),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    facility.whereLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: SrType.caption(color: context.srColors.muted),
-                  ),
-                  const SizedBox(height: SR.space8),
-                  Text(
-                    _factsLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: SrType.bodySm(w: 500, color: context.srColors.ink3),
-                  ),
-                  if (facility.hasRatings) ...[
-                    const SizedBox(height: 3),
-                    SrRatingStars(
-                      average: facility.ratingAverage,
-                      count: facility.ratingCount,
-                      dense: true,
-                      compact: true,
-                    ),
-                  ],
-                  if (_amenitiesLine case final amenitiesLine?) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      amenitiesLine,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: SrType.caption(),
-                    ),
-                  ],
-                  const SizedBox(height: SR.space12),
-                  Divider(height: 1, color: context.srColors.hairline),
-                  const SizedBox(height: SR.space8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: SrStatusChip(
-                          label: _availabilityLabel,
-                          tone: !_available
-                              ? SrTone.neutral
-                              : facility.approvalRequired
-                              ? SrTone.warning
-                              : SrTone.success,
-                          dense: true,
-                        ),
-                      ),
-                      const SizedBox(width: SR.space8),
-                      Text(
-                        facility.hourlyRateCentavosFor(audience) == 0
-                            ? 'Included rate'
-                            : '${pesoFromCentavos(facility.hourlyRateCentavosFor(audience) * 2)} / 2 h',
-                        style: SrType.subhead(
-                          color: facility.hourlyRateCentavosFor(audience) == 0
-                              ? context.srColors.greenDark
-                              : context.srColors.ink,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  return facility.approvalRequired ? SrTone.warning : SrTone.success;
 }
 
-class _CoverChip extends StatelessWidget {
-  const _CoverChip({required this.label, this.dot});
-
-  final String label;
-  final Color? dot;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: SR.space8, vertical: 4),
-    decoration: BoxDecoration(
-      color: context.srColors.glass,
-      borderRadius: BorderRadius.circular(SR.rFull),
-      border: Border.all(color: context.srColors.glassLine2),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (dot case final dot?) ...[
-          Container(
-            width: SR.space6,
-            height: SR.space6,
-            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: SR.space6),
-        ],
-        Flexible(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: SrType.caption(w: 600, color: context.srColors.ink2),
-          ),
-        ),
-      ],
-    ),
+FacilityCatalogueCardData _cardDataFromFacility(
+  Facility facility,
+  String audience,
+) {
+  final hourlyRate = facility.hourlyRateCentavosFor(audience);
+  return FacilityCatalogueCardData(
+    id: facility.id,
+    name: facility.name,
+    category: facility.category,
+    statusLabel: facility.state.label,
+    statusTone: facility.state.tone,
+    locationLabel: facility.whereLine,
+    description: facility.description,
+    includedAmenities: List.unmodifiable(facility.amenities),
+    capacityLabel: '${facility.capacity} seats',
+    hoursLabel: '${facility.hours} · ${facility.days}',
+    approvalLabel: facility.approvalRequired ? 'Required' : 'Instant',
+    availabilityLabel: _facilityAvailabilityLabelFor(facility),
+    availabilityTone: _facilityAvailabilityToneFor(facility),
+    rateLabel: hourlyRate == 0
+        ? 'Included rate'
+        : '${pesoFromCentavos(hourlyRate * 2)} / 2 h',
+    coverPhoto: facility.coverPhoto,
+    placeholderHue: facility.thumbHue,
+    placeholderIcon: facility.categoryIcon,
+    ratingAverage: facility.ratingAverage,
+    ratingCount: facility.ratingCount,
   );
 }
 

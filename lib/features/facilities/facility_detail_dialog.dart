@@ -357,14 +357,14 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                                 SrKeyCell(
                                   label: 'VERIFIED BOOKINGS',
                                   value: facility.supportsInternalLane
-                                      ? 'Internal admin assigned'
-                                      : 'Unavailable — no internal admin',
+                                      ? 'Available to verified campus users'
+                                      : 'Not available to verified campus users',
                                 ),
                                 SrKeyCell(
                                   label: 'GUEST BOOKINGS',
                                   value: facility.supportsExternalLane
-                                      ? 'External admin assigned'
-                                      : 'Unavailable — no external admin',
+                                      ? 'Available to guests and non-verified users'
+                                      : 'Not available to guests and non-verified users',
                                 ),
                               ],
                             ),

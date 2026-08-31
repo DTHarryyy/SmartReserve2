@@ -131,10 +131,10 @@ insert into public.facility_payment_methods (
 values
   ('97400000-0000-0000-0000-000000000001',
    '97100000-0000-0000-0000-000000000001', 'Scope GCash A',
-   '09170000001', true),
+   '09170000001', false),
   ('97400000-0000-0000-0000-000000000002',
    '97100000-0000-0000-0000-000000000002', 'Scope GCash B',
-   '09170000002', true)
+   '09170000002', false)
 on conflict (id) do update
 set account_name = excluded.account_name,
     account_number = excluded.account_number,
@@ -348,8 +348,8 @@ select is(
     '2030-02-08 05:30+00',
     'External Scope Test'
   )->'summary'->>'booked_hours')::numeric,
-  1::numeric,
-  'external reports still count only assigned external-lane bookings'
+  4::numeric,
+  'external reports count every external-lane booking, not just the assigned facility''s'
 );
 
 select set_config(
