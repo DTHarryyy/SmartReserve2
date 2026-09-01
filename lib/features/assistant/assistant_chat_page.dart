@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
-import '../../widgets/sr_logo.dart';
+import '../../widgets/sr_assistant_logo.dart';
 import 'assistant_picker_sheet.dart';
 import 'assistant_controller.dart';
 import 'assistant_tab.dart';
@@ -340,7 +340,7 @@ class _ChatHeader extends StatelessWidget {
             onPressed: () => Navigator.of(context).maybePop(),
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
           ),
-          const SrLogo(size: 36, radius: 18),
+          const SrAssistantLogo(size: 36, radius: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

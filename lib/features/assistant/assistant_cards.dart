@@ -13,8 +13,8 @@ import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
+import '../../widgets/sr_assistant_logo.dart';
 import '../../widgets/sr_controls.dart';
-import '../../widgets/sr_logo.dart';
 import 'assistant_availability.dart';
 import 'assistant_controller.dart';
 
@@ -87,7 +87,7 @@ class AssistantBubble extends StatelessWidget {
           if (!isUser) ...[
             const Padding(
               padding: EdgeInsets.only(right: 7, bottom: 2),
-              child: SrLogo(size: 26, radius: 13),
+              child: SrAssistantLogo(size: 26, radius: 13),
             ),
           ],
           Flexible(

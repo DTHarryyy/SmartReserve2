@@ -23,6 +23,7 @@ import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/responsive_dialog.dart';
+import '../../widgets/sr_assistant_logo.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
@@ -2454,32 +2455,40 @@ class _AssistantButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: 'Assistant',
-    child: Hoverable(
-      builder: (context, hovered) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: SR.stateChange,
-          width: 58,
-          height: 58,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: hovered ? SR.primary : context.srColors.primaryTint,
-            shape: BoxShape.circle,
-            boxShadow: hovered ? SR.popoverShadow : SR.floatShadow,
-          ),
-          child: Icon(
-            Icons.auto_awesome_rounded,
-            size: 22,
-            color: hovered ? SR.onDark : SR.primary,
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    return Semantics(
+      button: true,
+      label: 'Assistant',
+      child: Hoverable(
+        builder: (context, hovered) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: SR.stateChange,
+            width: 58,
+            height: 58,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.isDark ? colors.surfaceElevated : Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: hovered ? colors.brand : colors.border,
+              ),
+              boxShadow: hovered ? SR.popoverShadow : SR.floatShadow,
+            ),
+            child: const SrAssistantLogo(
+              size: 42,
+              radius: 21,
+              padding: 4,
+              backgroundColor: Colors.transparent,
+              borderColor: Colors.transparent,
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _BottomNavItem extends StatefulWidget {
