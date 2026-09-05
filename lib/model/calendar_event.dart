@@ -55,6 +55,9 @@ class CalendarEvent {
     this.occurrenceId,
     this.recurrenceLabel,
     this.legacy = false,
+    this.statusLabel,
+    this.summaryLabel,
+    this.privacyMasked = false,
   });
 
   final String id;
@@ -73,11 +76,22 @@ class CalendarEvent {
   final BookingStage lifecycle;
   final String? recurrenceLabel;
   final bool legacy;
+  final String? statusLabel;
+  final String? summaryLabel;
+  final bool privacyMasked;
 
   bool get canOpenRequest => requestId != null;
 
   String get timeLabel =>
       '${formatClock(startsAt.hour + startsAt.minute / 60)}–${formatClock(endsAt.hour + endsAt.minute / 60)}';
+
+  String get effectiveStatusLabel => statusLabel ?? state.label;
+
+  String get effectiveSummaryLabel => summaryLabel ?? '$requester · $purpose';
+
+  String get eventChipLabel => privacyMasked
+      ? '$facility · $effectiveStatusLabel'
+      : '$facility · $requester';
 
   bool overlapsDay(DateTime day) {
     final start = DateTime(day.year, day.month, day.day);
@@ -91,4 +105,16 @@ class CalendarEvent {
         .toLowerCase();
     return haystack.contains(query);
   }
+}
+
+class PublicCalendarSlot {
+  const PublicCalendarSlot({
+    required this.facilityId,
+    required this.startsAt,
+    required this.endsAt,
+  });
+
+  final String facilityId;
+  final DateTime startsAt;
+  final DateTime endsAt;
 }

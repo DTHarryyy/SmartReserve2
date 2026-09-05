@@ -24,6 +24,18 @@ class FreeSlot {
       '${formatClockHour(startHour)}–${formatClockHour(endHour)}';
 }
 
+class AvailableBookingDay {
+  const AvailableBookingDay({
+    required this.day,
+    required this.firstAvailableSlot,
+    required this.slotCount,
+  });
+
+  final DateTime day;
+  final FreeSlot firstAvailableSlot;
+  final int slotCount;
+}
+
 enum SlotIssue {
   closedDay,
   outsideHours,
@@ -76,6 +88,9 @@ List<FreeSlot> freeSlotsForDay({
   double step = 0.5,
 }) {
   if (durationHours <= 0) return const [];
+  if ((durationHours * 60).round() > facility.maxDurationMinutes) {
+    return const [];
+  }
   if (!facility.opensOn(day)) return const [];
 
   final open = facility.openHour.toDouble();
@@ -98,6 +113,49 @@ List<FreeSlot> freeSlotsForDay({
     start += step;
   }
   return slots;
+}
+
+List<AvailableBookingDay> availableBookingDaysForFacility({
+  required Facility facility,
+  required DateTime fromWall,
+  required DateTime toWall,
+  required Map<String, List<BusyWindow>> busy,
+  required double durationHours,
+  required DateTime nowWall,
+  double step = 0.5,
+}) {
+  final today = DateTime(nowWall.year, nowWall.month, nowWall.day);
+  var day = DateTime(fromWall.year, fromWall.month, fromWall.day);
+  if (day.isBefore(today)) day = today;
+  final end = DateTime(toWall.year, toWall.month, toWall.day);
+  final days = <AvailableBookingDay>[];
+
+  while (!day.isAfter(end)) {
+    if (facility.opensOn(day)) {
+      final key = '${facility.id}|${dayKey(day)}';
+      final slots = freeSlotsForDay(
+        facility: facility,
+        day: day,
+        busy: busy[key] ?? busy[dayKey(day)] ?? const [],
+        durationHours: durationHours,
+        nowWall: nowWall,
+        limit: 200,
+        step: step,
+      );
+      if (slots.isNotEmpty) {
+        days.add(
+          AvailableBookingDay(
+            day: day,
+            firstAvailableSlot: slots.first,
+            slotCount: slots.length,
+          ),
+        );
+      }
+    }
+    day = day.add(const Duration(days: 1));
+  }
+
+  return days;
 }
 
 SlotVerdict checkSlot({

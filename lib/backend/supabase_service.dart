@@ -17,6 +17,7 @@ import '../model/payment.dart';
 import '../model/permit.dart';
 import '../features/reports/reports_data.dart';
 import '../model/audit_entry.dart';
+import '../model/anomaly.dart';
 import '../model/feedback.dart';
 import '../model/loyalty.dart';
 import '../util/geo.dart';
@@ -324,10 +325,11 @@ class ReservationDraft {
     required this.endsAt,
     this.attachments = const [],
     this.paymentAmountCentavos = 0,
-    this.amenities = const [],
+    this.requestedAmenities = const [],
     this.amenityIds = const [],
     this.termsVersionIds = const [],
     this.pricingFingerprint,
+    this.discountClaimId,
   });
 
   final String facilityId;
@@ -337,10 +339,11 @@ class ReservationDraft {
   final List<DateTime> endsAt;
   final List<ReservationUpload> attachments;
   final int paymentAmountCentavos;
-  final List<String> amenities;
+  final List<String> requestedAmenities;
   final List<String> amenityIds;
   final List<String> termsVersionIds;
   final String? pricingFingerprint;
+  final String? discountClaimId;
 }
 
 class BackendPriceLine {
@@ -412,6 +415,7 @@ class BackendReservationQuote {
     required this.terms,
     this.downPaymentPercent = 50,
     this.paymentExemption = 'none',
+    this.discount,
   });
 
   final String facilityId;
@@ -427,6 +431,7 @@ class BackendReservationQuote {
   final List<BackendTermsVersion> terms;
   final int downPaymentPercent;
   final String paymentExemption;
+  final LoyaltyQuoteDiscount? discount;
 
   bool get isPaymentExempt => paymentExemption != 'none';
 
@@ -435,6 +440,10 @@ class BackendReservationQuote {
         ((json[key] as List?) ?? const [])
             .map((row) => factory(Map<String, dynamic>.from(row as Map)))
             .toList();
+    final discountJson = json['discount'];
+    final discount = discountJson is Map
+        ? Map<String, dynamic>.from(discountJson)
+        : null;
     return BackendReservationQuote(
       facilityId: '${json['facility_id']}',
       audience: '${json['audience'] ?? 'guest'}',
@@ -454,6 +463,22 @@ class BackendReservationQuote {
       terms: parse('terms', BackendTermsVersion.fromJson),
       downPaymentPercent: (json['down_payment_percent'] as num?)?.toInt() ?? 50,
       paymentExemption: '${json['payment_exemption'] ?? 'none'}',
+      discount: discount != null
+          ? LoyaltyQuoteDiscount(
+              claimId: '${discount['claim_id']}',
+              offerName: '${discount['offer_name'] ?? ''}',
+              discountKind: DiscountKind.fromRaw(
+                '${discount['discount_kind'] ?? ''}',
+              ),
+              fixedAmountCentavos:
+                  (discount['fixed_amount_centavos'] as num?)?.toInt(),
+              percentage: (discount['percentage'] as num?)?.toDouble(),
+              discountAmountCentavos:
+                  (discount['discount_amount_centavos'] as num?)?.toInt() ?? 0,
+              expiryDate: DateTime.tryParse('${discount['expiry_date'] ?? ''}'),
+              facilityId: discount['facility_id'] as String?,
+            )
+          : null,
     );
   }
 }
@@ -510,6 +535,12 @@ class BackendReservationOccurrence {
     this.proposedStartsAt,
     this.proposedEndsAt,
     this.exceptionReason,
+    this.attendanceMarkedAt,
+    this.attendanceMarkedBy,
+    this.attendanceReason,
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancellationReason,
   });
 
   final String id;
@@ -520,6 +551,12 @@ class BackendReservationOccurrence {
   final DateTime? proposedStartsAt;
   final DateTime? proposedEndsAt;
   final String? exceptionReason;
+  final DateTime? attendanceMarkedAt;
+  final String? attendanceMarkedBy;
+  final String? attendanceReason;
+  final DateTime? cancelledAt;
+  final String? cancelledBy;
+  final String? cancellationReason;
 
   factory BackendReservationOccurrence.fromJson(Map<String, dynamic> json) =>
       BackendReservationOccurrence(
@@ -531,6 +568,12 @@ class BackendReservationOccurrence {
         proposedStartsAt: _date(json['proposed_starts_at']),
         proposedEndsAt: _date(json['proposed_ends_at']),
         exceptionReason: json['exception_reason'] as String?,
+        attendanceMarkedAt: _date(json['attendance_marked_at']),
+        attendanceMarkedBy: json['attendance_marked_by'] as String?,
+        attendanceReason: json['attendance_reason'] as String?,
+        cancelledAt: _date(json['cancelled_at']),
+        cancelledBy: json['cancelled_by'] as String?,
+        cancellationReason: json['cancellation_reason'] as String?,
       );
 }
 
@@ -608,6 +651,25 @@ class BackendBusyWindow {
 
   factory BackendBusyWindow.fromJson(Map<String, dynamic> json) =>
       BackendBusyWindow(
+        facilityId: '${json['facility_id']}',
+        startsAt: DateTime.parse('${json['starts_at']}').toUtc(),
+        endsAt: DateTime.parse('${json['ends_at']}').toUtc(),
+      );
+}
+
+class BackendPublicReservationSlot {
+  const BackendPublicReservationSlot({
+    required this.facilityId,
+    required this.startsAt,
+    required this.endsAt,
+  });
+
+  final String facilityId;
+  final DateTime startsAt;
+  final DateTime endsAt;
+
+  factory BackendPublicReservationSlot.fromJson(Map<String, dynamic> json) =>
+      BackendPublicReservationSlot(
         facilityId: '${json['facility_id']}',
         startsAt: DateTime.parse('${json['starts_at']}').toUtc(),
         endsAt: DateTime.parse('${json['ends_at']}').toUtc(),
@@ -884,6 +946,7 @@ class BackendNotification {
     required this.body,
     required this.createdAt,
     this.requestId,
+    this.anomalyId,
     this.readAt,
   });
 
@@ -892,6 +955,7 @@ class BackendNotification {
   final String title;
   final String body;
   final String? requestId;
+  final String? anomalyId;
   final DateTime createdAt;
   final DateTime? readAt;
 
@@ -904,6 +968,7 @@ class BackendNotification {
         title: '${json['title'] ?? ''}',
         body: '${json['body'] ?? ''}',
         requestId: json['request_id'] as String?,
+        anomalyId: json['anomaly_id'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
         readAt: _date(json['read_at']),
       );
@@ -916,6 +981,12 @@ double? _decimal(Object? value) => switch (value) {
   num n => n.toDouble(),
   String s => double.tryParse(s),
   _ => null,
+};
+
+int _int(Object? value) => switch (value) {
+  num n => n.toInt(),
+  String s => int.tryParse(s) ?? 0,
+  _ => 0,
 };
 
 Map<String, dynamic>? _embeddedOne(Object? value) {
@@ -1004,6 +1075,119 @@ class AuditPage {
   );
 }
 
+class BackendFeedbackTopicSentiment {
+  const BackendFeedbackTopicSentiment({
+    required this.topic,
+    required this.sentiment,
+  });
+
+  final FeedbackTopic topic;
+  final SentimentLabel sentiment;
+
+  factory BackendFeedbackTopicSentiment.fromJson(Map<String, dynamic> json) {
+    final topic = FeedbackTopic.fromValue('${json['topic'] ?? ''}');
+    final sentiment = SentimentLabel.fromValue('${json['sentiment'] ?? ''}');
+    if (topic == null ||
+        sentiment == null ||
+        sentiment == SentimentLabel.unknown) {
+      throw const FormatException('Feedback topic sentiment is invalid.');
+    }
+    return BackendFeedbackTopicSentiment(topic: topic, sentiment: sentiment);
+  }
+
+  FeedbackTopicSentiment toModel() =>
+      FeedbackTopicSentiment(topic: topic, sentiment: sentiment);
+}
+
+class BackendFeedbackSentimentAnalysis {
+  const BackendFeedbackSentimentAnalysis({
+    required this.id,
+    required this.feedbackId,
+    required this.analysisVersion,
+    required this.status,
+    this.sentiment,
+    this.confidence,
+    this.topics = const [],
+    this.provider,
+    this.model,
+    this.attemptCount = 0,
+    this.lastErrorCode,
+    this.processingStartedAt,
+    this.analyzedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String feedbackId;
+  final int analysisVersion;
+  final SentimentAnalysisStatus status;
+  final SentimentLabel? sentiment;
+  final double? confidence;
+  final List<BackendFeedbackTopicSentiment> topics;
+  final String? provider;
+  final String? model;
+  final int attemptCount;
+  final String? lastErrorCode;
+  final DateTime? processingStartedAt;
+  final DateTime? analyzedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory BackendFeedbackSentimentAnalysis.fromJson(Map<String, dynamic> json) {
+    final status = SentimentAnalysisStatus.fromValue('${json['status'] ?? ''}');
+    final sentiment = SentimentLabel.fromValue(json['sentiment'] as String?);
+    return BackendFeedbackSentimentAnalysis(
+      id: '${json['id']}',
+      feedbackId: '${json['feedback_id']}',
+      analysisVersion: _int(json['analysis_version']),
+      status: status,
+      sentiment: sentiment,
+      confidence: _decimal(json['confidence']),
+      topics: ((json['topic_sentiments'] as List?) ?? const [])
+          .map(
+            (row) => BackendFeedbackTopicSentiment.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(),
+      provider: json['provider'] as String?,
+      model: json['model'] as String?,
+      attemptCount: _int(json['attempt_count']),
+      lastErrorCode: json['last_error_code'] as String?,
+      processingStartedAt: _date(json['processing_started_at']),
+      analyzedAt: _date(json['analyzed_at']),
+      createdAt: DateTime.parse('${json['created_at']}'),
+      updatedAt: DateTime.parse('${json['updated_at']}'),
+    );
+  }
+
+  static BackendFeedbackSentimentAnalysis? maybeFromJson(Object? value) {
+    if (value is! Map) return null;
+    return BackendFeedbackSentimentAnalysis.fromJson(
+      Map<String, dynamic>.from(value),
+    );
+  }
+
+  FeedbackSentimentAnalysis toModel() => FeedbackSentimentAnalysis(
+    id: id,
+    feedbackId: feedbackId,
+    analysisVersion: analysisVersion,
+    status: status,
+    sentiment: sentiment,
+    confidence: confidence,
+    topics: [for (final topic in topics) topic.toModel()],
+    provider: provider,
+    model: model,
+    attemptCount: attemptCount,
+    lastErrorCode: lastErrorCode,
+    processingStartedAt: processingStartedAt,
+    analyzedAt: analyzedAt,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
 class BackendFeedback {
   const BackendFeedback({
     required this.id,
@@ -1019,6 +1203,9 @@ class BackendFeedback {
     required this.updatedAt,
     this.facilityName = '',
     this.requesterName = '',
+    this.reservationStartsAt,
+    this.pricingAudience = '',
+    this.sentimentAnalysis,
   });
 
   final String id;
@@ -1035,6 +1222,9 @@ class BackendFeedback {
 
   final String facilityName;
   final String requesterName;
+  final DateTime? reservationStartsAt;
+  final String pricingAudience;
+  final BackendFeedbackSentimentAnalysis? sentimentAnalysis;
 
   factory BackendFeedback.fromJson(Map<String, dynamic> json) =>
       BackendFeedback(
@@ -1051,6 +1241,11 @@ class BackendFeedback {
         updatedAt: DateTime.parse(json['updated_at'] as String),
         facilityName: '${json['facility_name'] ?? ''}',
         requesterName: '${json['requester_name'] ?? ''}',
+        reservationStartsAt: _date(json['reservation_starts_at']),
+        pricingAudience: '${json['pricing_audience'] ?? ''}',
+        sentimentAnalysis: BackendFeedbackSentimentAnalysis.maybeFromJson(
+          json['sentiment_analysis'],
+        ),
       );
 
   ReservationFeedback toModel() => ReservationFeedback(
@@ -1066,6 +1261,7 @@ class BackendFeedback {
     comment: comment,
     createdAt: createdAt,
     updatedAt: updatedAt,
+    sentimentAnalysis: sentimentAnalysis?.toModel(),
   );
 }
 
@@ -1166,6 +1362,239 @@ class BackendFeedbackSummary {
   );
 }
 
+class BackendFeedbackSentimentTrendPoint {
+  const BackendFeedbackSentimentTrendPoint({
+    required this.bucketStart,
+    this.positive = 0,
+    this.neutral = 0,
+    this.negative = 0,
+    this.mixed = 0,
+    this.classified = 0,
+    this.averageRating,
+  });
+
+  final DateTime bucketStart;
+  final int positive;
+  final int neutral;
+  final int negative;
+  final int mixed;
+  final int classified;
+  final double? averageRating;
+
+  factory BackendFeedbackSentimentTrendPoint.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendFeedbackSentimentTrendPoint(
+    bucketStart: DateTime.parse('${json['bucket_start']}'),
+    positive: _int(json['positive']),
+    neutral: _int(json['neutral']),
+    negative: _int(json['negative']),
+    mixed: _int(json['mixed']),
+    classified: _int(json['classified']),
+    averageRating: _decimal(json['average_rating']),
+  );
+
+  FeedbackSentimentTrendPoint toModel() => FeedbackSentimentTrendPoint(
+    bucketStart: bucketStart,
+    positive: positive,
+    neutral: neutral,
+    negative: negative,
+    mixed: mixed,
+    classified: classified,
+    averageRating: averageRating,
+  );
+}
+
+class BackendFacilitySentimentInsight {
+  const BackendFacilitySentimentInsight({
+    required this.facilityId,
+    required this.facilityName,
+    this.classified = 0,
+    this.positive = 0,
+    this.neutral = 0,
+    this.negative = 0,
+    this.mixed = 0,
+    this.needsReview = 0,
+    this.averageRating,
+  });
+
+  final String facilityId;
+  final String facilityName;
+  final int classified;
+  final int positive;
+  final int neutral;
+  final int negative;
+  final int mixed;
+  final int needsReview;
+  final double? averageRating;
+
+  factory BackendFacilitySentimentInsight.fromJson(Map<String, dynamic> json) =>
+      BackendFacilitySentimentInsight(
+        facilityId: '${json['facility_id']}',
+        facilityName: '${json['facility_name'] ?? ''}',
+        classified: _int(json['classified']),
+        positive: _int(json['positive']),
+        neutral: _int(json['neutral']),
+        negative: _int(json['negative']),
+        mixed: _int(json['mixed']),
+        needsReview: _int(json['needs_review']),
+        averageRating: _decimal(json['average_rating']),
+      );
+
+  FacilitySentimentInsight toModel() => FacilitySentimentInsight(
+    facilityId: facilityId,
+    facilityName: facilityName,
+    classified: classified,
+    positive: positive,
+    neutral: neutral,
+    negative: negative,
+    mixed: mixed,
+    needsReview: needsReview,
+    averageRating: averageRating,
+  );
+}
+
+class BackendComplaintTopicInsight {
+  const BackendComplaintTopicInsight({
+    required this.topic,
+    this.count = 0,
+    this.facilityCount = 0,
+  });
+
+  final FeedbackTopic topic;
+  final int count;
+  final int facilityCount;
+
+  factory BackendComplaintTopicInsight.fromJson(Map<String, dynamic> json) {
+    final topic = FeedbackTopic.fromValue('${json['topic'] ?? ''}');
+    if (topic == null) {
+      throw const FormatException('Feedback complaint topic is invalid.');
+    }
+    return BackendComplaintTopicInsight(
+      topic: topic,
+      count: _int(json['count']),
+      facilityCount: _int(json['facility_count']),
+    );
+  }
+
+  ComplaintTopicInsight toModel() => ComplaintTopicInsight(
+    topic: topic,
+    count: count,
+    facilityCount: facilityCount,
+  );
+}
+
+class BackendFeedbackSentimentAnalytics {
+  const BackendFeedbackSentimentAnalytics({
+    this.totalFeedback = 0,
+    this.writtenFeedback = 0,
+    this.classifiedFeedback = 0,
+    this.pending = 0,
+    this.processing = 0,
+    this.failed = 0,
+    this.skipped = 0,
+    this.notAnalyzed = 0,
+    this.averageRating,
+    this.positive = 0,
+    this.neutral = 0,
+    this.negative = 0,
+    this.mixed = 0,
+    this.unknown = 0,
+    this.needsReview = 0,
+    this.ratingMismatch = 0,
+    this.trendBucket = 'day',
+    this.trend = const [],
+    this.facilities = const [],
+    this.complaints = const [],
+  });
+
+  final int totalFeedback;
+  final int writtenFeedback;
+  final int classifiedFeedback;
+  final int pending;
+  final int processing;
+  final int failed;
+  final int skipped;
+  final int notAnalyzed;
+  final double? averageRating;
+  final int positive;
+  final int neutral;
+  final int negative;
+  final int mixed;
+  final int unknown;
+  final int needsReview;
+  final int ratingMismatch;
+  final String trendBucket;
+  final List<BackendFeedbackSentimentTrendPoint> trend;
+  final List<BackendFacilitySentimentInsight> facilities;
+  final List<BackendComplaintTopicInsight> complaints;
+
+  factory BackendFeedbackSentimentAnalytics.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendFeedbackSentimentAnalytics(
+    totalFeedback: _int(json['total_feedback']),
+    writtenFeedback: _int(json['written_feedback']),
+    classifiedFeedback: _int(json['classified_feedback']),
+    pending: _int(json['pending']),
+    processing: _int(json['processing']),
+    failed: _int(json['failed']),
+    skipped: _int(json['skipped']),
+    notAnalyzed: _int(json['not_analyzed']),
+    averageRating: _decimal(json['average_rating']),
+    positive: _int(json['positive']),
+    neutral: _int(json['neutral']),
+    negative: _int(json['negative']),
+    mixed: _int(json['mixed']),
+    unknown: _int(json['unknown']),
+    needsReview: _int(json['needs_review']),
+    ratingMismatch: _int(json['rating_mismatch']),
+    trendBucket: '${json['trend_bucket'] ?? 'day'}',
+    trend: ((json['trend'] as List?) ?? const [])
+        .map(
+          (row) => BackendFeedbackSentimentTrendPoint.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+    facilities: ((json['facilities'] as List?) ?? const [])
+        .map(
+          (row) => BackendFacilitySentimentInsight.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+    complaints: ((json['complaints'] as List?) ?? const [])
+        .map(
+          (row) => BackendComplaintTopicInsight.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+  );
+
+  FeedbackSentimentAnalytics toModel() => FeedbackSentimentAnalytics(
+    totalFeedback: totalFeedback,
+    writtenFeedback: writtenFeedback,
+    classifiedFeedback: classifiedFeedback,
+    pending: pending,
+    processing: processing,
+    failed: failed,
+    skipped: skipped,
+    notAnalyzed: notAnalyzed,
+    averageRating: averageRating,
+    positive: positive,
+    neutral: neutral,
+    negative: negative,
+    mixed: mixed,
+    unknown: unknown,
+    needsReview: needsReview,
+    ratingMismatch: ratingMismatch,
+    trendBucket: trendBucket,
+    trend: [for (final point in trend) point.toModel()],
+    facilities: [for (final facility in facilities) facility.toModel()],
+    complaints: [for (final complaint in complaints) complaint.toModel()],
+  );
+}
+
 /// Server-side query object for the admin feedback list, modelled on
 /// [AuditQuery].
 class FeedbackQuery {
@@ -1176,6 +1605,10 @@ class FeedbackQuery {
     this.maxRating,
     this.from,
     this.to,
+    this.sentiment,
+    this.topic,
+    this.analysisStatus,
+    this.needsReview,
     this.sort = FeedbackSort.newest,
     this.limit = 50,
     this.offset = 0,
@@ -1187,6 +1620,10 @@ class FeedbackQuery {
   final int? maxRating;
   final DateTime? from;
   final DateTime? to;
+  final SentimentLabel? sentiment;
+  final FeedbackTopic? topic;
+  final SentimentAnalysisStatus? analysisStatus;
+  final bool? needsReview;
   final FeedbackSort sort;
   final int limit;
   final int offset;
@@ -1201,6 +1638,14 @@ class FeedbackQuery {
     DateTime? from,
     DateTime? to,
     bool clearDateRange = false,
+    SentimentLabel? sentiment,
+    bool clearSentiment = false,
+    FeedbackTopic? topic,
+    bool clearTopic = false,
+    SentimentAnalysisStatus? analysisStatus,
+    bool clearAnalysisStatus = false,
+    bool? needsReview,
+    bool clearNeedsReview = false,
     FeedbackSort? sort,
     int? limit,
     int? offset,
@@ -1211,6 +1656,12 @@ class FeedbackQuery {
     maxRating: clearRatingRange ? null : (maxRating ?? this.maxRating),
     from: clearDateRange ? null : (from ?? this.from),
     to: clearDateRange ? null : (to ?? this.to),
+    sentiment: clearSentiment ? null : (sentiment ?? this.sentiment),
+    topic: clearTopic ? null : (topic ?? this.topic),
+    analysisStatus: clearAnalysisStatus
+        ? null
+        : (analysisStatus ?? this.analysisStatus),
+    needsReview: clearNeedsReview ? null : (needsReview ?? this.needsReview),
     sort: sort ?? this.sort,
     limit: limit ?? this.limit,
     offset: offset ?? this.offset,
@@ -1232,16 +1683,18 @@ class BackendLoyaltyTransaction {
     required this.transactionType,
     required this.sourceType,
     this.sourceId,
+    this.actorId,
     this.description = '',
     required this.createdAt,
   });
 
   final String id;
   final String userId;
-  final int points;
+  final double points;
   final String transactionType;
   final String sourceType;
   final String? sourceId;
+  final String? actorId;
   final String description;
   final DateTime createdAt;
 
@@ -1249,10 +1702,11 @@ class BackendLoyaltyTransaction {
       BackendLoyaltyTransaction(
         id: '${json['id']}',
         userId: '${json['user_id']}',
-        points: (json['points'] as num).toInt(),
+        points: (json['points'] as num).toDouble(),
         transactionType: '${json['transaction_type']}',
         sourceType: '${json['source_type']}',
         sourceId: json['source_id'] as String?,
+        actorId: json['actor_id'] as String?,
         description: '${json['description'] ?? ''}',
         createdAt: DateTime.parse(json['created_at'] as String),
       );
@@ -1264,8 +1718,211 @@ class BackendLoyaltyTransaction {
     type: LoyaltyTransactionType.fromRaw(transactionType),
     sourceType: sourceType,
     sourceId: sourceId,
+    actorId: actorId,
     description: description,
     createdAt: createdAt,
+  );
+}
+
+class BackendLoyaltyDiscountOffer {
+  const BackendLoyaltyDiscountOffer({
+    required this.id,
+    required this.name,
+    this.description = '',
+    required this.requiredPoints,
+    required this.discountKind,
+    this.fixedAmountCentavos,
+    this.percentage,
+    this.facilityId,
+    this.facilityName,
+    required this.validFrom,
+    required this.validUntil,
+    this.active = true,
+    this.affordable = false,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final double requiredPoints;
+  final String discountKind;
+  final int? fixedAmountCentavos;
+  final double? percentage;
+  final String? facilityId;
+  final String? facilityName;
+  final DateTime validFrom;
+  final DateTime validUntil;
+  final bool active;
+  final bool affordable;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory BackendLoyaltyDiscountOffer.fromJson(Map<String, dynamic> json) =>
+      BackendLoyaltyDiscountOffer(
+        id: '${json['id']}',
+        name: '${json['name'] ?? ''}',
+        description: '${json['description'] ?? ''}',
+        requiredPoints:
+            (json['required_points'] as num?)?.toDouble() ?? 0,
+        discountKind: '${json['discount_kind'] ?? 'fixed_amount'}',
+        fixedAmountCentavos:
+            (json['fixed_amount_centavos'] as num?)?.toInt(),
+        percentage: (json['percentage'] as num?)?.toDouble(),
+        facilityId: json['facility_id'] as String?,
+        facilityName: json['facility_name'] as String?,
+        validFrom: DateTime.parse('${json['valid_from']}'),
+        validUntil: DateTime.parse('${json['valid_until']}'),
+        active: json['active'] as bool? ?? true,
+        affordable: json['affordable'] as bool? ?? false,
+        createdAt: DateTime.parse('${json['created_at']}'),
+        updatedAt: DateTime.parse('${json['updated_at']}'),
+      );
+
+  LoyaltyDiscountOffer toModel() => LoyaltyDiscountOffer(
+    id: id,
+    name: name,
+    description: description,
+    requiredPoints: requiredPoints,
+    discountKind: DiscountKind.fromRaw(discountKind),
+    fixedAmountCentavos: fixedAmountCentavos,
+    percentage: percentage,
+    facilityId: facilityId,
+    facilityName: facilityName,
+    validFrom: validFrom,
+    validUntil: validUntil,
+    active: active,
+    affordable: affordable,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
+class BackendLoyaltyDiscountApplication {
+  const BackendLoyaltyDiscountApplication({
+    required this.id,
+    required this.claimId,
+    required this.reservationId,
+    required this.discountAmountCentavos,
+    required this.status,
+    required this.appliedAt,
+  });
+
+  final String id;
+  final String claimId;
+  final String reservationId;
+  final int discountAmountCentavos;
+  final String status;
+  final DateTime appliedAt;
+
+  factory BackendLoyaltyDiscountApplication.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendLoyaltyDiscountApplication(
+    id: '${json['id']}',
+    claimId: '${json['claim_id']}',
+    reservationId: '${json['reservation_id']}',
+    discountAmountCentavos:
+        (json['discount_amount_centavos'] as num?)?.toInt() ?? 0,
+    status: '${json['status'] ?? 'applied'}',
+    appliedAt: DateTime.parse('${json['applied_at']}'),
+  );
+
+  LoyaltyDiscountApplication toModel() => LoyaltyDiscountApplication(
+    id: id,
+    claimId: claimId,
+    reservationId: reservationId,
+    discountAmountCentavos: discountAmountCentavos,
+    status: status,
+    appliedAt: appliedAt,
+  );
+}
+
+class BackendLoyaltyDiscountClaim {
+  const BackendLoyaltyDiscountClaim({
+    required this.id,
+    required this.userId,
+    required this.offerId,
+    required this.offerName,
+    this.offerDescription = '',
+    required this.discountKind,
+    this.fixedAmountCentavos,
+    this.percentage,
+    this.facilityId,
+    this.facilityName,
+    required this.requiredPoints,
+    required this.expiryDate,
+    required this.pointsSpent,
+    required this.status,
+    required this.claimedAt,
+    this.consumedAt,
+    this.application,
+  });
+
+  final String id;
+  final String userId;
+  final String offerId;
+  final String offerName;
+  final String offerDescription;
+  final String discountKind;
+  final int? fixedAmountCentavos;
+  final double? percentage;
+  final String? facilityId;
+  final String? facilityName;
+  final double requiredPoints;
+  final DateTime expiryDate;
+  final double pointsSpent;
+  final String status;
+  final DateTime claimedAt;
+  final DateTime? consumedAt;
+  final BackendLoyaltyDiscountApplication? application;
+
+  factory BackendLoyaltyDiscountClaim.fromJson(Map<String, dynamic> json) {
+    final application = json['application'];
+    return BackendLoyaltyDiscountClaim(
+      id: '${json['id']}',
+      userId: '${json['user_id']}',
+      offerId: '${json['offer_id']}',
+      offerName: '${json['offer_name'] ?? ''}',
+      offerDescription: '${json['offer_description'] ?? ''}',
+      discountKind: '${json['discount_kind'] ?? 'fixed_amount'}',
+      fixedAmountCentavos: (json['fixed_amount_centavos'] as num?)?.toInt(),
+      percentage: (json['percentage'] as num?)?.toDouble(),
+      facilityId: json['facility_id'] as String?,
+      facilityName: json['facility_name'] as String?,
+      requiredPoints:
+          (json['required_points'] as num?)?.toDouble() ?? 0,
+      expiryDate: DateTime.parse('${json['expiry_date']}'),
+      pointsSpent: (json['points_spent'] as num?)?.toDouble() ?? 0,
+      status: '${json['effective_status'] ?? json['status'] ?? 'claimed'}',
+      claimedAt: DateTime.parse('${json['claimed_at']}'),
+      consumedAt: _date(json['consumed_at']),
+      application: application is Map
+          ? BackendLoyaltyDiscountApplication.fromJson(
+              Map<String, dynamic>.from(application),
+            )
+          : null,
+    );
+  }
+
+  LoyaltyDiscountClaim toModel() => LoyaltyDiscountClaim(
+    id: id,
+    userId: userId,
+    offerId: offerId,
+    offerName: offerName,
+    offerDescription: offerDescription,
+    discountKind: DiscountKind.fromRaw(discountKind),
+    fixedAmountCentavos: fixedAmountCentavos,
+    percentage: percentage,
+    facilityId: facilityId,
+    facilityName: facilityName,
+    requiredPoints: requiredPoints,
+    expiryDate: expiryDate,
+    pointsSpent: pointsSpent,
+    status: LoyaltyDiscountClaimStatus.fromRaw(status),
+    claimedAt: claimedAt,
+    consumedAt: consumedAt,
+    application: application?.toModel(),
   );
 }
 
@@ -1365,6 +2022,7 @@ class BackendLoyaltyRedemption {
 
 class BackendLoyaltySummary {
   const BackendLoyaltySummary({
+    this.eligible = true,
     this.balance = 0,
     this.lifetimeEarned = 0,
     this.lifetimeRedeemed = 0,
@@ -1372,25 +2030,32 @@ class BackendLoyaltySummary {
     this.transactions = const [],
     this.redemptions = const [],
     this.rewards = const [],
+    this.offers = const [],
+    this.claims = const [],
   });
 
-  final int balance;
-  final int lifetimeEarned;
-  final int lifetimeRedeemed;
-  final Map<String, int> rules;
+  final bool eligible;
+  final double balance;
+  final double lifetimeEarned;
+  final double lifetimeRedeemed;
+  final Map<String, double> rules;
   final List<BackendLoyaltyTransaction> transactions;
   final List<BackendLoyaltyRedemption> redemptions;
   final List<BackendLoyaltyReward> rewards;
+  final List<BackendLoyaltyDiscountOffer> offers;
+  final List<BackendLoyaltyDiscountClaim> claims;
 
   factory BackendLoyaltySummary.fromJson(Map<String, dynamic> json) =>
       BackendLoyaltySummary(
-        balance: (json['balance'] as num?)?.toInt() ?? 0,
-        lifetimeEarned: (json['lifetime_earned'] as num?)?.toInt() ?? 0,
-        lifetimeRedeemed: (json['lifetime_redeemed'] as num?)?.toInt() ?? 0,
+        eligible: json['eligible'] as bool? ?? true,
+        balance: (json['balance'] as num?)?.toDouble() ?? 0,
+        lifetimeEarned: (json['lifetime_earned'] as num?)?.toDouble() ?? 0,
+        lifetimeRedeemed:
+            (json['lifetime_redeemed'] as num?)?.toDouble() ?? 0,
         rules: {
           for (final entry
               in (json['rules'] as Map<String, dynamic>? ?? const {}).entries)
-            entry.key: (entry.value as num?)?.toInt() ?? 0,
+            entry.key: (entry.value as num?)?.toDouble() ?? 0,
         },
         transactions: ((json['transactions'] as List?) ?? const [])
             .map(
@@ -1413,9 +2078,24 @@ class BackendLoyaltySummary {
               ),
             )
             .toList(),
+        offers: ((json['offers'] as List?) ?? const [])
+            .map(
+              (row) => BackendLoyaltyDiscountOffer.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(),
+        claims: ((json['claims'] as List?) ?? const [])
+            .map(
+              (row) => BackendLoyaltyDiscountClaim.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(),
       );
 
   LoyaltySummary toModel() => LoyaltySummary(
+    eligible: eligible,
     balance: balance,
     lifetimeEarned: lifetimeEarned,
     lifetimeRedeemed: lifetimeRedeemed,
@@ -1423,6 +2103,8 @@ class BackendLoyaltySummary {
     transactions: transactions.map((row) => row.toModel()).toList(),
     redemptions: redemptions.map((row) => row.toModel()).toList(),
     rewards: rewards.map((row) => row.toModel()).toList(),
+    offers: offers.map((row) => row.toModel()).toList(),
+    claims: claims.map((row) => row.toModel()).toList(),
   );
 }
 
@@ -1440,9 +2122,9 @@ class BackendLoyaltyBalanceRow {
   final String userId;
   final String fullName;
   final String email;
-  final int balance;
-  final int lifetimeEarned;
-  final int lifetimeRedeemed;
+  final double balance;
+  final double lifetimeEarned;
+  final double lifetimeRedeemed;
   final DateTime? lastActivityAt;
 
   factory BackendLoyaltyBalanceRow.fromJson(Map<String, dynamic> json) =>
@@ -1450,9 +2132,10 @@ class BackendLoyaltyBalanceRow {
         userId: '${json['user_id']}',
         fullName: '${json['full_name'] ?? ''}',
         email: '${json['email'] ?? ''}',
-        balance: (json['balance'] as num?)?.toInt() ?? 0,
-        lifetimeEarned: (json['lifetime_earned'] as num?)?.toInt() ?? 0,
-        lifetimeRedeemed: (json['lifetime_redeemed'] as num?)?.toInt() ?? 0,
+        balance: (json['balance'] as num?)?.toDouble() ?? 0,
+        lifetimeEarned: (json['lifetime_earned'] as num?)?.toDouble() ?? 0,
+        lifetimeRedeemed:
+            (json['lifetime_redeemed'] as num?)?.toDouble() ?? 0,
         lastActivityAt: _date(json['last_activity_at']),
       );
 
@@ -1465,6 +2148,183 @@ class BackendLoyaltyBalanceRow {
     lifetimeRedeemed: lifetimeRedeemed,
     lastActivityAt: lastActivityAt,
   );
+}
+
+class BackendLoyaltyAdminClaim {
+  const BackendLoyaltyAdminClaim({
+    required this.claimId,
+    required this.renterUserId,
+    required this.renterFullName,
+    required this.renterEmail,
+    required this.offerId,
+    required this.offerName,
+    required this.discountKind,
+    this.fixedAmountCentavos,
+    this.percentage,
+    this.facilityId,
+    this.facilityName,
+    required this.pointsSpent,
+    required this.expiryDate,
+    required this.status,
+    required this.effectiveStatus,
+    this.applicationId,
+    this.applicationStatus,
+    this.releaseReason,
+    this.appliedAt,
+    this.releasedAt,
+    this.applicationConsumedAt,
+    this.reservationId,
+    required this.claimedAt,
+    this.consumedAt,
+    required this.createdAt,
+  });
+
+  final String claimId;
+  final String renterUserId;
+  final String renterFullName;
+  final String renterEmail;
+  final String offerId;
+  final String offerName;
+  final String discountKind;
+  final int? fixedAmountCentavos;
+  final double? percentage;
+  final String? facilityId;
+  final String? facilityName;
+  final double pointsSpent;
+  final DateTime expiryDate;
+  final String status;
+  final String effectiveStatus;
+  final String? applicationId;
+  final String? applicationStatus;
+  final String? releaseReason;
+  final DateTime? appliedAt;
+  final DateTime? releasedAt;
+  final DateTime? applicationConsumedAt;
+  final String? reservationId;
+  final DateTime claimedAt;
+  final DateTime? consumedAt;
+  final DateTime createdAt;
+
+  factory BackendLoyaltyAdminClaim.fromJson(Map<String, dynamic> json) =>
+      BackendLoyaltyAdminClaim(
+        claimId: '${json['claim_id']}',
+        renterUserId: '${json['renter_user_id']}',
+        renterFullName: '${json['renter_full_name'] ?? ''}',
+        renterEmail: '${json['renter_email'] ?? ''}',
+        offerId: '${json['offer_id']}',
+        offerName: '${json['offer_name'] ?? ''}',
+        discountKind: '${json['discount_kind'] ?? 'fixed_amount'}',
+        fixedAmountCentavos:
+            (json['fixed_amount_centavos'] as num?)?.toInt(),
+        percentage: (json['percentage'] as num?)?.toDouble(),
+        facilityId: json['facility_id'] as String?,
+        facilityName: json['facility_name'] as String?,
+        pointsSpent: (json['points_spent'] as num?)?.toDouble() ?? 0,
+        expiryDate: DateTime.parse('${json['expiry_date']}'),
+        status: '${json['status'] ?? 'claimed'}',
+        effectiveStatus: '${json['effective_status'] ?? 'claimed'}',
+        applicationId: json['application_id'] as String?,
+        applicationStatus: json['application_status'] as String?,
+        releaseReason: json['release_reason'] as String?,
+        appliedAt: _date(json['applied_at']),
+        releasedAt: _date(json['released_at']),
+        applicationConsumedAt: _date(json['application_consumed_at']),
+        reservationId: json['reservation_id'] as String?,
+        claimedAt: DateTime.parse('${json['claimed_at']}'),
+        consumedAt: _date(json['consumed_at']),
+        createdAt: DateTime.parse('${json['created_at']}'),
+      );
+
+  LoyaltyAdminClaimRow toModel() => LoyaltyAdminClaimRow(
+    claimId: claimId,
+    renterUserId: renterUserId,
+    renterFullName: renterFullName,
+    renterEmail: renterEmail,
+    offerId: offerId,
+    offerName: offerName,
+    discountKind: DiscountKind.fromRaw(discountKind),
+    fixedAmountCentavos: fixedAmountCentavos,
+    percentage: percentage,
+    facilityId: facilityId,
+    facilityName: facilityName,
+    pointsSpent: pointsSpent,
+    expiryDate: expiryDate,
+    status: LoyaltyDiscountClaimStatus.fromRaw(status),
+    effectiveStatus: LoyaltyDiscountClaimStatus.fromRaw(effectiveStatus),
+    applicationId: applicationId,
+    applicationStatus: applicationStatus,
+    releaseReason: releaseReason,
+    appliedAt: appliedAt,
+    releasedAt: releasedAt,
+    applicationConsumedAt: applicationConsumedAt,
+    reservationId: reservationId,
+    claimedAt: claimedAt,
+    consumedAt: consumedAt,
+    createdAt: createdAt,
+  );
+}
+
+class BackendAssistantConversation {
+  const BackendAssistantConversation({
+    required this.id,
+    required this.title,
+    required this.activeDraft,
+    required this.createdAt,
+    required this.lastActivityAt,
+  });
+
+  final String id;
+  final String title;
+  final Map<String, dynamic> activeDraft;
+  final DateTime createdAt;
+  final DateTime lastActivityAt;
+
+  factory BackendAssistantConversation.fromJson(Map<String, dynamic> json) =>
+      BackendAssistantConversation(
+        id: '${json['id']}',
+        title: '${json['title'] ?? 'New chat'}',
+        activeDraft: Map<String, dynamic>.from(
+          json['active_draft'] as Map? ?? const <String, dynamic>{},
+        ),
+        createdAt: DateTime.parse('${json['created_at']}'),
+        lastActivityAt: DateTime.parse('${json['last_activity_at']}'),
+      );
+}
+
+class BackendAssistantMessage {
+  const BackendAssistantMessage({
+    required this.id,
+    required this.sender,
+    required this.messageType,
+    required this.text,
+    required this.payload,
+    required this.createdAt,
+    this.reservationId,
+    this.action,
+  });
+
+  final String id;
+  final String sender;
+  final String messageType;
+  final String text;
+  final Map<String, dynamic> payload;
+  final String? reservationId;
+  final String? action;
+  final DateTime createdAt;
+
+  factory BackendAssistantMessage.fromJson(Map<String, dynamic> json) =>
+      BackendAssistantMessage(
+        id: '${json['id']}',
+        sender: '${json['sender']}',
+        messageType: '${json['message_type']}',
+        text: '${json['text'] ?? ''}',
+        payload: Map<String, dynamic>.from(
+          json['payload'] as Map? ?? const <String, dynamic>{},
+        ),
+        reservationId: json['reservation_id'] as String?,
+        action: json['action'] as String?,
+        createdAt: DateTime.parse('${json['created_at']}'),
+      );
 }
 
 abstract interface class SmartReserveBackend {
@@ -1508,6 +2368,11 @@ abstract interface class SmartReserveBackend {
     required DateTime from,
     required DateTime to,
   });
+  Future<List<BackendPublicReservationSlot>> publicReservationCalendar({
+    required List<String> facilityIds,
+    required DateTime from,
+    required DateTime to,
+  });
   Future<BackendReservation> submitReservation(ReservationDraft draft);
   Future<ReservationActionResult> performReservationAction(
     ReservationActionCommand command,
@@ -1515,11 +2380,52 @@ abstract interface class SmartReserveBackend {
   Future<ReservationActionResult> bulkApproveReservations(
     List<BackendReservation> reservations,
   );
+  Future<List<BackendAssistantConversation>> assistantConversations();
+  Future<BackendAssistantConversation> createAssistantConversation({
+    required String title,
+    Map<String, dynamic> activeDraft,
+  });
+  Future<List<BackendAssistantMessage>> assistantMessages(
+    String conversationId,
+  );
+  Future<void> appendAssistantMessages(
+    String conversationId,
+    List<BackendAssistantMessage> messages,
+  );
+  Future<void> updateAssistantConversation(
+    String conversationId, {
+    String? title,
+    Map<String, dynamic>? activeDraft,
+  });
   Future<void> undoReservationAction(String actionId);
   Future<String> reservationAttachmentUrl(String path);
   Future<List<BackendNotification>> notifications();
   Stream<List<BackendNotification>> notificationStream();
   Future<void> markNotificationRead(String notificationId);
+  Future<AnomalyPage> anomalyCenter({
+    required AnomalyFilters filters,
+    Map<String, dynamic>? cursor,
+    int limit,
+  });
+  Future<AnomalyDetail> anomalyDetail(String anomalyId);
+  Future<AnomalyDetail> transitionReservationAnomaly({
+    required String anomalyId,
+    required String action,
+    String? reasonCode,
+    String? note,
+  });
+  Future<RenterRiskSummary> reservationRiskSummary(String requestId);
+  Future<RenterRiskSummary> evaluateReservationRiskNow(String requestId);
+  Future<void> correctOccurrenceAttendance({
+    required String occurrenceId,
+    required String targetStage,
+    required String reason,
+  });
+  Future<List<Map<String, dynamic>>> checkMyReservationOverlaps({
+    required List<DateTime> startsAt,
+    required List<DateTime> endsAt,
+    String? excludeRequestId,
+  });
   Future<Map<String, bool>> notificationPreferences();
   Future<void> saveNotificationPreferences(Map<String, bool> preferences);
   Future<void> inviteAdmin({
@@ -1576,6 +2482,7 @@ abstract interface class SmartReserveCoreBackend {
     required List<DateTime> endsAt,
     required int headcount,
     List<String> amenityIds,
+    String? discountClaimId,
   });
   Future<PaymentSummary> paymentSummary(String requestId);
   Future<List<PaymentTransaction>> payments(String requestId);
@@ -1597,18 +2504,6 @@ abstract interface class SmartReserveCoreBackend {
   Future<String> permitDownloadUrl(String path);
   Future<Map<String, dynamic>> verifyPermit(String token);
   Future<void> saveFacilityConfiguration(FacilityConfigurationDraft draft);
-  Future<List<FacilityAssignmentOption>> facilityAssignmentDirectory(
-    String facilityId,
-  );
-  Future<void> setFacilityAssignment({
-    required String facilityId,
-    required String adminId,
-    required String assignmentRole,
-  });
-  Future<void> removeFacilityAssignment({
-    required String facilityId,
-    required String adminId,
-  });
   Future<List<AuditEntry>> facilityActivity(String facilityId);
 
   Future<BackendFeedback> submitFeedback({
@@ -1621,9 +2516,17 @@ abstract interface class SmartReserveCoreBackend {
   });
   Future<BackendFeedbackPage> feedbackEntries(FeedbackQuery query);
   Future<BackendFeedbackSummary> feedbackSummary(FeedbackQuery query);
+  Future<BackendFeedbackSentimentAnalytics> feedbackSentimentAnalytics(
+    FeedbackQuery query,
+  );
+  Future<BackendFeedbackSentimentAnalysis?> retryFeedbackSentiment(
+    String feedbackId,
+  );
+  Stream<void> feedbackSentimentAnalysisStream();
   Future<BackendLoyaltySummary> loyaltySummary();
   Stream<List<BackendLoyaltyTransaction>> loyaltyTransactionStream();
   Future<BackendLoyaltyRedemption> redeemLoyaltyReward(String rewardId);
+  Future<BackendLoyaltyDiscountClaim> claimLoyaltyDiscount(String offerId);
   Future<List<BackendLoyaltyBalanceRow>> loyaltyBalances({
     String search,
     int limit,
@@ -1636,18 +2539,29 @@ abstract interface class SmartReserveCoreBackend {
     String? userId,
     int limit,
   });
-  Future<BackendLoyaltyReward> saveLoyaltyReward({
+  Future<List<BackendLoyaltyAdminClaim>> loyaltyAdminClaims({
+    String search,
+    String? status,
+    int limit,
+  });
+  Future<List<BackendLoyaltyDiscountOffer>> loyaltyDiscountOffers();
+  Future<BackendLoyaltyDiscountOffer> saveLoyaltyDiscountOffer({
     String? id,
     required String name,
     String description,
-    required int pointsCost,
+    required double requiredPoints,
+    required DiscountKind discountKind,
+    int? fixedAmountCentavos,
+    double? percentage,
+    String? facilityId,
+    required DateTime validFrom,
+    required DateTime validUntil,
     bool active,
-    int? stock,
   });
-  Future<void> setLoyaltyRewardActive(String rewardId, bool active);
+  Future<void> setLoyaltyDiscountOfferActive(String offerId, bool active);
   Future<BackendLoyaltyTransaction> adjustLoyaltyPoints({
     required String userId,
-    required int points,
+    required double points,
     required String reason,
   });
 }
@@ -1720,7 +2634,7 @@ class BackendFacility {
     this.bookableForCurrentUser = true,
     this.supportsInternalLane = true,
     this.supportsExternalLane = true,
-    this.assignmentRole,
+    this.bookingBlockReason,
     this.facilityClassification = 'shared',
     this.depositWindowMinutes = 1440,
     this.balanceDueLeadDays = 3,
@@ -1777,7 +2691,7 @@ class BackendFacility {
   final bool bookableForCurrentUser;
   final bool supportsInternalLane;
   final bool supportsExternalLane;
-  final String? assignmentRole;
+  final FacilityBookingBlockReason? bookingBlockReason;
   final String facilityClassification;
   final int depositWindowMinutes;
   final int balanceDueLeadDays;
@@ -1926,7 +2840,9 @@ class BackendFacility {
     bookableForCurrentUser: access?['bookable'] as bool? ?? false,
     supportsInternalLane: access?['supports_internal'] as bool? ?? false,
     supportsExternalLane: access?['supports_external'] as bool? ?? false,
-    assignmentRole: access?['assignment_role'] as String?,
+    bookingBlockReason: FacilityBookingBlockReason.fromCode(
+      access?['booking_unavailability_code'] as String?,
+    ),
     facilityClassification: facilityClassification,
     depositWindowMinutes: depositWindowMinutes,
     balanceDueLeadDays: balanceDueLeadDays,
@@ -1999,7 +2915,7 @@ class BackendFacility {
       bookableForCurrentUser: bookableForCurrentUser,
       supportsInternalLane: supportsInternalLane,
       supportsExternalLane: supportsExternalLane,
-      assignmentRole: assignmentRole,
+      bookingBlockReason: bookingBlockReason,
       facilityClassification: facilityClassification,
       depositWindowMinutes: depositWindowMinutes,
       balanceDueLeadDays: balanceDueLeadDays,
@@ -2259,6 +3175,97 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       .asyncMap((_) => reservations());
 
   @override
+  Future<List<BackendAssistantConversation>> assistantConversations() async {
+    final rows = await _client
+        .from('assistant_conversations')
+        .select()
+        .order('last_activity_at', ascending: false)
+        .order('id', ascending: false);
+    return [
+      for (final row in rows as List)
+        BackendAssistantConversation.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
+    ];
+  }
+
+  @override
+  Future<BackendAssistantConversation> createAssistantConversation({
+    required String title,
+    Map<String, dynamic> activeDraft = const {},
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    final row = await _client
+        .from('assistant_conversations')
+        .insert({
+          'owner_id': currentUser.id,
+          'title': title.trim().isEmpty ? 'New chat' : title.trim(),
+          'active_draft': activeDraft,
+        })
+        .select()
+        .single();
+    return BackendAssistantConversation.fromJson(
+      Map<String, dynamic>.from(row),
+    );
+  }
+
+  @override
+  Future<List<BackendAssistantMessage>> assistantMessages(
+    String conversationId,
+  ) async {
+    final rows = await _client
+        .from('assistant_messages')
+        .select()
+        .eq('conversation_id', conversationId)
+        .order('created_at')
+        .order('id');
+    return [
+      for (final row in rows as List)
+        BackendAssistantMessage.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<void> appendAssistantMessages(
+    String conversationId,
+    List<BackendAssistantMessage> messages,
+  ) async {
+    if (messages.isEmpty) return;
+    await _client.from('assistant_messages').insert([
+      for (final message in messages)
+        {
+          'conversation_id': conversationId,
+          'sender': message.sender,
+          'message_type': message.messageType,
+          'text': message.text,
+          'payload': message.payload,
+          'reservation_id': message.reservationId,
+          'action': message.action,
+          'created_at': message.createdAt.toUtc().toIso8601String(),
+        },
+    ]);
+  }
+
+  @override
+  Future<void> updateAssistantConversation(
+    String conversationId, {
+    String? title,
+    Map<String, dynamic>? activeDraft,
+  }) async {
+    final values = <String, dynamic>{};
+    if (title != null) {
+      values['title'] = title.trim().isEmpty ? 'New chat' : title.trim();
+    }
+    if (activeDraft != null) values['active_draft'] = activeDraft;
+    if (values.isEmpty) return;
+    await _client
+        .from('assistant_conversations')
+        .update(values)
+        .eq('id', conversationId);
+  }
+
+  @override
   Future<List<BackendBusyWindow>> facilityBusyWindows({
     required List<String> facilityIds,
     required DateTime from,
@@ -2276,6 +3283,47 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     return [
       for (final row in (data as List? ?? const []))
         BackendBusyWindow.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<List<BackendPublicReservationSlot>> publicReservationCalendar({
+    required List<String> facilityIds,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (facilityIds.isEmpty) return const [];
+    late final Object? data;
+    try {
+      data = await _client.rpc(
+        'public_reservation_calendar',
+        params: {
+          'p_facility_ids': facilityIds,
+          'p_from': from.toUtc().toIso8601String(),
+          'p_to': to.toUtc().toIso8601String(),
+        },
+      );
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST202') rethrow;
+      final fallback = await facilityBusyWindows(
+        facilityIds: facilityIds,
+        from: from,
+        to: to,
+      );
+      return [
+        for (final row in fallback)
+          BackendPublicReservationSlot(
+            facilityId: row.facilityId,
+            startsAt: row.startsAt,
+            endsAt: row.endsAt,
+          ),
+      ];
+    }
+    return [
+      for (final row in (data as List? ?? const []))
+        BackendPublicReservationSlot.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
     ];
   }
 
@@ -2324,9 +3372,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
             for (final date in draft.endsAt) date.toUtc().toIso8601String(),
           ],
           'p_amenity_ids': draft.amenityIds,
+          'p_requested_amenities': draft.requestedAmenities,
           'p_terms_version_ids': draft.termsVersionIds,
           'p_pricing_fingerprint': draft.pricingFingerprint,
           'p_attachment_metadata': uploaded,
+          'p_discount_claim_id': draft.discountClaimId,
         },
       );
       final row = await _client
@@ -2352,6 +3402,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     required List<DateTime> endsAt,
     required int headcount,
     List<String> amenityIds = const [],
+    String? discountClaimId,
   }) async {
     final data = await _client.rpc(
       'get_reservation_quote',
@@ -2365,6 +3416,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         ],
         'p_amenity_ids': amenityIds,
         'p_headcount': headcount,
+        'p_discount_claim_id': discountClaimId,
       },
     );
     return BackendReservationQuote.fromJson(
@@ -2564,53 +3616,6 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<List<FacilityAssignmentOption>> facilityAssignmentDirectory(
-    String facilityId,
-  ) async {
-    final data = await _client.rpc(
-      'facility_assignment_directory',
-      params: {'p_facility_id': facilityId},
-    );
-    return [
-      for (final raw in data as List)
-        FacilityAssignmentOption(
-          adminId: '${(raw as Map)['admin_id']}',
-          name: '${raw['name'] ?? ''}',
-          email: '${raw['email'] ?? ''}',
-          adminLane: '${raw['admin_lane'] ?? ''}',
-          assignmentRole: raw['assignment_role'] as String?,
-        ),
-    ];
-  }
-
-  @override
-  Future<void> setFacilityAssignment({
-    required String facilityId,
-    required String adminId,
-    required String assignmentRole,
-  }) async {
-    await _client.rpc(
-      'set_facility_admin_assignment',
-      params: {
-        'p_facility_id': facilityId,
-        'p_admin_id': adminId,
-        'p_assignment_role': assignmentRole,
-      },
-    );
-  }
-
-  @override
-  Future<void> removeFacilityAssignment({
-    required String facilityId,
-    required String adminId,
-  }) async {
-    await _client.rpc(
-      'remove_facility_admin_assignment',
-      params: {'p_facility_id': facilityId, 'p_admin_id': adminId},
-    );
-  }
-
-  @override
   Future<List<AuditEntry>> facilityActivity(String facilityId) async {
     final rows = await _client
         .from('audit_entries')
@@ -2662,6 +3667,10 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_sort': query.sortParam,
         'p_limit': query.limit,
         'p_offset': query.offset,
+        'p_sentiment': query.sentiment?.value,
+        'p_topic': query.topic?.value,
+        'p_analysis_status': query.analysisStatus?.value,
+        'p_needs_review': query.needsReview,
       },
     );
     return BackendFeedbackPage.fromJson(Map<String, dynamic>.from(data as Map));
@@ -2681,6 +3690,50 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       Map<String, dynamic>.from(data as Map),
     );
   }
+
+  @override
+  Future<BackendFeedbackSentimentAnalytics> feedbackSentimentAnalytics(
+    FeedbackQuery query,
+  ) async {
+    final data = await _client.rpc(
+      'feedback_sentiment_analytics',
+      params: {
+        'p_search': query.search.isEmpty ? null : query.search,
+        'p_facility_id': query.facilityId,
+        'p_min_rating': query.minRating,
+        'p_max_rating': query.maxRating,
+        'p_from': query.from?.toUtc().toIso8601String(),
+        'p_to': query.to?.toUtc().toIso8601String(),
+        'p_sentiment': query.sentiment?.value,
+        'p_topic': query.topic?.value,
+        'p_analysis_status': query.analysisStatus?.value,
+        'p_needs_review': query.needsReview,
+      },
+    );
+    return BackendFeedbackSentimentAnalytics.fromJson(
+      Map<String, dynamic>.from(data as Map),
+    );
+  }
+
+  @override
+  Future<BackendFeedbackSentimentAnalysis?> retryFeedbackSentiment(
+    String feedbackId,
+  ) async {
+    final data = await _client.rpc(
+      'feedback_sentiment_retry',
+      params: {'p_feedback_id': feedbackId, 'p_version': 1},
+    );
+    if (data is! Map) return null;
+    return BackendFeedbackSentimentAnalysis.fromJson(
+      Map<String, dynamic>.from(data),
+    );
+  }
+
+  @override
+  Stream<void> feedbackSentimentAnalysisStream() => _client
+      .from('feedback_sentiment_analyses')
+      .stream(primaryKey: ['id'])
+      .map<void>((_) {});
 
   @override
   Future<BackendLoyaltySummary> loyaltySummary() async {
@@ -2712,6 +3765,19 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       params: {'p_reward_id': rewardId},
     );
     return BackendLoyaltyRedemption.fromJson(
+      Map<String, dynamic>.from(row as Map),
+    );
+  }
+
+  @override
+  Future<BackendLoyaltyDiscountClaim> claimLoyaltyDiscount(
+    String offerId,
+  ) async {
+    final row = await _client.rpc(
+      'claim_loyalty_discount',
+      params: {'p_offer_id': offerId},
+    );
+    return BackendLoyaltyDiscountClaim.fromJson(
       Map<String, dynamic>.from(row as Map),
     );
   }
@@ -2768,39 +3834,84 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<BackendLoyaltyReward> saveLoyaltyReward({
+  Future<List<BackendLoyaltyAdminClaim>> loyaltyAdminClaims({
+    String search = '',
+    String? status,
+    int limit = 100,
+  }) async {
+    final rows = await _client.rpc(
+      'loyalty_admin_claims',
+      params: {
+        'p_search': search.isEmpty ? null : search,
+        'p_status': status,
+        'p_limit': limit,
+      },
+    );
+    return [
+      for (final row in rows as List)
+        BackendLoyaltyAdminClaim.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
+    ];
+  }
+
+  @override
+  Future<List<BackendLoyaltyDiscountOffer>> loyaltyDiscountOffers() async {
+    final rows = await _client.rpc('loyalty_discount_offer_admin_list');
+    return [
+      for (final row in rows as List)
+        BackendLoyaltyDiscountOffer.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        ),
+    ];
+  }
+
+  @override
+  Future<BackendLoyaltyDiscountOffer> saveLoyaltyDiscountOffer({
     String? id,
     required String name,
     String description = '',
-    required int pointsCost,
+    required double requiredPoints,
+    required DiscountKind discountKind,
+    int? fixedAmountCentavos,
+    double? percentage,
+    String? facilityId,
+    required DateTime validFrom,
+    required DateTime validUntil,
     bool active = true,
-    int? stock,
   }) async {
     final row = await _client.rpc(
-      'save_loyalty_reward',
+      'save_loyalty_discount_offer',
       params: {
         'p_id': id,
         'p_name': name,
         'p_description': description,
-        'p_points_cost': pointsCost,
+        'p_required_points': requiredPoints,
+        'p_discount_kind': discountKind.raw,
+        'p_fixed_amount_centavos': fixedAmountCentavos,
+        'p_percentage': percentage,
+        'p_facility_id': facilityId,
+        'p_valid_from': _dateOnly(validFrom),
+        'p_valid_until': _dateOnly(validUntil),
         'p_active': active,
-        'p_stock': stock,
       },
     );
-    return BackendLoyaltyReward.fromJson(Map<String, dynamic>.from(row as Map));
+    return BackendLoyaltyDiscountOffer.fromJson(
+      Map<String, dynamic>.from(row as Map),
+    );
   }
 
   @override
-  Future<void> setLoyaltyRewardActive(String rewardId, bool active) =>
+  Future<void> setLoyaltyDiscountOfferActive(String offerId, bool active) =>
       _client.rpc(
-        'set_loyalty_reward_active',
-        params: {'p_reward_id': rewardId, 'p_active': active},
+        'set_loyalty_discount_offer_active',
+        params: {'p_offer_id': offerId, 'p_active': active},
       );
 
   @override
   Future<BackendLoyaltyTransaction> adjustLoyaltyPoints({
     required String userId,
-    required int points,
+    required double points,
     required String reason,
   }) async {
     final row = await _client.rpc(
@@ -2931,6 +4042,108 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'mark_my_notification_read',
       params: {'p_notification_id': notificationId},
     );
+  }
+
+  @override
+  Future<AnomalyPage> anomalyCenter({
+    required AnomalyFilters filters,
+    Map<String, dynamic>? cursor,
+    int limit = 50,
+  }) async {
+    final data = await _client.rpc(
+      'get_anomaly_center',
+      params: {
+        'p_filters': filters.toJson(),
+        'p_cursor': cursor,
+        'p_limit': limit,
+      },
+    );
+    return AnomalyPage.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AnomalyDetail> anomalyDetail(String anomalyId) async {
+    final data = await _client.rpc(
+      'get_anomaly_detail',
+      params: {'p_anomaly_id': anomalyId},
+    );
+    return AnomalyDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AnomalyDetail> transitionReservationAnomaly({
+    required String anomalyId,
+    required String action,
+    String? reasonCode,
+    String? note,
+  }) async {
+    final data = await _client.rpc(
+      'transition_reservation_anomaly',
+      params: {
+        'p_anomaly_id': anomalyId,
+        'p_action': action,
+        'p_reason_code': reasonCode,
+        'p_note': note,
+        'p_idempotency_key': _uuid(),
+      },
+    );
+    return AnomalyDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<RenterRiskSummary> reservationRiskSummary(String requestId) async {
+    final data = await _client.rpc(
+      'get_reservation_risk_summary',
+      params: {'p_request_id': requestId},
+    );
+    return RenterRiskSummary.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<RenterRiskSummary> evaluateReservationRiskNow(String requestId) async {
+    final data = await _client.rpc(
+      'evaluate_reservation_risk_now',
+      params: {'p_request_id': requestId},
+    );
+    return RenterRiskSummary.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<void> correctOccurrenceAttendance({
+    required String occurrenceId,
+    required String targetStage,
+    required String reason,
+  }) async {
+    await _client.rpc(
+      'correct_occurrence_attendance',
+      params: {
+        'p_occurrence_id': occurrenceId,
+        'p_target_stage': targetStage,
+        'p_reason': reason,
+        'p_idempotency_key': _uuid(),
+      },
+    );
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> checkMyReservationOverlaps({
+    required List<DateTime> startsAt,
+    required List<DateTime> endsAt,
+    String? excludeRequestId,
+  }) async {
+    final data = await _client.rpc(
+      'check_my_reservation_overlaps',
+      params: {
+        'p_starts_at': [for (final value in startsAt) value.toUtc().toIso8601String()],
+        'p_ends_at': [for (final value in endsAt) value.toUtc().toIso8601String()],
+        'p_exclude_request_id': excludeRequestId,
+      },
+    );
+    final json = Map<String, dynamic>.from(data as Map);
+    return [
+      for (final raw in (json['overlaps'] as List? ?? const []))
+        Map<String, dynamic>.from(raw as Map),
+    ];
   }
 
   @override
@@ -3235,7 +4448,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       },
     );
     if (data is! Map) {
-      throw const FormatException('Reporting returned an invalid response.');
+      throw const ReportContractException(
+        ReportContractFailureCode.invalidResponse,
+      );
     }
     return ReportSnapshot.fromJson(
       Map<String, dynamic>.from(data),

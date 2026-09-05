@@ -3,8 +3,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
-import '../../app/app_state.dart';
 import '../../model/account.dart';
+import '../../model/amenity_request.dart';
 import '../../model/facility.dart';
 import '../../model/notice.dart';
 import '../../model/payment.dart';
@@ -13,7 +13,7 @@ import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
-import '../../widgets/filter_bar.dart';
+import '../../widgets/sr_assistant_logo.dart';
 import '../../widgets/sr_controls.dart';
 import 'assistant_availability.dart';
 import 'assistant_controller.dart';
@@ -30,13 +30,15 @@ class AssistantBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (message.text.isEmpty) return const SizedBox.shrink();
+    if (message.text.isEmpty || message.kind == AssistantMessageKind.activity) {
+      return const SizedBox.shrink();
+    }
     final isUser = message.speaker == AssistantSpeaker.user;
     final Color bg;
     final Color? border;
     final Color ink;
     if (isUser) {
-      bg = SR.primary;
+      bg = context.srColors.brand;
       border = null;
       ink = SR.onDark;
     } else if (message.tone == AdvisoryTone.block) {
@@ -80,34 +82,92 @@ class AssistantBubble extends StatelessWidget {
         mainAxisAlignment: isUser
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
-        children: [Flexible(child: bubble)],
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isUser) ...[
+            const Padding(
+              padding: EdgeInsets.only(right: 7, bottom: 2),
+              child: SrAssistantLogo(size: 26, radius: 13),
+            ),
+          ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                bubble,
+                const SizedBox(height: 3),
+                Text(
+                  '${message.createdAt.hour.toString().padLeft(2, '0')}:${message.createdAt.minute.toString().padLeft(2, '0')}',
+                  style: mono(9.5, color: context.srColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class AssistantChipRow extends StatelessWidget {
-  const AssistantChipRow({super.key, required this.chips, required this.state});
+class AssistantActivityCard extends StatelessWidget {
+  const AssistantActivityCard({super.key, required this.message});
 
-  final List<AssistantChipOption> chips;
-  final AppState state;
+  final AssistantMessage message;
 
   @override
   Widget build(BuildContext context) {
-    if (chips.isEmpty) return const SizedBox.shrink();
+    final state = AppScope.of(context);
+    ReservationRequest? linked;
+    for (final request in state.myRequests) {
+      if (request.id == message.reservationId) {
+        linked = request;
+        break;
+      }
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final chip in chips)
-            FilterPill(
-              label: chip.label,
-              selected: false,
-              onTap: () => chip.onSelect(state),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(
+          color: context.srColors.successContainer,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: context.srColors.greenLine),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 17,
+                  color: context.srColors.success,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    message.text,
+                    style: sans(
+                      11.5,
+                      w: 500,
+                      color: context.srColors.greenDeep,
+                    ),
+                  ),
+                ),
+              ],
             ),
-        ],
+            if (linked != null) ...[
+              const SizedBox(height: 8),
+              SrPill(
+                label: 'Current status: ${linked.status.label}',
+                background: linked.status.background,
+                foreground: linked.status.foreground,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -356,6 +416,10 @@ class AssistantConfirmCard extends StatelessWidget {
     if (facility == null || draft.day == null || !draft.hasTime) {
       return const SizedBox.shrink();
     }
+    final requestedAmenities = normalizeRequestedAmenityLabels(
+      facility,
+      draft.amenities,
+    );
     final hours = draft.endHour! - draft.startHour!;
     final quoteCentavos =
         (facility.hourlyRateCentavosFor(state.userAccount.pricingAudience) *
@@ -390,9 +454,9 @@ class AssistantConfirmCard extends StatelessWidget {
                 ),
                 SrKeyCell(
                   label: 'AMENITIES',
-                  value: draft.amenities.isEmpty
+                  value: requestedAmenities.isEmpty
                       ? 'None'
-                      : draft.amenities.join(' · '),
+                      : requestedAmenities.join(' · '),
                 ),
               ],
             ),
@@ -408,9 +472,9 @@ class AssistantConfirmCard extends StatelessWidget {
             const SizedBox(height: 10),
             AmenityRequestField(
               dense: true,
-              facilityAmenities: facility.amenities,
-              amenityOptions: facility.amenityOptions,
-              selected: draft.amenities,
+              includedAmenities: includedFacilityAmenities(facility),
+              requestableAmenities: requestableAmenityLabels(facility),
+              selectedRequestedAmenities: requestedAmenities.toSet(),
               onToggle: controller.toggleDraftAmenity,
               onRemove: controller.removeDraftAmenity,
             ),
@@ -433,7 +497,9 @@ class AssistantConfirmCard extends StatelessWidget {
                   onPressed: controller.submitting
                       ? null
                       : () {
-                          controller.confirm(state);
+                          controller.confirm(state).whenComplete(() {
+                            controller.syncHistory();
+                          });
                         },
                 ),
                 const SizedBox(width: 8),

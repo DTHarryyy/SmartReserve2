@@ -1,9 +1,12 @@
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../app/app_scope.dart';
+import '../../app/app_state.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_controls.dart';
 import 'assistant_cards.dart';
@@ -12,9 +15,10 @@ import 'assistant_controller.dart';
 import '../../theme/sr_theme.dart';
 
 class AssistantTab extends StatefulWidget {
-  const AssistantTab({super.key, required this.controller});
+  const AssistantTab({super.key, required this.controller, this.onOpenPicker});
 
   final AssistantController controller;
+  final Future<void> Function()? onOpenPicker;
 
   @override
   State<AssistantTab> createState() => _AssistantTabState();
@@ -67,58 +71,149 @@ class _AssistantTabState extends State<AssistantTab> {
     final width = MediaQuery.sizeOf(context).width;
     final narrow = SR.isCompact(width);
     final controller = widget.controller;
+    final quickReplies = _latestQuickReplies(controller);
 
     return ColoredBox(
-      color: context.srColors.bg,
+      color: Colors.transparent,
       child: Column(
         children: [
           if (state.busyWindowsDegraded) _degradedNotice(),
+          if (controller.historySaveFailed) _historyNotice(controller),
           Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: ListView.builder(
-                  controller: _scroll,
-                  padding: EdgeInsets.fromLTRB(
-                    narrow ? 14 : 20,
-                    16,
-                    narrow ? 14 : 20,
-                    10,
+            child: controller.historyLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: ListView.builder(
+                        controller: _scroll,
+                        padding: EdgeInsets.fromLTRB(
+                          narrow ? 14 : 20,
+                          16,
+                          narrow ? 14 : 20,
+                          10,
+                        ),
+                        itemCount: controller.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = controller.messages[index];
+                          if (message.kind == AssistantMessageKind.chips) {
+                            return const SizedBox.shrink();
+                          }
+                          final previous = index == 0
+                              ? null
+                              : controller.messages[index - 1];
+                          final showDate =
+                              previous == null ||
+                              !_sameChatDate(
+                                previous.createdAt,
+                                message.createdAt,
+                              );
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showDate) _dateDivider(message.createdAt),
+                              AssistantBubble(message: message),
+                              if (message.kind ==
+                                  AssistantMessageKind.facilities)
+                                AssistantFacilityListView(
+                                  facilities: message.facilities,
+                                  controller: controller,
+                                ),
+                              if (message.kind ==
+                                  AssistantMessageKind.reservations)
+                                AssistantReservationListView(
+                                  reservations: message.reservations,
+                                  controller: controller,
+                                ),
+                              if (message.kind == AssistantMessageKind.confirm)
+                                AssistantConfirmCard(controller: controller),
+                              if (message.kind == AssistantMessageKind.activity)
+                                AssistantActivityCard(message: message),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                  itemCount: controller.messages.length,
-                  itemBuilder: (context, index) {
-                    final message = controller.messages[index];
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        AssistantBubble(message: message),
-                        if (message.kind == AssistantMessageKind.chips)
-                          AssistantChipRow(chips: message.chips, state: state),
-                        if (message.kind == AssistantMessageKind.facilities)
-                          AssistantFacilityListView(
-                            facilities: message.facilities,
-                            controller: controller,
-                          ),
-                        if (message.kind == AssistantMessageKind.reservations)
-                          AssistantReservationListView(
-                            reservations: message.reservations,
-                            controller: controller,
-                          ),
-                        if (message.kind == AssistantMessageKind.confirm)
-                          AssistantConfirmCard(controller: controller),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
           ),
           if (controller.busy) _typingIndicator(narrow),
-          SafeArea(top: false, child: _composerBar(narrow)),
+          SafeArea(
+            top: false,
+            child: _composerBar(narrow, quickReplies, state),
+          ),
         ],
       ),
     );
   }
+
+  List<AssistantChipOption> _latestQuickReplies(
+    AssistantController controller,
+  ) {
+    if (controller.messages.isEmpty) {
+      return const <AssistantChipOption>[];
+    }
+    if (controller.activePicker != null ||
+        controller.stage == AssistantStage.needFacility ||
+        controller.stage == AssistantStage.needDate ||
+        controller.stage == AssistantStage.needTime) {
+      return const <AssistantChipOption>[];
+    }
+    final latest = controller.messages.last;
+    if (latest.kind == AssistantMessageKind.chips && latest.chips.isNotEmpty) {
+      return latest.chips;
+    }
+    return const <AssistantChipOption>[];
+  }
+
+  bool _sameChatDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Widget _dateDivider(DateTime date) => Padding(
+    padding: const EdgeInsets.only(top: 2, bottom: 12),
+    child: Row(
+      children: [
+        Expanded(child: Divider(color: context.srColors.glassLine2)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            '${date.month}/${date.day}/${date.year}',
+            style: mono(10, color: context.srColors.textMuted),
+          ),
+        ),
+        Expanded(child: Divider(color: context.srColors.glassLine2)),
+      ],
+    ),
+  );
+
+  Widget _historyNotice(AssistantController controller) => Container(
+    margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+    padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+    decoration: BoxDecoration(
+      color: context.srColors.warningContainer,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.srColors.amberLine),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.history_toggle_off_rounded,
+          size: 16,
+          color: context.srColors.warning,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'This chat could not be saved. Your reservation actions are still safe.',
+            style: sans(10.5, color: context.srColors.amberInk),
+          ),
+        ),
+        TextButton(
+          onPressed: controller.retryHistorySave,
+          child: const Text('Retry'),
+        ),
+      ],
+    ),
+  );
 
   Widget _degradedNotice() => Container(
     margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
@@ -138,8 +233,8 @@ class _AssistantTabState extends State<AssistantTab> {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            "Couldn't reach the live schedule — availability answers are "
-            'based on opening hours only.',
+            "Couldn't reach the live schedule. Booking choices are paused "
+            'until availability can be verified.',
             style: sans(11, color: context.srColors.amberInk),
           ),
         ),
@@ -149,7 +244,7 @@ class _AssistantTabState extends State<AssistantTab> {
 
   Widget _typingIndicator(bool narrow) => Center(
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 720),
+      constraints: const BoxConstraints(maxWidth: 760),
       child: Padding(
         padding: EdgeInsets.fromLTRB(narrow ? 14 : 20, 0, narrow ? 14 : 20, 10),
         child: Align(
@@ -191,41 +286,67 @@ class _AssistantTabState extends State<AssistantTab> {
     ),
   );
 
-  Widget _composerBar(bool narrow) {
+  Widget _composerBar(
+    bool narrow,
+    List<AssistantChipOption> quickReplies,
+    AppState state,
+  ) {
     final controller = widget.controller;
     final canSend = !controller.busy;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: context.srColors.surface,
-        border: Border(top: BorderSide(color: context.srColors.hairline)),
+        color: context.srColors.surface.withValues(alpha: .96),
+        border: Border(top: BorderSide(color: context.srColors.glassLine2)),
       ),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: const BoxConstraints(maxWidth: 760),
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               narrow ? 12 : 20,
-              10,
+              12,
               narrow ? 12 : 20,
               10,
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _ComposerField(
-                    controller: _composer,
-                    focusNode: _focusNode,
-                    onSubmitted: (_) {
-                      if (canSend) _send();
-                    },
+                if (quickReplies.isNotEmpty) ...[
+                  _QuickReplyStrip(
+                    chips: quickReplies,
+                    state: state,
+                    enabled: canSend,
                   ),
-                ),
-                const SizedBox(width: 8),
-                _SendButton(
-                  enabled: canSend,
-                  onPressed: canSend ? _send : null,
+                  const SizedBox(height: 10),
+                ],
+                if (controller.activePicker != null) ...[
+                  _PickerReopenButton(
+                    prompt: controller.activePicker!,
+                    enabled: canSend && widget.onOpenPicker != null,
+                    onTap: widget.onOpenPicker,
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: _ComposerField(
+                        controller: _composer,
+                        focusNode: _focusNode,
+                        onSubmitted: (_) {
+                          if (canSend) _send();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _SendButton(
+                      enabled: canSend,
+                      onPressed: canSend ? _send : null,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -236,7 +357,170 @@ class _AssistantTabState extends State<AssistantTab> {
   }
 }
 
-class _ComposerField extends StatefulWidget {
+class _PickerReopenButton extends StatelessWidget {
+  const _PickerReopenButton({
+    required this.prompt,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final AssistantPickerPrompt prompt;
+  final bool enabled;
+  final Future<void> Function()? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (prompt.kind) {
+      AssistantPickerKind.facility => 'Choose facility',
+      AssistantPickerKind.date => 'Choose date',
+      AssistantPickerKind.time => 'Choose time',
+    };
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        ),
+        onPressed: enabled && onTap != null
+            ? () {
+                unawaited(onTap!());
+              }
+            : null,
+        icon: const Icon(Icons.touch_app_rounded, size: 18),
+        label: Text(label),
+      ),
+    );
+  }
+}
+
+class _QuickReplyStrip extends StatefulWidget {
+  const _QuickReplyStrip({
+    required this.chips,
+    required this.state,
+    required this.enabled,
+  });
+
+  final List<AssistantChipOption> chips;
+  final AppState state;
+  final bool enabled;
+
+  @override
+  State<_QuickReplyStrip> createState() => _QuickReplyStripState();
+}
+
+class _QuickReplyStripState extends State<_QuickReplyStrip> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 50,
+    child: Scrollbar(
+      controller: _scrollController,
+      interactive: true,
+      radius: const Radius.circular(999),
+      scrollbarOrientation: ScrollbarOrientation.bottom,
+      thickness: 2,
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        primary: false,
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        padding: const EdgeInsets.only(bottom: 6),
+        itemCount: widget.chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final chip = widget.chips[index];
+          return _QuickReplyChip(
+            label: chip.label,
+            enabled: widget.enabled,
+            onTap: () => chip.onSelect(widget.state),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _QuickReplyChip extends StatelessWidget {
+  const _QuickReplyChip({
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: 'Suggestion: $label',
+        child: Hoverable(
+          enabled: enabled,
+          builder: (context, hovered) => GestureDetector(
+            onTap: enabled ? onTap : null,
+            child: AnimatedContainer(
+              duration: SR.stateChange,
+              height: 44,
+              constraints: const BoxConstraints(maxWidth: 280),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: enabled
+                    ? (hovered ? colors.primaryTint : colors.surfaceSubtle)
+                    : colors.dividerSoft,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: hovered ? colors.brand : colors.glassLine2,
+                ),
+                boxShadow: hovered ? SR.focusRingOf(colors.brand) : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 14,
+                    color: enabled ? colors.brand : colors.mutedLight,
+                  ),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: sans(
+                        12,
+                        w: 600,
+                        color: enabled ? colors.ink2 : colors.mutedLight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerField extends StatelessWidget {
   const _ComposerField({
     required this.controller,
     required this.focusNode,
@@ -248,62 +532,39 @@ class _ComposerField extends StatefulWidget {
   final ValueChanged<String> onSubmitted;
 
   @override
-  State<_ComposerField> createState() => _ComposerFieldState();
-}
-
-class _ComposerFieldState extends State<_ComposerField> {
-  bool _focused = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.focusNode.addListener(_sync);
-  }
-
-  void _sync() {
-    if (widget.focusNode.hasFocus != _focused) {
-      setState(() => _focused = widget.focusNode.hasFocus);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.focusNode.removeListener(_sync);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) => AnimatedContainer(
     duration: SR.stateChange,
-    constraints: const BoxConstraints(minHeight: 40),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+    constraints: const BoxConstraints(minHeight: 46),
+    padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 11),
     decoration: BoxDecoration(
-      color: context.srColors.bg,
-      borderRadius: BorderRadius.circular(21),
-      border: Border.all(
-        color: _focused ? SR.primary : context.srColors.border,
-        width: _focused ? 1.4 : 1,
-      ),
+      color: context.srColors.surfaceSubtle,
+      borderRadius: BorderRadius.circular(23),
     ),
     child: Semantics(
       textField: true,
       label: 'Message the assistant',
       child: TextField(
-        controller: widget.controller,
-        focusNode: widget.focusNode,
+        controller: controller,
+        focusNode: focusNode,
         minLines: 1,
         maxLines: 4,
         textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.send,
-        onSubmitted: widget.onSubmitted,
+        onSubmitted: onSubmitted,
         cursorColor: SR.primary,
         cursorWidth: 1.5,
         style: sans(13.5, height: 1.4),
         decoration: InputDecoration(
           isDense: true,
           isCollapsed: true,
+          filled: false,
           border: InputBorder.none,
-          hintText: 'Message SmartReserve AI',
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          hintText: 'Ask about facilities or reservations…',
           hintStyle: sans(13.5, color: context.srColors.mutedLight),
         ),
       ),
@@ -330,8 +591,8 @@ class _SendButton extends StatelessWidget {
           onTap: onPressed,
           child: AnimatedContainer(
             duration: SR.stateChange,
-            width: 34,
-            height: 34,
+            width: 46,
+            height: 46,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: enabled
@@ -341,7 +602,7 @@ class _SendButton extends StatelessWidget {
             ),
             child: Icon(
               Icons.arrow_upward_rounded,
-              size: 18,
+              size: 20,
               color: enabled ? SR.onDark : context.srColors.mutedLight,
             ),
           ),

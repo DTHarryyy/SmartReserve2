@@ -12,7 +12,8 @@ class ToastAction {
 
 @immutable
 class ToastMessage {
-  const ToastMessage(this.text, {
+  const ToastMessage(
+    this.text, {
     this.tone = AdvisoryTone.good,
     this.action,
     this.duration,

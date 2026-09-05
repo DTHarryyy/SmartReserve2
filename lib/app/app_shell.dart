@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../features/add_facility/add_facility_actions.dart';
 import '../features/add_facility/add_facility_controller.dart';
+import '../features/add_facility/facility_editor_focus.dart';
 import '../features/add_facility/add_facility_screen.dart';
+import '../features/anomalies/anomalies_screen.dart';
 import '../features/audit/audit_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
@@ -12,8 +14,9 @@ import '../features/facilities/facilities_screen.dart';
 import '../features/feedback/feedback_screen.dart';
 import '../features/loyalty/loyalty_admin_screen.dart';
 import '../features/notes/notes_screen.dart';
-import '../features/reports/reports_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/reports/reports_screen.dart';
+import '../features/reports/reports_data.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/student/student_app.dart';
 import '../features/users/users_screen.dart';
@@ -400,12 +403,18 @@ class _AppShellState extends State<AppShell> {
     AppView.calendar => const CalendarScreen(),
     AppView.verifications => const VerificationsScreen(),
     AppView.reports => ReportsScreen(
-      onFixLocation: state.isAdmin
-          ? (facility) => _openEditor(state, facility)
+      onResolveQualityIssue: state.isAdmin
+          ? (issue) => _openEditor(
+              state,
+              issue.facility,
+              focus: issue.focus,
+              reason: _qualityReason(issue),
+            )
           : null,
     ),
     AppView.users => const UsersScreen(),
     AppView.feedback => const FeedbackScreen(),
+    AppView.anomalies => const AnomaliesScreen(),
     AppView.loyalty => const LoyaltyAdminScreen(),
     AppView.audit => const AuditScreen(),
     AppView.notes => const NotesScreen(),
@@ -414,15 +423,31 @@ class _AppShellState extends State<AppShell> {
     AppView.userApp || AppView.auth => const SizedBox.shrink(),
   };
 
-  void _openEditor(AppState state, Facility? facility) {
+  void _openEditor(
+    AppState state,
+    Facility? facility, {
+    FacilityEditorFocus? focus,
+    FacilityEditorReason? reason,
+  }) {
     _addFacility.availableFacilities = state.facilities;
     if (facility == null) {
       _addFacility.startNewRecord();
     } else {
-      _addFacility.loadForEditing(facility);
+      _addFacility.loadForEditing(facility, reason: reason);
+      _addFacility.focusEditorSection(focus, reason: reason);
     }
     state.goTo(AppView.addFacility);
   }
+
+  FacilityEditorReason _qualityReason(QualityIssue issue) =>
+      switch (issue.type) {
+        QualityIssueType.missingPin => FacilityEditorReason.missingPin,
+        QualityIssueType.pinOutsideCampus => FacilityEditorReason.outsideCampus,
+        QualityIssueType.unverifiedPin => FacilityEditorReason.unverifiedPin,
+        QualityIssueType.lowCoordinateAccuracy =>
+          FacilityEditorReason.lowCoordinateAccuracy,
+        QualityIssueType.missingPhotos => FacilityEditorReason.photos,
+      };
 }
 
 class _NotificationsPanel extends StatelessWidget {

@@ -184,7 +184,7 @@ select is(
 
 -- An admin with no assignment to this facility (demoted to external_admin
 -- for the check, matching the house pattern in external_admin_scope_test.sql)
--- cannot read its feedback.
+-- can read feedback globally.
 create temp table feedback_scope as
 select internal_admin_id as outsider_id from feedback_test;
 delete from public.facility_admin_assignments
@@ -198,7 +198,7 @@ select set_config(
 select is(
   (select count(*)::int from public.reservation_feedback
    where reservation_id = '98000000-0000-0000-0000-000000000002'),
-  0, 'an unassigned admin cannot select feedback for a facility outside their scope'
+  1, 'an unassigned external admin can select feedback globally'
 );
 
 select * from finish();

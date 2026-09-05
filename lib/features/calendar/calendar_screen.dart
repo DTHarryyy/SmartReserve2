@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -17,14 +19,53 @@ const _minimumStartHour = 7;
 const _minimumEndHour = 20;
 const _hourHeight = 48.0;
 
-class CalendarScreen extends StatefulWidget {
+class CalendarScreen extends StatelessWidget {
   const CalendarScreen({super.key});
 
   @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
+  Widget build(BuildContext context) =>
+      const _CalendarFrame(surface: _CalendarSurface.admin);
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class PublicCalendarScreen extends StatefulWidget {
+  const PublicCalendarScreen({super.key});
+
+  @override
+  State<PublicCalendarScreen> createState() => _PublicCalendarScreenState();
+}
+
+class _PublicCalendarScreenState extends State<PublicCalendarScreen> {
+  bool _requestedInitialLoad = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_requestedInitialLoad) return;
+    _requestedInitialLoad = true;
+    final state = AppScope.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(state.ensureUserCalendarLoaded());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      const _CalendarFrame(surface: _CalendarSurface.public);
+}
+
+enum _CalendarSurface { admin, public }
+
+class _CalendarFrame extends StatefulWidget {
+  const _CalendarFrame({this.surface = _CalendarSurface.admin});
+
+  final _CalendarSurface surface;
+
+  @override
+  State<_CalendarFrame> createState() => _CalendarFrameState();
+}
+
+class _CalendarFrameState extends State<_CalendarFrame> {
   final _search = TextEditingController();
 
   @override
@@ -36,12 +77,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final data = _CalendarData.fromState(state, widget.surface);
     final compact = MediaQuery.sizeOf(context).width < SR.tabletMin;
-    final selected = state.selectedCalendarEvent;
+    final selected = data.selectedEvent;
     final calendar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Toolbar(state: state, search: _search, compact: compact),
+        _Toolbar(data: data, search: _search, compact: compact),
         Expanded(
           child: Padding(
             padding: EdgeInsets.fromLTRB(
@@ -51,11 +93,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               24,
             ),
             child: _CalendarBody(
-              state: state,
+              data: data,
               compact: compact,
               onClearFilters: () {
                 _search.clear();
-                state.resetCalendarFilters();
+                data.resetFilters();
               },
             ),
           ),
@@ -71,7 +113,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Positioned.fill(
               child: _MobileDetails(
                 event: selected,
-                onClose: () => state.selectCalendarEvent(null),
+                onClose: () => data.onSelectEvent?.call(null),
                 onOpenRequest: selected.canOpenRequest
                     ? () => state.openRequestFromCalendar(selected)
                     : null,
@@ -99,7 +141,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
                 child: _EventDetails(
                   event: selected,
-                  onClose: () => state.selectCalendarEvent(null),
+                  onClose: () => data.onSelectEvent?.call(null),
                   onOpenRequest: selected.canOpenRequest
                       ? () => state.openRequestFromCalendar(selected)
                       : null,
@@ -112,14 +154,124 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
+class _CalendarData {
+  const _CalendarData({
+    required this.surface,
+    required this.anchor,
+    required this.today,
+    required this.viewMode,
+    required this.facilityFilter,
+    required this.facilities,
+    required this.displayFacilities,
+    required this.allEvents,
+    required this.visibleEvents,
+    required this.loading,
+    required this.error,
+    required this.query,
+    required this.usesDefaultStatusFilters,
+    required this.onViewMode,
+    required this.onFacilityFilter,
+    required this.onNavigate,
+    required this.onToday,
+    required this.onSelectDate,
+    required this.onSelectEvent,
+    required this.onRefresh,
+    required this.resetFilters,
+    this.selectedEvent,
+  });
+
+  factory _CalendarData.fromState(AppState state, _CalendarSurface surface) {
+    if (surface == _CalendarSurface.public) {
+      return _CalendarData(
+        surface: surface,
+        anchor: state.userCalendarAnchor,
+        today: state.calendarToday,
+        viewMode: state.userCalendarViewMode,
+        facilityFilter: state.userCalendarFacilityFilter,
+        facilities: state.userCalendarFacilities,
+        displayFacilities: [
+          for (final facility in state.publicCalendarFacilities) facility.name,
+        ]..sort(),
+        allEvents: state.userCalendarEvents,
+        visibleEvents: state.visibleUserCalendarEvents,
+        loading: state.userCalendarLoading,
+        error: state.userCalendarError,
+        query: '',
+        usesDefaultStatusFilters: true,
+        onViewMode: state.setUserCalendarViewMode,
+        onFacilityFilter: state.setUserCalendarFacilityFilter,
+        onNavigate: state.navigateUserCalendar,
+        onToday: state.goToUserCalendarToday,
+        onSelectDate: state.selectUserCalendarDate,
+        onSelectEvent: null,
+        onRefresh: state.refreshUserCalendar,
+        resetFilters: () =>
+            state.setUserCalendarFacilityFilter('All facilities'),
+      );
+    }
+    return _CalendarData(
+      surface: surface,
+      anchor: state.calendarAnchor,
+      today: state.calendarToday,
+      viewMode: state.calendarViewMode,
+      facilityFilter: state.calendarFacilityFilter,
+      facilities: state.calendarFacilities,
+      displayFacilities: state.scheduleFacilities,
+      allEvents: state.calendarEvents,
+      visibleEvents: state.visibleCalendarEvents,
+      loading: state.reservationsLoading,
+      error: state.reservationsError,
+      query: state.calendarQuery,
+      usesDefaultStatusFilters: setEquals(
+        state.calendarStates,
+        CalendarEventState.defaultVisible,
+      ),
+      selectedEvent: state.selectedCalendarEvent,
+      onViewMode: state.setCalendarViewMode,
+      onFacilityFilter: state.setCalendarFacilityFilter,
+      onNavigate: state.navigateCalendar,
+      onToday: state.goToCalendarToday,
+      onSelectDate: state.selectCalendarDate,
+      onSelectEvent: state.selectCalendarEvent,
+      onRefresh: state.refreshReservations,
+      resetFilters: state.resetCalendarFilters,
+    );
+  }
+
+  final _CalendarSurface surface;
+  final DateTime anchor;
+  final DateTime today;
+  final CalendarViewMode viewMode;
+  final String facilityFilter;
+  final List<String> facilities;
+  final List<String> displayFacilities;
+  final List<CalendarEvent> allEvents;
+  final List<CalendarEvent> visibleEvents;
+  final bool loading;
+  final String? error;
+  final String query;
+  final bool usesDefaultStatusFilters;
+  final CalendarEvent? selectedEvent;
+  final ValueChanged<CalendarViewMode> onViewMode;
+  final ValueChanged<String> onFacilityFilter;
+  final ValueChanged<int> onNavigate;
+  final VoidCallback onToday;
+  final void Function(DateTime date, {CalendarViewMode? mode}) onSelectDate;
+  final ValueChanged<String?>? onSelectEvent;
+  final Future<void> Function() onRefresh;
+  final VoidCallback resetFilters;
+
+  bool get isPublic => surface == _CalendarSurface.public;
+}
+
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
-    required this.state,
+    required this.data,
     required this.search,
     required this.compact,
   });
 
-  final AppState state;
+  final _CalendarData data;
   final TextEditingController search;
   final bool compact;
 
@@ -146,65 +298,99 @@ class _Toolbar extends StatelessWidget {
                 child: SizedBox(
                   key: const Key('compact-calendar-search'),
                   height: 44,
-                  child: FilterSearch(
-                    controller: search,
-                    placeholder: 'Search reservations',
-                    width: double.infinity,
-                    onChanged: state.setCalendarQuery,
-                  ),
+                  child: data.isPublic
+                      ? FilterSelect(
+                          value: data.facilityFilter,
+                          items: data.facilities,
+                          semanticLabel: 'Filter reserved dates by facility',
+                          onChanged: data.onFacilityFilter,
+                        )
+                      : FilterSearch(
+                          controller: search,
+                          placeholder: 'Search reservations',
+                          width: double.infinity,
+                          onChanged: AppScope.of(context).setCalendarQuery,
+                        ),
                 ),
               ),
               const SizedBox(width: 8),
               SizedBox(
                 key: const Key('compact-calendar-filters'),
                 height: 44,
-                child: CompactFilterButton(
-                  activeCount:
-                      (state.calendarFacilityFilter == 'All facilities'
-                          ? 0
-                          : 1) +
-                      (state.calendarStates.length ==
-                              CalendarEventState.defaultVisible.length
-                          ? 0
-                          : 1),
-                  onPressed: () => _openFilters(context),
-                ),
+                child: data.isPublic
+                    ? SrIconButton(
+                        icon: Icons.refresh_rounded,
+                        fontSize: 14,
+                        tooltip: 'Refresh reserved dates',
+                        onPressed: () => unawaited(data.onRefresh()),
+                      )
+                    : CompactFilterButton(
+                        activeCount:
+                            (data.facilityFilter == 'All facilities' ? 0 : 1) +
+                            (AppScope.of(context).calendarStates.length ==
+                                    CalendarEventState.defaultVisible.length
+                                ? 0
+                                : 1),
+                        onPressed: () => _openFilters(context),
+                      ),
               ),
             ],
           )
         else ...[
           FilterBar(
-            count: '${state.visibleCalendarEvents.length} shown',
+            count: '${data.visibleEvents.length} shown',
             children: [
               SizedBox(
                 width: 240,
                 child: FilterSelect(
-                  value: state.calendarFacilityFilter,
-                  items: state.calendarFacilities,
-                  semanticLabel: 'Filter calendar by facility',
-                  onChanged: state.setCalendarFacilityFilter,
+                  value: data.facilityFilter,
+                  items: data.facilities,
+                  semanticLabel: data.isPublic
+                      ? 'Filter reserved dates by facility'
+                      : 'Filter calendar by facility',
+                  onChanged: data.onFacilityFilter,
                 ),
               ),
-              FilterSearch(
-                controller: search,
-                placeholder: 'Search reservations',
-                width: 260,
-                onChanged: state.setCalendarQuery,
-              ),
-            ],
-          ),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final status in CalendarEventState.values)
-                FilterPill(
-                  label: status.label,
-                  selected: state.calendarStates.contains(status),
-                  onTap: () => state.toggleCalendarState(status),
+              if (!data.isPublic)
+                FilterSearch(
+                  controller: search,
+                  placeholder: 'Search reservations',
+                  width: 260,
+                  onChanged: AppScope.of(context).setCalendarQuery,
+                )
+              else
+                SrIconButton(
+                  icon: Icons.refresh_rounded,
+                  fontSize: 14,
+                  tooltip: 'Refresh reserved dates',
+                  onPressed: () => unawaited(data.onRefresh()),
                 ),
             ],
           ),
+          if (data.isPublic)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Only facility, date, and time are shown. Requester identity and purpose stay private.',
+                style: sans(11.5, height: 1.45, color: context.srColors.ink4),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final status in CalendarEventState.values)
+                  FilterPill(
+                    label: status.label,
+                    selected: AppScope.of(
+                      context,
+                    ).calendarStates.contains(status),
+                    onTap: () =>
+                        AppScope.of(context).toggleCalendarState(status),
+                  ),
+              ],
+            ),
         ],
       ],
     ),
@@ -219,21 +405,21 @@ class _Toolbar extends StatelessWidget {
       SrIconButton(
         icon: Icons.chevron_left_rounded,
         fontSize: 14,
-        tooltip: 'Previous ${state.calendarViewMode.label.toLowerCase()}',
-        onPressed: () => state.navigateCalendar(-1),
+        tooltip: 'Previous ${data.viewMode.label.toLowerCase()}',
+        onPressed: () => data.onNavigate(-1),
       ),
       SrButton(
-        label: _rangeLabel(state),
+        label: _rangeLabel(data),
         dense: true,
         kind: SrButtonKind.ghost,
-        onPressed: state.goToCalendarToday,
+        onPressed: data.onToday,
         tooltip: 'Go to today',
       ),
       SrIconButton(
         icon: Icons.chevron_right_rounded,
         fontSize: 14,
-        tooltip: 'Next ${state.calendarViewMode.label.toLowerCase()}',
-        onPressed: () => state.navigateCalendar(1),
+        tooltip: 'Next ${data.viewMode.label.toLowerCase()}',
+        onPressed: () => data.onNavigate(1),
       ),
     ],
   );
@@ -248,8 +434,8 @@ class _Toolbar extends StatelessWidget {
         _CompactCalendarNavButton(
           key: const Key('compact-calendar-previous'),
           icon: Icons.chevron_left_rounded,
-          tooltip: 'Previous ${state.calendarViewMode.label.toLowerCase()}',
-          onPressed: () => state.navigateCalendar(-1),
+          tooltip: 'Previous ${data.viewMode.label.toLowerCase()}',
+          onPressed: () => data.onNavigate(-1),
           width: 32,
         ),
         const SizedBox(width: 3),
@@ -262,12 +448,12 @@ class _Toolbar extends StatelessWidget {
               button: true,
               label: 'Go to today',
               child: GestureDetector(
-                onTap: state.goToCalendarToday,
+                onTap: data.onToday,
                 child: Center(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      _compactRangeLabel(state),
+                      _compactRangeLabel(data),
                       maxLines: 1,
                       textAlign: TextAlign.center,
                       style: sans(11.5, w: 500, color: context.srColors.ink2),
@@ -282,8 +468,8 @@ class _Toolbar extends StatelessWidget {
         _CompactCalendarNavButton(
           key: const Key('compact-calendar-next'),
           icon: Icons.chevron_right_rounded,
-          tooltip: 'Next ${state.calendarViewMode.label.toLowerCase()}',
-          onPressed: () => state.navigateCalendar(1),
+          tooltip: 'Next ${data.viewMode.label.toLowerCase()}',
+          onPressed: () => data.onNavigate(1),
           width: 32,
         ),
       ],
@@ -309,16 +495,16 @@ class _Toolbar extends StatelessWidget {
                   child: _ModeTab(
                     key: ValueKey('calendar-mode-${mode.name}'),
                     label: mode.label,
-                    selected: state.calendarViewMode == mode,
-                    onTap: () => state.setCalendarViewMode(mode),
+                    selected: data.viewMode == mode,
+                    onTap: () => data.onViewMode(mode),
                     compact: compact,
                   ),
                 )
               : _ModeTab(
                   key: ValueKey('calendar-mode-${mode.name}'),
                   label: mode.label,
-                  selected: state.calendarViewMode == mode,
-                  onTap: () => state.setCalendarViewMode(mode),
+                  selected: data.viewMode == mode,
+                  onTap: () => data.onViewMode(mode),
                 ),
       ],
     ),
@@ -333,11 +519,11 @@ class _Toolbar extends StatelessWidget {
         children: [
           const SrLabel('Facility'),
           FilterSelect(
-            value: state.calendarFacilityFilter,
-            items: state.calendarFacilities,
+            value: data.facilityFilter,
+            items: data.facilities,
             semanticLabel: 'Filter calendar by facility',
             onChanged: (value) {
-              state.setCalendarFacilityFilter(value);
+              data.onFacilityFilter(value);
               sheetSetState(() {});
             },
           ),
@@ -345,12 +531,12 @@ class _Toolbar extends StatelessWidget {
           const SrLabel('Reservation status'),
           for (final status in CalendarEventState.values)
             CheckboxListTile(
-              value: state.calendarStates.contains(status),
+              value: AppScope.of(context).calendarStates.contains(status),
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               title: Text(status.label, style: sans(12.5)),
               onChanged: (_) {
-                state.toggleCalendarState(status);
+                AppScope.of(context).toggleCalendarState(status);
                 sheetSetState(() {});
               },
             ),
@@ -366,20 +552,20 @@ class _Toolbar extends StatelessWidget {
     ),
   );
 
-  String _rangeLabel(AppState state) => switch (state.calendarViewMode) {
+  String _rangeLabel(_CalendarData data) => switch (data.viewMode) {
     CalendarViewMode.month =>
-      '${monthNames[state.calendarAnchor.month - 1]} ${state.calendarAnchor.year}',
+      '${monthNames[data.anchor.month - 1]} ${data.anchor.year}',
     CalendarViewMode.week =>
-      '${formatCampusDate(_weekStart(state.calendarAnchor))} – ${formatCampusDate(_weekStart(state.calendarAnchor).add(const Duration(days: 6)))}',
-    CalendarViewMode.day => formatCampusDate(state.calendarAnchor),
+      '${formatCampusDate(_weekStart(data.anchor))} – ${formatCampusDate(_weekStart(data.anchor).add(const Duration(days: 6)))}',
+    CalendarViewMode.day => formatCampusDate(data.anchor),
   };
 
-  String _compactRangeLabel(AppState state) => switch (state.calendarViewMode) {
+  String _compactRangeLabel(_CalendarData data) => switch (data.viewMode) {
     CalendarViewMode.month =>
-      '${monthNames[state.calendarAnchor.month - 1]} ${state.calendarAnchor.year}',
+      '${monthNames[data.anchor.month - 1]} ${data.anchor.year}',
     CalendarViewMode.week =>
-      '${_weekStart(state.calendarAnchor).day}–${_weekStart(state.calendarAnchor).add(const Duration(days: 6)).day} ${monthNames[_weekStart(state.calendarAnchor).add(const Duration(days: 6)).month - 1]}',
-    CalendarViewMode.day => formatCampusDate(state.calendarAnchor),
+      '${_weekStart(data.anchor).day}–${_weekStart(data.anchor).add(const Duration(days: 6)).day} ${monthNames[_weekStart(data.anchor).add(const Duration(days: 6)).month - 1]}',
+    CalendarViewMode.day => formatCampusDate(data.anchor),
   };
 }
 
@@ -473,28 +659,58 @@ class _CompactCalendarNavButton extends StatelessWidget {
 
 class _CalendarBody extends StatelessWidget {
   const _CalendarBody({
-    required this.state,
+    required this.data,
     required this.compact,
     required this.onClearFilters,
   });
-  final AppState state;
+  final _CalendarData data;
   final bool compact;
   final VoidCallback onClearFilters;
 
   @override
   Widget build(BuildContext context) {
-    final emptyState = _calendarEmptyState(state);
+    if (data.loading && data.allEvents.isEmpty) {
+      return SingleChildScrollView(
+        child: _CalendarStatusCard(
+          icon: Icons.hourglass_top_rounded,
+          title: data.isPublic
+              ? 'Loading reserved dates'
+              : 'Loading reservations',
+          body: data.isPublic
+              ? 'Checking the latest facility schedule.'
+              : 'Checking the latest reservation activity.',
+        ),
+      );
+    }
+    if (data.error != null && data.allEvents.isEmpty) {
+      return SingleChildScrollView(
+        child: _CalendarStatusCard(
+          icon: Icons.wifi_off_rounded,
+          title: data.isPublic
+              ? 'Reserved dates could not load'
+              : 'Reservations could not load',
+          body: data.error!,
+          action: SrButton(
+            label: 'Retry',
+            kind: SrButtonKind.primary,
+            onPressed: () => unawaited(data.onRefresh()),
+          ),
+        ),
+      );
+    }
+
+    final emptyState = _calendarEmptyState(data);
     final calendar = compact
-        ? _CompactAgenda(state: state)
-        : switch (state.calendarViewMode) {
-            CalendarViewMode.month => _MonthView(state: state),
-            CalendarViewMode.week => _WeekView(state: state),
-            CalendarViewMode.day => _DayView(state: state),
+        ? _CompactAgenda(data: data)
+        : switch (data.viewMode) {
+            CalendarViewMode.month => _MonthView(data: data),
+            CalendarViewMode.week => _WeekView(data: data),
+            CalendarViewMode.day => _DayView(data: data),
           };
 
     if (emptyState == null) return calendar;
     final card = _CalendarEmptyStateCard(
-      state: state,
+      data: data,
       emptyState: emptyState,
       compact: !compact && emptyState == _CalendarEmptyState.emptyRange,
       onClearFilters: onClearFilters,
@@ -515,22 +731,73 @@ class _CalendarBody extends StatelessWidget {
 
 enum _CalendarEmptyState { noData, noMatches, emptyRange }
 
-_CalendarEmptyState? _calendarEmptyState(AppState state) {
-  if (state.reservationsLoading || state.reservationsError != null) return null;
-  final allEvents = state.calendarEvents;
+class _CalendarStatusCard extends StatelessWidget {
+  const _CalendarStatusCard({
+    required this.icon,
+    required this.title,
+    required this.body,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+    decoration: BoxDecoration(
+      color: context.srColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.srColors.border),
+    ),
+    child: Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: context.srColors.primaryTint,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: context.srColors.primaryLine),
+          ),
+          child: Icon(icon, size: 22, color: SR.primaryHover),
+        ),
+        const SizedBox(height: 16),
+        Text(title, textAlign: TextAlign.center, style: sans(14.5, w: 600)),
+        const SizedBox(height: 5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: Text(
+            body,
+            textAlign: TextAlign.center,
+            style: sans(12, height: 1.55, color: context.srColors.ink4),
+          ),
+        ),
+        if (action != null) ...[const SizedBox(height: 18), action!],
+      ],
+    ),
+  );
+}
+
+_CalendarEmptyState? _calendarEmptyState(_CalendarData data) {
+  if (data.loading || data.error != null) return null;
+  final allEvents = data.allEvents;
   if (allEvents.isEmpty) return _CalendarEmptyState.noData;
 
-  final visibleEvents = state.visibleCalendarEvents;
-  if (visibleEvents.any((event) => _eventIsInActiveRange(state, event))) {
+  final visibleEvents = data.visibleEvents;
+  if (visibleEvents.any((event) => _eventIsInActiveRange(data, event))) {
     return null;
   }
 
   final hasActiveFilters =
-      state.calendarQuery.trim().isNotEmpty ||
-      state.calendarFacilityFilter != 'All facilities' ||
-      !setEquals(state.calendarStates, CalendarEventState.defaultVisible);
+      data.facilityFilter != 'All facilities' ||
+      data.query.trim().isNotEmpty ||
+      !data.usesDefaultStatusFilters;
   final rangeHasUnfilteredEvents = allEvents.any(
-    (event) => _eventIsInActiveRange(state, event),
+    (event) => _eventIsInActiveRange(data, event),
   );
   if (hasActiveFilters && (visibleEvents.isEmpty || rangeHasUnfilteredEvents)) {
     return _CalendarEmptyState.noMatches;
@@ -538,9 +805,9 @@ _CalendarEmptyState? _calendarEmptyState(AppState state) {
   return _CalendarEmptyState.emptyRange;
 }
 
-bool _eventIsInActiveRange(AppState state, CalendarEvent event) {
-  final anchor = state.calendarAnchor;
-  final (start, end) = switch (state.calendarViewMode) {
+bool _eventIsInActiveRange(_CalendarData data, CalendarEvent event) {
+  final anchor = data.anchor;
+  final (start, end) = switch (data.viewMode) {
     CalendarViewMode.month => (
       DateTime(anchor.year, anchor.month),
       DateTime(anchor.year, anchor.month + 1),
@@ -557,10 +824,10 @@ bool _eventIsInActiveRange(AppState state, CalendarEvent event) {
   return event.startsAt.isBefore(end) && event.endsAt.isAfter(start);
 }
 
-bool _activeRangeContainsToday(AppState state) {
-  final today = state.calendarToday;
-  final anchor = state.calendarAnchor;
-  return switch (state.calendarViewMode) {
+bool _activeRangeContainsToday(_CalendarData data) {
+  final today = data.today;
+  final anchor = data.anchor;
+  return switch (data.viewMode) {
     CalendarViewMode.month =>
       anchor.year == today.year && anchor.month == today.month,
     CalendarViewMode.week =>
@@ -577,13 +844,13 @@ bool _activeRangeContainsToday(AppState state) {
 
 class _CalendarEmptyStateCard extends StatelessWidget {
   const _CalendarEmptyStateCard({
-    required this.state,
+    required this.data,
     required this.emptyState,
     required this.compact,
     required this.onClearFilters,
   });
 
-  final AppState state;
+  final _CalendarData data;
   final _CalendarEmptyState emptyState;
   final bool compact;
   final VoidCallback onClearFilters;
@@ -591,35 +858,50 @@ class _CalendarEmptyStateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = switch (emptyState) {
-      _CalendarEmptyState.noData => 'No reservations yet',
-      _CalendarEmptyState.noMatches => 'No reservations match your filters',
+      _CalendarEmptyState.noData =>
+        data.isPublic ? 'No reserved slots yet' : 'No reservations yet',
+      _CalendarEmptyState.noMatches =>
+        data.isPublic
+            ? 'No reserved slots match this facility'
+            : 'No reservations match your filters',
       _CalendarEmptyState.emptyRange =>
-        'No reservations this ${state.calendarViewMode.label.toLowerCase()}',
+        data.isPublic
+            ? 'No reserved slots this ${data.viewMode.label.toLowerCase()}'
+            : 'No reservations this ${data.viewMode.label.toLowerCase()}',
     };
     final body = switch (emptyState) {
+      _CalendarEmptyState.noData when data.isPublic =>
+        'Reserved public-facility slots will appear here once they are confirmed or held.',
       _CalendarEmptyState.noData =>
         'Reservation occurrences will appear here after requests are submitted.',
+      _CalendarEmptyState.noMatches when data.isPublic =>
+        'Choose all facilities or another facility to see more reserved times.',
       _CalendarEmptyState.noMatches =>
         'Clear the search, facility, or status filters to see more reservations.',
       _CalendarEmptyState.emptyRange =>
-        'This ${state.calendarViewMode.label.toLowerCase()} is open. Use the calendar navigation to check another date range.',
+        'This ${data.viewMode.label.toLowerCase()} is open. Use the calendar navigation to check another date range.',
     };
     final action = switch (emptyState) {
+      _CalendarEmptyState.noData when data.isPublic => SrButton(
+        label: 'Refresh',
+        kind: SrButtonKind.primary,
+        onPressed: () => unawaited(data.onRefresh()),
+      ),
       _CalendarEmptyState.noData => SrButton(
         label: 'View reservation requests',
         kind: SrButtonKind.primary,
-        onPressed: () => state.goTo(AppView.reservations),
+        onPressed: () => AppScope.of(context).goTo(AppView.reservations),
       ),
       _CalendarEmptyState.noMatches => SrButton(
         key: const Key('calendar-clear-filters'),
         label: 'Clear filters',
         onPressed: onClearFilters,
       ),
-      _CalendarEmptyState.emptyRange when !_activeRangeContainsToday(state) =>
+      _CalendarEmptyState.emptyRange when !_activeRangeContainsToday(data) =>
         SrButton(
           key: const Key('calendar-go-to-today'),
           label: 'Go to today',
-          onPressed: state.goToCalendarToday,
+          onPressed: data.onToday,
         ),
       _ => null,
     };
@@ -721,15 +1003,15 @@ class _CalendarEmptyCopy extends StatelessWidget {
 }
 
 class _CompactAgenda extends StatelessWidget {
-  const _CompactAgenda({required this.state});
+  const _CompactAgenda({required this.data});
 
-  final AppState state;
+  final _CalendarData data;
 
   @override
   Widget build(BuildContext context) {
     final events = [
-      for (final event in state.visibleCalendarEvents)
-        if (_eventIsInActiveRange(state, event)) event,
+      for (final event in data.visibleEvents)
+        if (_eventIsInActiveRange(data, event)) event,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     if (events.isEmpty) return const SizedBox.shrink();
 
@@ -758,11 +1040,13 @@ class _CompactAgenda extends StatelessWidget {
                 ),
               ),
             Semantics(
-              button: true,
+              button: data.onSelectEvent != null,
               label: '${event.facility}, ${event.timeLabel}',
               child: InkWell(
                 borderRadius: BorderRadius.circular(11),
-                onTap: () => state.selectCalendarEvent(event.id),
+                onTap: data.onSelectEvent == null
+                    ? null
+                    : () => data.onSelectEvent!(event.id),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(13),
@@ -796,7 +1080,7 @@ class _CompactAgenda extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${event.requester} · ${event.purpose}',
+                              event.effectiveSummaryLabel,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: sans(
@@ -823,17 +1107,14 @@ class _CompactAgenda extends StatelessWidget {
 }
 
 class _MonthView extends StatelessWidget {
-  const _MonthView({required this.state});
-  final AppState state;
+  const _MonthView({required this.data});
+  final _CalendarData data;
 
   @override
   Widget build(BuildContext context) {
-    final first = DateTime(
-      state.calendarAnchor.year,
-      state.calendarAnchor.month,
-    );
+    final first = DateTime(data.anchor.year, data.anchor.month);
     final start = first.subtract(Duration(days: first.weekday - 1));
-    final events = state.visibleCalendarEvents;
+    final events = data.visibleEvents;
     return SrScrollView(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -897,7 +1178,7 @@ class _MonthView extends StatelessWidget {
                   Expanded(
                     child: _MonthCell(
                       day: start.add(Duration(days: week * 7 + index)),
-                      currentMonth: state.calendarAnchor.month,
+                      currentMonth: data.anchor.month,
                       events: [
                         for (final event in events)
                           if (event.overlapsDay(
@@ -905,12 +1186,13 @@ class _MonthView extends StatelessWidget {
                           ))
                             event,
                       ],
-                      onSelectDay: () => state.selectCalendarDate(
+                      onSelectDay: () => data.onSelectDate(
                         start.add(Duration(days: week * 7 + index)),
                         mode: CalendarViewMode.day,
                       ),
-                      onSelectEvent: (event) =>
-                          state.selectCalendarEvent(event.id),
+                      onSelectEvent: data.onSelectEvent == null
+                          ? null
+                          : (event) => data.onSelectEvent!(event.id),
                     ),
                   ),
               ],
@@ -933,7 +1215,7 @@ class _MonthCell extends StatelessWidget {
   final int currentMonth;
   final List<CalendarEvent> events;
   final VoidCallback onSelectDay;
-  final ValueChanged<CalendarEvent> onSelectEvent;
+  final ValueChanged<CalendarEvent>? onSelectEvent;
 
   @override
   Widget build(BuildContext context) {
@@ -982,7 +1264,7 @@ class _MonthCell extends StatelessWidget {
             _EventChip(
               event: event,
               compact: true,
-              onTap: () => onSelectEvent(event),
+              onTap: onSelectEvent == null ? null : () => onSelectEvent!(event),
             ),
             const SizedBox(height: 3),
           ],
@@ -1004,14 +1286,14 @@ class _MonthCell extends StatelessWidget {
 }
 
 class _WeekView extends StatelessWidget {
-  const _WeekView({required this.state});
-  final AppState state;
+  const _WeekView({required this.data});
+  final _CalendarData data;
 
   @override
   Widget build(BuildContext context) {
-    final start = _weekStart(state.calendarAnchor);
+    final start = _weekStart(data.anchor);
     final days = [for (var i = 0; i < 7; i++) start.add(Duration(days: i))];
-    final events = state.visibleCalendarEvents;
+    final events = data.visibleEvents;
     final range = _hourRange(
       events.where(
         (event) =>
@@ -1092,7 +1374,9 @@ class _WeekView extends StatelessWidget {
                     day: day,
                     events: events,
                     range: range,
-                    onSelect: (event) => state.selectCalendarEvent(event.id),
+                    onSelect: data.onSelectEvent == null
+                        ? null
+                        : (event) => data.onSelectEvent!(event.id),
                   ),
                 ),
             ],
@@ -1104,23 +1388,19 @@ class _WeekView extends StatelessWidget {
 }
 
 class _DayView extends StatelessWidget {
-  const _DayView({required this.state});
-  final AppState state;
+  const _DayView({required this.data});
+  final _CalendarData data;
 
   @override
   Widget build(BuildContext context) {
-    final day = DateTime(
-      state.calendarAnchor.year,
-      state.calendarAnchor.month,
-      state.calendarAnchor.day,
-    );
+    final day = DateTime(data.anchor.year, data.anchor.month, data.anchor.day);
     final events = [
-      for (final event in state.visibleCalendarEvents)
+      for (final event in data.visibleEvents)
         if (event.overlapsDay(day)) event,
     ];
-    final facilities = state.calendarFacilityFilter == 'All facilities'
-        ? state.scheduleFacilities
-        : [state.calendarFacilityFilter];
+    final facilities = data.facilityFilter == 'All facilities'
+        ? data.displayFacilities
+        : [data.facilityFilter];
     final range = _hourRange(events);
     return SrScrollView(
       child: LayoutBuilder(
@@ -1187,7 +1467,9 @@ class _DayView extends StatelessWidget {
                   if (event.facility == facility) event,
               ],
               range: range,
-              onSelect: (event) => state.selectCalendarEvent(event.id),
+              onSelect: data.onSelectEvent == null
+                  ? null
+                  : (event) => data.onSelectEvent!(event.id),
             ),
       ],
     ),
@@ -1204,7 +1486,7 @@ class _TimedDayColumn extends StatelessWidget {
   final DateTime day;
   final List<CalendarEvent> events;
   final (double, double) range;
-  final ValueChanged<CalendarEvent> onSelect;
+  final ValueChanged<CalendarEvent>? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -1244,7 +1526,9 @@ class _TimedDayColumn extends StatelessWidget {
                 child: _EventChip(
                   event: segment.event,
                   compact: false,
-                  onTap: () => onSelect(segment.event),
+                  onTap: onSelect == null
+                      ? null
+                      : () => onSelect!(segment.event),
                 ),
               ),
           ],
@@ -1312,7 +1596,7 @@ class _FacilityRow extends StatelessWidget {
   final DateTime day;
   final List<CalendarEvent> events;
   final (double, double) range;
-  final ValueChanged<CalendarEvent> onSelect;
+  final ValueChanged<CalendarEvent>? onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -1386,7 +1670,9 @@ class _FacilityRow extends StatelessWidget {
                         child: _EventChip(
                           event: segment.event,
                           compact: true,
-                          onTap: () => onSelect(segment.event),
+                          onTap: onSelect == null
+                              ? null
+                              : () => onSelect!(segment.event),
                         ),
                       ),
                   ],
@@ -1408,12 +1694,12 @@ class _EventChip extends StatelessWidget {
   });
   final CalendarEvent event;
   final bool compact;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: '${event.state.label}: ${event.facility}, ${event.requester}',
+    button: onTap != null,
+    label: '${event.effectiveStatusLabel}: ${event.facility}',
     child: GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1428,8 +1714,8 @@ class _EventChip extends StatelessWidget {
         ),
         child: Text(
           compact
-              ? '${event.startsAt.hour.toString().padLeft(2, '0')}:${event.startsAt.minute.toString().padLeft(2, '0')} ${event.facility}'
-              : '${event.facility} · ${event.requester}',
+              ? '${event.startsAt.hour.toString().padLeft(2, '0')}:${event.startsAt.minute.toString().padLeft(2, '0')} ${event.eventChipLabel}'
+              : event.eventChipLabel,
           maxLines: compact ? 1 : 2,
           overflow: TextOverflow.ellipsis,
           style: sans(
@@ -1575,7 +1861,7 @@ class _StatusBadge extends StatelessWidget {
         border: Border.all(color: event.state.border),
       ),
       child: Text(
-        event.state.label,
+        event.effectiveStatusLabel,
         style: sans(10.5, w: 600, color: event.state.foreground),
       ),
     ),

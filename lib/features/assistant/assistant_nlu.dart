@@ -2,6 +2,8 @@ library;
 
 import 'dart:math' as math;
 
+import '../../data/campus_data.dart';
+
 enum AssistantIntent {
   findFacilities,
   checkAvailability,
@@ -79,20 +81,6 @@ class ParsedMessage {
       (purpose != null && purpose!.isNotEmpty) ||
       (facilityQuery != null && facilityQuery!.isNotEmpty);
 }
-
-const List<String> knownAmenityLabels = [
-  'Wi-Fi',
-  'Power Outlets',
-  'Air Conditioning',
-  'Projector',
-  'Smart TV',
-  'Sound System',
-  'Whiteboard',
-  'Parking',
-  'PWD Accessibility',
-  'Security Cameras',
-  'Generator',
-];
 
 ParsedMessage parseMessage(String raw, {required DateTime nowWall}) {
   final cappedRaw = raw.length > 500 ? raw.substring(0, 500) : raw;
@@ -373,6 +361,8 @@ const Map<String, String> _amenitySynonyms = {
   'plug': 'Power Outlets',
   'power': 'Power Outlets',
 };
+
+List<String> get knownAmenityLabels => standardAmenityLabels;
 
 const Map<String, String> _categorySynonyms = {
   'gym': 'Gymnasium',

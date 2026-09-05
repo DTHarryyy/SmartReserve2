@@ -115,6 +115,10 @@ const amenities = <Amenity>[
   Amenity('Generator', 'UTILITY'),
 ];
 
+List<String> get standardAmenityLabels => [
+  for (final amenity in amenities) amenity.label,
+];
+
 const barangays = <String>['Macanaya', 'Maura', 'Punta', 'Centro II', 'Bukig'];
 
 const dayLabels = <String>['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

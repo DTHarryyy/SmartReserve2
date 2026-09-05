@@ -129,7 +129,12 @@ pw.Widget _formFrame(ReservationPermit permit, _Fonts f) => pw.Container(
         'We assume full responsibility including the expenses that may be '
         'incurred in case of damage or loss during the specified schedule of '
         'use.',
-        style: pw.TextStyle(font: f.regular, fontSize: 9.5, lineSpacing: 1.3, color: _ink),
+        style: pw.TextStyle(
+          font: f.regular,
+          fontSize: 9.5,
+          lineSpacing: 1.3,
+          color: _ink,
+        ),
       ),
       pw.SizedBox(height: 14),
       _ruledField('Requested by:', '', f),
@@ -201,7 +206,10 @@ pw.Widget _formHeader(ReservationPermit permit, _Fonts f) {
 pw.Widget _sirLine(_Fonts f) => pw.Column(
   crossAxisAlignment: pw.CrossAxisAlignment.start,
   children: [
-    pw.Text('SIR:', style: pw.TextStyle(font: f.semiBold, fontSize: 10, color: _ink)),
+    pw.Text(
+      'SIR:',
+      style: pw.TextStyle(font: f.semiBold, fontSize: 10, color: _ink),
+    ),
     pw.SizedBox(height: 4),
     pw.Padding(
       padding: const pw.EdgeInsets.only(left: 14),
@@ -278,7 +286,11 @@ pw.Widget _checklistGrid(ReservationPermit permit, _Fonts f) {
       children: [
         pw.Expanded(
           child: _checklistBox([
-            _checkRow('Audio Visual Room / Main Hall', checked: facilityIsHall, f: f),
+            _checkRow(
+              'Audio Visual Room / Main Hall',
+              checked: facilityIsHall,
+              f: f,
+            ),
             _checkRow('Conference Room', checked: facilityIsConference, f: f),
             pw.Expanded(
               child: _checkRow(
@@ -313,7 +325,9 @@ pw.Widget _checklistGrid(ReservationPermit permit, _Fonts f) {
               child: _checkRow(
                 'Others (please specify):',
                 checked: otherEquipment.isNotEmpty,
-                value: otherEquipment.isEmpty ? null : otherEquipment.join(', '),
+                value: otherEquipment.isEmpty
+                    ? null
+                    : otherEquipment.join(', '),
                 isLast: true,
                 f: f,
               ),
@@ -377,7 +391,10 @@ pw.Widget _checkRow(
           border: pw.Border(right: pw.BorderSide(color: _line, width: 0.7)),
         ),
         child: checked
-            ? pw.Text('X', style: pw.TextStyle(font: f.semiBold, fontSize: 9, color: _ink))
+            ? pw.Text(
+                'X',
+                style: pw.TextStyle(font: f.semiBold, fontSize: 9, color: _ink),
+              )
             : null,
       ),
       pw.Expanded(child: content),
@@ -397,7 +414,8 @@ pw.Widget _checkRow(
 
 pw.Widget _metaLine(ReservationPermit permit, _Fonts f) {
   final parts = <String>[
-    if (permit.facilityLocation.isNotEmpty) 'Location: ${permit.facilityLocation}',
+    if (permit.facilityLocation.isNotEmpty)
+      'Location: ${permit.facilityLocation}',
     'Headcount: ${permit.headcount}',
     'Requester: ${permit.requesterType}',
   ];
@@ -431,13 +449,16 @@ String _scheduleValue(ReservationPermit permit) {
     ..sort();
   final sameTimeOfDay = occurrences.every(
     (o) =>
-        campusWallTime(o.startsAt).hour == campusWallTime(occurrences.first.startsAt).hour &&
-        campusWallTime(o.startsAt).minute == campusWallTime(occurrences.first.startsAt).minute &&
-        campusWallTime(o.endsAt).hour == campusWallTime(occurrences.first.endsAt).hour &&
-        campusWallTime(o.endsAt).minute == campusWallTime(occurrences.first.endsAt).minute,
+        campusWallTime(o.startsAt).hour ==
+            campusWallTime(occurrences.first.startsAt).hour &&
+        campusWallTime(o.startsAt).minute ==
+            campusWallTime(occurrences.first.startsAt).minute &&
+        campusWallTime(o.endsAt).hour ==
+            campusWallTime(occurrences.first.endsAt).hour &&
+        campusWallTime(o.endsAt).minute ==
+            campusWallTime(occurrences.first.endsAt).minute,
   );
-  final range =
-      '${formatDay(starts.first)} – ${formatDay(starts.last)}';
+  final range = '${formatDay(starts.first)} – ${formatDay(starts.last)}';
   if (sameTimeOfDay) {
     final first = campusWallTime(occurrences.first.startsAt);
     final firstEnd = campusWallTime(occurrences.first.endsAt);
@@ -483,7 +504,10 @@ pw.Widget _ruledField(
 pw.Widget _approvalBlock(ReservationPermit permit, _Fonts f) => pw.Column(
   crossAxisAlignment: pw.CrossAxisAlignment.end,
   children: [
-    pw.Text('APPROVED:', style: pw.TextStyle(font: f.semiBold, fontSize: 10, color: _ink)),
+    pw.Text(
+      'APPROVED:',
+      style: pw.TextStyle(font: f.semiBold, fontSize: 10, color: _ink),
+    ),
     pw.SizedBox(height: 26),
     pw.Text(
       permit.signatoryName,
@@ -503,7 +527,9 @@ String _roleLabel(String role) => switch (role) {
 };
 
 pw.Widget _recordStrip(ReservationPermit permit, _Fonts f) {
-  final approvedAt = permit.approvedAt == null ? null : campusWallTime(permit.approvedAt!);
+  final approvedAt = permit.approvedAt == null
+      ? null
+      : campusWallTime(permit.approvedAt!);
 
   String paymentLine() {
     if (!permit.paymentRequired) {
@@ -525,7 +551,9 @@ pw.Widget _recordStrip(ReservationPermit permit, _Fonts f) {
   }
 
   return pw.Container(
-    decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400, width: 0.7)),
+    decoration: pw.BoxDecoration(
+      border: pw.Border.all(color: PdfColors.grey400, width: 0.7),
+    ),
     padding: const pw.EdgeInsets.all(8),
     child: pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -549,12 +577,20 @@ pw.Widget _recordStrip(ReservationPermit permit, _Fonts f) {
               pw.SizedBox(height: 2),
               pw.Text(
                 'Scan to verify. Present this printed permit at the facility.',
-                style: pw.TextStyle(font: f.regular, fontSize: 8.5, color: _ink),
+                style: pw.TextStyle(
+                  font: f.regular,
+                  fontSize: 8.5,
+                  color: _ink,
+                ),
               ),
               pw.SizedBox(height: 2),
               pw.Text(
                 paymentLine(),
-                style: pw.TextStyle(font: f.semiBold, fontSize: 8.5, color: _ink),
+                style: pw.TextStyle(
+                  font: f.semiBold,
+                  fontSize: 8.5,
+                  color: _ink,
+                ),
               ),
               if (permit.approvedByName != null) ...[
                 pw.SizedBox(height: 2),
@@ -562,7 +598,11 @@ pw.Widget _recordStrip(ReservationPermit permit, _Fonts f) {
                   'Electronically approved by ${permit.approvedByName}'
                   '${permit.approvedByRole == null ? '' : ', ${_roleLabel(permit.approvedByRole!)}'}'
                   '${approvedAt == null ? '' : ' on ${formatStamp(approvedAt)} (PHT)'}',
-                  style: pw.TextStyle(font: f.regular, fontSize: 8, color: _grey),
+                  style: pw.TextStyle(
+                    font: f.regular,
+                    fontSize: 8,
+                    color: _grey,
+                  ),
                 ),
               ],
             ],

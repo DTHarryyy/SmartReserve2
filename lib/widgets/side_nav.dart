@@ -14,6 +14,7 @@ const adminSections = <AppView>[
   AppView.calendar,
   AppView.verifications,
   AppView.feedback,
+  AppView.anomalies,
   AppView.users,
   AppView.loyalty,
   AppView.reports,
@@ -31,11 +32,12 @@ const _internalGroups = <NavGroup>[
       AppView.calendar,
       AppView.verifications,
       AppView.feedback,
+      AppView.anomalies,
     ],
   ),
   (
     label: 'Administration',
-    items: [AppView.users, AppView.loyalty, AppView.reports, AppView.audit],
+    items: [AppView.users, AppView.reports, AppView.audit],
   ),
 ];
 
@@ -47,15 +49,16 @@ const _externalGroups = <NavGroup>[
       AppView.reservations,
       AppView.calendar,
       AppView.feedback,
+      AppView.anomalies,
     ],
   ),
   (
     label: 'Administration',
-    items: [AppView.reports, AppView.users, AppView.profile],
+    items: [AppView.loyalty, AppView.reports, AppView.users, AppView.profile],
   ),
 ];
 
-class SideNav extends StatelessWidget {
+class SideNav extends StatefulWidget {
   const SideNav({
     super.key,
     required this.state,
@@ -69,23 +72,42 @@ class SideNav extends StatelessWidget {
 
   static const width = 248.0;
 
+  @override
+  State<SideNav> createState() => _SideNavState();
+}
+
+class _SideNavState extends State<SideNav> {
+  AppView? _hoveredSection;
+
   String? _totalFor(AppView section) => switch (section) {
-    AppView.facilities => '${state.facilities.length}',
-    AppView.users => '${state.accounts.length}',
+    AppView.facilities => '${widget.state.facilities.length}',
+    AppView.users => '${widget.state.accounts.length}',
     _ => null,
   };
 
   int _pendingFor(AppView section) => switch (section) {
-    AppView.reservations => state.pendingRequests,
-    AppView.verifications => state.pendingVerifications,
+    AppView.reservations => widget.state.pendingRequests,
+    AppView.verifications => widget.state.pendingVerifications,
+    AppView.anomalies => widget.state.anomalyActiveHighCriticalCount,
     _ => 0,
   };
 
+  void _setHoveredSection(AppView section) {
+    if (_hoveredSection == section) return;
+    setState(() => _hoveredSection = section);
+  }
+
+  void _clearHoveredSection(AppView section) {
+    if (_hoveredSection != section) return;
+    setState(() => _hoveredSection = null);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final groups = state.isExternalAdmin ? _externalGroups : _internalGroups;
     return Container(
-      width: width,
+      width: SideNav.width,
       decoration: BoxDecoration(
         color: context.srColors.navBg,
         border: Border(right: BorderSide(color: context.srColors.navBorder)),
@@ -111,27 +133,34 @@ class SideNav extends StatelessWidget {
                       _GroupLabel(group.label),
                       for (final section in group.items)
                         _NavButton(
+                          section: section,
                           icon: section.icon,
                           label:
                               state.isExternalAdmin && section == AppView.users
-                              ? 'Clients'
-                              : section.crumb,
+                                  ? 'Clients'
+                                  : state.isExternalAdmin &&
+                                        section == AppView.loyalty
+                                  ? 'Loyalty'
+                                  : section.crumb,
                           total: _totalFor(section),
                           pending: _pendingFor(section),
                           current: state.view.navSection == section,
-                          onTap: () => onSelect(section),
+                          hovered: _hoveredSection == section,
+                          onHoverEnter: () => _setHoveredSection(section),
+                          onHoverExit: () => _clearHoveredSection(section),
+                          onTap: () => widget.onSelect(section),
                         ),
                     ],
                   ],
                 ),
               ),
             ),
-            if (showStats)
+            if (widget.showStats)
               _MappedStat(
                 mapped: state.mappedCount,
                 total: state.catalogueTotal,
               ),
-            _AdminFooter(state: state, onSelect: onSelect),
+            _AdminFooter(state: state, onSelect: widget.onSelect),
           ],
         ),
       ),
@@ -191,19 +220,27 @@ class _GroupLabel extends StatelessWidget {
 
 class _NavButton extends StatelessWidget {
   const _NavButton({
+    required this.section,
     required this.icon,
     required this.label,
     required this.current,
+    required this.hovered,
+    required this.onHoverEnter,
+    required this.onHoverExit,
     required this.onTap,
     required this.pending,
     this.total,
   });
 
+  final AppView section;
   final IconData icon;
   final String label;
   final String? total;
   final int pending;
   final bool current;
+  final bool hovered;
+  final VoidCallback onHoverEnter;
+  final VoidCallback onHoverExit;
   final VoidCallback onTap;
 
   @override
@@ -212,14 +249,16 @@ class _NavButton extends StatelessWidget {
     return Semantics(
       button: true,
       selected: current,
-      child: Hoverable(
-        builder: (context, hovered) => GestureDetector(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => onHoverEnter(),
+        onExit: (_) => onHoverExit(),
+        child: GestureDetector(
           onTap: onTap,
           child: Stack(
             children: [
-              AnimatedContainer(
-                duration: SR.stateChange,
-                curve: SR.easing,
+              Container(
+                key: ValueKey('side-nav-item-${section.name}'),
                 margin: const EdgeInsets.only(bottom: SR.space2),
                 constraints: BoxConstraints(
                   minHeight: compact ? SR.tapTarget : 38,

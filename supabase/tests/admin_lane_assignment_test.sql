@@ -36,22 +36,19 @@ select '97000000-0000-0000-0000-000000000003', user_id, other_facility,
   'Other facility case', 10, 'pending', 'internal', now()
 from lane_test;
 
-update public.facility_admin_assignments
-set assignment_role = 'manager'
-where facility_id = (select other_facility from lane_test)
-  and admin_id = (select admin_id from lane_test);
-delete from public.facility_admin_assignments
-where facility_id = (select other_facility from lane_test)
-  and admin_id = (select admin_id from lane_test);
+-- Facility management is global for any active administrator (see
+-- 20260830120000_global_admin_authorization.sql): there is no per-facility
+-- assignment left to set up or tear down here. Only reservation-lane
+-- matching still gates access, exercised below.
 
 select set_config(
   'request.jwt.claim.sub', (select admin_id::text from lane_test), false
 );
 
 select ok(public.can_manage_facility((select assigned_facility from lane_test)),
-  'assigned admin can manage the facility');
-select isnt(public.can_manage_facility((select other_facility from lane_test)), true,
-  'admin cannot manage an unassigned facility');
+  'an active admin can manage any facility');
+select ok(public.can_manage_facility((select other_facility from lane_test)),
+  'an active admin can manage a facility they have never been assigned to');
 select ok(public.can_manage_reservation('97000000-0000-0000-0000-000000000001'),
   'internal admin can manage assigned internal-lane reservation');
 select isnt(public.can_manage_reservation('97000000-0000-0000-0000-000000000002'), true,

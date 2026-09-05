@@ -115,7 +115,8 @@ class ReservationPermit {
     return ReservationPermit(
       id: '${json['id']}',
       requestId: '${json['request_id']}',
-      permitNumber: '${json['permit_number'] ?? snapshot['permit_number'] ?? ''}',
+      permitNumber:
+          '${json['permit_number'] ?? snapshot['permit_number'] ?? ''}',
       version: (json['version'] as num?)?.toInt() ?? 1,
       status: PermitStatus.fromRaw('${json['status'] ?? 'active'}'),
       verificationToken: '${json['verification_token'] ?? ''}',
@@ -131,12 +132,15 @@ class ReservationPermit {
       headcount: (snapshot['headcount'] as num?)?.toInt() ?? 0,
       occurrences: occurrences(),
       amenities: [
-        for (final value in (snapshot['amenities'] as List? ?? const [])) '$value',
+        for (final value in (snapshot['amenities'] as List? ?? const []))
+          '$value',
       ],
       paymentExemption: '${snapshot['payment_exemption'] ?? 'none'}',
       paymentRequired: snapshot['payment_required'] as bool? ?? false,
-      totalAmountCentavos: (snapshot['total_amount_centavos'] as num?)?.toInt() ?? 0,
-      amountPaidCentavos: (snapshot['amount_paid_centavos'] as num?)?.toInt() ?? 0,
+      totalAmountCentavos:
+          (snapshot['total_amount_centavos'] as num?)?.toInt() ?? 0,
+      amountPaidCentavos:
+          (snapshot['amount_paid_centavos'] as num?)?.toInt() ?? 0,
       remainingBalanceCentavos:
           (snapshot['remaining_balance_centavos'] as num?)?.toInt() ?? 0,
       signatoryName: '${snapshot['signatory_name'] ?? ''}',

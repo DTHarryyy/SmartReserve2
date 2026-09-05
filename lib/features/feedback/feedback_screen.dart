@@ -6,9 +6,11 @@ import '../../backend/supabase_service.dart';
 import '../../model/feedback.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/campus_calendar.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/record_table.dart';
+import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_components.dart';
 
 class FeedbackScreen extends StatefulWidget {
@@ -20,11 +22,56 @@ class FeedbackScreen extends StatefulWidget {
 
 enum _RatingFilter { all, five, four, three, two, one, low }
 
+enum _SentimentFilter {
+  all(null, 'All sentiment'),
+  positive(SentimentLabel.positive, 'Positive'),
+  neutral(SentimentLabel.neutral, 'Neutral'),
+  negative(SentimentLabel.negative, 'Negative'),
+  mixed(SentimentLabel.mixed, 'Mixed'),
+  unknown(SentimentLabel.unknown, 'Unknown');
+
+  const _SentimentFilter(this.sentiment, this.label);
+
+  final SentimentLabel? sentiment;
+  final String label;
+}
+
+enum _AnalysisStatusFilter {
+  all(null, 'All analysis'),
+  pending(SentimentAnalysisStatus.pending, 'Pending'),
+  processing(SentimentAnalysisStatus.processing, 'Processing'),
+  completed(SentimentAnalysisStatus.completed, 'Completed'),
+  failed(SentimentAnalysisStatus.failed, 'Unavailable'),
+  skipped(SentimentAnalysisStatus.skipped, 'No comment'),
+  notAnalyzed(SentimentAnalysisStatus.notAnalyzed, 'Not analyzed');
+
+  const _AnalysisStatusFilter(this.status, this.label);
+
+  final SentimentAnalysisStatus? status;
+  final String label;
+}
+
+enum _DateFilter {
+  all('All time'),
+  sevenDays('Last 7 days'),
+  thirtyDays('Last 30 days'),
+  semester('This semester');
+
+  const _DateFilter(this.label);
+
+  final String label;
+}
+
 class _FeedbackScreenState extends State<FeedbackScreen> {
   final TextEditingController _search = TextEditingController();
 
   String _facilityName = 'All facilities';
   _RatingFilter _rating = _RatingFilter.all;
+  _SentimentFilter _sentiment = _SentimentFilter.all;
+  _AnalysisStatusFilter _analysisStatus = _AnalysisStatusFilter.all;
+  FeedbackTopic? _topic;
+  _DateFilter _date = _DateFilter.all;
+  bool _needsReviewOnly = false;
   FeedbackSort _sort = FeedbackSort.newest;
 
   static const _ratingLabels = {
@@ -48,6 +95,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     ColSpec('WHEN', width: 106),
     ColSpec('FACILITY', flex: 3),
     ColSpec('RATING', width: 112),
+    ColSpec('SENTIMENT', width: 130),
     ColSpec('PERSON', flex: 2, hide: ColumnHide.medium),
     ColSpec('COMMENT', flex: 5),
   ];
@@ -56,6 +104,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     return _search.text.trim().isNotEmpty ||
         _facilityName != 'All facilities' ||
         _rating != _RatingFilter.all ||
+        _sentiment != _SentimentFilter.all ||
+        _analysisStatus != _AnalysisStatusFilter.all ||
+        _topic != null ||
+        _date != _DateFilter.all ||
+        _needsReviewOnly ||
         _sort != FeedbackSort.newest;
   }
 
@@ -87,15 +140,48 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               .map((facility) => facility.id)
               .firstOrNull;
 
+    final (from, to) = _dateRange();
+
     state.setFeedbackQuery(
       FeedbackQuery(
         search: _search.text.trim(),
         facilityId: facilityId,
         minRating: minRating,
         maxRating: maxRating,
+        from: from,
+        to: to,
+        sentiment: _sentiment.sentiment,
+        topic: _topic,
+        analysisStatus: _analysisStatus.status,
+        needsReview: _needsReviewOnly ? true : null,
         sort: _sort,
       ),
     );
+  }
+
+  (DateTime?, DateTime?) _dateRange() {
+    final now = campusInstant(campusNow());
+    return switch (_date) {
+      _DateFilter.all => (null, null),
+      _DateFilter.sevenDays => (now.subtract(const Duration(days: 7)), now),
+      _DateFilter.thirtyDays => (now.subtract(const Duration(days: 30)), now),
+      _DateFilter.semester => (
+        campusInstant(DateTime(now.month >= 8 ? now.year : now.year - 1, 8, 1)),
+        now,
+      ),
+    };
+  }
+
+  List<String> get _topicItems => [
+    'All topics',
+    for (final topic in FeedbackTopic.values) topic.label,
+  ];
+
+  FeedbackTopic? _topicFromLabel(String value) {
+    if (value == 'All topics') return null;
+    return FeedbackTopic.values
+        .where((topic) => topic.label == value)
+        .firstOrNull;
   }
 
   void _resetFilters(AppState state) {
@@ -104,6 +190,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     setState(() {
       _facilityName = 'All facilities';
       _rating = _RatingFilter.all;
+      _sentiment = _SentimentFilter.all;
+      _analysisStatus = _AnalysisStatusFilter.all;
+      _topic = null;
+      _date = _DateFilter.all;
+      _needsReviewOnly = false;
       _sort = FeedbackSort.newest;
     });
 
@@ -142,7 +233,22 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
                     SizedBox(height: screenWidth < 600 ? 18 : 24),
 
-                    _FeedbackSummary(summary: state.feedbackSummaryData),
+                    _FeedbackSummary(
+                      summary: state.feedbackSummaryData,
+                      analytics: state.feedbackSentimentAnalyticsData,
+                      loading: state.feedbackAnalyticsLoading,
+                    ),
+
+                    SizedBox(height: screenWidth < 600 ? 14 : 18),
+
+                    _SentimentInsights(
+                      analytics: state.feedbackSentimentAnalyticsData,
+                      loading: state.feedbackAnalyticsLoading,
+                      error: state.feedbackAnalyticsError,
+                      onRetry: () {
+                        state.refreshFeedback();
+                      },
+                    ),
 
                     SizedBox(height: screenWidth < 600 ? 14 : 18),
 
@@ -240,10 +346,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Widget _buildMobileFilters(AppState state, List<String> facilityNames) {
+    final topicLabel = _topic?.label ?? 'All topics';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Search remains full width.
         FilterSearch(
           controller: _search,
           placeholder: 'Search feedback',
@@ -255,7 +362,6 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
         const SizedBox(height: 10),
 
-        // Facility + Rating + Sort always stay in one row.
         Row(
           children: [
             Expanded(
@@ -273,11 +379,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 },
               ),
             ),
-
             const SizedBox(width: 8),
-
             Expanded(
-              flex: 2,
               child: FilterSelect(
                 value: _ratingLabels[_rating]!,
                 items: _ratingLabels.values.toList(),
@@ -295,11 +398,76 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 },
               ),
             ),
+          ],
+        ),
 
-            const SizedBox(width: 8),
+        const SizedBox(height: 8),
 
+        Row(
+          children: [
             Expanded(
-              flex: 2,
+              child: FilterSelect(
+                value: _sentiment.label,
+                items: [
+                  for (final filter in _SentimentFilter.values) filter.label,
+                ],
+                semanticLabel: 'Filter by sentiment',
+                onChanged: (value) {
+                  final selected = _SentimentFilter.values.firstWhere(
+                    (filter) => filter.label == value,
+                  );
+                  setState(() {
+                    _sentiment = selected;
+                  });
+                  _apply(state);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilterSelect(
+                value: _date.label,
+                items: [for (final filter in _DateFilter.values) filter.label],
+                semanticLabel: 'Filter by date',
+                onChanged: (value) {
+                  final selected = _DateFilter.values.firstWhere(
+                    (filter) => filter.label == value,
+                  );
+                  setState(() {
+                    _date = selected;
+                  });
+                  _apply(state);
+                },
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+
+        Row(
+          children: [
+            Expanded(
+              child: FilterSelect(
+                value: _analysisStatus.label,
+                items: [
+                  for (final filter in _AnalysisStatusFilter.values)
+                    filter.label,
+                ],
+                semanticLabel: 'Filter by analysis status',
+                onChanged: (value) {
+                  final selected = _AnalysisStatusFilter.values.firstWhere(
+                    (filter) => filter.label == value,
+                  );
+                  setState(() {
+                    _analysisStatus = selected;
+                  });
+                  _apply(state);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
               child: FilterSelect(
                 value: _sortLabels[_sort]!,
                 items: _sortLabels.values.toList(),
@@ -319,6 +487,36 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             ),
           ],
         ),
+
+        const SizedBox(height: 8),
+
+        Row(
+          children: [
+            Expanded(
+              child: FilterSelect(
+                value: topicLabel,
+                items: _topicItems,
+                semanticLabel: 'Filter by feedback topic',
+                onChanged: (value) {
+                  setState(() {
+                    _topic = _topicFromLabel(value);
+                  });
+                  _apply(state);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            _NeedsReviewToggle(
+              selected: _needsReviewOnly,
+              onChanged: (value) {
+                setState(() {
+                  _needsReviewOnly = value;
+                });
+                _apply(state);
+              },
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -332,6 +530,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     const gap = 10.0;
 
     final tabletItemWidth = (availableWidth - gap) / 2;
+    final topicLabel = _topic?.label ?? 'All topics';
 
     return Wrap(
       spacing: gap,
@@ -383,6 +582,80 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           ),
         ),
         SizedBox(
+          width: tablet ? tabletItemWidth : 180,
+          child: FilterSelect(
+            value: _sentiment.label,
+            items: [for (final filter in _SentimentFilter.values) filter.label],
+            semanticLabel: 'Filter by sentiment',
+            onChanged: (value) {
+              final selected = _SentimentFilter.values.firstWhere(
+                (filter) => filter.label == value,
+              );
+
+              setState(() {
+                _sentiment = selected;
+              });
+
+              _apply(state);
+            },
+          ),
+        ),
+        SizedBox(
+          width: tablet ? tabletItemWidth : 160,
+          child: FilterSelect(
+            value: _date.label,
+            items: [for (final filter in _DateFilter.values) filter.label],
+            semanticLabel: 'Filter by date',
+            onChanged: (value) {
+              final selected = _DateFilter.values.firstWhere(
+                (filter) => filter.label == value,
+              );
+
+              setState(() {
+                _date = selected;
+              });
+
+              _apply(state);
+            },
+          ),
+        ),
+        SizedBox(
+          width: tablet ? tabletItemWidth : 190,
+          child: FilterSelect(
+            value: _analysisStatus.label,
+            items: [
+              for (final filter in _AnalysisStatusFilter.values) filter.label,
+            ],
+            semanticLabel: 'Filter by analysis status',
+            onChanged: (value) {
+              final selected = _AnalysisStatusFilter.values.firstWhere(
+                (filter) => filter.label == value,
+              );
+
+              setState(() {
+                _analysisStatus = selected;
+              });
+
+              _apply(state);
+            },
+          ),
+        ),
+        SizedBox(
+          width: tablet ? tabletItemWidth : 190,
+          child: FilterSelect(
+            value: topicLabel,
+            items: _topicItems,
+            semanticLabel: 'Filter by feedback topic',
+            onChanged: (value) {
+              setState(() {
+                _topic = _topicFromLabel(value);
+              });
+
+              _apply(state);
+            },
+          ),
+        ),
+        SizedBox(
           width: tablet ? tabletItemWidth : 190,
           child: FilterSelect(
             value: _sortLabels[_sort]!,
@@ -400,6 +673,16 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               _apply(state);
             },
           ),
+        ),
+        _NeedsReviewToggle(
+          selected: _needsReviewOnly,
+          onChanged: (value) {
+            setState(() {
+              _needsReviewOnly = value;
+            });
+
+            _apply(state);
+          },
         ),
       ],
     );
@@ -450,7 +733,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 720) {
-          return _buildMobileReviews(state);
+          return _buildMobileReviews(context, state);
         }
 
         return _buildDesktopReviews(context, state);
@@ -458,11 +741,15 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     );
   }
 
-  Widget _buildMobileReviews(AppState state) {
+  Widget _buildMobileReviews(BuildContext context, AppState state) {
     return Column(
       children: [
         for (int i = 0; i < state.feedbackEntries.length; i++) ...[
-          _MobileFeedbackCard(entry: state.feedbackEntries[i]),
+          _MobileFeedbackCard(
+            entry: state.feedbackEntries[i],
+            onTap: () =>
+                _showFeedbackDetails(context, state, state.feedbackEntries[i]),
+          ),
           if (i != state.feedbackEntries.length - 1) const SizedBox(height: 10),
         ],
       ],
@@ -483,7 +770,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
     return RecordRow(
       columns: _columns,
-      compactChild: _MobileFeedbackCard(entry: entry),
+      onTap: () => _showFeedbackDetails(context, AppScope.of(context), entry),
+      compactChild: _MobileFeedbackCard(
+        entry: entry,
+        onTap: () => _showFeedbackDetails(context, AppScope.of(context), entry),
+      ),
       cells: [
         Text(
           _shortDate(feedback.createdAt),
@@ -500,6 +791,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           count: 1,
           dense: true,
           showCount: false,
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _SentimentBadge(analysis: feedback.sentimentAnalysis),
         ),
         Text(
           entry.reviewerName,
@@ -524,12 +819,47 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   static String _shortDate(DateTime value) {
     return '${value.month}/${value.day}/${value.year}';
   }
+
+  void _showFeedbackDetails(
+    BuildContext context,
+    AppState state,
+    FeedbackEntry entry,
+  ) {
+    final status = entry.feedback.sentimentStatus;
+    final canQueueAnalysis =
+        entry.feedback.comment.trim().isNotEmpty &&
+        (status == SentimentAnalysisStatus.failed ||
+            status == SentimentAnalysisStatus.notAnalyzed);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => SrAdaptiveDialog(
+        maxWidth: 620,
+        maxHeight: 720,
+        child: _FeedbackDetailDialog(
+          entry: entry,
+          retrying: state.feedbackSentimentRetrying.contains(entry.feedback.id),
+          onRetry: canQueueAnalysis
+              ? () {
+                  Navigator.of(dialogContext).pop();
+                  state.retryFeedbackSentiment(entry.feedback.id);
+                }
+              : null,
+        ),
+      ),
+    );
+  }
 }
 
 class _FeedbackSummary extends StatelessWidget {
-  const _FeedbackSummary({required this.summary});
+  const _FeedbackSummary({
+    required this.summary,
+    required this.analytics,
+    required this.loading,
+  });
 
   final FeedbackSummary summary;
+  final FeedbackSentimentAnalytics analytics;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -574,10 +904,11 @@ class _FeedbackSummary extends StatelessWidget {
             SizedBox(
               width: cardWidth,
               child: _SummaryCard(
-                icon: Icons.sentiment_very_satisfied_rounded,
-                label: '5-star reviews',
-                value: '${summary.fiveStar}',
-                supportingText: 'Excellent ratings',
+                icon: Icons.sentiment_satisfied_alt_rounded,
+                label: 'Positive sentiment',
+                value: loading ? '...' : _percentText(analytics.positiveShare),
+                supportingText:
+                    '${analytics.percentageDenominator} classified reviews',
                 tone: _SummaryTone.success,
               ),
             ),
@@ -585,10 +916,10 @@ class _FeedbackSummary extends StatelessWidget {
               width: cardWidth,
               child: _SummaryCard(
                 icon: Icons.flag_outlined,
-                label: 'Low-rated',
-                value: '${summary.lowRated}',
-                supportingText: '1–2 star reviews',
-                tone: summary.lowRated > 0
+                label: 'Needs review',
+                value: loading ? '...' : '${analytics.needsReview}',
+                supportingText: 'Low rating or negative text',
+                tone: analytics.needsReview > 0
                     ? _SummaryTone.error
                     : _SummaryTone.neutral,
               ),
@@ -598,6 +929,9 @@ class _FeedbackSummary extends StatelessWidget {
       },
     );
   }
+
+  static String _percentText(double? value) =>
+      value == null ? '—' : '${(value * 100).round()}%';
 }
 
 enum _SummaryTone { primary, success, error, neutral }
@@ -691,10 +1025,814 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class _MobileFeedbackCard extends StatelessWidget {
-  const _MobileFeedbackCard({required this.entry});
+class _SentimentInsights extends StatelessWidget {
+  const _SentimentInsights({
+    required this.analytics,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+  });
+
+  final FeedbackSentimentAnalytics analytics;
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    final hasData = analytics.hasAnyAnalysis || analytics.totalFeedback > 0;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Sentiment analytics', style: sans(13, w: 650)),
+              ),
+              if (loading)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: SR.primary,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Sentiment is automatically estimated from the written feedback and may not reflect the user’s intended meaning. Read the original feedback before acting.',
+            style: sans(11.5, height: 1.45, color: c.textSecondary),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 16, color: c.amberIcon),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    error!,
+                    style: sans(11.5, color: c.amberTitle, height: 1.35),
+                  ),
+                ),
+                TextButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
+            ),
+          ],
+          if (!hasData && !loading) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Sentiment analytics will appear after written comments are processed.',
+              style: sans(12, color: c.textMuted),
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 920;
+                final distribution = _SentimentDistribution(
+                  analytics: analytics,
+                );
+                final operations = _AnalysisOperations(analytics: analytics);
+                return wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: distribution),
+                          const SizedBox(width: 14),
+                          Expanded(child: operations),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          distribution,
+                          const SizedBox(height: 12),
+                          operations,
+                        ],
+                      );
+              },
+            ),
+            const SizedBox(height: 14),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 920;
+                final facilities = _FacilitySentimentPanel(
+                  analytics: analytics,
+                );
+                final complaints = _ComplaintTopicPanel(analytics: analytics);
+                return wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: facilities),
+                          const SizedBox(width: 14),
+                          Expanded(child: complaints),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          facilities,
+                          const SizedBox(height: 12),
+                          complaints,
+                        ],
+                      );
+              },
+            ),
+            if (analytics.hasRenderableTrend) ...[
+              const SizedBox(height: 14),
+              _SentimentTrendPanel(analytics: analytics),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SentimentDistribution extends StatelessWidget {
+  const _SentimentDistribution({required this.analytics});
+
+  final FeedbackSentimentAnalytics analytics;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InsightBlock(
+      title: 'Distribution',
+      subtitle: analytics.percentageDenominator == 0
+          ? 'No classified written reviews yet'
+          : '${analytics.percentageDenominator} classified reviews',
+      child: Column(
+        children: [
+          _SentimentBar(
+            label: SentimentLabel.positive.label,
+            count: analytics.positive,
+            share: analytics.shareFor(analytics.positive),
+            tone: SentimentLabel.positive.tone,
+          ),
+          _SentimentBar(
+            label: SentimentLabel.neutral.label,
+            count: analytics.neutral,
+            share: analytics.shareFor(analytics.neutral),
+            tone: SentimentLabel.neutral.tone,
+          ),
+          _SentimentBar(
+            label: SentimentLabel.negative.label,
+            count: analytics.negative,
+            share: analytics.shareFor(analytics.negative),
+            tone: SentimentLabel.negative.tone,
+          ),
+          _SentimentBar(
+            label: SentimentLabel.mixed.label,
+            count: analytics.mixed,
+            share: analytics.shareFor(analytics.mixed),
+            tone: SentimentLabel.mixed.tone,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SentimentBar extends StatelessWidget {
+  const _SentimentBar({
+    required this.label,
+    required this.count,
+    required this.share,
+    required this.tone,
+  });
+
+  final String label;
+  final int count;
+  final double? share;
+  final SrTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    final value = share ?? 0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 76,
+            child: Text(label, style: sans(11.5, color: c.textSecondary)),
+          ),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: value,
+                minHeight: 7,
+                backgroundColor: c.dividerSoft,
+                color: tone.solid,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 60,
+            child: Text(
+              share == null ? '$count' : '${(value * 100).round()}% · $count',
+              textAlign: TextAlign.right,
+              style: mono(10.5, color: c.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalysisOperations extends StatelessWidget {
+  const _AnalysisOperations({required this.analytics});
+
+  final FeedbackSentimentAnalytics analytics;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InsightBlock(
+      title: 'Coverage',
+      subtitle:
+          '${analytics.classifiedFeedback} of ${analytics.writtenFeedback} written reviews analyzed',
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _MetricChip(label: 'Pending', count: analytics.pending),
+          _MetricChip(label: 'Processing', count: analytics.processing),
+          _MetricChip(
+            label: 'Unavailable',
+            count: analytics.failed,
+            tone: analytics.failed > 0 ? SrTone.warning : SrTone.neutral,
+          ),
+          _MetricChip(label: 'No comment', count: analytics.skipped),
+          _MetricChip(label: 'Not analyzed', count: analytics.notAnalyzed),
+          _MetricChip(
+            label: 'Mismatches',
+            count: analytics.ratingMismatch,
+            tone: analytics.ratingMismatch > 0 ? SrTone.info : SrTone.neutral,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricChip extends StatelessWidget {
+  const _MetricChip({
+    required this.label,
+    required this.count,
+    this.tone = SrTone.neutral,
+  });
+
+  final String label;
+  final int count;
+  final SrTone tone;
+
+  @override
+  Widget build(BuildContext context) =>
+      SrStatusChip(label: '$label $count', tone: tone, dense: true);
+}
+
+class _FacilitySentimentPanel extends StatelessWidget {
+  const _FacilitySentimentPanel({required this.analytics});
+
+  final FeedbackSentimentAnalytics analytics;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return _InsightBlock(
+      title: 'Facility attention',
+      subtitle: 'Requires at least 3 classified reviews',
+      child: analytics.facilities.isEmpty
+          ? Text(
+              'Not enough facility data yet.',
+              style: sans(12, color: c.textMuted),
+            )
+          : Column(
+              children: [
+                for (final facility in analytics.facilities.take(5))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            facility.facilityName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: sans(12, w: 550),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${(facility.negativeShare * 100).round()}% neg · ${facility.classified}',
+                          style: mono(10.5, color: c.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _ComplaintTopicPanel extends StatelessWidget {
+  const _ComplaintTopicPanel({required this.analytics});
+
+  final FeedbackSentimentAnalytics analytics;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return _InsightBlock(
+      title: 'Common complaints',
+      subtitle: 'Negative aspect topics only',
+      child: analytics.complaints.isEmpty
+          ? Text(
+              'No repeated complaint topics yet.',
+              style: sans(12, color: c.textMuted),
+            )
+          : Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final complaint in analytics.complaints)
+                  SrStatusChip(
+                    label:
+                        '${complaint.topic.label} ${complaint.count} · ${complaint.facilityCount} facilities',
+                    tone: SrTone.warning,
+                    dense: true,
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _SentimentTrendPanel extends StatelessWidget {
+  const _SentimentTrendPanel({required this.analytics});
+
+  final FeedbackSentimentAnalytics analytics;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    final recent = analytics.trend.length > 6
+        ? analytics.trend.skip(analytics.trend.length - 6).toList()
+        : analytics.trend;
+    return _InsightBlock(
+      title: 'Recent trend',
+      subtitle: 'Bucketed by ${analytics.trendBucket}',
+      child: Column(
+        children: [
+          for (final point in recent)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 80,
+                    child: Text(
+                      _shortTrendDate(point.bucketStart),
+                      style: mono(10.5, color: c.textMuted),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '${point.positive} positive · ${point.neutral} neutral · ${point.negative} negative · ${point.mixed} mixed',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: sans(11.5, color: c.textSecondary),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    point.averageRating == null
+                        ? '—'
+                        : '${point.averageRating!.toStringAsFixed(1)}★',
+                    style: mono(10.5, color: c.textMuted),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _shortTrendDate(DateTime value) =>
+      '${value.month}/${value.day}/${value.year}';
+}
+
+class _InsightBlock extends StatelessWidget {
+  const _InsightBlock({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.surfaceSubtle,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: sans(12.5, w: 650)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: sans(10.8, color: c.textMuted)),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _NeedsReviewToggle extends StatelessWidget {
+  const _NeedsReviewToggle({required this.selected, required this.onChanged});
+
+  final bool selected;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => FilterPill(
+    label: 'Needs review',
+    selected: selected,
+    onTap: () => onChanged(!selected),
+  );
+}
+
+class _SentimentBadge extends StatelessWidget {
+  const _SentimentBadge({required this.analysis, this.dense = true});
+
+  final FeedbackSentimentAnalysis? analysis;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = analysis?.status ?? SentimentAnalysisStatus.notAnalyzed;
+    final sentiment = analysis?.sentiment;
+
+    if (status == SentimentAnalysisStatus.completed && sentiment != null) {
+      return SrStatusChip(
+        label: sentiment.label,
+        tone: sentiment.tone,
+        icon: _sentimentIcon(sentiment),
+        dense: dense,
+      );
+    }
+
+    return SrStatusChip(
+      label: status.label,
+      tone: status.tone,
+      icon: _statusIcon(status),
+      dense: dense,
+    );
+  }
+
+  IconData _sentimentIcon(SentimentLabel sentiment) => switch (sentiment) {
+    SentimentLabel.positive => Icons.sentiment_satisfied_alt_rounded,
+    SentimentLabel.neutral => Icons.sentiment_neutral_rounded,
+    SentimentLabel.negative => Icons.sentiment_dissatisfied_rounded,
+    SentimentLabel.mixed => Icons.compare_arrows_rounded,
+    SentimentLabel.unknown => Icons.help_outline_rounded,
+  };
+
+  IconData _statusIcon(SentimentAnalysisStatus status) => switch (status) {
+    SentimentAnalysisStatus.notAnalyzed => Icons.pending_outlined,
+    SentimentAnalysisStatus.pending => Icons.schedule_rounded,
+    SentimentAnalysisStatus.processing => Icons.autorenew_rounded,
+    SentimentAnalysisStatus.completed => Icons.check_circle_outline_rounded,
+    SentimentAnalysisStatus.failed => Icons.refresh_rounded,
+    SentimentAnalysisStatus.skipped => Icons.notes_rounded,
+  };
+}
+
+class _FeedbackDetailDialog extends StatelessWidget {
+  const _FeedbackDetailDialog({
+    required this.entry,
+    required this.retrying,
+    required this.onRetry,
+  });
 
   final FeedbackEntry entry;
+  final bool retrying;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final feedback = entry.feedback;
+    final analysis = feedback.sentimentAnalysis;
+    final c = context.srColors;
+    final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            compact ? 16 : 20,
+            compact ? 8 : 18,
+            compact ? 8 : 12,
+            10,
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text('Feedback details', style: SrType.title())),
+              IconButton(
+                tooltip: 'Close',
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(Icons.close_rounded, size: 20),
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: c.border),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(compact ? 16 : 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _RatingBadge(rating: feedback.rating),
+                    _SentimentBadge(analysis: analysis, dense: false),
+                    if (feedback.needsReview)
+                      const SrStatusChip(
+                        label: 'Needs review',
+                        tone: SrTone.warning,
+                        icon: Icons.flag_outlined,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _DetailSection(
+                  title: feedback.facilityName,
+                  child: Text(
+                    feedback.comment.trim().isEmpty
+                        ? 'No written comment was submitted.'
+                        : feedback.comment,
+                    style: sans(13, height: 1.55, color: c.textSecondary),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _DetailSection(
+                  title: 'Reservation context',
+                  child: Column(
+                    children: [
+                      _DetailLine('Reviewer', entry.reviewerName),
+                      _DetailLine(
+                        'Visit date',
+                        entry.reservationStartsAt == null
+                            ? 'Not available'
+                            : _MobileFeedbackCard.formatDate(
+                                entry.reservationStartsAt!,
+                              ),
+                      ),
+                      _DetailLine(
+                        'Feedback date',
+                        _MobileFeedbackCard.formatDate(feedback.createdAt),
+                      ),
+                      if (entry.pricingAudience.trim().isNotEmpty)
+                        _DetailLine(
+                          'Renter type',
+                          entry.pricingAudience.replaceAll('_', ' '),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _DetailSection(
+                  title: 'Ratings',
+                  child: Column(
+                    children: [
+                      _DetailLine('Overall', '${feedback.rating} of 5'),
+                      _optionalRating(
+                        'Cleanliness',
+                        feedback.cleanlinessRating,
+                      ),
+                      _optionalRating(
+                        'Facility condition',
+                        feedback.conditionRating,
+                      ),
+                      _optionalRating('Equipment', feedback.equipmentRating),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _DetailSection(
+                  title: 'Sentiment analysis',
+                  child: _AnalysisDetails(
+                    feedback: feedback,
+                    analysis: analysis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Divider(height: 1, color: c.border),
+        Padding(
+          padding: EdgeInsets.all(compact ? 16 : 18),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: const Text('Close'),
+              ),
+              if (onRetry != null)
+                FilledButton.icon(
+                  onPressed: retrying ? null : onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 17),
+                  label: Text(retrying ? 'Queuing...' : 'Retry analysis'),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _optionalRating(String label, int? value) =>
+      _DetailLine(label, value == null ? 'Not rated' : '$value of 5');
+}
+
+class _AnalysisDetails extends StatelessWidget {
+  const _AnalysisDetails({required this.feedback, required this.analysis});
+
+  final ReservationFeedback feedback;
+  final FeedbackSentimentAnalysis? analysis;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    final current = analysis;
+    final status = current?.status ?? SentimentAnalysisStatus.notAnalyzed;
+
+    if (status == SentimentAnalysisStatus.skipped) {
+      return Text(
+        'No written comment to analyze.',
+        style: sans(12, color: c.textMuted),
+      );
+    }
+    if (current == null) {
+      return Text(
+        'Analysis has not been queued for this historical review.',
+        style: sans(12, color: c.textMuted),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _SentimentBadge(analysis: current, dense: false),
+            if (current.isLowConfidence)
+              const SrStatusChip(
+                label: 'Low confidence',
+                tone: SrTone.warning,
+                icon: Icons.info_outline_rounded,
+              ),
+            if (feedback.ratingSentimentMismatch)
+              const SrStatusChip(
+                label: 'Rating and text differ',
+                tone: SrTone.info,
+                icon: Icons.compare_arrows_rounded,
+              ),
+          ],
+        ),
+        if (current.confidence != null) ...[
+          const SizedBox(height: 10),
+          _DetailLine('Confidence', '${(current.confidence! * 100).round()}%'),
+        ],
+        _DetailLine('Status', status.label),
+        if (current.analyzedAt != null)
+          _DetailLine(
+            'Analyzed',
+            _MobileFeedbackCard.formatDate(current.analyzedAt!),
+          ),
+        if ((current.model ?? '').isNotEmpty)
+          _DetailLine('Model', current.model!),
+        if (current.lastErrorCode != null)
+          _DetailLine('Last error', current.lastErrorCode!),
+        if (current.topics.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final topic in current.topics)
+                SrStatusChip(
+                  label: '${topic.topic.label}: ${topic.sentiment.label}',
+                  tone: topic.sentiment.tone,
+                  dense: true,
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _DetailSection extends StatelessWidget {
+  const _DetailSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: context.srColors.surfaceSubtle,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.srColors.border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(title, style: sans(12.5, w: 650)),
+        const SizedBox(height: 10),
+        child,
+      ],
+    ),
+  );
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(label, style: sans(11.5, color: c.textMuted)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: sans(11.8, w: 500, color: c.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileFeedbackCard extends StatelessWidget {
+  const _MobileFeedbackCard({required this.entry, this.onTap});
+
+  final FeedbackEntry entry;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -704,7 +1842,7 @@ class _MobileFeedbackCard extends StatelessWidget {
     final feedback = entry.feedback;
     final hasComment = feedback.comment.trim().isNotEmpty;
 
-    return Container(
+    final card = Container(
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -734,7 +1872,7 @@ class _MobileFeedbackCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatDate(feedback.createdAt),
+                      formatDate(feedback.createdAt),
                       style: sans(11, color: c.textMuted),
                     ),
                   ],
@@ -743,7 +1881,14 @@ class _MobileFeedbackCard extends StatelessWidget {
 
               const SizedBox(width: 12),
 
-              _RatingBadge(rating: feedback.rating),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _RatingBadge(rating: feedback.rating),
+                  const SizedBox(height: 6),
+                  _SentimentBadge(analysis: feedback.sentimentAnalysis),
+                ],
+              ),
             ],
           ),
 
@@ -798,9 +1943,16 @@ class _MobileFeedbackCard extends StatelessWidget {
         ],
       ),
     );
+
+    if (onTap == null) return card;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: card,
+    );
   }
 
-  static String _formatDate(DateTime value) {
+  static String formatDate(DateTime value) {
     const months = [
       'Jan',
       'Feb',

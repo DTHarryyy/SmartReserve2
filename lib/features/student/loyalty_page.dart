@@ -29,24 +29,28 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = AppScope.read(context);
 
-      if (state.loyalty == null && !state.loyaltyLoading) {
+      if (state.shouldRefreshLoyaltyForCurrentUser &&
+          state.loyalty == null &&
+          !state.loyaltyLoading) {
         unawaited(state.refreshLoyalty());
       }
     });
   }
 
-  Future<void> _redeem(AppState state, LoyaltyReward reward) async {
+  Future<void> _claim(AppState state, LoyaltyDiscountOffer offer) async {
+    if (!state.loyaltyAvailableForCurrentUser) return;
+
     final balance = state.loyalty?.balance ?? 0;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => SrConfirmDialog(
-        title: 'Redeem reward?',
+        title: 'Claim discount?',
         content: Text(
-          '${reward.name} costs ${reward.pointsCost} points. '
-          'You currently have $balance points.',
+          '${offer.name} costs ${formatPoints(offer.requiredPoints)} points. '
+          'You currently have ${formatPoints(balance)} points.',
         ),
-        confirmLabel: 'Redeem',
+        confirmLabel: 'Claim',
         onConfirm: () {
           Navigator.of(context).pop(true);
         },
@@ -57,7 +61,7 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
     );
 
     if (confirmed == true) {
-      await state.redeemReward(reward);
+      await state.claimLoyaltyDiscount(offer);
     }
   }
 
@@ -69,26 +73,35 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
         final state = AppScope.of(context);
         final loyalty = state.loyalty;
         final c = context.srColors;
+        final unavailable =
+            !state.shouldRefreshLoyaltyForCurrentUser ||
+            loyalty?.eligible == false;
+        final failedInitialLoad = state.loyaltyError != null && loyalty == null;
+        final loadingInitial =
+            state.loyaltyLoading ||
+            (loyalty == null && state.loyaltyError == null);
 
         return Scaffold(
           backgroundColor: c.canvas,
           appBar: AppBar(
-            title: const Text('Loyalty & rewards'),
+            title: Text(unavailable ? 'Unavailable' : 'Loyalty discounts'),
             backgroundColor: c.canvas,
             surfaceTintColor: Colors.transparent,
             elevation: 0,
           ),
           body: SafeArea(
-            child: state.loyaltyLoading && loyalty == null
-                ? const SrLoadingState()
-                : state.loyaltyError != null && loyalty == null
+            child: unavailable
+                ? const _LoyaltyUnavailableState()
+                : failedInitialLoad
                 ? SrErrorState(
                     message: state.loyaltyError!,
                     onRetry: () {
                       unawaited(state.refreshLoyalty());
                     },
                   )
-                : _content(context, state, loyalty ?? const LoyaltySummary()),
+                : loadingInitial
+                ? const SrLoadingState()
+                : _content(context, state, loyalty!),
           ),
         );
       },
@@ -107,11 +120,11 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
 
     final activity = _ActivitySection(loyalty: loyalty);
 
-    final rewards = _RewardsSection(
+    final discounts = _DiscountsSection(
       state: state,
       loyalty: loyalty,
-      onRedeem: (reward) {
-        unawaited(_redeem(state, reward));
+      onClaim: (offer) {
+        unawaited(_claim(state, offer));
       },
     );
 
@@ -128,12 +141,12 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
               SizedBox(height: mobile ? 16 : 22),
 
               if (desktop)
-                _DesktopContent(rewards: rewards, activity: activity)
+                _DesktopContent(discounts: discounts, activity: activity)
               else ...[
                 SrTabs(
                   items: const [
                     SrTabItem(label: 'Activity'),
-                    SrTabItem(label: 'Rewards'),
+                    SrTabItem(label: 'Discounts'),
                   ],
                   selectedIndex: _tab,
                   onSelect: (index) {
@@ -153,8 +166,8 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
                           child: activity,
                         )
                       : KeyedSubtree(
-                          key: const ValueKey('rewards'),
-                          child: rewards,
+                          key: const ValueKey('discounts'),
+                          child: discounts,
                         ),
                 ),
               ],
@@ -165,6 +178,30 @@ class _LoyaltyPageState extends State<LoyaltyPage> {
 
               SizedBox(height: mobile ? 24 : 36),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoyaltyUnavailableState extends StatelessWidget {
+  const _LoyaltyUnavailableState();
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+
+    return SrScrollView(
+      padding: SR.pageInsets(width),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: const _LoyaltyEmptyState(
+            icon: Icons.lock_outline_rounded,
+            title: 'Loyalty is available to guest renters',
+            body:
+                'Verified students, faculty, and staff use campus pricing, so loyalty discounts and points are not available on this account.',
           ),
         ),
       ),
@@ -220,7 +257,7 @@ class _BalanceHero extends StatelessWidget {
                         Expanded(
                           child: _HeroStat(
                             label: 'Earned',
-                            value: '${loyalty.lifetimeEarned}',
+                            value: formatPoints(loyalty.lifetimeEarned),
                             icon: Icons.add_circle_outline_rounded,
                           ),
                         ),
@@ -228,7 +265,7 @@ class _BalanceHero extends StatelessWidget {
                         Expanded(
                           child: _HeroStat(
                             label: 'Redeemed',
-                            value: '${loyalty.lifetimeRedeemed}',
+                            value: formatPoints(loyalty.lifetimeRedeemed),
                             icon: Icons.redeem_rounded,
                           ),
                         ),
@@ -294,7 +331,7 @@ class _HeroIcon extends StatelessWidget {
 class _BalanceText extends StatelessWidget {
   const _BalanceText({required this.balance, required this.mobile});
 
-  final int balance;
+  final double balance;
   final bool mobile;
 
   @override
@@ -306,7 +343,7 @@ class _BalanceText extends StatelessWidget {
       children: [
         Flexible(
           child: Text(
-            '$balance',
+            formatPoints(balance),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: sans(mobile ? 26 : 32, w: 700, color: c.text),
@@ -381,7 +418,7 @@ class _DesktopHeroStat extends StatelessWidget {
   const _DesktopHeroStat({required this.label, required this.value});
 
   final String label;
-  final int value;
+  final double value;
 
   @override
   Widget build(BuildContext context) {
@@ -390,7 +427,7 @@ class _DesktopHeroStat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('$value', style: mono(15, w: 600, color: c.text)),
+        Text(formatPoints(value), style: mono(15, w: 600, color: c.text)),
         const SizedBox(height: 2),
         Text(label, style: SrType.caption(color: c.textMuted)),
       ],
@@ -399,9 +436,9 @@ class _DesktopHeroStat extends StatelessWidget {
 }
 
 class _DesktopContent extends StatelessWidget {
-  const _DesktopContent({required this.rewards, required this.activity});
+  const _DesktopContent({required this.discounts, required this.activity});
 
-  final Widget rewards;
+  final Widget discounts;
   final Widget activity;
 
   @override
@@ -409,7 +446,7 @@ class _DesktopContent extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(flex: 10, child: rewards),
+        Expanded(flex: 10, child: discounts),
         const SizedBox(width: 20),
         Expanded(flex: 11, child: activity),
       ],
@@ -418,11 +455,10 @@ class _DesktopContent extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.description, this.trailing});
+  const _SectionHeader({required this.title, this.description});
 
   final String title;
   final String? description;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -443,7 +479,6 @@ class _SectionHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
       ],
     );
   }
@@ -598,24 +633,24 @@ class _LedgerTile extends StatelessWidget {
   }
 }
 
-class _RewardsSection extends StatelessWidget {
-  const _RewardsSection({
+class _DiscountsSection extends StatelessWidget {
+  const _DiscountsSection({
     required this.state,
     required this.loyalty,
-    required this.onRedeem,
+    required this.onClaim,
   });
 
   final AppState state;
   final LoyaltySummary loyalty;
-  final ValueChanged<LoyaltyReward> onRedeem;
+  final ValueChanged<LoyaltyDiscountOffer> onClaim;
 
   @override
   Widget build(BuildContext context) {
-    if (loyalty.rewards.isEmpty) {
+    if (loyalty.offers.isEmpty && loyalty.claims.isEmpty) {
       return const _LoyaltyEmptyState(
-        icon: Icons.card_giftcard_rounded,
-        title: 'No rewards available',
-        body: 'New rewards will appear here when they become available.',
+        icon: Icons.local_offer_rounded,
+        title: 'No discounts available',
+        body: 'Discount campaigns will appear here when they become available.',
       );
     }
 
@@ -623,47 +658,55 @@ class _RewardsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _SectionHeader(
-          title: 'Rewards',
-          description: 'Use your points for available rewards.',
+          title: 'Discounts',
+          description: 'Claim a one-booking voucher with your points.',
         ),
         const SizedBox(height: 12),
-        for (var i = 0; i < loyalty.rewards.length; i++) ...[
-          _RewardCard(
-            reward: loyalty.rewards[i],
+        for (var i = 0; i < loyalty.offers.length; i++) ...[
+          _DiscountOfferCard(
+            offer: loyalty.offers[i],
             balance: loyalty.balance,
-            pending: state.redemptionsPending.contains(loyalty.rewards[i].id),
-            onRedeem: () {
-              onRedeem(loyalty.rewards[i]);
+            pending: state.discountClaimsPending.contains(loyalty.offers[i].id),
+            onClaim: () {
+              onClaim(loyalty.offers[i]);
             },
           ),
-          if (i != loyalty.rewards.length - 1) const SizedBox(height: 10),
+          if (i != loyalty.offers.length - 1) const SizedBox(height: 10),
+        ],
+        if (loyalty.claims.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const _SectionHeader(
+            title: 'My vouchers',
+            description: 'Claimed discounts for future bookings.',
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < loyalty.claims.length; i++) ...[
+            _VoucherCard(claim: loyalty.claims[i]),
+            if (i != loyalty.claims.length - 1) const SizedBox(height: 10),
+          ],
         ],
       ],
     );
   }
 }
 
-class _RewardCard extends StatelessWidget {
-  const _RewardCard({
-    required this.reward,
+class _DiscountOfferCard extends StatelessWidget {
+  const _DiscountOfferCard({
+    required this.offer,
     required this.balance,
     required this.pending,
-    required this.onRedeem,
+    required this.onClaim,
   });
 
-  final LoyaltyReward reward;
-  final int balance;
+  final LoyaltyDiscountOffer offer;
+  final double balance;
   final bool pending;
-  final VoidCallback onRedeem;
+  final VoidCallback onClaim;
 
   @override
   Widget build(BuildContext context) {
-    final c = context.srColors;
-
-    final affordable =
-        reward.canAfford(balance) && reward.active && !reward.isOutOfStock;
-
-    final remaining = reward.pointsCost - balance;
+    final affordable = offer.canAfford(balance) && offer.active;
+    final remaining = offer.requiredPoints - balance;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -675,32 +718,30 @@ class _RewardCard extends StatelessWidget {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _RewardDetails(reward: reward),
+                    _DiscountOfferDetails(offer: offer),
                     const SizedBox(height: 14),
-                    _RewardAction(
-                      reward: reward,
+                    _DiscountOfferAction(
                       balance: balance,
                       affordable: affordable,
                       pending: pending,
                       remaining: remaining,
                       fullWidth: true,
-                      onRedeem: onRedeem,
+                      onClaim: onClaim,
                     ),
                   ],
                 )
               : Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(child: _RewardDetails(reward: reward)),
+                    Expanded(child: _DiscountOfferDetails(offer: offer)),
                     const SizedBox(width: 18),
-                    _RewardAction(
-                      reward: reward,
+                    _DiscountOfferAction(
                       balance: balance,
                       affordable: affordable,
                       pending: pending,
                       remaining: remaining,
                       fullWidth: false,
-                      onRedeem: onRedeem,
+                      onClaim: onClaim,
                     ),
                   ],
                 ),
@@ -710,10 +751,10 @@ class _RewardCard extends StatelessWidget {
   }
 }
 
-class _RewardDetails extends StatelessWidget {
-  const _RewardDetails({required this.reward});
+class _DiscountOfferDetails extends StatelessWidget {
+  const _DiscountOfferDetails({required this.offer});
 
-  final LoyaltyReward reward;
+  final LoyaltyDiscountOffer offer;
 
   @override
   Widget build(BuildContext context) {
@@ -730,7 +771,7 @@ class _RewardDetails extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
-          child: Icon(Icons.card_giftcard_rounded, size: 20, color: c.brand),
+          child: Icon(Icons.local_offer_rounded, size: 20, color: c.brand),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -738,15 +779,15 @@ class _RewardDetails extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                reward.name,
+                offer.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: sans(13.5, w: 600, color: c.text),
               ),
-              if (reward.description.trim().isNotEmpty) ...[
+              if (offer.description.trim().isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(
-                  reward.description,
+                  offer.description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: SrType.bodySm(color: c.textMuted),
@@ -759,10 +800,26 @@ class _RewardDetails extends StatelessWidget {
                   Icon(Icons.stars_rounded, size: 15, color: c.brand),
                   const SizedBox(width: 4),
                   Text(
-                    '${reward.pointsCost} points',
+                    '${formatPoints(offer.requiredPoints)} points',
                     style: sans(11.5, w: 600, color: c.brand),
                   ),
+                  const SizedBox(width: 10),
+                  Icon(Icons.sell_rounded, size: 15, color: c.textMuted),
+                  const SizedBox(width: 4),
+                  Text(
+                    offer.valueLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SrType.caption(color: c.textMuted),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                '${offer.scopeLabel} · until ${offer.validUntil.month}/${offer.validUntil.day}/${offer.validUntil.year}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SrType.caption(color: c.textMuted),
               ),
             ],
           ),
@@ -772,24 +829,22 @@ class _RewardDetails extends StatelessWidget {
   }
 }
 
-class _RewardAction extends StatelessWidget {
-  const _RewardAction({
-    required this.reward,
+class _DiscountOfferAction extends StatelessWidget {
+  const _DiscountOfferAction({
     required this.balance,
     required this.affordable,
     required this.pending,
     required this.remaining,
     required this.fullWidth,
-    required this.onRedeem,
+    required this.onClaim,
   });
 
-  final LoyaltyReward reward;
-  final int balance;
+  final double balance;
   final bool affordable;
   final bool pending;
-  final int remaining;
+  final double remaining;
   final bool fullWidth;
-  final VoidCallback onRedeem;
+  final VoidCallback onClaim;
 
   @override
   Widget build(BuildContext context) {
@@ -798,13 +853,7 @@ class _RewardAction extends StatelessWidget {
     String? status;
 
     if (!pending && !affordable) {
-      if (!reward.active) {
-        status = 'Inactive';
-      } else if (reward.isOutOfStock) {
-        status = 'Out of stock';
-      } else {
-        status = 'Need ${remaining > 0 ? remaining : 0} more points';
-      }
+      status = 'Need ${formatPoints(remaining > 0 ? remaining : 0)} more points';
     }
 
     final content = Column(
@@ -813,10 +862,10 @@ class _RewardAction extends StatelessWidget {
           : CrossAxisAlignment.end,
       children: [
         SrButton(
-          label: pending ? 'Redeeming…' : 'Redeem',
+          label: pending ? 'Claiming…' : 'Claim',
           kind: SrButtonKind.primary,
           dense: true,
-          onPressed: affordable && !pending ? onRedeem : null,
+          onPressed: affordable && !pending ? onClaim : null,
         ),
         if (status != null) ...[
           const SizedBox(height: 5),
@@ -836,6 +885,68 @@ class _RewardAction extends StatelessWidget {
     }
 
     return content;
+  }
+}
+
+class _VoucherCard extends StatelessWidget {
+  const _VoucherCard({required this.claim});
+
+  final LoyaltyDiscountClaim claim;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srColors;
+    return SrCard(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: claim.status.tone.tint,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.confirmation_number_rounded,
+                size: 18, color: claim.status.tone.ink),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  claim.offerName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: sans(13, w: 600, color: c.text),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${claim.valueLabel} · ${claim.scopeLabel}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SrType.caption(color: c.textMuted),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Valid until ${claim.expiryDate.month}/${claim.expiryDate.day}/${claim.expiryDate.year}',
+                  style: SrType.caption(color: c.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          SrStatusChip(
+            label: claim.status.label,
+            tone: claim.status.tone,
+            dense: true,
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -901,7 +1012,7 @@ class _EarnRuleCard extends StatelessWidget {
   const _EarnRuleCard({required this.type, required this.points});
 
   final LoyaltyTransactionType type;
-  final int points;
+  final double points;
 
   @override
   Widget build(BuildContext context) {
@@ -942,7 +1053,10 @@ class _EarnRuleCard extends StatelessWidget {
               color: c.brand.withValues(alpha: .08),
               borderRadius: BorderRadius.circular(100),
             ),
-            child: Text('+$points', style: mono(11, w: 600, color: c.brand)),
+            child: Text(
+              '+${formatPoints(points)}',
+              style: mono(11, w: 600, color: c.brand),
+            ),
           ),
         ],
       ),

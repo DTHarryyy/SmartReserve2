@@ -133,13 +133,12 @@ class FilterBar extends StatelessWidget {
   }
 
   Widget _buildCompact(BuildContext context, BoxConstraints constraints) {
-    final searchChildren = children
-        .where((child) => child is FilterSearch)
-        .toList();
+    final searchChildren = children.whereType<FilterSearch>().toList();
 
-    final filterChildren = children
-        .where((child) => child is! FilterSearch)
-        .toList();
+    final filterChildren = [
+      for (final child in children)
+        if (child is! FilterSearch) child,
+    ];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
