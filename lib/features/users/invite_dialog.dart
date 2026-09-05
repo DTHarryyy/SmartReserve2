@@ -186,14 +186,14 @@ class _InviteDialogState extends State<_InviteDialog> {
         ),
       const SizedBox(height: SR.space12),
       SrLabel(
-        'Note in the invitation',
+        'Admin note',
         meta: Text('optional', style: SrType.caption()),
       ),
       SrTextField(
         controller: _note,
         placeholder:
             'e.g. You will handle external client bookings from August.',
-        semanticLabel: 'Note in the invitation',
+        semanticLabel: 'Admin note',
         fontSize: 12.5,
         minLines: 2,
         maxLines: 4,

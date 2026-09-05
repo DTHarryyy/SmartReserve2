@@ -152,10 +152,7 @@ class _CardCover extends StatelessWidget {
     fit: StackFit.expand,
     children: [
       if (data.coverPhoto == null)
-        FacilityCoverArt(
-          hue: data.placeholderHue,
-          glyph: data.placeholderIcon,
-        )
+        FacilityCoverArt(hue: data.placeholderHue, glyph: data.placeholderIcon)
       else
         FacilityPhotoImage(photo: data.coverPhoto!),
       Positioned(
@@ -166,7 +163,9 @@ class _CardCover extends StatelessWidget {
           spacing: SR.space6,
           runSpacing: SR.space6,
           children: [
-            _CoverChip(label: data.category.isEmpty ? 'Facility' : data.category),
+            _CoverChip(
+              label: data.category.isEmpty ? 'Facility' : data.category,
+            ),
             if (data.statusLabel != 'Active')
               _CoverChip(label: data.statusLabel, dot: data.statusTone.solid),
           ],
@@ -275,9 +274,7 @@ class _CardBody extends StatelessWidget {
         Container(
           padding: const EdgeInsets.only(top: 10),
           decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: context.srColors.divider),
-            ),
+            border: Border(top: BorderSide(color: context.srColors.divider)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,11 +340,7 @@ class _CardBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(17, 16, 17, 17),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          variableContent,
-          if (bounded) const Spacer(),
-          bottomContent,
-        ],
+        children: [variableContent, if (bounded) const Spacer(), bottomContent],
       ),
     );
   }

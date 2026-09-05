@@ -11,6 +11,7 @@ import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 import 'invite_dialog.dart';
+import 'organization_accounts_dialog.dart';
 import 'user_detail_dialog.dart';
 
 import '../../theme/sr_theme.dart';
@@ -37,11 +38,7 @@ class _UsersScreenState extends State<UsersScreen> {
   static List<ColSpec> _columns(bool external) => <ColSpec>[
     const ColSpec('PERSON', flex: 4),
     const ColSpec('ROLE', flex: 3, hide: ColumnHide.small),
-    ColSpec(
-      external ? 'ACCESS' : 'VERIFICATION',
-      width: 120,
-      hide: ColumnHide.small,
-    ),
+    const ColSpec('ACCESS', width: 120, hide: ColumnHide.small),
     const ColSpec('RESERVATIONS', width: 96, hide: ColumnHide.medium),
     ColSpec(
       external ? 'LAST RESERVATION' : 'LAST ACTIVE',
@@ -110,13 +107,24 @@ class _UsersScreenState extends State<UsersScreen> {
               actions: [
                 if (state.isInternalAdmin)
                   SrButton(
-                    label: 'Invite administrator',
+                    label: 'Organization accounts',
                     icon: const Icon(
-                      Icons.person_add_alt_1_rounded,
+                      Icons.account_tree_rounded,
                       size: SR.iconMd,
                       color: SR.onDark,
                     ),
                     kind: SrButtonKind.primary,
+                    onPressed: () =>
+                        showOrganizationAccountsDialog(context, state),
+                  ),
+                if (state.isInternalAdmin)
+                  SrButton(
+                    label: 'Create administrator',
+                    icon: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      size: SR.iconMd,
+                      color: SR.primary,
+                    ),
                     onPressed: () => showInviteDialog(context, state),
                   ),
               ],
@@ -419,11 +427,28 @@ class _UsersScreenState extends State<UsersScreen> {
             style: sans(12, color: context.srColors.ink3),
           ),
           Text(
-            account.unit,
+            account.hasOrganizationSlot
+                ? account.organizationLabel
+                : account.unit,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: sans(10, color: context.srColors.muted),
           ),
+          if (!account.role.isAdmin &&
+              account.verification == VerificationState.verified)
+            Text(
+              account.hasOrganizationSlot
+                  ? account.organizationSlotLabel ?? 'Authorized representative'
+                  : 'Needs organization representative assignment',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: sans(
+                10,
+                color: account.hasOrganizationSlot
+                    ? context.srColors.greenDark
+                    : context.srColors.amber,
+              ),
+            ),
         ],
       ),
       Align(
@@ -431,8 +456,8 @@ class _UsersScreenState extends State<UsersScreen> {
         child: state.isExternalAdmin
             ? const SrStatusChip(label: 'Paying client', tone: SrTone.warning)
             : SrStatusChip(
-                label: account.verification.label,
-                tone: account.verification.tone,
+                label: account.accountAccessType.label,
+                tone: _accessTone(account),
               ),
       ),
       Text(
@@ -503,8 +528,8 @@ class _UserCompactCard extends StatelessWidget {
         children: [
           SrFactChip(label: 'Role', value: account.role.label),
           SrFactChip(
-            label: external ? 'Access' : 'Verification',
-            value: external ? 'Paying client' : account.verification.label,
+            label: 'Access',
+            value: external ? 'Paying client' : account.accountAccessType.label,
           ),
           SrFactChip(
             label: 'Reservations',
@@ -518,3 +543,10 @@ class _UserCompactCard extends StatelessWidget {
     ],
   );
 }
+
+SrTone _accessTone(Account account) => switch (account.accountAccessType) {
+  AccountAccessType.organizationRepresentative => SrTone.success,
+  AccountAccessType.externalGuest => SrTone.warning,
+  AccountAccessType.administrator => SrTone.neutral,
+  AccountAccessType.legacyUnassigned => SrTone.warning,
+};

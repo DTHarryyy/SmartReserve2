@@ -75,10 +75,8 @@ LoyaltySummary seedLoyalty({String userId = 'u5'}) {
     lifetimeRedeemed: 0,
     rules: const {
       'booking_completed': LoyaltyPoints.bookingCompleted,
-      'booking_duration_1_to_4_hours':
-          LoyaltyPoints.bookingDuration1To4Hours,
-      'booking_duration_5_plus_hours':
-          LoyaltyPoints.bookingDuration5PlusHours,
+      'booking_duration_1_to_4_hours': LoyaltyPoints.bookingDuration1To4Hours,
+      'booking_duration_5_plus_hours': LoyaltyPoints.bookingDuration5PlusHours,
       'booking_with_amenity': LoyaltyPoints.bookingWithAmenity,
       'feedback_submitted': LoyaltyPoints.feedbackSubmitted,
     },

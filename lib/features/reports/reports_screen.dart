@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../model/notice.dart';
+import '../../model/payment.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
@@ -59,10 +60,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final selectedCategory = _selectedCategory;
     final loadState = state.reportState;
     final stateSnapshot = loadState.snapshot;
-    final snapshot =
-        (stateSnapshot?.hasSameSelection(_scope()) ?? false)
-            ? stateSnapshot
-            : null;
+    final snapshot = (stateSnapshot?.hasSameSelection(_scope()) ?? false)
+        ? stateSnapshot
+        : null;
     final stale = loadState is ReportStale && snapshot != null;
     final utilisation = state.usesDemoData
         ? utilisationFor(
@@ -108,8 +108,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
               loadState is ReportInitialLoading &&
               snapshot == null)
             _skeletons(split),
-          if (utilisation != null && heatmap != null && performance != null) ...[
+          if (utilisation != null &&
+              heatmap != null &&
+              performance != null) ...[
             _utilisation(state, utilisation, snapshot, stale: stale),
+            if (snapshot != null) _revenue(state, snapshot, stale: stale),
             if (split)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,10 +153,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String? get _selectedCategory =>
       _category == 'All categories' ? null : _category;
 
-  ReportScope _scope() => ReportScope.forRange(
-    _range,
-    category: _selectedCategory,
-  );
+  ReportScope _scope() =>
+      ReportScope.forRange(_range, category: _selectedCategory);
 
   void _changeRange(AppState state, String label) {
     final next = ReportRange.values.firstWhere((range) => range.label == label);
@@ -370,7 +371,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _staleCard(AppState state, ReportStale stale) => _alertCard(
     tone: AdvisoryTone.warn,
-    title: 'Showing the last verified report from ${_reportTimestamp(stale.snapshot.generatedAt)}.',
+    title:
+        'Showing the last verified report from ${_reportTimestamp(stale.snapshot.generatedAt)}.',
     body:
         '${stale.failure.explanation}\nSupport reference: ${stale.failure.supportReference}',
     actions: [
@@ -533,12 +535,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ReportSnapshot? snapshot, {
     required bool stale,
   }) {
-    final totalBooked = snapshot?.bookedHours ??
+    final totalBooked =
+        snapshot?.bookedHours ??
         rows.fold<double>(0, (total, row) => total + row.bookedHours);
-    final totalAvailable = snapshot?.availableHours ??
+    final totalAvailable =
+        snapshot?.availableHours ??
         rows.fold<double>(0, (total, row) => total + row.availableHours);
     final fraction =
-        snapshot?.fraction ?? (totalAvailable == 0 ? 0.0 : totalBooked / totalAvailable);
+        snapshot?.fraction ??
+        (totalAvailable == 0 ? 0.0 : totalBooked / totalAvailable);
     return _section(
       number: '01',
       title: 'Utilisation',
@@ -584,7 +589,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ],
           const SizedBox(height: 14),
           if (rows.isEmpty)
-            _empty('No active facilities are in this report scope.')
+            _empty('No available facilities are in this report scope.')
           else
             for (final row in rows)
               _UtilisationRow(
@@ -644,6 +649,93 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  Widget _revenue(
+    AppState state,
+    ReportSnapshot snapshot, {
+    required bool stale,
+  }) {
+    final revenue = snapshot.revenue;
+    return _section(
+      number: '02',
+      title: 'Revenue',
+      caption: 'Verified cash basis',
+      stale: stale,
+      tooltip:
+          'Gross collections use verified payment time. Refunds use refund time when present.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SrCellGrid(
+            columns: 4,
+            children: [
+              SrKeyCell(
+                label: 'GROSS COLLECTIONS',
+                value: pesoFromCentavos(revenue.grossVerifiedCentavos),
+              ),
+              SrKeyCell(
+                label: 'REFUNDS',
+                value: pesoFromCentavos(revenue.refundsCentavos),
+              ),
+              SrKeyCell(
+                label: 'NET REVENUE',
+                value: pesoFromCentavos(revenue.netRevenueCentavos),
+              ),
+              SrKeyCell(
+                label: 'OUTSTANDING',
+                value: pesoFromCentavos(revenue.outstandingCentavos),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _sectionExportButton(
+            () => _exportSectionText(
+              state,
+              baseName: 'smartreserve-financial-report',
+              label: 'Financial CSV',
+              contents: revenueCsv(
+                snapshot,
+                exportedBy: state.currentAdmin.name,
+                stale: state.reportState is ReportStale,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (snapshot.monthlyStatistics.isEmpty)
+            _empty('No monthly statistics are available for this scope.')
+          else
+            for (final row in snapshot.monthlyStatistics)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 96,
+                      child: Text(
+                        _monthLabel(row.monthStart),
+                        style: mono(11, w: 600),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${row.submittedReservations} submitted · '
+                        '${row.completedOccurrences} completed · '
+                        '${formatUtilisationPercent(row.utilisationFraction)} used',
+                        style: SrType.bodySm(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      pesoFromCentavos(row.netRevenueCentavos),
+                      style: mono(11, w: 600),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
   Widget _occurrenceTable(List<ReportBookedOccurrence> rows) {
     final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
     return Column(
@@ -662,10 +754,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _occurrenceRow(
-    ReportBookedOccurrence row, {
-    required bool compact,
-  }) {
+  Widget _occurrenceRow(ReportBookedOccurrence row, {required bool compact}) {
     final starts = campusWallTime(row.startsAt);
     final ends = campusWallTime(row.endsAt);
     final values = [
@@ -684,7 +773,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ReportSnapshot? snapshot, {
     required bool stale,
   }) {
-    final rows = snapshot?.bookedOccurrences ?? const <ReportBookedOccurrence>[];
+    final rows =
+        snapshot?.bookedOccurrences ?? const <ReportBookedOccurrence>[];
     final filtered = _demandSelection == null
         ? rows
         : rows.where(_demandSelection!.matches).toList();
@@ -754,7 +844,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           _HeatCell(
                             count: heatmap.cells[day][block],
                             peak: heatmap.peak,
-                            selected: _demandSelection?.day == day + 1 &&
+                            selected:
+                                _demandSelection?.day == day + 1 &&
                                 _demandSelection?.hour ==
                                     int.parse(heatmap.hours[block]),
                             label:
@@ -766,8 +857,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 day + 1,
                                 int.parse(heatmap.hours[block]),
                               );
-                              _demandSelection =
-                                  _demandSelection == next ? null : next;
+                              _demandSelection = _demandSelection == next
+                                  ? null
+                                  : next;
                             }),
                           ),
                       ],
@@ -934,43 +1026,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _adminRow(
     ApprovalPerformance performance,
     ({String? id, String who, int decisions, double median}) admin,
-  ) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 130,
-              child: Text(
-                admin.who,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500),
-              ),
-            ),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Stack(
-                  children: [
-                    Container(height: 7, color: context.srColors.divider),
-                    FractionallySizedBox(
-                      widthFactor:
-                          (admin.decisions / performance.perAdmin.first.decisions)
-                              .clamp(0.05, 1.0),
-                      child: Container(height: 7, color: SR.primary),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text('${admin.decisions}', style: mono(10.5)),
-            const SizedBox(width: 10),
-            Text(_durationLabel(admin.median), style: mono(10.5)),
-          ],
+  ) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 130,
+          child: Text(
+            admin.who,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: sans(11.5, w: 500),
+          ),
         ),
-      );
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Stack(
+              children: [
+                Container(height: 7, color: context.srColors.divider),
+                FractionallySizedBox(
+                  widthFactor:
+                      (admin.decisions / performance.perAdmin.first.decisions)
+                          .clamp(0.05, 1.0),
+                  child: Container(height: 7, color: SR.primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text('${admin.decisions}', style: mono(10.5)),
+        const SizedBox(width: 10),
+        Text(_durationLabel(admin.median), style: mono(10.5)),
+      ],
+    ),
+  );
 
   Widget _qualityDivider() => Padding(
     padding: const EdgeInsets.only(bottom: 12),
@@ -988,11 +1079,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   );
 
   Widget _quality(AppState state, List<QualityIssue> issues) {
-    final sorted = [...issues]..sort((a, b) {
-      final severity = a.severity.index.compareTo(b.severity.index);
-      if (severity != 0) return severity;
-      return a.facility.name.compareTo(b.facility.name);
-    });
+    final sorted = [...issues]
+      ..sort((a, b) {
+        final severity = a.severity.index.compareTo(b.severity.index);
+        if (severity != 0) return severity;
+        return a.facility.name.compareTo(b.facility.name);
+      });
     int count(QualitySeverity severity) =>
         issues.where((issue) => issue.severity == severity).length;
     return _section(
@@ -1175,10 +1267,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 const SizedBox(width: 16),
                 SizedBox(
                   width: 150,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: action,
-                  ),
+                  child: Align(alignment: Alignment.centerRight, child: action),
                 ),
               ],
             ),
@@ -1188,11 +1277,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _qualityFacility(QualityIssue issue) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
-        issue.facility.name,
-        softWrap: true,
-        style: sans(12, w: 600),
-      ),
+      Text(issue.facility.name, softWrap: true, style: sans(12, w: 600)),
       const SizedBox(height: 5),
       SrPill(
         label: issue.severity.label,
@@ -1215,22 +1300,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
     String label,
     String value, {
     bool muted = false,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: keyLabel),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: sans(
-              11.5,
-              height: 1.45,
-              color: muted ? context.srColors.muted : null,
-            ),
-          ),
-        ],
-      );
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: keyLabel),
+      const SizedBox(height: 4),
+      Text(
+        value,
+        style: sans(
+          11.5,
+          height: 1.45,
+          color: muted ? context.srColors.muted : null,
+        ),
+      ),
+    ],
+  );
 
   Widget _tableHeader(List<String> labels) => Container(
     padding: const EdgeInsets.symmetric(vertical: 7),
@@ -1390,6 +1474,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return '${formatCampusDate(local)} ${_clock(local)}';
   }
 
+  String _monthLabel(DateTime value) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = campusWallTime(value);
+    return '${months[local.month - 1]} ${local.year}';
+  }
+
   String _relativeFreshness(DateTime generatedAt) {
     final delta = DateTime.now().difference(generatedAt);
     if (delta.inMinutes < 1) return 'just now';
@@ -1401,8 +1504,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String _clock(DateTime value) =>
       '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
 
-  String _durationLabel(double value) =>
-      value < 24 ? '${value.round()} h' : '${(value / 24).toStringAsFixed(1)} d';
+  String _durationLabel(double value) => value < 24
+      ? '${value.round()} h'
+      : '${(value / 24).toStringAsFixed(1)} d';
 
   String _weekday(int day) => const [
     'Monday',

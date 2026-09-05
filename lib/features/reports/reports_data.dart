@@ -8,7 +8,8 @@ import '../../util/campus_calendar.dart';
 enum ReportRange {
   week('Last 7 days', 1),
   month('Last 30 days', 4),
-  semester('This semester', 18);
+  semester('This semester', 18),
+  last12Months('Last 12 months', 52);
 
   const ReportRange(this.label, this.weeks);
 
@@ -41,6 +42,9 @@ class ReportScope {
       ReportRange.month => end.subtract(const Duration(days: 30)),
       ReportRange.semester => campusInstant(
         DateTime(end.month >= 8 ? end.year : end.year - 1, 8, 1),
+      ),
+      ReportRange.last12Months => campusInstant(
+        DateTime(end.year, end.month - 11, 1),
       ),
     };
     return ReportScope(range: range, from: start, to: end, category: category);
@@ -86,6 +90,8 @@ class ReportSnapshot {
     required this.bookedOccurrences,
     required this.demand,
     required this.performance,
+    required this.revenue,
+    required this.monthlyStatistics,
   });
 
   final ReportScope scope;
@@ -97,6 +103,8 @@ class ReportSnapshot {
   final List<ReportBookedOccurrence> bookedOccurrences;
   final List<ReportDemandCell> demand;
   final ReportPerformance performance;
+  final ReportRevenue revenue;
+  final List<MonthlyStatistic> monthlyStatistics;
 
   factory ReportSnapshot.fromJson(
     Map<String, dynamic> json, {
@@ -109,7 +117,7 @@ class ReportSnapshot {
         );
       }
       final version = _integer(json, 'contract_version', min: 1);
-      if (version != 2) {
+      if (version != 3) {
         throw const ReportContractException(
           ReportContractFailureCode.unsupportedVersion,
         );
@@ -206,6 +214,13 @@ class ReportSnapshot {
         bookedOccurrences: occurrences,
         demand: demand,
         performance: ReportPerformance.fromJson(_map(json, 'performance')),
+        revenue: ReportRevenue.fromJson(_map(json, 'revenue')),
+        monthlyStatistics: _parseList(
+          json,
+          'monthly_statistics',
+          ReportContractFailureCode.invalidResponse,
+          (row) => MonthlyStatistic.fromJson(_asMap(row, 'monthly statistic')),
+        ),
       );
     } on ReportContractException {
       rethrow;
@@ -562,6 +577,71 @@ enum QualitySeverity {
   const QualitySeverity(this.label);
 
   final String label;
+}
+
+class ReportRevenue {
+  const ReportRevenue({
+    required this.grossVerifiedCentavos,
+    required this.refundsCentavos,
+    required this.netRevenueCentavos,
+    required this.outstandingCentavos,
+    required this.verifiedPaymentCount,
+    required this.paidReservationCount,
+  });
+
+  final int grossVerifiedCentavos;
+  final int refundsCentavos;
+  final int netRevenueCentavos;
+  final int outstandingCentavos;
+  final int verifiedPaymentCount;
+  final int paidReservationCount;
+
+  factory ReportRevenue.fromJson(Map<String, dynamic> json) => ReportRevenue(
+    grossVerifiedCentavos: _integer(json, 'gross_verified_centavos', min: 0),
+    refundsCentavos: _integer(json, 'refunds_centavos', min: 0),
+    netRevenueCentavos: _integer(json, 'net_revenue_centavos'),
+    outstandingCentavos: _integer(json, 'outstanding_centavos', min: 0),
+    verifiedPaymentCount: _integer(json, 'verified_payment_count', min: 0),
+    paidReservationCount: _integer(json, 'paid_reservation_count', min: 0),
+  );
+}
+
+class MonthlyStatistic {
+  const MonthlyStatistic({
+    required this.monthStart,
+    required this.submittedReservations,
+    required this.confirmedReservations,
+    required this.completedOccurrences,
+    required this.bookedHours,
+    required this.utilisationFraction,
+    required this.grossVerifiedCentavos,
+    required this.refundsCentavos,
+    required this.netRevenueCentavos,
+  });
+
+  final DateTime monthStart;
+  final int submittedReservations;
+  final int confirmedReservations;
+  final int completedOccurrences;
+  final double bookedHours;
+  final double utilisationFraction;
+  final int grossVerifiedCentavos;
+  final int refundsCentavos;
+  final int netRevenueCentavos;
+
+  factory MonthlyStatistic.fromJson(
+    Map<String, dynamic> json,
+  ) => MonthlyStatistic(
+    monthStart: _date(json, 'month_start'),
+    submittedReservations: _integer(json, 'submitted_reservations', min: 0),
+    confirmedReservations: _integer(json, 'confirmed_reservations', min: 0),
+    completedOccurrences: _integer(json, 'completed_occurrences', min: 0),
+    bookedHours: _number(json, 'booked_hours', min: 0),
+    utilisationFraction: _number(json, 'utilisation_fraction', min: 0, max: 1),
+    grossVerifiedCentavos: _integer(json, 'gross_verified_centavos', min: 0),
+    refundsCentavos: _integer(json, 'refunds_centavos', min: 0),
+    netRevenueCentavos: _integer(json, 'net_revenue_centavos'),
+  );
 }
 
 enum QualityIssueType {

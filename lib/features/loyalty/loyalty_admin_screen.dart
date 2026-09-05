@@ -114,19 +114,19 @@ class _LoyaltyAdminScreenState extends State<LoyaltyAdminScreen> {
                   0 => _BalancesTab(state: state, search: _search),
                   1 => const _ExternalDiscountCatalog(),
                   _ => _VouchersTab(
-                      state: state,
-                      search: _voucherSearch,
-                      selectedStatus: _voucherStatus,
-                      onStatusChanged: (status) {
-                        setState(() => _voucherStatus = status);
-                        state.refreshLoyaltyAdminClaims(
-                          search: _voucherSearch.text,
-                          status: status == 'all'
-                              ? null
-                              : LoyaltyDiscountClaimStatus.fromRaw(status),
-                        );
-                      },
-                    ),
+                    state: state,
+                    search: _voucherSearch,
+                    selectedStatus: _voucherStatus,
+                    onStatusChanged: (status) {
+                      setState(() => _voucherStatus = status);
+                      state.refreshLoyaltyAdminClaims(
+                        search: _voucherSearch.text,
+                        status: status == 'all'
+                            ? null
+                            : LoyaltyDiscountClaimStatus.fromRaw(status),
+                      );
+                    },
+                  ),
                 },
               ),
             ],
@@ -350,10 +350,12 @@ class _BalanceDetailDialogState extends State<_BalanceDetailDialog> {
           animation: AppScope.of(context),
           builder: (context, _) {
             final state = AppScope.of(context);
-            final ledger = state.loyaltyLedgerByUser[widget.row.userId] ??
+            final ledger =
+                state.loyaltyLedgerByUser[widget.row.userId] ??
                 const <LoyaltyTransaction>[];
-            final ledgerLoading =
-                state.loyaltyLedgerLoading.contains(widget.row.userId);
+            final ledgerLoading = state.loyaltyLedgerLoading.contains(
+              widget.row.userId,
+            );
             final ledgerError = state.loyaltyLedgerErrors[widget.row.userId];
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -456,9 +458,8 @@ class _BalanceDetailDialogState extends State<_BalanceDetailDialog> {
                         else if (ledgerError != null)
                           SrErrorState(
                             message: ledgerError,
-                            onRetry: () => state.refreshLoyaltyLedger(
-                              widget.row.userId,
-                            ),
+                            onRetry: () =>
+                                state.refreshLoyaltyLedger(widget.row.userId),
                           )
                         else if (ledger.isEmpty)
                           const ListEmptyState(
@@ -519,7 +520,8 @@ class _LedgerTile extends StatelessWidget {
                   _shortDateTime(transaction.createdAt),
                   style: SrType.caption(color: c.textMuted),
                 ),
-                if (transaction.type == LoyaltyTransactionType.adminAdjustment &&
+                if (transaction.type ==
+                        LoyaltyTransactionType.adminAdjustment &&
                     transaction.actorId != null)
                   Text(
                     'Actor ${transaction.actorId}',
@@ -768,67 +770,66 @@ class _ExternalDiscountCatalog extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Expanded(
-          child:
-              state.loyaltyDiscountOffersLoading && offers.isEmpty
-                  ? ListView(
-                      children: const [
-                        SkeletonRow(columns: _discountColumns, leadWidth: 30),
-                        SkeletonRow(columns: _discountColumns, leadWidth: 30),
-                        SkeletonRow(columns: _discountColumns, leadWidth: 30),
-                      ],
-                    )
-                  : state.loyaltyDiscountOffersError != null && offers.isEmpty
-                  ? SrErrorState(
-                      message: state.loyaltyDiscountOffersError!,
-                      onRetry: () => state.refreshLoyaltyDiscountOffers(),
-                    )
-                  : offers.isEmpty
-                  ? const ListEmptyState(
-                      icon: Icons.local_offer_rounded,
-                      title: 'No discounts yet',
-                      body:
-                          'Create the first loyalty discount for guest-priced renters.',
-                    )
-                  : SingleChildScrollView(
-                      child: RecordTable(
-                        columns: _discountColumns,
-                        children: [
-                          for (final offer in offers)
-                            RecordRow(
-                              columns: _discountColumns,
-                              onTap: () => _openEditor(context, state, offer),
-                              compactChild: _CompactDiscountCard(offer: offer),
-                              cells: [
-                                Text(
-                                  offer.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(offer.valueLabel, style: mono(12)),
-                                Text(
-                                  formatPoints(offer.requiredPoints),
-                                  style: mono(12),
-                                ),
-                                Text(
-                                  offer.scopeLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: mono(12),
-                                ),
-                                SrToggle(
-                                  value: offer.active,
-                                  label: offer.active ? 'Active' : 'Inactive',
-                                  onChanged: (value) => state
-                                      .setLoyaltyDiscountOfferActive(
-                                        offer.id,
-                                        value,
-                                      ),
-                                ),
-                              ],
+          child: state.loyaltyDiscountOffersLoading && offers.isEmpty
+              ? ListView(
+                  children: const [
+                    SkeletonRow(columns: _discountColumns, leadWidth: 30),
+                    SkeletonRow(columns: _discountColumns, leadWidth: 30),
+                    SkeletonRow(columns: _discountColumns, leadWidth: 30),
+                  ],
+                )
+              : state.loyaltyDiscountOffersError != null && offers.isEmpty
+              ? SrErrorState(
+                  message: state.loyaltyDiscountOffersError!,
+                  onRetry: () => state.refreshLoyaltyDiscountOffers(),
+                )
+              : offers.isEmpty
+              ? const ListEmptyState(
+                  icon: Icons.local_offer_rounded,
+                  title: 'No discounts yet',
+                  body:
+                      'Create the first loyalty discount for guest-priced renters.',
+                )
+              : SingleChildScrollView(
+                  child: RecordTable(
+                    columns: _discountColumns,
+                    children: [
+                      for (final offer in offers)
+                        RecordRow(
+                          columns: _discountColumns,
+                          onTap: () => _openEditor(context, state, offer),
+                          compactChild: _CompactDiscountCard(offer: offer),
+                          cells: [
+                            Text(
+                              offer.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                        ],
-                      ),
-                    ),
+                            Text(offer.valueLabel, style: mono(12)),
+                            Text(
+                              formatPoints(offer.requiredPoints),
+                              style: mono(12),
+                            ),
+                            Text(
+                              offer.scopeLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: mono(12),
+                            ),
+                            SrToggle(
+                              value: offer.active,
+                              label: offer.active ? 'Active' : 'Inactive',
+                              onChanged: (value) =>
+                                  state.setLoyaltyDiscountOfferActive(
+                                    offer.id,
+                                    value,
+                                  ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
         ),
       ],
     );
@@ -1000,14 +1001,16 @@ class _DiscountEditorDialogState extends State<_DiscountEditorDialog> {
     final initialDate = validFrom
         ? _validFromDate
         : (_validUntilDate.isBefore(_validFromDate)
-            ? _validFromDate
-            : _validUntilDate);
+              ? _validFromDate
+              : _validUntilDate);
     final picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
       firstDate: validFrom ? DateTime(now.year - 5) : _validFromDate,
       lastDate: DateTime(now.year + 10, 12, 31),
-      helpText: validFrom ? 'Choose valid from date' : 'Choose valid until date',
+      helpText: validFrom
+          ? 'Choose valid from date'
+          : 'Choose valid until date',
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -1145,7 +1148,8 @@ class _DiscountEditorDialogState extends State<_DiscountEditorDialog> {
       _validationErrorCount = fieldErrors;
       if (fieldErrors > 0) {
         final fieldWord = fieldErrors == 1 ? 'field' : 'fields';
-        _error = 'Please fix $fieldErrors highlighted $fieldWord before saving.';
+        _error =
+            'Please fix $fieldErrors highlighted $fieldWord before saving.';
       }
     });
 
@@ -1180,7 +1184,8 @@ class _DiscountEditorDialogState extends State<_DiscountEditorDialog> {
     if (ok) {
       Navigator.of(context).pop();
     } else {
-      final message = widget.state.loyaltyDiscountOfferSaveError ??
+      final message =
+          widget.state.loyaltyDiscountOfferSaveError ??
           'That discount could not be saved. Please review the fields and try again.';
       setState(() => _applyServerError(message));
       _focusFirstInvalid();
@@ -1489,10 +1494,7 @@ class _DiscountFormSectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
-    child: Text(
-      label,
-      style: sans(12, w: 700, color: context.srColors.text),
-    ),
+    child: Text(label, style: sans(12, w: 700, color: context.srColors.text)),
   );
 }
 
@@ -1681,10 +1683,7 @@ class _DiscountDateField extends StatelessWidget {
 }
 
 class _DiscountStatusToggle extends StatelessWidget {
-  const _DiscountStatusToggle({
-    required this.active,
-    required this.onChanged,
-  });
+  const _DiscountStatusToggle({required this.active, required this.onChanged});
 
   final bool active;
   final ValueChanged<bool> onChanged;
@@ -1705,10 +1704,7 @@ class _DiscountStatusToggle extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: sans(12, height: 1.35, color: c.text),
-            ),
+            child: Text(label, style: sans(12, height: 1.35, color: c.text)),
           ),
           const SizedBox(width: 12),
           SrToggle(value: active, label: label, onChanged: onChanged),

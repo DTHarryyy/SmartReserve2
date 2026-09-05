@@ -14,7 +14,11 @@ import '../../theme/sr_theme.dart';
 /// the reviewing administrator's lane and assigned facilities. Never used to
 /// automatically reject, cancel, suspend, or ban a renter.
 class RiskSummaryCard extends StatelessWidget {
-  const RiskSummaryCard({super.key, required this.state, required this.requestId});
+  const RiskSummaryCard({
+    super.key,
+    required this.state,
+    required this.requestId,
+  });
 
   final AppState state;
   final String requestId;
@@ -36,10 +40,14 @@ class RiskSummaryCard extends StatelessWidget {
     bool backgroundUpdating,
   ) {
     if (summary.lastEvaluatedAt == null) {
-      return backgroundUpdating ? 'Updating · not yet evaluated' : 'Not yet evaluated';
+      return backgroundUpdating
+          ? 'Updating · not yet evaluated'
+          : 'Not yet evaluated';
     }
     final relative = _relative(summary.lastEvaluatedAt!);
-    return backgroundUpdating ? 'Updating · last evaluated $relative' : 'Evaluated $relative';
+    return backgroundUpdating
+        ? 'Updating · last evaluated $relative'
+        : 'Evaluated $relative';
   }
 
   @override
@@ -74,7 +82,8 @@ class RiskSummaryCard extends StatelessWidget {
     // should not block the already-readable data underneath it.
     final stalled =
         summary.evaluationStalled || state.riskSummaryPollExhausted(requestId);
-    final backgroundUpdating = (loading || summary.evaluationPending) && !stalled;
+    final backgroundUpdating =
+        (loading || summary.evaluationPending) && !stalled;
 
     return PanelCard(
       child: Column(

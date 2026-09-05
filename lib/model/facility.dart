@@ -7,7 +7,7 @@ import 'payment.dart';
 
 enum PinConfidence {
   verified('verified', 'VERIFIED', SrTone.success),
-  needsCheck('needs check', 'NEEDS CHECK', SrTone.warning),
+  needsCheck('needs_check', 'NEEDS CHECK', SrTone.warning),
   none('no pin', 'NO PIN', SrTone.neutral);
 
   const PinConfidence(this.raw, this.label, this.tone);
@@ -22,8 +22,36 @@ enum PinConfidence {
       values.firstWhere((p) => p.raw == raw, orElse: () => PinConfidence.none);
 }
 
+enum FacilityLocationReviewStatus {
+  noPin('no_pin', 'NO PIN', SrTone.neutral),
+  needsReview('needs_review', 'NEEDS REVIEW', SrTone.warning),
+  verified('verified', 'VERIFIED', SrTone.success),
+  verifiedException('verified_exception', 'VERIFIED EXCEPTION', SrTone.info),
+  rejected('rejected', 'REJECTED', SrTone.error);
+
+  const FacilityLocationReviewStatus(this.raw, this.label, this.tone);
+
+  final String raw;
+  final String label;
+  final SrTone tone;
+
+  bool get isVerified =>
+      this == FacilityLocationReviewStatus.verified ||
+      this == FacilityLocationReviewStatus.verifiedException;
+
+  bool get needsAdminReview =>
+      this == FacilityLocationReviewStatus.needsReview ||
+      this == FacilityLocationReviewStatus.rejected ||
+      this == FacilityLocationReviewStatus.noPin;
+
+  static FacilityLocationReviewStatus fromRaw(String? raw) => values.firstWhere(
+    (status) => status.raw == raw,
+    orElse: () => FacilityLocationReviewStatus.noPin,
+  );
+}
+
 enum FacilityState {
-  active('Active', SrTone.success),
+  active('Available', SrTone.success),
   underReview('Under review', SrTone.info),
   maintenance('Maintenance', SrTone.warning),
   draft('Draft', SrTone.neutral);
@@ -152,6 +180,12 @@ class Facility {
     this.downPaymentPercent = 50,
     this.ratingAverage,
     this.ratingCount = 0,
+    this.mapFeatureId,
+    this.locationReviewStatus = FacilityLocationReviewStatus.noPin,
+    this.locationValidationDistanceM,
+    this.locationReviewNote = '',
+    this.locationOverrideReason = '',
+    this.locationReviewVersion = 1,
   });
 
   final String id;
@@ -218,8 +252,21 @@ class Facility {
   /// itself (see the migration header for why).
   double? ratingAverage;
   int ratingCount;
+  String? mapFeatureId;
+  FacilityLocationReviewStatus locationReviewStatus;
+  double? locationValidationDistanceM;
+  String locationReviewNote;
+  String locationOverrideReason;
+  int locationReviewVersion;
 
   bool get hasRatings => ratingCount > 0;
+  bool get hasVerifiedLocation => locationReviewStatus.isVerified;
+  bool get needsLocationReview => locationReviewStatus.needsAdminReview;
+  String get locationReviewLabel => locationReviewStatus.label;
+  SrTone get locationReviewTone => locationReviewStatus.tone;
+  String get locationDistanceLabel => locationValidationDistanceM == null
+      ? 'Distance not checked'
+      : '${locationValidationDistanceM!.round()} m from map feature';
   String get ratingLabel => hasRatings
       ? '${ratingAverage!.toStringAsFixed(1)} ★ · $ratingCount ${ratingCount == 1 ? 'review' : 'reviews'}'
       : 'No reviews yet';

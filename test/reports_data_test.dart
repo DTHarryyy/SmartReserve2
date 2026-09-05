@@ -13,16 +13,12 @@ void main() {
   );
 
   Map<String, dynamic> validPayload() => {
-    'contract_version': 2,
+    'contract_version': 3,
     'from': scope.from.toUtc().toIso8601String(),
     'to': scope.to.toUtc().toIso8601String(),
     'category': scope.category,
     'generated_at': '2030-01-02T00:05:00Z',
-    'summary': {
-      'booked_hours': 2,
-      'available_hours': 10,
-      'fraction': .2,
-    },
+    'summary': {'booked_hours': 2, 'available_hours': 10, 'fraction': .2},
     'utilisation': [
       {
         'facility_id': 'facility-1',
@@ -67,6 +63,27 @@ void main() {
         },
       ],
     },
+    'revenue': {
+      'gross_verified_centavos': 250000,
+      'refunds_centavos': 50000,
+      'net_revenue_centavos': 200000,
+      'outstanding_centavos': 75000,
+      'verified_payment_count': 2,
+      'paid_reservation_count': 1,
+    },
+    'monthly_statistics': [
+      {
+        'month_start': '2030-01-01T00:00:00+08:00',
+        'submitted_reservations': 3,
+        'confirmed_reservations': 2,
+        'completed_occurrences': 1,
+        'booked_hours': 2,
+        'utilisation_fraction': .2,
+        'gross_verified_centavos': 250000,
+        'refunds_centavos': 50000,
+        'net_revenue_centavos': 200000,
+      },
+    ],
   };
 
   ReportContractFailureCode parseFailure(Map<String, dynamic> payload) {
@@ -78,7 +95,7 @@ void main() {
     fail('Expected a report contract failure.');
   }
 
-  test('parses a valid contract-version-2 payload', () {
+  test('parses a valid contract-version-3 payload with revenue', () {
     final snapshot = ReportSnapshot.fromJson(
       validPayload(),
       expectedScope: scope,
@@ -87,24 +104,20 @@ void main() {
     expect(snapshot.bookedHours, 2);
     expect(snapshot.availableHours, 10);
     expect(snapshot.demand, hasLength(49));
+    expect(snapshot.revenue.netRevenueCentavos, 200000);
+    expect(snapshot.monthlyStatistics.single.completedOccurrences, 1);
   });
 
   test('rejects an unsupported contract version', () {
     final payload = validPayload()..['contract_version'] = 1;
 
-    expect(
-      parseFailure(payload),
-      ReportContractFailureCode.unsupportedVersion,
-    );
+    expect(parseFailure(payload), ReportContractFailureCode.unsupportedVersion);
   });
 
   test('rejects a missing contract version as unsupported', () {
     final payload = validPayload()..remove('contract_version');
 
-    expect(
-      parseFailure(payload),
-      ReportContractFailureCode.unsupportedVersion,
-    );
+    expect(parseFailure(payload), ReportContractFailureCode.unsupportedVersion);
   });
 
   test('rejects a scope mismatch', () {
@@ -147,20 +160,14 @@ void main() {
     final payload = validPayload();
     (payload['utilisation'] as List).first['fraction'] = .7;
 
-    expect(
-      parseFailure(payload),
-      ReportContractFailureCode.unreconciledTotals,
-    );
+    expect(parseFailure(payload), ReportContractFailureCode.unreconciledTotals);
   });
 
   test('rejects summary and occurrence reconciliation failures', () {
     final payload = validPayload();
     (payload['summary'] as Map)['booked_hours'] = 3;
 
-    expect(
-      parseFailure(payload),
-      ReportContractFailureCode.unreconciledTotals,
-    );
+    expect(parseFailure(payload), ReportContractFailureCode.unreconciledTotals);
   });
 
   group('quality issue rules', () {
@@ -223,19 +230,18 @@ void main() {
         ),
       ]);
 
-      expect(
-        issues.map((issue) => issue.type).toList(),
-        [
-          QualityIssueType.missingPin,
-          QualityIssueType.pinOutsideCampus,
-          QualityIssueType.lowCoordinateAccuracy,
-          QualityIssueType.missingPhotos,
-        ],
-      );
-      expect(
-        issues.map((issue) => issue.actionLabel).toList(),
-        ['Add pin', 'Correct pin', 'Improve precision', 'Add photos'],
-      );
+      expect(issues.map((issue) => issue.type).toList(), [
+        QualityIssueType.missingPin,
+        QualityIssueType.pinOutsideCampus,
+        QualityIssueType.lowCoordinateAccuracy,
+        QualityIssueType.missingPhotos,
+      ]);
+      expect(issues.map((issue) => issue.actionLabel).toList(), [
+        'Add pin',
+        'Correct pin',
+        'Improve precision',
+        'Add photos',
+      ]);
     });
   });
 }
@@ -246,27 +252,26 @@ Facility _facility({
   required PinConfidence pinConfidence,
   required int? accuracy,
   int photoCount = 3,
-}) =>
-    Facility(
-      id: name.toLowerCase().replaceAll(' ', '-'),
-      name: name,
-      room: 'T-101',
-      building: 'College of Information and Computing Sciences',
-      category: 'Classroom',
-      capacity: 30,
-      pinConfidence: pinConfidence,
-      state: FacilityState.active,
-      floor: 'Ground floor',
-      coords: coords,
-      accuracy: accuracy,
-      description: 'Test facility',
-      amenities: const [],
-      hours: '07:00-19:00',
-      days: 'Mon-Fri',
-      approvalRequired: true,
-      maxDuration: '4 hours',
-      advance: '30 days ahead',
-      updated: 'Test',
-      bookings: 0,
-      photoCount: photoCount,
-    );
+}) => Facility(
+  id: name.toLowerCase().replaceAll(' ', '-'),
+  name: name,
+  room: 'T-101',
+  building: 'College of Information and Computing Sciences',
+  category: 'Classroom',
+  capacity: 30,
+  pinConfidence: pinConfidence,
+  state: FacilityState.active,
+  floor: 'Ground floor',
+  coords: coords,
+  accuracy: accuracy,
+  description: 'Test facility',
+  amenities: const [],
+  hours: '07:00-19:00',
+  days: 'Mon-Fri',
+  approvalRequired: true,
+  maxDuration: '4 hours',
+  advance: '30 days ahead',
+  updated: 'Test',
+  bookings: 0,
+  photoCount: photoCount,
+);

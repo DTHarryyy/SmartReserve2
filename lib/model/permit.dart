@@ -59,6 +59,9 @@ class ReservationPermit {
     this.approvedByRole,
     this.approvedAt,
     this.storagePath,
+    this.pdfSha256,
+    this.pdfByteSize,
+    this.pdfGeneratedAt,
     this.voidedAt,
     this.voidReason,
   });
@@ -92,6 +95,9 @@ class ReservationPermit {
   final String? approvedByRole;
   final DateTime? approvedAt;
   final String? storagePath;
+  final String? pdfSha256;
+  final int? pdfByteSize;
+  final DateTime? pdfGeneratedAt;
   final DateTime? voidedAt;
   final String? voidReason;
 
@@ -151,6 +157,11 @@ class ReservationPermit {
           ? null
           : DateTime.parse('${snapshot['approved_at']}'),
       storagePath: json['storage_path'] as String?,
+      pdfSha256: json['pdf_sha256'] as String?,
+      pdfByteSize: (json['pdf_byte_size'] as num?)?.toInt(),
+      pdfGeneratedAt: json['pdf_generated_at'] == null
+          ? null
+          : DateTime.parse('${json['pdf_generated_at']}'),
       voidedAt: json['voided_at'] == null
           ? null
           : DateTime.parse('${json['voided_at']}'),

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,19 +5,15 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
-import '../../model/notice.dart';
 import '../../model/verification.dart';
 
 enum AuthStep {
-  signUp,
   signIn,
-  otp,
+  initialPassword,
+  accessRequired,
   question,
   details,
   pending,
-  forgot,
-  reset,
-  newPassword,
   guest,
   member,
 }
@@ -83,13 +77,10 @@ class AuthController extends ChangeNotifier {
   AuthController(this._state) {
     _hadSession = _state.hasSession;
     _state.addListener(_handleAppStateChanged);
-    if (_state.hasSession && !_state.isAdmin) {
+    final profile = _state.sessionProfile;
+    if (_state.hasSession && !_state.isAdmin && profile != null) {
       submissionId = _state.myVerification?.id;
-      step = _state.myVerification != null
-          ? AuthStep.pending
-          : (_state.sessionProfile?.onboardingComplete ?? false)
-          ? AuthStep.member
-          : AuthStep.question;
+      step = _nextStepFor(profile);
     }
   }
 
@@ -98,30 +89,33 @@ class AuthController extends ChangeNotifier {
   late bool _hadSession;
 
   AuthStep step = AuthStep.signIn;
-  final fullNameField = TextEditingController();
   final emailField = TextEditingController();
   final passwordField = TextEditingController();
   final confirmPasswordField = TextEditingController();
-  final otpField = TextEditingController();
   final idField = TextEditingController();
   final unitField = TextEditingController();
   CampusClaim claim = CampusClaim.student;
   SelectedDocument? document;
   String? submissionId;
-  String? fullNameError;
   String? emailError;
   String? passwordError;
   String? confirmPasswordError;
   String? idError;
   String? unitError;
-  String? otpError;
   String? documentError;
   String? operationError;
   bool busy = false;
-  int resendSeconds = 0;
-  Timer? _resendTimer;
 
   SmartReserveBackend? get _backend => _state.backend;
+
+  AuthStep _nextStepFor(SessionProfile profile) {
+    if (profile.mustChangePassword) return AuthStep.initialPassword;
+    if (profile.accountAccessType == 'legacy_unassigned') {
+      return AuthStep.accessRequired;
+    }
+    if (_state.myVerification != null) return AuthStep.pending;
+    return profile.onboardingComplete ? AuthStep.member : AuthStep.question;
+  }
 
   VerificationSubmission? get submission {
     final id = submissionId;
@@ -145,13 +139,10 @@ class AuthController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _resendTimer?.cancel();
     _state.removeListener(_handleAppStateChanged);
-    fullNameField.dispose();
     emailField.dispose();
     passwordField.dispose();
     confirmPasswordField.dispose();
-    otpField.dispose();
     idField.dispose();
     unitField.dispose();
     super.dispose();
@@ -161,13 +152,11 @@ class AuthController extends ChangeNotifier {
 
   void goTo(AuthStep next) {
     step = next;
-    fullNameError = null;
     emailError = null;
     passwordError = null;
     confirmPasswordError = null;
     idError = null;
     unitError = null;
-    otpError = null;
     documentError = null;
     operationError = null;
     notifyListeners();
@@ -178,13 +167,9 @@ class AuthController extends ChangeNotifier {
   }
 
   void resetToSignIn() {
-    _resendTimer?.cancel();
-    resendSeconds = 0;
-    fullNameField.clear();
     emailField.clear();
     passwordField.clear();
     confirmPasswordField.clear();
-    otpField.clear();
     idField.clear();
     unitField.clear();
     document = null;
@@ -242,12 +227,8 @@ class AuthController extends ChangeNotifier {
 
   bool _validateCredentials({
     required bool requirePassword,
-    bool requireName = false,
     bool enforceNewPasswordLength = true,
   }) {
-    fullNameError = !requireName || fullNameField.text.trim().isNotEmpty
-        ? null
-        : 'Enter your full name.';
     emailError = _emailPattern.hasMatch(emailField.text.trim())
         ? null
         : 'Enter a valid email address.';
@@ -259,22 +240,7 @@ class AuthController extends ChangeNotifier {
         ? 'Use at least 10 characters.'
         : null;
     notifyListeners();
-    return fullNameError == null && emailError == null && passwordError == null;
-  }
-
-  Future<void> submitSignUp() async {
-    if (!_validateCredentials(requirePassword: true, requireName: true)) return;
-    await _perform(() async {
-      final backend = _backend;
-      if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.signUp(
-        fullName: fullNameField.text.trim(),
-        email: emailField.text.trim(),
-        password: passwordField.text,
-      );
-      goTo(AuthStep.otp);
-      _startResendCooldown();
-    });
+    return emailError == null && passwordError == null;
   }
 
   Future<void> submitSignIn() async {
@@ -294,36 +260,37 @@ class AuthController extends ChangeNotifier {
         throw StateError('The signed-in account has no profile.');
       }
       await _state.applyBackendProfile(profile);
-      if (!_state.isAdmin &&
-          !(_state.sessionProfile?.onboardingComplete ?? false)) {
-        goTo(AuthStep.question);
+      if (!_state.isAdmin) {
+        passwordField.clear();
+        confirmPasswordField.clear();
+        goTo(_nextStepFor(profile));
       }
     });
   }
 
-  Future<void> confirmOtp() async {
-    if (otpField.text.trim().length != 6) {
-      otpError = 'Enter the six-digit code from your email.';
+  Future<void> submitInitialPassword() async {
+    if (!passwordMeetsRequirements) {
+      passwordError = 'Your password does not meet all requirements.';
       notifyListeners();
       return;
     }
+    if (confirmPasswordField.text != passwordField.text) {
+      confirmPasswordError = 'Enter the same new password again.';
+      notifyListeners();
+      return;
+    }
+    passwordError = null;
+    confirmPasswordError = null;
     await _perform(() async {
       final backend = _backend;
       if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.confirmSignup(emailField.text.trim(), otpField.text.trim());
-      await _state.applyBackendProfile(await backend.currentProfile());
-      goTo(AuthStep.question);
-    }, otp: true);
-  }
-
-  Future<void> resendCode() async {
-    if (busy || resendSeconds > 0) return;
-    await _perform(() async {
-      final backend = _backend;
-      if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.resendSignup(emailField.text.trim());
-      _state.showToast(const ToastMessage('A new confirmation code was sent.'));
-      _startResendCooldown();
+      final profile = await backend.completeInitialPasswordChange(
+        passwordField.text,
+      );
+      passwordField.clear();
+      confirmPasswordField.clear();
+      await _state.applyBackendProfile(profile);
+      if (!_state.isAdmin) goTo(_nextStepFor(profile));
     });
   }
 
@@ -334,7 +301,9 @@ class AuthController extends ChangeNotifier {
 
   Future<void> continueFromQuestion() async {
     if (claim.needsVerification) {
-      goTo(AuthStep.details);
+      operationError =
+          'Campus reservations are managed through one authorized representative account per organization or office. Contact your Internal Admin for access.';
+      notifyListeners();
       return;
     }
     await _perform(() async {
@@ -438,91 +407,9 @@ class AuthController extends ChangeNotifier {
     });
   }
 
-  Future<void> sendReset() async {
-    if (!_validateCredentials(requirePassword: false)) return;
-    await _perform(() async {
-      final backend = _backend;
-      if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.sendRecovery(emailField.text.trim());
-      goTo(AuthStep.reset);
-      _startResendCooldown();
-    });
-  }
-
-  Future<void> resendResetCode() async {
-    if (busy || resendSeconds > 0) return;
-    await _perform(() async {
-      final backend = _backend;
-      if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.sendRecovery(emailField.text.trim());
-      _state.showToast(const ToastMessage('A new reset code was sent.'));
-      _startResendCooldown();
-    });
-  }
-
-  void _startResendCooldown() {
-    _resendTimer?.cancel();
-    resendSeconds = 30;
-    notifyListeners();
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (resendSeconds <= 1) {
-        resendSeconds = 0;
-        timer.cancel();
-      } else {
-        resendSeconds--;
-      }
-      notifyListeners();
-    });
-  }
-
-  Future<void> verifyResetCode() async {
-    if (otpField.text.trim().length != 6) {
-      otpError = 'Enter the six-digit code from your email.';
-      notifyListeners();
-      return;
-    }
-    await _perform(() async {
-      final backend = _backend;
-      if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.verifyRecovery(
-        emailField.text.trim(),
-        otpField.text.trim(),
-      );
-      goTo(AuthStep.newPassword);
-    }, otp: true);
-  }
-
-  Future<void> submitNewPassword() async {
-    if (!passwordMeetsRequirements) {
-      passwordError = 'Your password does not meet all requirements.';
-      notifyListeners();
-      return;
-    }
-    if (confirmPasswordField.text != passwordField.text) {
-      confirmPasswordError = 'Enter the same new password again.';
-      notifyListeners();
-      return;
-    }
-    passwordError = null;
-    confirmPasswordError = null;
-    await _perform(() async {
-      final backend = _backend;
-      if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.updatePassword(passwordField.text);
-      await _state.applyBackendProfile(await backend.currentProfile());
-      passwordField.clear();
-      confirmPasswordField.clear();
-      otpField.clear();
-    });
-  }
-
-  Future<void> _perform(
-    Future<void> Function() action, {
-    bool otp = false,
-  }) async {
+  Future<void> _perform(Future<void> Function() action) async {
     busy = true;
     operationError = null;
-    if (otp) otpError = null;
     notifyListeners();
     try {
       await action();
@@ -530,11 +417,7 @@ class AuthController extends ChangeNotifier {
       debugPrint('SmartReserve auth failure: $error');
       debugPrintStack(stackTrace: stackTrace);
       final message = _userMessageFor(error);
-      if (otp) {
-        otpError = message;
-      } else {
-        operationError = message;
-      }
+      operationError = message;
     } finally {
       busy = false;
       notifyListeners();
@@ -543,13 +426,9 @@ class AuthController extends ChangeNotifier {
 
   String _userMessageFor(Object error) {
     final message = error.toString().toLowerCase();
-    if (message.contains('error sending confirmation email') ||
-        message.contains('error sending recovery email')) {
-      return 'We could not send an email right now. Please try again in a moment.';
-    }
-    if (message.contains('email rate limit exceeded') ||
-        message.contains('too many requests')) {
-      return 'Too many emails were requested. Please wait a few minutes before trying again.';
+    if (message.contains('weak_password') ||
+        message.contains('password does not meet')) {
+      return 'Choose a password with at least 10 characters, uppercase, lowercase, and a number.';
     }
     if (message.contains('invalid login credentials')) {
       return 'That email address or password is incorrect.';
@@ -558,17 +437,12 @@ class AuthController extends ChangeNotifier {
       return 'This account is missing its SmartReserve profile. Ask an internal administrator to repair it.';
     }
     if (message.contains('email not confirmed')) {
-      return 'Confirm your email with the six-digit code before signing in.';
+      return 'This account cannot sign in yet. Please tell the prototype administrator.';
     }
-    if (message.contains('token has expired') ||
-        message.contains('token is invalid') ||
-        message.contains('otp expired') ||
-        message.contains('otp is invalid')) {
-      return 'That code is invalid or has expired. Request a new code and try again.';
-    }
-    if (message.contains('user already registered') ||
-        message.contains('already registered')) {
-      return 'An account already exists for this email. Sign in or request another confirmation code.';
+    if (message.contains('organization assignment') ||
+        message.contains('legacy_unassigned') ||
+        message.contains('cannot be converted to a guest')) {
+      return 'This account needs an Internal Admin to assign an organization account before it can reserve.';
     }
     if (message.contains('pgrst201')) {
       return 'Your account was confirmed, but we could not load your account details. Please try again.';

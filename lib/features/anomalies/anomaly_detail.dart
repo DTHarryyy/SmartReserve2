@@ -13,7 +13,8 @@ import '../../theme/sr_theme.dart';
 
 const _falsePositiveReasons = <String, String>{
   'legitimate_recurring_event': 'Legitimate recurring event',
-  'officially_approved_repeated_booking': 'Officially approved repeated booking',
+  'officially_approved_repeated_booking':
+      'Officially approved repeated booking',
   'emergency_cancellation': 'Emergency cancellation',
   'incorrect_attendance_record': 'Incorrect attendance record',
   'duplicate_detection': 'Duplicate detection',
@@ -72,7 +73,11 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
     return '${difference.inDays} days ago';
   }
 
-  Future<void> _transition(String action, {String? reasonCode, String? note}) async {
+  Future<void> _transition(
+    String action, {
+    String? reasonCode,
+    String? note,
+  }) async {
     setState(() => _busy = true);
     final ok = await widget.state.transitionAnomaly(
       anomalyId: widget.anomalyId,
@@ -110,7 +115,9 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
   Widget build(BuildContext context) {
     final state = widget.state;
     if (state.anomalyDetailLoading && state.selectedAnomalyDetail == null) {
-      return const PanelCard(child: SrLoadingState(message: 'Loading anomaly…'));
+      return const PanelCard(
+        child: SrLoadingState(message: 'Loading anomaly…'),
+      );
     }
     if (state.anomalyDetailError case final error?) {
       return PanelCard(
@@ -203,7 +210,10 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
       const SizedBox(height: SR.space12),
       Text('Why was this detected?', style: SrType.label()),
       const SizedBox(height: SR.space4),
-      Text(anomaly.explanation, style: SrType.body(color: context.srColors.ink3)),
+      Text(
+        anomaly.explanation,
+        style: SrType.body(color: context.srColors.ink3),
+      ),
       const SizedBox(height: SR.space12),
       Wrap(
         spacing: SR.space8,
@@ -225,7 +235,10 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
             label: 'Detection mode',
             value: anomaly.isObserve ? 'Observe' : 'Active',
           ),
-          SrFactChip(label: 'Last evaluated', value: _relative(anomaly.lastEvaluatedAt)),
+          SrFactChip(
+            label: 'Last evaluated',
+            value: _relative(anomaly.lastEvaluatedAt),
+          ),
         ],
       ),
     ],
@@ -249,7 +262,8 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
             padding: const EdgeInsets.only(bottom: SR.space8),
             child: Hoverable(
               builder: (context, hovered) => GestureDetector(
-                onTap: () => widget.state.openReservationFromAnomaly(item.requestId),
+                onTap: () =>
+                    widget.state.openReservationFromAnomaly(item.requestId),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: SR.space12,
@@ -315,7 +329,8 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
             items: _falsePositiveReasons.keys.toList(),
             labelOf: (key) => _falsePositiveReasons[key]!,
             onChanged: (value) => setState(
-              () => _falsePositiveReason = value ?? _falsePositiveReasons.keys.first,
+              () => _falsePositiveReason =
+                  value ?? _falsePositiveReasons.keys.first,
             ),
           ),
           const SizedBox(height: SR.space8),
@@ -342,7 +357,9 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
               const SizedBox(width: SR.space8),
               SrButton(
                 label: 'Cancel',
-                onPressed: _busy ? null : () => setState(() => _prompt = _Prompt.none),
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _prompt = _Prompt.none),
               ),
             ],
           ),
@@ -377,14 +394,19 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
                     : () {
                         final note = _noteController.text.trim();
                         unawaited(
-                          _transition('resolve', note: note.isEmpty ? null : note),
+                          _transition(
+                            'resolve',
+                            note: note.isEmpty ? null : note,
+                          ),
                         );
                       },
               ),
               const SizedBox(width: SR.space8),
               SrButton(
                 label: 'Cancel',
-                onPressed: _busy ? null : () => setState(() => _prompt = _Prompt.none),
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _prompt = _Prompt.none),
               ),
             ],
           ),
@@ -400,16 +422,22 @@ class _AnomalyDetailPanelState extends State<AnomalyDetailPanel> {
           SrButton(
             label: _busy ? 'Saving…' : 'Acknowledge',
             kind: SrButtonKind.primary,
-            onPressed: _busy ? null : () => unawaited(_transition('acknowledge')),
+            onPressed: _busy
+                ? null
+                : () => unawaited(_transition('acknowledge')),
           ),
         SrButton(
           label: 'Resolve',
           kind: SrButtonKind.success,
-          onPressed: _busy ? null : () => setState(() => _prompt = _Prompt.resolve),
+          onPressed: _busy
+              ? null
+              : () => setState(() => _prompt = _Prompt.resolve),
         ),
         SrButton(
           label: 'False positive',
-          onPressed: _busy ? null : () => setState(() => _prompt = _Prompt.falsePositive),
+          onPressed: _busy
+              ? null
+              : () => setState(() => _prompt = _Prompt.falsePositive),
         ),
       ],
     );

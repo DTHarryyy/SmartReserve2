@@ -20,7 +20,7 @@ import '../features/reports/reports_data.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/student/student_app.dart';
 import '../features/users/users_screen.dart';
-import '../features/users/invite_dialog.dart';
+import '../features/users/organization_accounts_dialog.dart';
 import '../features/verifications/verifications_screen.dart';
 import '../model/facility.dart';
 import '../model/reservation.dart';
@@ -378,13 +378,13 @@ class _AppShellState extends State<AppShell> {
       label: const Text('Facility'),
     ),
     AppView.users when state.isInternalAdmin => FloatingActionButton.extended(
-      key: const Key('invite-admin-fab'),
-      tooltip: 'Invite administrator',
+      key: const Key('organization-accounts-fab'),
+      tooltip: 'Organization accounts',
       backgroundColor: SR.primary,
       foregroundColor: SR.onDark,
-      onPressed: () => showInviteDialog(context, state),
-      icon: const Icon(Icons.person_add_alt_1_rounded),
-      label: const Text('Invite'),
+      onPressed: () => showOrganizationAccountsDialog(context, state),
+      icon: const Icon(Icons.account_tree_rounded),
+      label: const Text('Org accounts'),
     ),
     _ => null,
   };

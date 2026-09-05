@@ -8,7 +8,7 @@ import 'facility_photo.dart';
 
 enum FacilityStatus {
   active(
-    'Active',
+    'Available',
     SrTone.success,
     'Visible in the catalogue and open for reservations right away.',
   ),
@@ -238,7 +238,9 @@ class FacilityDraft {
       ..category = json['category'] as String? ?? ''
       ..description = json['description'] as String? ?? ''
       ..capacity = json['capacity'] as String? ?? ''
-      ..status = FacilityStatus.fromLabel(json['status'] as String? ?? 'Active')
+      ..status = FacilityStatus.fromLabel(
+        json['status'] as String? ?? 'Available',
+      )
       ..campusName = json['campus'] as String? ?? campus.name
       ..building = json['building'] as String? ?? ''
       ..floor = json['floor'] as String? ?? 'Ground floor'

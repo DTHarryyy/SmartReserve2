@@ -14,10 +14,26 @@ class SrAssistantLogo extends StatelessWidget {
 
   static const assetName = 'assets/chatbot logo.png';
   static const _darkModeBoost = ColorFilter.matrix(<double>[
-    1.08, 0, 0, 0, 12,
-    0, 1.08, 0, 0, 12,
-    0, 0, 1.08, 0, 12,
-    0, 0, 0, 1, 0,
+    1.08,
+    0,
+    0,
+    0,
+    12,
+    0,
+    1.08,
+    0,
+    0,
+    12,
+    0,
+    0,
+    1.08,
+    0,
+    12,
+    0,
+    0,
+    0,
+    1,
+    0,
   ]);
 
   final double size;

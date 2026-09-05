@@ -76,6 +76,23 @@ Future<Uint8List> buildReportPdf({
             ],
         ]),
         pw.SizedBox(height: 16),
+        _sectionTitle('Revenue', semiBold),
+        _revenueGrid(snapshot),
+        if (snapshot.monthlyStatistics.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          _table([
+            ['Month', 'Submitted', 'Completed', 'Utilisation', 'Net revenue'],
+            for (final row in snapshot.monthlyStatistics)
+              [
+                _month(row.monthStart),
+                '${row.submittedReservations}',
+                '${row.completedOccurrences}',
+                '${(row.utilisationFraction * 100).toStringAsFixed(1)}%',
+                _peso(row.netRevenueCentavos),
+              ],
+          ]),
+        ],
+        pw.SizedBox(height: 16),
         _sectionTitle('Demand', semiBold),
         pw.Text('Legend: 0 none, low, medium, and peak demand by count.'),
         pw.SizedBox(height: 6),
@@ -113,11 +130,7 @@ Future<Uint8List> buildReportPdf({
           _table([
             ['Administrator', 'Decisions', 'Median hours'],
             for (final row in snapshot.performance.perAdmin)
-              [
-                row.who,
-                '${row.decisions}',
-                row.median.toStringAsFixed(1),
-              ],
+              [row.who, '${row.decisions}', row.median.toStringAsFixed(1)],
           ]),
         ],
         pw.SizedBox(height: 16),
@@ -138,7 +151,8 @@ Future<Uint8List> buildReportPdf({
           'Utilisation is booked hours divided by available opening hours. '
           'Demand counts booked occurrences in two-hour weekday blocks. '
           'Approval performance measures requester service level from request '
-          'creation to decision.',
+          'creation to decision. Revenue uses verified payment timestamps and '
+          'subtracts refunded transactions.',
           style: const pw.TextStyle(fontSize: 9),
         ),
       ],
@@ -157,9 +171,29 @@ pw.Widget _summaryGrid(ReportSnapshot snapshot) => pw.Table(
   children: [
     pw.TableRow(
       children: [
-        _metric('Overall utilisation', '${(snapshot.fraction * 100).toStringAsFixed(1)}%'),
+        _metric(
+          'Overall utilisation',
+          '${(snapshot.fraction * 100).toStringAsFixed(1)}%',
+        ),
         _metric('Booked hours', snapshot.bookedHours.toStringAsFixed(2)),
         _metric('Available hours', snapshot.availableHours.toStringAsFixed(2)),
+      ],
+    ),
+  ],
+);
+
+pw.Widget _revenueGrid(ReportSnapshot snapshot) => pw.Table(
+  border: pw.TableBorder.all(color: PdfColors.grey400, width: .5),
+  children: [
+    pw.TableRow(
+      children: [
+        _metric(
+          'Gross collections',
+          _peso(snapshot.revenue.grossVerifiedCentavos),
+        ),
+        _metric('Refunds', _peso(snapshot.revenue.refundsCentavos)),
+        _metric('Net revenue', _peso(snapshot.revenue.netRevenueCentavos)),
+        _metric('Outstanding', _peso(snapshot.revenue.outstandingCentavos)),
       ],
     ),
   ],
@@ -185,12 +219,16 @@ pw.Widget _table(List<List<String>> rows) => pw.TableHelper.fromTextArray(
   border: pw.TableBorder.all(color: PdfColors.grey400, width: .4),
 );
 
-String _weekday(int value) => const [
-  'Mon',
-  'Tue',
-  'Wed',
-  'Thu',
-  'Fri',
-  'Sat',
-  'Sun',
-][value - 1];
+String _weekday(int value) =>
+    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][value - 1];
+
+String _peso(int centavos) {
+  final amount = centavos / 100;
+  final whole = amount == amount.roundToDouble();
+  return 'PHP ${amount.toStringAsFixed(whole ? 0 : 2)}';
+}
+
+String _month(DateTime value) {
+  final local = campusWallTime(value);
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}';
+}

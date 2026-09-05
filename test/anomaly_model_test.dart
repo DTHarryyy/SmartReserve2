@@ -12,7 +12,10 @@ void main() {
   group('AnomalyStatus', () {
     test('falls back to open for an unknown raw value', () {
       expect(AnomalyStatus.fromRaw('made_up'), AnomalyStatus.open);
-      expect(AnomalyStatus.fromRaw('false_positive'), AnomalyStatus.falsePositive);
+      expect(
+        AnomalyStatus.fromRaw('false_positive'),
+        AnomalyStatus.falsePositive,
+      );
     });
   });
 
@@ -88,7 +91,9 @@ void main() {
     });
 
     test('observe-mode rows are flagged and never affect risk', () {
-      final anomaly = ReservationAnomaly.fromJson(row(detectionMode: 'observe'));
+      final anomaly = ReservationAnomaly.fromJson(
+        row(detectionMode: 'observe'),
+      );
       expect(anomaly.isObserve, isTrue);
     });
 
@@ -194,12 +199,11 @@ void main() {
             'rule_key': 'repeated_no_show',
           },
         ],
-        'metrics': {
-          'open_count': 4,
-          'high_count': 1,
-          'critical_count': 0,
+        'metrics': {'open_count': 4, 'high_count': 1, 'critical_count': 0},
+        'next_cursor': {
+          'last_detected_at': '2026-08-01T00:00:00Z',
+          'id': 'anomaly-1',
         },
-        'next_cursor': {'last_detected_at': '2026-08-01T00:00:00Z', 'id': 'anomaly-1'},
         'lane': 'external',
       });
 

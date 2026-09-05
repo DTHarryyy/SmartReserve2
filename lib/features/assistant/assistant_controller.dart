@@ -1275,8 +1275,10 @@ class AssistantController extends ChangeNotifier {
     if (p.amenities.isNotEmpty) {
       final accepted = draft.facility == null
           ? p.amenities
-          : normalizeRequestedAmenityLabels(draft.facility!, p.amenities)
-                .toSet();
+          : normalizeRequestedAmenityLabels(
+              draft.facility!,
+              p.amenities,
+            ).toSet();
       final newOnes = accepted.difference(draft.amenities);
       draft.amenities.addAll(accepted);
       if (newOnes.isNotEmpty && draft.facility != null) {
@@ -2092,7 +2094,7 @@ class AssistantController extends ChangeNotifier {
                 fallback:
                     'The price could not be calculated. Please retry before sending.',
               )
-            : 'Open ${facility.name} from Browse to review the exact price and accept the current terms before sending.',
+            : 'Review and accept Terms & Conditions for ${facility.name} before sending. Open the booking sheet from Browse so the exact current policy version is recorded.',
         tone: quote == null ? AdvisoryTone.block : AdvisoryTone.info,
       );
       notifyListeners();

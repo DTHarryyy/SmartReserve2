@@ -137,11 +137,11 @@ class _SideNavState extends State<SideNav> {
                           icon: section.icon,
                           label:
                               state.isExternalAdmin && section == AppView.users
-                                  ? 'Clients'
-                                  : state.isExternalAdmin &&
-                                        section == AppView.loyalty
-                                  ? 'Loyalty'
-                                  : section.crumb,
+                              ? 'Clients'
+                              : state.isExternalAdmin &&
+                                    section == AppView.loyalty
+                              ? 'Loyalty'
+                              : section.crumb,
                           total: _totalFor(section),
                           pending: _pendingFor(section),
                           current: state.view.navSection == section,

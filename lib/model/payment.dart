@@ -16,6 +16,7 @@ enum PaymentPurpose {
 
 enum PaymentDecisionStatus {
   submitted('submitted', 'Submitted'),
+  needsCorrection('needs_correction', 'Needs correction'),
   verified('verified', 'Verified'),
   rejected('rejected', 'Rejected'),
   voided('voided', 'Voided'),
@@ -35,6 +36,7 @@ enum AggregatePaymentStatus {
   notRequired('not_required', 'No payment required'),
   unpaid('unpaid', 'Payment required'),
   submitted('submitted', 'Payment under review'),
+  needsCorrection('needs_correction', 'Payment needs correction'),
   partiallyPaid('partially_paid', 'Partially paid'),
   downPaymentVerified('down_payment_verified', 'Down payment verified'),
   overdue('overdue', 'Overdue'),
@@ -84,6 +86,9 @@ class PaymentTransaction {
     this.verifiedBy,
     this.verifiedAt,
     this.rejectionReason,
+    this.correctionDueAt,
+    this.correctionCount = 0,
+    this.lastCorrectedAt,
   });
 
   final String id;
@@ -98,6 +103,9 @@ class PaymentTransaction {
   final String? verifiedBy;
   final DateTime? verifiedAt;
   final String? rejectionReason;
+  final DateTime? correctionDueAt;
+  final int correctionCount;
+  final DateTime? lastCorrectedAt;
 }
 
 class PaymentSummary {
@@ -112,6 +120,7 @@ class PaymentSummary {
     this.balanceDueAt,
     this.downPaymentPercent = 50,
     this.paymentExemption = 'none',
+    this.correctionAmountCentavos = 0,
   });
 
   final AggregatePaymentStatus status;
@@ -124,6 +133,7 @@ class PaymentSummary {
   final DateTime? balanceDueAt;
   final int downPaymentPercent;
   final String paymentExemption;
+  final int correctionAmountCentavos;
 }
 
 class PriceSnapshotLine {

@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
+import '../../backend/supabase_service.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
@@ -590,23 +592,6 @@ class _DecisionPanelState extends State<DecisionPanel> {
                         if (occurrence.isBooked &&
                             occurrence.stage == BookingStage.booked) ...[
                           SrButton(
-                            label: 'Check in',
-                            dense: true,
-                            onPressed:
-                                campusNow().isBefore(
-                                  occurrence.startsAt.subtract(
-                                    const Duration(minutes: 30),
-                                  ),
-                                )
-                                ? null
-                                : () => widget.state.advanceOccurrenceStage(
-                                    _request,
-                                    occurrence,
-                                    BookingStage.checkedIn,
-                                  ),
-                          ),
-                          const SizedBox(width: 5),
-                          SrButton(
                             label: 'No-show',
                             dense: true,
                             kind: SrButtonKind.danger,
@@ -628,11 +613,12 @@ class _DecisionPanelState extends State<DecisionPanel> {
                             label: 'Complete',
                             dense: true,
                             kind: SrButtonKind.success,
-                            onPressed: () => widget.state.advanceOccurrenceStage(
-                              _request,
-                              occurrence,
-                              BookingStage.completed,
-                            ),
+                            onPressed: () =>
+                                widget.state.advanceOccurrenceStage(
+                                  _request,
+                                  occurrence,
+                                  BookingStage.completed,
+                                ),
                           )
                         else if (occurrence.stage == BookingStage.completed ||
                             occurrence.stage == BookingStage.noShow)
@@ -648,6 +634,14 @@ class _DecisionPanelState extends State<DecisionPanel> {
                     ),
                     if (_correctingOccurrenceId == occurrence.id)
                       _attendanceCorrectionBox(occurrence),
+                    if (occurrence.stage == BookingStage.completed ||
+                        occurrence.stage == BookingStage.noShow)
+                      _UseAssessmentBox(
+                        state: widget.state,
+                        request: _request,
+                        occurrence: occurrence,
+                        existing: _assessmentFor(occurrence.id),
+                      ),
                   ],
                 ),
               ),
@@ -687,52 +681,44 @@ class _DecisionPanelState extends State<DecisionPanel> {
               ],
             ],
           ),
-          if (stage != BookingStage.completed &&
-              stage != BookingStage.noShow) ...[
+          if (stage == BookingStage.checkedIn) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
               child: SrButton(
-                label: stage == BookingStage.booked
-                    ? 'Check in attendees'
-                    : 'Mark completed',
-
-                kind: stage == BookingStage.booked
-                    ? SrButtonKind.primary
-                    : SrButtonKind.success,
+                label: 'Mark completed',
+                kind: SrButtonKind.success,
                 fontSize: 12,
                 minHeight: 40,
                 onPressed: () => widget.state.advanceStage(
                   _request.id,
-                  stage == BookingStage.booked
-                      ? BookingStage.checkedIn
-                      : BookingStage.completed,
+                  BookingStage.completed,
                 ),
               ),
             ),
-            if (stage == BookingStage.booked &&
-                _request.occurrences.isNotEmpty &&
-                campusNow().isAfter(
-                  _request.occurrences.first.startsAt.add(
-                    const Duration(minutes: 15),
-                  ),
-                )) ...[
-              const SizedBox(height: 7),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SrButton(
-                  label: 'Mark no-show',
-                  kind: SrButtonKind.danger,
-                  dense: true,
-                  onPressed: () => widget.state.advanceOccurrenceStage(
-                    _request,
-                    _request.occurrences.first,
-                    BookingStage.noShow,
-                  ),
+          ] else if (stage == BookingStage.booked &&
+              _request.occurrences.isNotEmpty &&
+              campusNow().isAfter(
+                _request.occurrences.first.startsAt.add(
+                  const Duration(minutes: 15),
+                ),
+              )) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SrButton(
+                label: 'Mark no-show',
+                kind: SrButtonKind.danger,
+                dense: true,
+                onPressed: () => widget.state.advanceOccurrenceStage(
+                  _request,
+                  _request.occurrences.first,
+                  BookingStage.noShow,
                 ),
               ),
-            ],
-          ] else ...[
+            ),
+          ] else if (stage == BookingStage.completed ||
+              stage == BookingStage.noShow) ...[
             const SizedBox(height: SR.space12),
             Container(
               padding: const EdgeInsets.symmetric(
@@ -759,14 +745,39 @@ class _DecisionPanelState extends State<DecisionPanel> {
                   dense: true,
                   fontSize: 11,
                   onPressed: () => setState(
-                    () => _correctingOccurrenceId =
-                        _request.occurrences.first.id,
+                    () =>
+                        _correctingOccurrenceId = _request.occurrences.first.id,
                   ),
                 ),
               ),
               if (_correctingOccurrenceId == _request.occurrences.first.id)
                 _attendanceCorrectionBox(_request.occurrences.first),
+              _UseAssessmentBox(
+                state: widget.state,
+                request: _request,
+                occurrence: _request.occurrences.first,
+                existing: _assessmentFor(_request.occurrences.first.id),
+              ),
             ],
+          ] else ...[
+            const SizedBox(height: SR.space12),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SR.space12,
+                vertical: SR.space8 + 3,
+              ),
+              decoration: BoxDecoration(
+                color: context.srColors.surfaceSubtle,
+                borderRadius: BorderRadius.circular(SR.rSm),
+                border: Border.all(color: context.srColors.hairline),
+              ),
+              child: Text(
+                stage == BookingStage.booked
+                    ? 'Waiting for the requester to check in. Admin completion and no-show controls become available after attendance is recorded or the check-in grace period closes.'
+                    : 'Attendance actions are not available yet for this occurrence.',
+                style: SrType.bodySm(color: context.srColors.ink3),
+              ),
+            ),
           ],
         ],
       ),
@@ -776,6 +787,13 @@ class _DecisionPanelState extends State<DecisionPanel> {
   static String _clock(DateTime value) =>
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
+
+  ReservationUseAssessment? _assessmentFor(String occurrenceId) {
+    for (final assessment in _request.useAssessments) {
+      if (assessment.occurrenceId == occurrenceId) return assessment;
+    }
+    return null;
+  }
 
   Widget _attendanceCorrectionBox(ReservationOccurrence occurrence) {
     final targetStage = occurrence.stage == BookingStage.noShow
@@ -1091,6 +1109,214 @@ class _DecisionPanelState extends State<DecisionPanel> {
           ),
       ],
     );
+  }
+}
+
+class _UseAssessmentBox extends StatefulWidget {
+  const _UseAssessmentBox({
+    required this.state,
+    required this.request,
+    required this.occurrence,
+    this.existing,
+  });
+
+  final AppState state;
+  final ReservationRequest request;
+  final ReservationOccurrence occurrence;
+  final ReservationUseAssessment? existing;
+
+  @override
+  State<_UseAssessmentBox> createState() => _UseAssessmentBoxState();
+}
+
+class _UseAssessmentBoxState extends State<_UseAssessmentBox> {
+  late int _cleanliness = widget.existing?.cleanlinessRating ?? 5;
+  late int _equipment = widget.existing?.equipmentConditionRating ?? 5;
+  late bool _leftUnclean = widget.existing?.leftUnclean ?? false;
+  late bool _equipmentDamaged = widget.existing?.equipmentDamaged ?? false;
+  late final TextEditingController _comment = TextEditingController(
+    text: widget.existing?.comment ?? '',
+  );
+  final List<ReservationUpload> _evidence = [];
+  String? _error;
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final existing = widget.existing;
+    final busy = widget.state.reservationActionsPending.contains(
+      'assessment:${widget.occurrence.id}',
+    );
+    return Container(
+      margin: const EdgeInsets.only(top: SR.space8),
+      padding: const EdgeInsets.all(SR.space12),
+      decoration: BoxDecoration(
+        color: context.srColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(SR.rSm),
+        border: Border.all(color: context.srColors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: SR.space8,
+            runSpacing: SR.space6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Post-use assessment', style: SrType.label()),
+              if (existing != null)
+                SrPill(
+                  label: 'Revision ${existing.revision}',
+                  background: context.srColors.dividerSoft,
+                  foreground: context.srColors.ink3,
+                  fontSize: 10.5,
+                ),
+            ],
+          ),
+          const SizedBox(height: SR.space8),
+          Wrap(
+            spacing: SR.space8,
+            runSpacing: SR.space8,
+            children: [
+              _rating('Cleanliness', _cleanliness, (value) {
+                setState(() => _cleanliness = value);
+              }),
+              _rating('Equipment', _equipment, (value) {
+                setState(() => _equipment = value);
+              }),
+            ],
+          ),
+          const SizedBox(height: SR.space8),
+          Wrap(
+            spacing: SR.space8,
+            runSpacing: SR.space6,
+            children: [
+              FilterChip(
+                label: const Text('Left unclean'),
+                selected: _leftUnclean,
+                onSelected: (value) => setState(() => _leftUnclean = value),
+              ),
+              FilterChip(
+                label: const Text('Equipment damaged'),
+                selected: _equipmentDamaged,
+                onSelected: (value) =>
+                    setState(() => _equipmentDamaged = value),
+              ),
+            ],
+          ),
+          const SizedBox(height: SR.space8),
+          TextField(
+            controller: _comment,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Admin feedback to requester',
+              hintText: 'Describe room condition, damage, or clean use.',
+            ),
+          ),
+          const SizedBox(height: SR.space8),
+          Wrap(
+            spacing: SR.space8,
+            runSpacing: SR.space6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SrButton(
+                label: _evidence.isEmpty
+                    ? 'Add evidence photos'
+                    : '${_evidence.length} evidence photo(s)',
+                dense: true,
+                onPressed: busy || _evidence.length >= 3 ? null : _pickEvidence,
+              ),
+              SrButton(
+                label: busy
+                    ? 'Saving...'
+                    : existing == null
+                    ? 'Submit assessment'
+                    : 'Correct assessment',
+                kind: SrButtonKind.primary,
+                dense: true,
+                onPressed: busy ? null : _submit,
+              ),
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: SR.space6),
+            Text(_error!, style: SrType.bodySm(color: context.srColors.red)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _rating(String label, int value, ValueChanged<int> onChanged) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(label, style: SrType.caption()),
+      const SizedBox(width: SR.space6),
+      DropdownButton<int>(
+        value: value,
+        items: [
+          for (var rating = 1; rating <= 5; rating++)
+            DropdownMenuItem(value: rating, child: Text('$rating / 5')),
+        ],
+        onChanged: (next) {
+          if (next != null) onChanged(next);
+        },
+      ),
+    ],
+  );
+
+  Future<void> _pickEvidence() async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png'],
+    );
+    if (file == null) return;
+    final next = <ReservationUpload>[];
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty || bytes.lengthInBytes > 10 * 1024 * 1024) {
+      setState(() => _error = 'Evidence photos must be at most 10 MB.');
+      return;
+    }
+    final extension = file.name.split('.').last.toLowerCase();
+    final mime = switch (extension) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      _ => '',
+    };
+    if (mime.isEmpty) {
+      setState(() => _error = 'Use JPG or PNG evidence photos.');
+      return;
+    }
+    next.add(ReservationUpload(name: file.name, mimeType: mime, bytes: bytes));
+    setState(() {
+      _evidence.addAll(next);
+      _error = null;
+    });
+  }
+
+  Future<void> _submit() async {
+    final text = _comment.text.trim();
+    if ((_leftUnclean || _equipmentDamaged) && text.length < 3) {
+      setState(() => _error = 'Add a comment when reporting a mess or damage.');
+      return;
+    }
+    final ok = await widget.state.submitReservationUseAssessment(
+      request: widget.request,
+      occurrence: widget.occurrence,
+      cleanlinessRating: _cleanliness,
+      equipmentConditionRating: _equipment,
+      leftUnclean: _leftUnclean,
+      equipmentDamaged: _equipmentDamaged,
+      comment: text,
+      evidence: _evidence,
+    );
+    if (ok && mounted) setState(() => _error = null);
   }
 }
 

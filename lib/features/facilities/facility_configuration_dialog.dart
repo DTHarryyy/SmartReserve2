@@ -424,7 +424,6 @@ class _FacilityConfigurationDialogState
       });
     }
   }
-
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

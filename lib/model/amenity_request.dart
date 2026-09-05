@@ -30,9 +30,7 @@ List<String> normalizeRequestedAmenityLabels(
   Facility facility,
   Iterable<String> values,
 ) {
-  final requested = {
-    for (final value in values) _amenityKey(value),
-  };
+  final requested = {for (final value in values) _amenityKey(value)};
   final included = {
     for (final label in includedFacilityAmenities(facility)) _amenityKey(label),
   };

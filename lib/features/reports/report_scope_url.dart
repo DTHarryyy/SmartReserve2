@@ -1,6 +1,7 @@
 import 'reports_data.dart';
 import 'report_scope_url_stub.dart'
-    if (dart.library.html) 'report_scope_url_web.dart' as impl;
+    if (dart.library.html) 'report_scope_url_web.dart'
+    as impl;
 
 class ReportLinkSelection {
   const ReportLinkSelection({
@@ -32,6 +33,7 @@ ReportLinkSelection _selectionFromUri(Uri uri) {
   final range = switch (uri.queryParameters['report_range']) {
     'week' => ReportRange.week,
     'semester' => ReportRange.semester,
+    'last12Months' => ReportRange.last12Months,
     _ => ReportRange.month,
   };
   final category = _clean(uri.queryParameters['report_category']);

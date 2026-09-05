@@ -87,6 +87,8 @@ AppState _externalAdminState() => AppState()
     verificationStatus: 'verified',
     onboardingComplete: true,
     accountStatus: 'active',
+    accountAccessType: 'administrator',
+    mustChangePassword: false,
     createdAt: DateTime(2025, 11),
   );
 
@@ -95,12 +97,7 @@ Future<void> _openNewDiscountDialog(
   AppState state, {
   required Size size,
 }) async {
-  await _pumpScoped(
-    tester,
-    state,
-    const LoyaltyAdminScreen(),
-    size: size,
-  );
+  await _pumpScoped(tester, state, const LoyaltyAdminScreen(), size: size);
   await tester.tap(find.text('Discounts'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('New discount'));
@@ -126,12 +123,15 @@ String _friendlyTestDate(DateTime value) {
 }
 
 void main() {
-  test('loyalty point formatting keeps half-point precision only when needed', () {
-    expect(formatPoints(0.5), '0.5');
-    expect(formatPoints(1), '1');
-    expect(formatPoints(2.5), '2.5');
-    expect(formatPoints(10.0), '10');
-  });
+  test(
+    'loyalty point formatting keeps half-point precision only when needed',
+    () {
+      expect(formatPoints(0.5), '0.5');
+      expect(formatPoints(1), '1');
+      expect(formatPoints(2.5), '2.5');
+      expect(formatPoints(10.0), '10');
+    },
+  );
 
   test('discount labels render fixed and percentage voucher values', () {
     final now = DateTime(2026, 8, 31);
@@ -230,11 +230,7 @@ void main() {
   ) async {
     final state = _externalAdminState();
 
-    await _openNewDiscountDialog(
-      tester,
-      state,
-      size: const Size(1180, 840),
-    );
+    await _openNewDiscountDialog(tester, state, size: const Size(1180, 840));
 
     expect(find.text('Discount details'), findsOneWidget);
     expect(find.textContaining('Discount name'), findsOneWidget);
@@ -265,11 +261,7 @@ void main() {
   ) async {
     final state = _externalAdminState();
 
-    await _openNewDiscountDialog(
-      tester,
-      state,
-      size: const Size(1180, 840),
-    );
+    await _openNewDiscountDialog(tester, state, size: const Size(1180, 840));
 
     final typeTop = tester.getTopLeft(find.textContaining('Discount type')).dy;
     final amountTop = tester
@@ -287,11 +279,7 @@ void main() {
   ) async {
     final state = _externalAdminState();
 
-    await _openNewDiscountDialog(
-      tester,
-      state,
-      size: const Size(430, 760),
-    );
+    await _openNewDiscountDialog(tester, state, size: const Size(430, 760));
 
     final typeTop = tester.getTopLeft(find.textContaining('Discount type')).dy;
     final amountTop = tester
@@ -306,11 +294,7 @@ void main() {
   ) async {
     final state = _externalAdminState();
 
-    await _openNewDiscountDialog(
-      tester,
-      state,
-      size: const Size(1180, 840),
-    );
+    await _openNewDiscountDialog(tester, state, size: const Size(1180, 840));
 
     await tester.tap(find.text('Fixed PHP').last);
     await tester.pumpAndSettle();
@@ -328,11 +312,7 @@ void main() {
     final state = _externalAdminState();
     final now = DateTime.now();
 
-    await _openNewDiscountDialog(
-      tester,
-      state,
-      size: const Size(1180, 840),
-    );
+    await _openNewDiscountDialog(tester, state, size: const Size(1180, 840));
 
     await tester.tap(
       find.text(_friendlyTestDate(DateTime(now.year, now.month, now.day))),
@@ -354,11 +334,7 @@ void main() {
   ) async {
     final state = _externalAdminState();
 
-    await _openNewDiscountDialog(
-      tester,
-      state,
-      size: const Size(1180, 840),
-    );
+    await _openNewDiscountDialog(tester, state, size: const Size(1180, 840));
 
     await tester.tap(find.text('Save discount'));
     await tester.pumpAndSettle();
@@ -442,7 +418,9 @@ void main() {
       size: const Size(1180, 840),
     );
 
-    await tester.tap(find.bySemanticsLabel('View details for ${facility.name}'));
+    await tester.tap(
+      find.bySemanticsLabel('View details for ${facility.name}'),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Facility details'), findsOneWidget);
@@ -474,33 +452,36 @@ void main() {
     expect(find.text('Request this facility'), findsOneWidget);
   });
 
-  testWidgets('unavailable browse card keeps details but disables reserve CTA', (
-    tester,
-  ) async {
-    final state = AppState();
-    final facility = state.facilities.first;
-    facility.state = FacilityState.maintenance;
+  testWidgets(
+    'unavailable browse card keeps details but disables reserve CTA',
+    (tester) async {
+      final state = AppState();
+      final facility = state.facilities.first;
+      facility.state = FacilityState.maintenance;
 
-    await _pumpScoped(
-      tester,
-      state,
-      const StudentApp(),
-      size: const Size(1180, 840),
-    );
+      await _pumpScoped(
+        tester,
+        state,
+        const StudentApp(),
+        size: const Size(1180, 840),
+      );
 
-    final button = tester.widget<SrButton>(
-      find.byKey(ValueKey('facility-card-reserve-${facility.id}')),
-    );
-    expect(button.onPressed, isNull);
+      final button = tester.widget<SrButton>(
+        find.byKey(ValueKey('facility-card-reserve-${facility.id}')),
+      );
+      expect(button.onPressed, isNull);
 
-    await tester.tap(find.bySemanticsLabel('View details for ${facility.name}'));
-    await tester.pumpAndSettle();
-    expect(find.text('Facility details'), findsOneWidget);
-    expect(
-      find.bySemanticsLabel('Reserve now for ${facility.name}'),
-      findsWidgets,
-    );
-  });
+      await tester.tap(
+        find.bySemanticsLabel('View details for ${facility.name}'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Facility details'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Reserve now for ${facility.name}'),
+        findsWidgets,
+      );
+    },
+  );
 
   testWidgets(
     'calendar tab is available for active users in every verification state',

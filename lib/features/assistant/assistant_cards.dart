@@ -15,6 +15,8 @@ import '../../widgets/amenity_request_field.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/sr_assistant_logo.dart';
 import '../../widgets/sr_controls.dart';
+import '../student/booking_sheet.dart';
+import '../student/payment_proof_sheet.dart';
 import 'assistant_availability.dart';
 import 'assistant_controller.dart';
 
@@ -323,6 +325,7 @@ class AssistantReservationCard extends StatelessWidget {
     final state = AppScope.of(context);
     final cancellable = state.canCancelReservation(request);
     final cancelling = state.reservationActionsPending.contains(request.id);
+    final correctionPayment = _paymentNeedingCorrection(request);
     return PanelCard(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -353,6 +356,35 @@ class AssistantReservationCard extends StatelessWidget {
             const SizedBox(height: 6),
             AmenityPills(request.amenities, max: 4),
           ],
+          if (correctionPayment != null) ...[
+            const SizedBox(height: 8),
+            SrButton(
+              label: 'Fix payment proof',
+              kind: SrButtonKind.primary,
+              dense: true,
+              fontSize: 11,
+              onPressed: () => showPaymentProofSheet(
+                context,
+                state: state,
+                request: request,
+                mode: PaymentProofMode.correctionSubmission,
+                correctingPayment: correctionPayment,
+              ),
+            ),
+          ] else if (_canSubmitProof(request)) ...[
+            const SizedBox(height: 8),
+            SrButton(
+              label: 'Submit payment proof',
+              kind: SrButtonKind.primary,
+              dense: true,
+              fontSize: 11,
+              onPressed: () => showPaymentProofSheet(
+                context,
+                state: state,
+                request: request,
+              ),
+            ),
+          ],
           if (cancellable) ...[
             const SizedBox(height: 8),
             SrButton(
@@ -375,6 +407,25 @@ class AssistantReservationCard extends StatelessWidget {
       ),
     );
   }
+
+  PaymentTransaction? _paymentNeedingCorrection(ReservationRequest request) {
+    for (final payment in request.paymentTransactions) {
+      if (payment.status == PaymentDecisionStatus.needsCorrection) {
+        return payment;
+      }
+    }
+    return null;
+  }
+
+  bool _canSubmitProof(ReservationRequest request) =>
+      request.outstandingAmountCentavos > 0 &&
+      (request.lifecycleStatus == ReservationLifecycleStatus.awaitingPayment ||
+          request.lifecycleStatus == ReservationLifecycleStatus.confirmed) &&
+      !request.paymentTransactions.any(
+        (payment) =>
+            payment.status == PaymentDecisionStatus.submitted ||
+            payment.status == PaymentDecisionStatus.needsCorrection,
+      );
 }
 
 class AssistantReservationListView extends StatelessWidget {
@@ -492,14 +543,18 @@ class AssistantConfirmCard extends StatelessWidget {
             Row(
               children: [
                 SrButton(
-                  label: controller.submitting ? 'Sending…' : 'Confirm request',
+                  label: controller.submitting
+                      ? 'Opening…'
+                      : 'Review and accept Terms & Conditions',
                   kind: SrButtonKind.primary,
                   onPressed: controller.submitting
                       ? null
                       : () {
-                          controller.confirm(state).whenComplete(() {
-                            controller.syncHistory();
-                          });
+                          showBookingSheet(
+                            context,
+                            state: state,
+                            facility: facility,
+                          );
                         },
                 ),
                 const SizedBox(width: 8),
