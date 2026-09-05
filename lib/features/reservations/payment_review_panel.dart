@@ -103,6 +103,7 @@ class _PaymentRow extends StatelessWidget {
                 label: payment.status.label,
                 tone: switch (payment.status) {
                   PaymentDecisionStatus.verified => SrTone.success,
+                  PaymentDecisionStatus.needsCorrection => SrTone.warning,
                   PaymentDecisionStatus.rejected => SrTone.error,
                   _ => SrTone.warning,
                 },
@@ -141,7 +142,7 @@ class _PaymentRow extends StatelessWidget {
                         ),
                 ),
                 SrButton(
-                  label: 'Reject',
+                  label: 'Request correction',
                   kind: SrButtonKind.danger,
                   dense: true,
                   onPressed: pending ? null : () => _reject(context),
@@ -166,7 +167,7 @@ class _PaymentRow extends StatelessWidget {
     final reason = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reject payment proof'),
+        title: const Text('Request payment correction'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -187,7 +188,7 @@ class _PaymentRow extends StatelessWidget {
               final value = controller.text.trim();
               if (value.isNotEmpty) Navigator.pop(context, value);
             },
-            child: const Text('Reject proof'),
+            child: const Text('Request correction'),
           ),
         ],
       ),

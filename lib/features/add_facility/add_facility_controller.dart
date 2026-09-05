@@ -1124,7 +1124,7 @@ class AddFacilityController extends ChangeNotifier {
       ..capacity = '${facility.capacity}'
       ..status = FacilityStatus.fromLabel(
         facility.state == FacilityState.underReview
-            ? 'Active'
+            ? 'Available'
             : facility.state.label,
       )
       ..campusName = facility.campusName

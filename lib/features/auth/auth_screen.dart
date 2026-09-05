@@ -159,26 +159,14 @@ class AuthScreen extends StatelessWidget {
   );
 
   List<String> get _progressLabels => switch (controller.step) {
-    AuthStep.signUp ||
-    AuthStep.otp ||
     AuthStep.question ||
     AuthStep.details ||
-    AuthStep.pending => const [
-      '1 Account',
-      '2 Confirm email',
-      '3 Campus status',
-    ],
-    AuthStep.forgot ||
-    AuthStep.reset ||
-    AuthStep.newPassword => const ['1 Email', '2 Reset code', '3 New password'],
+    AuthStep.pending => const ['1 Account', '2 Campus status'],
     _ => const [],
   };
 
   int get _progressIndex => switch (controller.step) {
-    AuthStep.signUp => 0,
-    AuthStep.otp => 1,
-    AuthStep.forgot => 0,
-    AuthStep.reset => 1,
+    AuthStep.question || AuthStep.details || AuthStep.pending => 1,
     _ => 2,
   };
 
@@ -222,103 +210,15 @@ class AuthScreen extends StatelessWidget {
 
   Widget _body(BuildContext context) => AutofillGroup(
     child: switch (controller.step) {
-      AuthStep.signUp => _signUp(context),
       AuthStep.signIn => _signIn(context),
-      AuthStep.otp => _otp(context),
+      AuthStep.initialPassword => _initialPassword(context),
+      AuthStep.accessRequired => _accessRequired(context),
       AuthStep.question => _question(context),
       AuthStep.details => _details(context),
       AuthStep.pending => _pending(context),
-      AuthStep.forgot => _forgot(context),
-      AuthStep.reset => _reset(context),
-      AuthStep.newPassword => _newPassword(context),
       AuthStep.guest => _guest(context),
       AuthStep.member => _member(),
     },
-  );
-
-  Widget _signUp(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _Title('Create your account'),
-      _Lede(
-        'Use the same name shown on your campus document. We will email a six-digit confirmation code.',
-      ),
-      const SizedBox(height: 16),
-      const SrLabel('Full name'),
-      SrTextField(
-        controller: controller.fullNameField,
-        placeholder: 'e.g. Juan Dela Cruz',
-        semanticLabel: 'Full name',
-        hasError: controller.fullNameError != null,
-        textInputAction: TextInputAction.next,
-        autofillHints: const [AutofillHints.name],
-        textCapitalization: TextCapitalization.words,
-      ),
-      SrErrorText(controller.fullNameError),
-      const SizedBox(height: 10),
-      const SrLabel('Email address'),
-      SrTextField(
-        controller: controller.emailField,
-        placeholder: 'e.g. juan.delacruz@example.com',
-        semanticLabel: 'Email address',
-        keyboardType: TextInputType.emailAddress,
-        hasError: controller.emailError != null,
-        textInputAction: TextInputAction.next,
-        autofillHints: const [AutofillHints.newUsername, AutofillHints.email],
-        autocorrect: false,
-      ),
-      SrErrorText(controller.emailError),
-      const SrLabel('Password'),
-      _PasswordField(controller: controller, newPassword: true),
-      const SizedBox(height: 7),
-      Row(
-        children: [
-          for (var i = 0; i < 4; i++) ...[
-            if (i > 0) const SizedBox(width: 4),
-            Expanded(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                height: 3,
-                decoration: BoxDecoration(
-                  color: i < controller.passwordStrength
-                      ? (controller.passwordStrength >= 3
-                            ? SR.green
-                            : SR.orange)
-                      : context.srColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-      const SizedBox(height: 6),
-      Text(
-        controller.passwordNote,
-        style: sans(11, color: context.srColors.muted),
-      ),
-      SrErrorText(controller.passwordError),
-      const SizedBox(height: 16),
-      _submitButton(
-        context,
-        'Send confirmation code',
-        'Creating account…',
-        controller.submitSignUp,
-      ),
-      SrErrorText(controller.operationError),
-      const SizedBox(height: 12),
-      _FooterLink(
-        prefix: 'Already registered?',
-        label: 'Sign in',
-        onTap: () => controller.goTo(AuthStep.signIn),
-      ),
-      const SizedBox(height: 10),
-      Text(
-        'This form produces users only. Administrators are invited by an '
-        'existing internal admin.',
-        style: sans(10.5, height: 1.6, color: context.srColors.mutedLight),
-      ),
-    ],
   );
 
   Widget _signIn(BuildContext context) => Column(
@@ -326,7 +226,7 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('Sign in to SmartReserve'),
       _Lede(
-        'Reserve CSU Aparri facilities and follow every request in one place.',
+        'Organization accounts are issued by an Internal Admin. Contact your organization administrator to request access.',
       ),
 
       const SizedBox(height: 22),
@@ -353,12 +253,11 @@ class AuthScreen extends StatelessWidget {
         onSubmitted: (_) => controller.busy ? null : controller.submitSignIn(),
       ),
 
-      Align(
-        alignment: Alignment.centerLeft,
-        child: _InlineLink(
-          label: 'Forgot password?',
-          onTap: () => controller.goTo(AuthStep.forgot),
-        ),
+      const SizedBox(height: 8),
+
+      Text(
+        'Need a password reset? Contact an Internal Admin. They can issue new temporary credentials.',
+        style: sans(11, height: 1.55, color: context.srColors.muted),
       ),
 
       const SizedBox(height: 12),
@@ -366,75 +265,76 @@ class AuthScreen extends StatelessWidget {
       _submitButton(context, 'Sign in', 'Signing in…', controller.submitSignIn),
 
       SrErrorText(controller.operationError),
-
-      const SizedBox(height: 18),
-
-      Row(
-        children: [
-          Expanded(child: Divider(height: 1, color: context.srColors.hairline)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              'NEW TO SMARTRESERVE?',
-              style: mono(
-                9,
-                w: 500,
-                tracking: .05,
-                color: context.srColors.muted,
-              ),
-            ),
-          ),
-          Expanded(child: Divider(height: 1, color: context.srColors.hairline)),
-        ],
-      ),
-
-      const SizedBox(height: 14),
-
-      _FooterLink(
-        prefix: 'Don\'t have an account?',
-        label: 'Create an account',
-        onTap: () => controller.goTo(AuthStep.signUp),
-      ),
     ],
   );
 
-  Widget _otp(BuildContext context) => Column(
+  Widget _initialPassword(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _Title('Confirm your email'),
+      _Title('Set your account password'),
       _Lede(
-        'Enter the six-digit code sent to '
-        '${_maskedEmail(controller.emailField.text.trim())}. It expires in 15 minutes.',
+        'Your Internal Admin issued temporary credentials. Create a private password before continuing.',
       ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: _InlineLink(
-          label: 'Use another email',
-          onTap: () => controller.goTo(AuthStep.signUp),
-        ),
+      const SizedBox(height: 16),
+      const SrLabel('New password'),
+      _PasswordField(
+        controller: controller,
+        newPassword: true,
+        placeholder: 'Create a private password',
       ),
-      const SizedBox(height: 18),
-      _OtpCells(controller: controller, label: '6-digit confirmation code'),
-      SrErrorText(controller.otpError),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
+      _PasswordRequirements(requirements: controller.passwordRequirements),
+      SrErrorText(controller.passwordError),
+      const SizedBox(height: 10),
+      const SrLabel('Confirm new password'),
+      _PasswordField(
+        controller: controller,
+        fieldController: controller.confirmPasswordField,
+        placeholder: 'Enter the new password again',
+        semanticLabel: 'Confirm new password',
+        hasError: controller.confirmPasswordError != null,
+        onSubmitted: (_) =>
+            controller.busy ? null : controller.submitInitialPassword(),
+      ),
+      SrErrorText(controller.confirmPasswordError),
+      const SizedBox(height: 14),
       _submitButton(
         context,
-        'Confirm and continue',
-        'Confirming code…',
-        controller.confirmOtp,
+        'Save password and continue',
+        'Saving password…',
+        controller.submitInitialPassword,
       ),
-      const SizedBox(height: 12),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _InlineLink(
-            label: controller.resendSeconds > 0
-                ? 'Resend code in ${controller.resendSeconds}s'
-                : 'Resend code',
-            onTap: () => controller.resendCode(),
-            enabled: !controller.busy && controller.resendSeconds == 0,
-          ),
-        ],
+      SrErrorText(controller.operationError),
+    ],
+  );
+
+  Widget _accessRequired(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title('Organization assignment required'),
+      _Lede(
+        'This account can sign in, but it cannot reserve facilities until an Internal Admin assigns it to an authorized organization account or converts it to an external guest account.',
+      ),
+      const SizedBox(height: 14),
+      Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: context.srColors.amberTint,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: context.srColors.amberLine),
+        ),
+        child: Text(
+          'Campus students, faculty, and university staff now book through one named representative per organization or office.',
+          style: sans(11.5, height: 1.6, color: context.srColors.amberTitle),
+        ),
+      ),
+      const SizedBox(height: 14),
+      SrButton(
+        label: 'Sign out',
+        expand: true,
+        minHeight: 44,
+        fontSize: 13,
+        onPressed: controller.busy ? null : state.signOut,
       ),
     ],
   );
@@ -444,9 +344,9 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('How are you connected to CSU Aparri?'),
       _Lede(
-        'Facilities publish separate student, faculty, staff, and guest rates. '
-        'Verification chooses the administrator lane for each new request. '
-        'Answer honestly — the registrar checks campus documents.',
+        'Guest accounts can continue here. Campus reservations are now handled '
+        'through one authorized representative account per organization or '
+        'office; contact your Internal Admin for access.',
       ),
       const SizedBox(height: 16),
       for (final claim in CampusClaim.values)
@@ -693,125 +593,6 @@ class AuthScreen extends StatelessWidget {
     };
   }
 
-  Widget _forgot(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _Title('Reset your password'),
-      _Lede(
-        'We send a six-digit code to your registered email. For your security '
-        'the message is the same whether or not the address exists.',
-      ),
-      const SizedBox(height: 16),
-      const SrLabel('Email address'),
-      SrTextField(
-        controller: controller.emailField,
-        placeholder: 'name@example.com',
-        semanticLabel: 'Email address',
-        keyboardType: TextInputType.emailAddress,
-        hasError: controller.emailError != null,
-        textInputAction: TextInputAction.done,
-        autofillHints: const [AutofillHints.email],
-        autocorrect: false,
-        onSubmitted: (_) => controller.busy ? null : controller.sendReset(),
-      ),
-      SrErrorText(controller.emailError),
-      const SizedBox(height: 14),
-      _submitButton(
-        context,
-        'Send reset code',
-        'Sending reset code…',
-        controller.sendReset,
-      ),
-      SrErrorText(controller.operationError),
-      const SizedBox(height: 12),
-      Center(
-        child: _InlineLink(
-          label: 'Back to sign in',
-          onTap: () => controller.goTo(AuthStep.signIn),
-        ),
-      ),
-    ],
-  );
-
-  Widget _reset(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _Title('Enter your reset code'),
-      _Lede(
-        'We sent a six-digit code to ${_maskedEmail(controller.emailField.text.trim())}.',
-      ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: _InlineLink(
-          label: 'Edit email address',
-          onTap: () => controller.goTo(AuthStep.forgot),
-        ),
-      ),
-      const SizedBox(height: 14),
-      _OtpCells(controller: controller, label: '6-digit reset code'),
-      SrErrorText(controller.otpError),
-      const SizedBox(height: 8),
-      Center(
-        child: _InlineLink(
-          label: controller.resendSeconds > 0
-              ? 'Resend code in ${controller.resendSeconds}s'
-              : 'Resend reset code',
-          onTap: controller.resendResetCode,
-          enabled: !controller.busy && controller.resendSeconds == 0,
-        ),
-      ),
-      const SizedBox(height: 14),
-      _submitButton(
-        context,
-        'Verify code',
-        'Verifying code…',
-        controller.verifyResetCode,
-      ),
-      SrErrorText(controller.operationError),
-    ],
-  );
-
-  Widget _newPassword(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _Title('Choose a new password'),
-      _Lede(
-        'Your code is verified. Set a new password for '
-        '${_maskedEmail(controller.emailField.text.trim())}.',
-      ),
-      const SizedBox(height: 16),
-      const SrLabel('New password'),
-      _PasswordField(
-        controller: controller,
-        newPassword: true,
-        placeholder: 'Create a new passphrase',
-      ),
-      const SizedBox(height: 8),
-      _PasswordRequirements(requirements: controller.passwordRequirements),
-      SrErrorText(controller.passwordError),
-      const SizedBox(height: 10),
-      const SrLabel('Confirm new password'),
-      _PasswordField(
-        controller: controller,
-        fieldController: controller.confirmPasswordField,
-        placeholder: 'Enter the new password again',
-        semanticLabel: 'Confirm new password',
-        hasError: controller.confirmPasswordError != null,
-        onSubmitted: (_) =>
-            controller.busy ? null : controller.submitNewPassword(),
-      ),
-      SrErrorText(controller.confirmPasswordError),
-      const SizedBox(height: 14),
-      _submitButton(
-        context,
-        'Change password',
-        'Changing password…',
-        controller.submitNewPassword,
-      ),
-      SrErrorText(controller.operationError),
-    ],
-  );
-
   Widget _guest(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -920,12 +701,6 @@ class AuthScreen extends StatelessWidget {
     CampusClaim.staff => 'e.g. Office of the Registrar',
     CampusClaim.none => 'e.g. Office or organisation',
   };
-
-  String _maskedEmail(String email) {
-    final parts = email.split('@');
-    if (parts.length != 2 || parts.first.length < 3) return email;
-    return '${parts.first.substring(0, 2)}${'•' * (parts.first.length - 2)}@${parts.last}';
-  }
 
   Widget _submitButton(
     BuildContext context,
@@ -1411,72 +1186,6 @@ class _PasswordRequirements extends StatelessWidget {
   );
 }
 
-class _OtpCells extends StatelessWidget {
-  const _OtpCells({required this.controller, required this.label});
-
-  final AuthController controller;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final code = controller.otpField.text;
-    return Semantics(
-      label: label,
-      textField: true,
-      value: code.isEmpty
-          ? 'No code entered'
-          : '${code.length} of 6 digits entered',
-      child: Stack(
-        children: [
-          Row(
-            children: [
-              for (var i = 0; i < 6; i++) ...[
-                if (i > 0) const SizedBox(width: 8),
-                Expanded(
-                  child: Container(
-                    height: 52,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: context.srColors.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: i < code.length
-                            ? SR.primary
-                            : context.srColors.borderField,
-                      ),
-                    ),
-                    child: Text(
-                      i < code.length ? code[i] : '',
-                      style: mono(20, w: 500),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0,
-              child: TextField(
-                controller: controller.otpField,
-                keyboardType: TextInputType.number,
-                autofillHints: const [AutofillHints.oneTimeCode],
-                textInputAction: TextInputAction.done,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                onChanged: (_) => controller.refresh(),
-                decoration: const InputDecoration(border: InputBorder.none),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ClaimOption extends StatelessWidget {
   const _ClaimOption({
     required this.claim,
@@ -1698,28 +1407,5 @@ class _InlineLink extends StatelessWidget {
       textStyle: sans(11.5, w: 500),
     ),
     child: Text(label),
-  );
-}
-
-class _FooterLink extends StatelessWidget {
-  const _FooterLink({
-    required this.prefix,
-    required this.label,
-    required this.onTap,
-  });
-
-  final String prefix;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Wrap(
-    alignment: WrapAlignment.center,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    spacing: 5,
-    children: [
-      Text(prefix, style: sans(11.5, color: context.srColors.ink4)),
-      _InlineLink(label: label, onTap: onTap),
-    ],
   );
 }

@@ -454,40 +454,40 @@ TextStyle get keyLabel => SrType.overline();
 
 abstract final class SrType {
   static TextStyle display({Color? color}) =>
-      sans(26, w: 600, height: 1.15, tracking: -.02, color: color);
+      sans(28, w: 600, height: 1.15, color: color);
 
   static TextStyle title({Color? color}) =>
-      sans(20, w: 600, height: 1.2, tracking: -.015, color: color);
+      sans(22, w: 600, height: 1.2, color: color);
 
   static TextStyle heading({Color? color}) =>
-      sans(17, w: 600, height: 1.25, tracking: -.015, color: color);
+      sans(18, w: 600, height: 1.25, color: color);
 
   static TextStyle subhead({Color? color}) =>
       sans(15, w: 600, height: 1.3, color: color);
 
   static TextStyle bodyLg({int w = 400, Color? color}) =>
-      sans(14, w: w, height: 1.5, color: color ?? SR.ink2);
+      sans(16, w: w, height: 1.5, color: color ?? SR.ink2);
 
   static TextStyle body({int w = 400, Color? color}) =>
-      sans(13, w: w, height: 1.5, color: color ?? SR.ink2);
+      sans(14, w: w, height: 1.5, color: color ?? SR.ink2);
 
   static TextStyle bodySm({int w = 400, Color? color}) =>
-      sans(12, w: w, height: 1.45, color: color ?? SR.ink3);
+      sans(13, w: w, height: 1.45, color: color ?? SR.ink3);
 
   static TextStyle caption({int w = 400, Color? color}) =>
-      sans(11, w: w, height: 1.4, color: color ?? SR.ink4);
+      sans(12, w: w, height: 1.4, color: color ?? SR.ink4);
 
   static TextStyle label({Color? color}) =>
-      sans(12, w: 500, color: color ?? SR.ink2);
+      sans(13, w: 500, color: color ?? SR.ink2);
 
   static TextStyle button({Color? color}) =>
       sans(13, w: 600, color: color ?? SR.ink2);
 
   static TextStyle overline({Color? color}) =>
-      mono(10, w: 500, tracking: .05, color: color ?? SR.muted);
+      mono(12, w: 500, color: color ?? SR.muted);
 
   static TextStyle code({int w = 400, Color? color}) =>
-      mono(11.5, w: w, color: color ?? SR.ink2);
+      mono(12, w: w, color: color ?? SR.ink2);
 }
 
 enum SrTone {

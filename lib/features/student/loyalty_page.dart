@@ -853,7 +853,8 @@ class _DiscountOfferAction extends StatelessWidget {
     String? status;
 
     if (!pending && !affordable) {
-      status = 'Need ${formatPoints(remaining > 0 ? remaining : 0)} more points';
+      status =
+          'Need ${formatPoints(remaining > 0 ? remaining : 0)} more points';
     }
 
     final content = Column(
@@ -909,8 +910,11 @@ class _VoucherCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             alignment: Alignment.center,
-            child: Icon(Icons.confirmation_number_rounded,
-                size: 18, color: claim.status.tone.ink),
+            child: Icon(
+              Icons.confirmation_number_rounded,
+              size: 18,
+              color: claim.status.tone.ink,
+            ),
           ),
           const SizedBox(width: 11),
           Expanded(

@@ -62,12 +62,19 @@ lib/
 
 SmartReserve has exactly three account roles: `user`, `internal_admin`, and
 `external_admin`. Student, faculty, staff, and outside-user selections are
-verification claim categories, not roles. Only a verified active `user`
-reserves without payment. Internal admins control facilities, verification,
-accounts, and audit. External admins share read-only access to all feedback
-and a sanitized directory of eligible external clients, while reservation,
-calendar, payment, and report operations stay limited to their assigned
-facilities and external-lane records.
+booking-audience categories, not roles. In the prototype, public account
+registration is disabled. Internal Admins issue named organization
+representative accounts directly, with one active representative slot per
+account-bearing organization. A representative is always `role = user`, is
+assigned to exactly one organization slot, and must change the temporary
+password on first sign-in before submitting reservations. Existing personal
+campus accounts can still sign in, but they cannot reserve until an Internal
+Admin assigns them to an organization slot or explicitly converts them to an
+external guest. Internal admins control facilities, verification, accounts,
+and audit. External admins share read-only access to all feedback and a
+sanitized directory of eligible external clients, while reservation, calendar,
+payment, and report operations stay limited to their assigned facilities and
+external-lane records.
 
 Reservation prices are calculated in Supabase from duration and facility
 capacity. Client-provided amounts are ignored, so free access cannot be gained
@@ -121,6 +128,74 @@ fake photos.
 The `manage-users` function must be deployed before releasing a client that
 uses live account management. Keep `invite-admin` deployed during that rollout
 for compatibility with older clients.
+
+### Auth and prototype account setup
+
+Prototype public sign-up is disabled. Only active Internal Admins can create
+organization representative accounts, and they hand off the generated
+temporary password directly to the named account holder. No confirmation,
+invite, password-reset, or OTP email is required for prototype account
+provisioning.
+
+The initial setup target is nine account-bearing organization units:
+
+- CICS: six specialized organizations
+- CICS: one minor organization
+- COLSC: one organization
+- Dean Office: one account
+
+CICS and COLSC are hierarchy containers only and should be created without
+representative accounts. Each account-bearing organization automatically gets
+one active representative slot. To replace a representative, transfer or remove
+the current holder first; do not create a shared department password.
+
+For local Supabase, keep both public sign-up flags off:
+
+```toml
+[auth]
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
+```
+
+For the hosted project, disable public email sign-up and keep email
+confirmation disabled in Authentication settings. Admin API account creation
+continues to work while public sign-up is disabled.
+
+Password reset, organization representative invitations, and administrator
+invitation resend require custom SMTP before user testing or release.
+Operational reservation, payment, and anomaly notices stay in-app for this
+release.
+
+Do not re-enable Supabase public sign-up or email confirmation for the
+prototype unless custom SMTP is already verified; doing so recreates the
+reported no-code account defect.
+
+For production, configure SMTP in Supabase Auth settings, not in committed
+files:
+
+- SMTP host and port
+- SMTP username and password
+- Sender email
+- Sender name: `SmartReserve`
+
+Set the deployed app URLs before enabling representative invitations:
+
+- Confirmation redirect URL: the app’s email-confirmation route
+- Password reset redirect URL: the app’s recovery route
+- Invitation redirect URL: the app’s invite/onboarding route, also passed to
+  Edge Functions as `INVITE_REDIRECT_TO`
+- Password recovery Edge Function fallback: `RECOVERY_REDIRECT_TO`
+
+After deployment, verify email delivery with a throwaway invite: confirm the
+message sender, link domain, redirect target, and one-time invitation behavior.
+Never commit SMTP passwords, API keys, production sender credentials, or
+Supabase service-role keys.
+
+For production sign-up confirmation, restore a verified sender and the existing
+`{{ .Token }}` confirmation template so Supabase can send six-digit OTP emails.
 
 Feedback sentiment analysis is an asynchronous administrator-only analytics
 feature. Deploy `feedback-sentiment` with `SENTIMENT_ENABLED=false`, then set

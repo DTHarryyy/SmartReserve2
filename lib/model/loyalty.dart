@@ -194,8 +194,7 @@ class LoyaltyDiscountOffer {
   String get valueLabel => switch (discountKind) {
     DiscountKind.fixedAmount =>
       'PHP ${((fixedAmountCentavos ?? 0) / 100).toStringAsFixed(2)} off',
-    DiscountKind.percentage =>
-      '${formatPoints(percentage ?? 0)}% off',
+    DiscountKind.percentage => '${formatPoints(percentage ?? 0)}% off',
   };
 
   bool canAfford(double balance) => balance >= requiredPoints;
@@ -270,8 +269,7 @@ class LoyaltyDiscountClaim {
   String get valueLabel => switch (discountKind) {
     DiscountKind.fixedAmount =>
       'PHP ${((fixedAmountCentavos ?? 0) / 100).toStringAsFixed(2)} off',
-    DiscountKind.percentage =>
-      '${formatPoints(percentage ?? 0)}% off',
+    DiscountKind.percentage => '${formatPoints(percentage ?? 0)}% off',
   };
 }
 
@@ -484,7 +482,6 @@ class LoyaltyAdminClaimRow {
   String get valueLabel => switch (discountKind) {
     DiscountKind.fixedAmount =>
       'PHP ${((fixedAmountCentavos ?? 0) / 100).toStringAsFixed(2)} off',
-    DiscountKind.percentage =>
-      '${formatPoints(percentage ?? 0)}% off',
+    DiscountKind.percentage => '${formatPoints(percentage ?? 0)}% off',
   };
 }

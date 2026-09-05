@@ -480,19 +480,19 @@ const designNotes = <DesignNote>[
   DesignNote('12', 'Authentication & account entry', [
     NoteItem(
       'The corrected sequence',
-      'Register → confirm email → the campus question → (verification | '
-          'dashboard). The question belongs after registration, not before: an '
-          'unauthenticated answer cannot be attached to anything, and asking it '
-          'first would make people type their identity twice.',
+      'Register → the campus question → (verification | dashboard). The '
+          'question belongs after registration, not before: an unauthenticated '
+          'answer cannot be attached to anything, and asking it first would '
+          'make people type their identity twice.',
     ),
     NoteItem(
-      'Decided — any email plus OTP',
-      'Registration takes any email address and a password; a six-digit OTP '
-          'confirms the address; verification comes after. No '
-          'institutional-domain shortcut, so every campus claim is settled by a '
-          'document and a human. Consequence: the verification queue carries '
-          '100% of onboarding, so its throughput is the ceiling on how fast the '
-          'system fills.',
+      'Prototype — any email plus password',
+      'Registration takes any email address and a password, then continues '
+          'immediately. No institutional-domain shortcut, so every campus claim '
+          'is settled by a document and a human. Consequence: the verification '
+          'queue carries 100% of onboarding, so its throughput is the ceiling '
+          'on how fast the system fills. Production should restore email '
+          'ownership confirmation only after custom SMTP is verified.',
     ),
     NoteItem(
       'Validation — admins do not self-register',

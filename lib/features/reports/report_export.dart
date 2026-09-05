@@ -29,11 +29,7 @@ String demandCsv(
   'Section,Demand',
   'weekday,hour,count',
   for (final cell in snapshot.demand)
-    [
-      _cell(_weekday(cell.day)),
-      _cell(_block(cell.hour)),
-      cell.count,
-    ].join(','),
+    [_cell(_weekday(cell.day)), _cell(_block(cell.hour)), cell.count].join(','),
 ].join('\n');
 
 String approvalPerformanceCsv(
@@ -60,6 +56,50 @@ String approvalPerformanceCsv(
         admin.median.toStringAsFixed(2),
       ].join(','),
   ],
+].join('\n');
+
+String revenueCsv(
+  ReportSnapshot snapshot, {
+  required String exportedBy,
+  bool stale = false,
+}) => [
+  ..._header(snapshot, exportedBy: exportedBy, stale: stale),
+  'Section,Revenue',
+  'metric,value_centavos,value_php',
+  [
+    'gross_verified',
+    snapshot.revenue.grossVerifiedCentavos,
+    _money(snapshot.revenue.grossVerifiedCentavos),
+  ].join(','),
+  [
+    'refunds',
+    snapshot.revenue.refundsCentavos,
+    _money(snapshot.revenue.refundsCentavos),
+  ].join(','),
+  [
+    'net_revenue',
+    snapshot.revenue.netRevenueCentavos,
+    _money(snapshot.revenue.netRevenueCentavos),
+  ].join(','),
+  [
+    'outstanding',
+    snapshot.revenue.outstandingCentavos,
+    _money(snapshot.revenue.outstandingCentavos),
+  ].join(','),
+  '',
+  'month,submitted_reservations,confirmed_reservations,completed_occurrences,booked_hours,utilisation_percent,gross_centavos,refunds_centavos,net_centavos',
+  for (final row in snapshot.monthlyStatistics)
+    [
+      _cell(_month(row.monthStart)),
+      row.submittedReservations,
+      row.confirmedReservations,
+      row.completedOccurrences,
+      row.bookedHours.toStringAsFixed(2),
+      (row.utilisationFraction * 100).toStringAsFixed(2),
+      row.grossVerifiedCentavos,
+      row.refundsCentavos,
+      row.netRevenueCentavos,
+    ].join(','),
 ].join('\n');
 
 String dataQualityCsv(List<QualityIssue> issues) => [
@@ -91,6 +131,8 @@ String fullReportCsv({
   ),
   '',
   utilisationCsv(snapshot, exportedBy: exportedBy, stale: stale),
+  '',
+  revenueCsv(snapshot, exportedBy: exportedBy, stale: stale),
   '',
   demandCsv(snapshot, exportedBy: exportedBy, stale: stale),
   '',
@@ -138,4 +180,11 @@ String _weekday(int value) => const [
 String _block(int hour) {
   String two(int value) => value.toString().padLeft(2, '0');
   return '${two(hour)}:00-${two(hour + 2)}:00';
+}
+
+String _money(int centavos) => (centavos / 100).toStringAsFixed(2);
+
+String _month(DateTime value) {
+  final local = campusWallTime(value);
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}';
 }

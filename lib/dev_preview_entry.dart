@@ -24,6 +24,8 @@ Future<void> main() async {
       verificationStatus: 'verified',
       onboardingComplete: true,
       accountStatus: 'active',
+      accountAccessType: 'administrator',
+      mustChangePassword: false,
       createdAt: null,
     ),
   );

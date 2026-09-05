@@ -17,7 +17,7 @@ FacilityCatalogueCardData _cardData({
   id: 'facility-card-test',
   name: 'Basketball Court',
   category: 'Outdoor Area',
-  statusLabel: 'Active',
+  statusLabel: 'Available',
   statusTone: SrTone.success,
   locationLabel: 'College of Information and Computing Sciences',
   description:
@@ -85,7 +85,9 @@ void main() {
           .dy;
       final ctaBottom = tester
           .getBottomRight(
-            find.byKey(const ValueKey('facility-card-reserve-facility-card-test')),
+            find.byKey(
+              const ValueKey('facility-card-reserve-facility-card-test'),
+            ),
           )
           .dy;
 

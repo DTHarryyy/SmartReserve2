@@ -23,6 +23,7 @@ import '../model/feedback.dart';
 import '../model/loyalty.dart';
 import '../model/notice.dart';
 import '../model/payment.dart';
+import '../model/permit.dart';
 import '../model/reservation.dart';
 import '../model/verification.dart';
 import '../features/assistant/assistant_availability.dart';
@@ -63,6 +64,43 @@ class AdministratorCreationResult {
     : this._(error: value);
 
   final AdministratorCredentials? credentials;
+  final String? error;
+}
+
+class AccountCredentials {
+  const AccountCredentials({
+    required this.email,
+    required this.temporaryPassword,
+    required this.title,
+    this.fullName,
+    this.organization,
+  });
+
+  final String email;
+  final String temporaryPassword;
+  final String title;
+  final String? fullName;
+  final String? organization;
+
+  String get exportText =>
+      'SmartReserve $title credentials\n\n'
+      '${fullName == null || fullName!.isEmpty ? '' : 'Name: $fullName\n'}'
+      '${organization == null || organization!.isEmpty ? '' : 'Organization: $organization\n'}'
+      'Email: $email\n'
+      'Temporary password: $temporaryPassword\n\n'
+      'Store this file securely. The account holder must change the temporary '
+      'password after first sign-in.';
+}
+
+class AccountCreationResult {
+  const AccountCreationResult._({this.credentials, this.error});
+
+  const AccountCreationResult.success(AccountCredentials value)
+    : this._(credentials: value);
+
+  const AccountCreationResult.failure(String value) : this._(error: value);
+
+  final AccountCredentials? credentials;
   final String? error;
 }
 
@@ -108,7 +146,8 @@ sealed class ReportLoadState {
     _ => null,
   };
 
-  bool get isLoading => this is ReportInitialLoading || this is ReportRefreshing;
+  bool get isLoading =>
+      this is ReportInitialLoading || this is ReportRefreshing;
   bool get isRefreshing => this is ReportRefreshing;
   bool get isStale => this is ReportStale;
   bool get hasVerifiedSnapshot => snapshot != null;
@@ -155,6 +194,8 @@ class AppState extends ChangeNotifier {
     bookings = useDemoData ? [...seedBookings(), ...seriesDemoBookings()] : [];
     verifications = useDemoData ? seedVerifications() : [];
     accounts = useDemoData ? seedAccounts() : [];
+    organizationUnits = [];
+    organizationSlots = [];
     audit = useDemoData ? seedAudit() : [];
     calendarAnchor = useDemoData ? campusToday : campusNow();
     userCalendarAnchor = calendarAnchor;
@@ -191,8 +232,7 @@ class AppState extends ChangeNotifier {
 
   void goTo(AppView next) {
     if (isExternalAdmin &&
-        (next == AppView.verifications ||
-            next == AppView.audit)) {
+        (next == AppView.verifications || next == AppView.audit)) {
       showToast(
         const ToastMessage(
           'This administrator role cannot access that area.',
@@ -326,13 +366,15 @@ class AppState extends ChangeNotifier {
         text.contains('permission denied')) {
       return const ReportFailure(
         supportReference: 'RPT-AUTH-PERMISSION',
-        explanation: 'Your account does not have permission to view this report.',
+        explanation:
+            'Your account does not have permission to view this report.',
       );
     }
     if (text.contains('22023') || text.contains('invalid report range')) {
       return const ReportFailure(
         supportReference: 'RPT-SCOPE-RANGE',
-        explanation: 'The selected reporting range is invalid. Choose another range.',
+        explanation:
+            'The selected reporting range is invalid. Choose another range.',
       );
     }
     if (text.contains('socket') ||
@@ -433,6 +475,8 @@ class AppState extends ChangeNotifier {
   late List<ReservationRequest> requests;
   late List<VerificationSubmission> verifications;
   late List<Account> accounts;
+  late List<OrganizationUnit> organizationUnits;
+  late List<OrganizationAccountSlot> organizationSlots;
   late List<AuditEntry> audit;
   late List<Booking> bookings;
   ReportScope? reportScope;
@@ -512,7 +556,8 @@ class AppState extends ChangeNotifier {
   final Set<String> _riskSummaryPollExhausted = {};
 
   static const _riskSummaryPollInterval = Duration(seconds: 5);
-  static const _riskSummaryPollMaxAttempts = 18; // ~90s: one missed 60s cron tick + margin
+  static const _riskSummaryPollMaxAttempts =
+      18; // ~90s: one missed 60s cron tick + margin
 
   int get anomalyActiveHighCriticalCount =>
       anomalyMetrics.highCount + anomalyMetrics.criticalCount;
@@ -726,10 +771,11 @@ class AppState extends ChangeNotifier {
     if (requestId != null) selectRequest(requestId);
   }
 
-  Future<void> loadReservationRiskSummary(String requestId) => _fetchRiskSummary(
-    requestId,
-    (service) => service.reservationRiskSummary(requestId),
-  );
+  Future<void> loadReservationRiskSummary(String requestId) =>
+      _fetchRiskSummary(
+        requestId,
+        (service) => service.reservationRiskSummary(requestId),
+      );
 
   /// Forces an immediate server-side evaluation (bypassing the pg_cron
   /// queue) and applies the result — used by the risk card's manual
@@ -1080,7 +1126,11 @@ class AppState extends ChangeNotifier {
       );
       await refreshLoyalty();
       _syncLoyaltySubscription();
-      view = profile.isActive && profile.onboardingComplete
+      view =
+          profile.isActive &&
+              profile.onboardingComplete &&
+              !profile.mustChangePassword &&
+              profile.accountAccessType != 'legacy_unassigned'
           ? AppView.userApp
           : AppView.auth;
     }
@@ -1092,7 +1142,8 @@ class AppState extends ChangeNotifier {
   Future<void> _applyInitialReportLink() async {
     final link = readInitialReportLink();
     if (link == null || !isAdmin) return;
-    final category = link.category != null &&
+    final category =
+        link.category != null &&
             facilities.any((facility) => facility.category == link.category)
         ? link.category
         : null;
@@ -1168,23 +1219,6 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    final existing = _sessionAccount;
-    if (existing != null && existing.id == profile.id) {
-      existing
-        ..name = profile.fullName
-        ..email = profile.email
-        ..role = AccountRole.fromRaw(profile.role)
-        ..unit = profile.unit ?? ''
-        ..idNumber = profile.campusId ?? ''
-        ..verification = _sessionVerification
-        ..status = AccountStatus.fromRaw(profile.accountStatus)
-        ..suspendReason = profile.suspensionReason
-        ..suspendUntil = profile.suspendedUntil == null
-            ? null
-            : _accountDate(profile.suspendedUntil);
-      return;
-    }
-
     _sessionAccount = Account(
       id: profile.id,
       name: profile.fullName,
@@ -1203,6 +1237,16 @@ class AppState extends ChangeNotifier {
       suspendUntil: profile.suspendedUntil == null
           ? null
           : _accountDate(profile.suspendedUntil),
+      organizationSlotId: profile.organizationSlotId,
+      organizationSlotLabel: profile.organizationSlotLabel,
+      organizationUnitId: profile.organizationUnitId,
+      organizationUnitName: profile.organizationUnitName,
+      organizationUnitCode: profile.organizationUnitCode,
+      organizationUnitType: profile.organizationUnitType,
+      organizationUnitBookingAudience: profile.organizationUnitBookingAudience,
+      accountAccessType: AccountAccessType.fromRaw(profile.accountAccessType),
+      mustChangePassword: profile.mustChangePassword,
+      passwordIssuedAt: profile.passwordIssuedAt,
     );
   }
 
@@ -1216,6 +1260,8 @@ class AppState extends ChangeNotifier {
 
   bool accountsLoading = false;
   String? accountsError;
+  bool organizationRegistryLoading = false;
+  String? organizationRegistryError;
 
   Future<void> refreshAccounts() async {
     final service = backend;
@@ -1271,6 +1317,16 @@ class AppState extends ChangeNotifier {
     joinedAt: row.createdAt,
     activityMetricsAvailable:
         row.activityMetricsAvailable || row.reservationCount > 0,
+    organizationSlotId: row.organizationSlotId,
+    organizationSlotLabel: row.organizationSlotLabel,
+    organizationUnitId: row.organizationUnitId,
+    organizationUnitName: row.organizationUnitName,
+    organizationUnitCode: row.organizationUnitCode,
+    organizationUnitType: row.organizationUnitType,
+    organizationUnitBookingAudience: row.organizationUnitBookingAudience,
+    accountAccessType: AccountAccessType.fromRaw(row.accountAccessType),
+    mustChangePassword: row.mustChangePassword,
+    passwordIssuedAt: row.passwordIssuedAt,
   );
 
   void _upsertBackendAccount(BackendAccount row) {
@@ -1283,6 +1339,317 @@ class AppState extends ChangeNotifier {
     }
     accountsError = null;
     notifyListeners();
+  }
+
+  OrganizationUnit _toOrganizationUnit(BackendOrganizationUnit row) =>
+      OrganizationUnit(
+        id: row.id,
+        parentId: row.parentId,
+        name: row.name,
+        code: row.code,
+        unitType: row.unitType,
+        active: row.active,
+        requiresRepresentative: row.requiresRepresentative,
+        bookingAudience: row.bookingAudience,
+      );
+
+  OrganizationAccountSlot _toOrganizationSlot(
+    BackendOrganizationAccountSlot row,
+  ) => OrganizationAccountSlot(
+    id: row.id,
+    unitId: row.unitId,
+    label: row.label,
+    active: row.active,
+    assignedProfileId: row.assignedProfileId,
+    assignedName: row.assignedName,
+    assignedEmail: row.assignedEmail,
+    unit: row.unit == null ? null : _toOrganizationUnit(row.unit!),
+  );
+
+  void _upsertOrganizationUnit(BackendOrganizationUnit row) {
+    final unit = _toOrganizationUnit(row);
+    final index = organizationUnits.indexWhere((item) => item.id == unit.id);
+    if (index == -1) {
+      organizationUnits = [...organizationUnits, unit];
+    } else {
+      organizationUnits = [...organizationUnits]..[index] = unit;
+    }
+  }
+
+  void _upsertOrganizationSlot(BackendOrganizationAccountSlot row) {
+    final slot = _toOrganizationSlot(row);
+    final index = organizationSlots.indexWhere((item) => item.id == slot.id);
+    if (index == -1) {
+      organizationSlots = [...organizationSlots, slot];
+    } else {
+      organizationSlots = [...organizationSlots]..[index] = slot;
+    }
+  }
+
+  Future<void> refreshOrganizationRegistry() async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) return;
+    organizationRegistryLoading = true;
+    organizationRegistryError = null;
+    notifyListeners();
+    try {
+      final units = await service.organizationUnits();
+      final slots = await service.organizationSlots();
+      organizationUnits = units.map(_toOrganizationUnit).toList();
+      organizationSlots = slots.map(_toOrganizationSlot).toList();
+      organizationRegistryLoading = false;
+      notifyListeners();
+    } catch (error) {
+      organizationRegistryLoading = false;
+      organizationRegistryError =
+          'Organization registry could not be loaded: ${_accountError(error)}';
+      notifyListeners();
+    }
+  }
+
+  Future<String?> saveOrganizationUnit({
+    String? unitId,
+    String? parentId,
+    required String name,
+    String? code,
+    required String unitType,
+    required bool requiresRepresentative,
+    String? bookingAudience,
+  }) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can manage organizations.';
+    }
+    try {
+      final row = unitId == null
+          ? await service.createOrganizationUnit(
+              parentId: parentId,
+              name: name,
+              code: code,
+              unitType: unitType,
+              requiresRepresentative: requiresRepresentative,
+              bookingAudience: bookingAudience,
+            )
+          : await service.updateOrganizationUnit(
+              unitId: unitId,
+              parentId: parentId,
+              name: name,
+              code: code,
+              unitType: unitType,
+              bookingAudience: bookingAudience,
+            );
+      _upsertOrganizationUnit(row);
+      await refreshOrganizationRegistry();
+      organizationRegistryError = null;
+      notifyListeners();
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Organization was not saved.');
+    }
+  }
+
+  Future<String?> archiveOrganizationUnit(String unitId) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can archive organizations.';
+    }
+    try {
+      _upsertOrganizationUnit(await service.archiveOrganizationUnit(unitId));
+      notifyListeners();
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Organization was not archived.');
+    }
+  }
+
+  Future<String?> saveOrganizationSlot({
+    String? slotId,
+    required String unitId,
+    required String label,
+    bool active = true,
+  }) async {
+    return 'Organization slots are created automatically with account-bearing organizations.';
+  }
+
+  Future<String?> archiveOrganizationSlot(String slotId) async {
+    return 'Archive the organization unit after removing its representative.';
+  }
+
+  Future<String?> assignOrganizationRepresentative({
+    required String profileId,
+    required String slotId,
+  }) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can assign representatives.';
+    }
+    try {
+      _upsertBackendAccount(
+        await service.assignOrganizationRepresentative(
+          profileId: profileId,
+          slotId: slotId,
+        ),
+      );
+      await refreshOrganizationRegistry();
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Representative was not assigned.');
+    }
+  }
+
+  Future<String?> removeOrganizationRepresentative(String profileId) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can remove representatives.';
+    }
+    try {
+      _upsertBackendAccount(
+        await service.removeOrganizationRepresentative(profileId),
+      );
+      await refreshOrganizationRegistry();
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Representative was not removed.');
+    }
+  }
+
+  Future<AccountCreationResult> createOrganizationRepresentative({
+    required String fullName,
+    required String email,
+    required String slotId,
+  }) async {
+    final trimmedName = fullName.trim();
+    final trimmedEmail = email.trim().toLowerCase();
+    if (trimmedName.length < 2) {
+      return const AccountCreationResult.failure(
+        'Enter the representative’s full name.',
+      );
+    }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(trimmedEmail)) {
+      return const AccountCreationResult.failure(
+        'Enter a valid email address.',
+      );
+    }
+    if (backend == null || !isInternalAdmin) {
+      return const AccountCreationResult.failure(
+        'Only an internal admin can create representatives.',
+      );
+    }
+    try {
+      final created = await backend!.createOrganizationRepresentative(
+        fullName: trimmedName,
+        email: trimmedEmail,
+        organizationSlotId: slotId,
+      );
+      _upsertBackendAccount(created.account);
+      await refreshOrganizationRegistry();
+      final account = _toAccount(created.account);
+      log(
+        action: 'created an organization representative for',
+        target: account.organizationLabel,
+        kind: AuditKind.account,
+        diff: ['Temporary credentials generated and shown once'],
+      );
+      showToast(
+        ToastMessage('Representative account created for $trimmedName.'),
+      );
+      return AccountCreationResult.success(
+        AccountCredentials(
+          title: 'organization representative',
+          fullName: trimmedName,
+          organization: account.organizationLabel,
+          email: trimmedEmail,
+          temporaryPassword: created.temporaryPassword,
+        ),
+      );
+    } catch (error) {
+      return AccountCreationResult.failure(
+        _accountActionError(error, 'Representative wasn’t created.'),
+      );
+    }
+  }
+
+  Future<AccountCreationResult> resetOrganizationRepresentativePassword(
+    Account account,
+  ) async {
+    if (backend == null || !isInternalAdmin) {
+      return const AccountCreationResult.failure(
+        'Only an internal admin can reset representative passwords.',
+      );
+    }
+    if (!account.isOrganizationRepresentative) {
+      return const AccountCreationResult.failure(
+        'Choose an organization representative account.',
+      );
+    }
+    try {
+      final reset = await backend!.resetOrganizationRepresentativePassword(
+        account.id,
+      );
+      _upsertBackendAccount(reset.account);
+      showToast(ToastMessage('Temporary password generated for ${account.name}.'));
+      return AccountCreationResult.success(
+        AccountCredentials(
+          title: 'organization representative',
+          fullName: account.name,
+          organization: account.organizationLabel,
+          email: account.email,
+          temporaryPassword: reset.temporaryPassword,
+        ),
+      );
+    } catch (error) {
+      return AccountCreationResult.failure(
+        _accountActionError(error, 'Temporary password was not generated.'),
+      );
+    }
+  }
+
+  Future<String?> transferOrganizationRepresentative({
+    required String currentProfileId,
+    required String replacementProfileId,
+    required String slotId,
+  }) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can transfer representatives.';
+    }
+    try {
+      _upsertBackendAccount(
+        await service.transferOrganizationRepresentative(
+          currentProfileId: currentProfileId,
+          replacementProfileId: replacementProfileId,
+          slotId: slotId,
+        ),
+      );
+      await refreshAccounts();
+      await refreshOrganizationRegistry();
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Representative was not transferred.');
+    }
+  }
+
+  Future<String?> convertLegacyAccountToExternalGuest({
+    required String profileId,
+    required String reason,
+  }) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can convert legacy accounts.';
+    }
+    if (reason.trim().isEmpty) return 'Enter a reason for this conversion.';
+    try {
+      _upsertBackendAccount(
+        await service.convertLegacyAccountToExternalGuest(
+          profileId: profileId,
+          reason: reason.trim(),
+        ),
+      );
+      showToast(const ToastMessage('Account converted to external guest.'));
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Account was not converted.');
+    }
   }
 
   static String _accountDate(DateTime? value) {
@@ -1813,6 +2180,36 @@ class AppState extends ChangeNotifier {
       feedbackRating: row.feedback?.rating,
       feedbackComment: row.feedback?.comment ?? '',
       feedbackAt: row.feedback?.createdAt,
+      useAssessments: [
+        for (final assessment in row.useAssessments)
+          ReservationUseAssessment(
+            id: assessment.id,
+            requestId: assessment.requestId,
+            occurrenceId: assessment.occurrenceId,
+            facilityId: assessment.facilityId,
+            requesterId: assessment.requesterId,
+            adminId: assessment.adminId,
+            cleanlinessRating: assessment.cleanlinessRating,
+            equipmentConditionRating: assessment.equipmentConditionRating,
+            leftUnclean: assessment.leftUnclean,
+            equipmentDamaged: assessment.equipmentDamaged,
+            comment: assessment.comment,
+            revision: assessment.revision,
+            createdAt: assessment.createdAt,
+            updatedAt: assessment.updatedAt,
+            files: [
+              for (final file in assessment.files)
+                ReservationUseAssessmentFile(
+                  id: file.id,
+                  assessmentId: file.assessmentId,
+                  storagePath: file.storagePath,
+                  fileName: file.fileName,
+                  mimeType: file.mimeType,
+                  byteSize: file.byteSize,
+                ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -3205,6 +3602,39 @@ class AppState extends ChangeNotifier {
     return _actionLabel(action);
   }
 
+  Future<bool> selfCheckInOccurrence(
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+  ) async {
+    final service = backend;
+    if (service == null || !hasSession || _useDemoData) return false;
+    final key = 'checkin:${occurrence.id}';
+    if (reservationActionsPending.contains(key)) return false;
+    reservationActionsPending.add(key);
+    notifyListeners();
+    try {
+      await service.performReservationAction(
+        ReservationActionCommand(
+          requestId: request.id,
+          action: 'self_check_in',
+          expectedVersion: request.version,
+          payload: {'occurrence_id': occurrence.id},
+        ),
+      );
+      await refreshReservations();
+      showToast(const ToastMessage('Checked in.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    } finally {
+      reservationActionsPending.remove(key);
+      notifyListeners();
+    }
+  }
+
   static String _bulkApprovalSuccessLabel(
     int count,
     List<ReservationRequest> requests,
@@ -4074,6 +4504,14 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Future<String?> inviteOrganizationRepresentative({
+    required String email,
+    required String slotId,
+    String note = '',
+  }) async {
+    return 'Representative invitations are disabled in this prototype. Create a representative account with direct temporary credentials instead.';
+  }
+
   static String _temporaryPassword() {
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     const lower = 'abcdefghijkmnopqrstuvwxyz';
@@ -4869,12 +5307,7 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       final message = friendlyBackendMessage('$error');
       loyaltyDiscountOfferSaveError = message;
-      showToast(
-        ToastMessage(
-          message,
-          tone: AdvisoryTone.block,
-        ),
-      );
+      showToast(ToastMessage(message, tone: AdvisoryTone.block));
       notifyListeners();
       return false;
     }
@@ -4950,8 +5383,10 @@ class AppState extends ChangeNotifier {
       final int discountAmount = discount == null
           ? 0
           : switch (discount.discountKind) {
-              DiscountKind.fixedAmount =>
-                min(discount.fixedAmountCentavos ?? 0, total),
+              DiscountKind.fixedAmount => min(
+                discount.fixedAmountCentavos ?? 0,
+                total,
+              ),
               DiscountKind.percentage =>
                 (total * ((discount.percentage ?? 0) / 100)).round(),
             };
@@ -5141,9 +5576,48 @@ class AppState extends ChangeNotifier {
         ),
       );
       await refreshReservations();
+      showToast(const ToastMessage('Payment submitted for review'));
+      return true;
+    } catch (error) {
       showToast(
-        const ToastMessage('GCash proof submitted for administrator review.'),
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
       );
+      return false;
+    } finally {
+      reservationActionsPending.remove(key);
+      notifyListeners();
+    }
+  }
+
+  Future<bool> correctReservationPayment({
+    required PaymentTransaction payment,
+    required int amountCentavos,
+    required String referenceNumber,
+    required ReservationUpload proof,
+  }) async {
+    final service = _coreBackend;
+    if (service == null || !hasSession || _useDemoData) {
+      showToast(
+        const ToastMessage(
+          'Payment correction requires the connected Supabase backend.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+    final key = 'payment:${payment.id}';
+    if (reservationActionsPending.contains(key)) return false;
+    reservationActionsPending.add(key);
+    notifyListeners();
+    try {
+      await service.correctPaymentSubmission(
+        payment: payment,
+        amountCentavos: amountCentavos,
+        referenceNumber: referenceNumber.trim(),
+        proof: proof,
+      );
+      await refreshReservations();
+      showToast(const ToastMessage('Payment submitted for review'));
       return true;
     } catch (error) {
       showToast(
@@ -5195,6 +5669,50 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> submitReservationUseAssessment({
+    required ReservationRequest request,
+    required ReservationOccurrence occurrence,
+    required int cleanlinessRating,
+    required int equipmentConditionRating,
+    required bool leftUnclean,
+    required bool equipmentDamaged,
+    required String comment,
+    List<ReservationUpload> evidence = const [],
+  }) async {
+    final service = _coreBackend;
+    if (service == null || !hasSession || _useDemoData) {
+      return false;
+    }
+    final key = 'assessment:${occurrence.id}';
+    if (reservationActionsPending.contains(key)) return false;
+    reservationActionsPending.add(key);
+    notifyListeners();
+    try {
+      await service.submitReservationUseAssessment(
+        requestId: request.id,
+        occurrenceId: occurrence.id,
+        cleanlinessRating: cleanlinessRating,
+        equipmentConditionRating: equipmentConditionRating,
+        leftUnclean: leftUnclean,
+        equipmentDamaged: equipmentDamaged,
+        comment: comment,
+        evidence: evidence,
+      );
+      await refreshReservations();
+      await refreshAnomalyCenter();
+      showToast(const ToastMessage('Post-use assessment saved.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    } finally {
+      reservationActionsPending.remove(key);
+      notifyListeners();
+    }
+  }
+
   Future<String?> reservationPaymentProofUrl(PaymentTransaction payment) async {
     final service = _coreBackend;
     if (service == null || !hasSession) return null;
@@ -5227,6 +5745,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> uploadPermitPdf({
+    required String permitId,
     required String requestId,
     required String requesterId,
     required String permitNumber,
@@ -5237,6 +5756,7 @@ class AppState extends ChangeNotifier {
     if (service == null) return;
     try {
       await service.uploadPermitPdf(
+        permitId: permitId,
         requestId: requestId,
         requesterId: requesterId,
         permitNumber: permitNumber,
@@ -5244,6 +5764,17 @@ class AppState extends ChangeNotifier {
         bytes: bytes,
       );
     } catch (_) {}
+  }
+
+  Future<String?> permitPdfUrl(ReservationPermit permit) async {
+    final path = permit.storagePath;
+    final service = _coreBackend;
+    if (path == null || path.isEmpty || service == null) return null;
+    try {
+      return await service.permitDownloadUrl(path);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> saveFacilityConfiguration(

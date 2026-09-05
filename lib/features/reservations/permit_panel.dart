@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
 import '../../model/notice.dart';
@@ -158,6 +159,7 @@ class _PermitPanelState extends State<PermitPanel> {
     ReservationPermit permit,
     ReservationRequest request,
   ) async {
+    if (await _openStoredPermit(permit)) return;
     final bytes = await _render(permit);
     if (bytes == null) return;
     _persist(permit, request, bytes);
@@ -168,6 +170,7 @@ class _PermitPanelState extends State<PermitPanel> {
     ReservationPermit permit,
     ReservationRequest request,
   ) async {
+    if (await _openStoredPermit(permit)) return;
     final bytes = await _render(permit);
     if (bytes == null) return;
     _persist(permit, request, bytes);
@@ -191,6 +194,25 @@ class _PermitPanelState extends State<PermitPanel> {
     }
   }
 
+  Future<bool> _openStoredPermit(ReservationPermit permit) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final url = await widget.state.permitPdfUrl(permit);
+      if (url == null) return false;
+      return await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _persist(
     ReservationPermit permit,
     ReservationRequest request,
@@ -200,6 +222,7 @@ class _PermitPanelState extends State<PermitPanel> {
     if (requesterId == null) return;
     unawaited(
       widget.state.uploadPermitPdf(
+        permitId: permit.id,
         requestId: request.id,
         requesterId: requesterId,
         permitNumber: permit.permitNumber,

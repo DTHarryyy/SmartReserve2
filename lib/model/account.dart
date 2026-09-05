@@ -80,6 +80,94 @@ enum AccountRole {
   };
 }
 
+enum AccountAccessType {
+  administrator('administrator', 'Administrator'),
+  organizationRepresentative(
+    'organization_representative',
+    'Organization representative',
+  ),
+  externalGuest('external_guest', 'External guest'),
+  legacyUnassigned('legacy_unassigned', 'Organization assignment required');
+
+  const AccountAccessType(this.raw, this.label);
+
+  final String raw;
+  final String label;
+
+  static AccountAccessType fromRaw(String raw) => values.firstWhere(
+    (value) => value.raw == raw,
+    orElse: () => AccountAccessType.legacyUnassigned,
+  );
+}
+
+class OrganizationUnit {
+  const OrganizationUnit({
+    required this.id,
+    this.parentId,
+    required this.name,
+    this.code,
+    required this.unitType,
+    this.active = true,
+    this.requiresRepresentative = true,
+    this.bookingAudience,
+  });
+
+  final String id;
+  final String? parentId;
+  final String name;
+  final String? code;
+  final String unitType;
+  final bool active;
+  final bool requiresRepresentative;
+  final String? bookingAudience;
+
+  String get label {
+    final value = code == null || code!.isEmpty ? name : '$code · $name';
+    return active ? value : '$value (disabled)';
+  }
+
+  String get policyLabel =>
+      requiresRepresentative ? audienceLabel(bookingAudience) : 'Container';
+
+  static String audienceLabel(String? audience) => switch (audience) {
+    'student' => 'Student',
+    'faculty' => 'Faculty',
+    'staff' => 'University staff',
+    _ => 'No booking audience',
+  };
+}
+
+class OrganizationAccountSlot {
+  const OrganizationAccountSlot({
+    required this.id,
+    required this.unitId,
+    required this.label,
+    this.active = true,
+    this.assignedProfileId,
+    this.assignedName,
+    this.assignedEmail,
+    this.unit,
+  });
+
+  final String id;
+  final String unitId;
+  final String label;
+  final bool active;
+  final String? assignedProfileId;
+  final String? assignedName;
+  final String? assignedEmail;
+  final OrganizationUnit? unit;
+
+  bool get assigned =>
+      assignedProfileId != null && assignedProfileId!.isNotEmpty;
+
+  String get occupancyLabel {
+    if (!active) return 'Disabled';
+    if (assigned) return 'Assigned';
+    return 'Available';
+  }
+}
+
 class Account {
   Account({
     required this.id,
@@ -102,6 +190,16 @@ class Account {
     this.lastActiveAt,
     this.joinedAt,
     this.activityMetricsAvailable = true,
+    this.organizationSlotId,
+    this.organizationSlotLabel,
+    this.organizationUnitId,
+    this.organizationUnitName,
+    this.organizationUnitCode,
+    this.organizationUnitType,
+    this.organizationUnitBookingAudience,
+    this.accountAccessType = AccountAccessType.legacyUnassigned,
+    this.mustChangePassword = false,
+    this.passwordIssuedAt,
   });
 
   final String id;
@@ -126,6 +224,37 @@ class Account {
   DateTime? lastActiveAt;
   DateTime? joinedAt;
   final bool activityMetricsAvailable;
+  final String? organizationSlotId;
+  final String? organizationSlotLabel;
+  final String? organizationUnitId;
+  final String? organizationUnitName;
+  final String? organizationUnitCode;
+  final String? organizationUnitType;
+  final String? organizationUnitBookingAudience;
+  final AccountAccessType accountAccessType;
+  final bool mustChangePassword;
+  final DateTime? passwordIssuedAt;
+
+  bool get hasOrganizationSlot =>
+      organizationSlotId != null && organizationSlotId!.isNotEmpty;
+  bool get isOrganizationRepresentative =>
+      accountAccessType == AccountAccessType.organizationRepresentative;
+  bool get isLegacyUnassigned =>
+      accountAccessType == AccountAccessType.legacyUnassigned &&
+      role == AccountRole.user;
+  bool get isExternalGuest =>
+      accountAccessType == AccountAccessType.externalGuest;
+
+  String get organizationLabel {
+    final name = organizationUnitName;
+    final code = organizationUnitCode;
+    if (name != null && name.isNotEmpty && code != null && code.isNotEmpty) {
+      return '$code · $name';
+    }
+    if (name != null && name.isNotEmpty) return name;
+    if (code != null && code.isNotEmpty) return code;
+    return 'Unassigned campus account';
+  }
 
   String get initials {
     final words = name
@@ -143,6 +272,10 @@ class Account {
   bool get isInvited => status == AccountStatus.invited;
 
   String get pricingAudience {
+    if (isOrganizationRepresentative) {
+      return organizationUnitBookingAudience ?? 'student';
+    }
+    if (isExternalGuest || isLegacyUnassigned) return 'guest';
     if (verification != VerificationState.verified) return 'guest';
     final normalized = unit.toLowerCase();
     if (normalized.contains('faculty')) return 'faculty';

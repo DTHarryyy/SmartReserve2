@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/rendering.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -114,9 +115,19 @@ class SessionProfile {
     required this.verificationStatus,
     required this.onboardingComplete,
     required this.accountStatus,
+    required this.accountAccessType,
+    required this.mustChangePassword,
     required this.createdAt,
+    this.passwordIssuedAt,
     this.suspensionReason,
     this.suspendedUntil,
+    this.organizationSlotId,
+    this.organizationSlotLabel,
+    this.organizationUnitId,
+    this.organizationUnitName,
+    this.organizationUnitCode,
+    this.organizationUnitType,
+    this.organizationUnitBookingAudience,
   });
 
   final String id;
@@ -129,14 +140,26 @@ class SessionProfile {
   final String verificationStatus;
   final bool onboardingComplete;
   final String accountStatus;
+  final String accountAccessType;
+  final bool mustChangePassword;
   final DateTime? createdAt;
+  final DateTime? passwordIssuedAt;
   final String? suspensionReason;
   final DateTime? suspendedUntil;
+  final String? organizationSlotId;
+  final String? organizationSlotLabel;
+  final String? organizationUnitId;
+  final String? organizationUnitName;
+  final String? organizationUnitCode;
+  final String? organizationUnitType;
+  final String? organizationUnitBookingAudience;
 
   bool get isActive => accountStatus == 'active';
   bool get isInternalAdmin => role == 'internal_admin' && isActive;
   bool get isExternalAdmin => role == 'external_admin' && isActive;
   bool get isAdmin => isInternalAdmin || isExternalAdmin;
+  bool get isOrganizationRepresentative =>
+      accountAccessType == 'organization_representative' && isActive;
 
   factory SessionProfile.fromJson(Map<String, dynamic> json) => SessionProfile(
     id: json['id'] as String,
@@ -149,11 +172,25 @@ class SessionProfile {
     verificationStatus: (json['verification_status'] as String?) ?? 'none',
     onboardingComplete: (json['onboarding_complete'] as bool?) ?? false,
     accountStatus: (json['account_status'] as String?) ?? 'active',
+    accountAccessType:
+        (json['account_access_type'] as String?) ?? 'legacy_unassigned',
+    mustChangePassword: (json['must_change_password'] as bool?) ?? false,
     createdAt: DateTime.tryParse((json['created_at'] as String?) ?? ''),
+    passwordIssuedAt: DateTime.tryParse(
+      (json['password_issued_at'] as String?) ?? '',
+    ),
     suspensionReason: json['suspension_reason'] as String?,
     suspendedUntil: DateTime.tryParse(
       (json['suspended_until'] as String?) ?? '',
     ),
+    organizationSlotId: json['organization_slot_id'] as String?,
+    organizationSlotLabel: json['organization_slot_label'] as String?,
+    organizationUnitId: json['organization_unit_id'] as String?,
+    organizationUnitName: json['organization_unit_name'] as String?,
+    organizationUnitCode: json['organization_unit_code'] as String?,
+    organizationUnitType: json['organization_unit_type'] as String?,
+    organizationUnitBookingAudience:
+        json['organization_unit_booking_audience'] as String?,
   );
 }
 
@@ -167,6 +204,8 @@ class BackendAccount {
     required this.campusId,
     required this.verificationStatus,
     required this.accountStatus,
+    required this.accountAccessType,
+    required this.mustChangePassword,
     required this.createdAt,
     required this.lastSignInAt,
     required this.invitationSentAt,
@@ -175,6 +214,14 @@ class BackendAccount {
     required this.suspendedUntil,
     required this.isSelf,
     required this.activityMetricsAvailable,
+    this.organizationSlotId,
+    this.organizationSlotLabel,
+    this.organizationUnitId,
+    this.organizationUnitName,
+    this.organizationUnitCode,
+    this.organizationUnitType,
+    this.organizationUnitBookingAudience,
+    this.passwordIssuedAt,
     this.reservationCount = 0,
     this.lastReservationAt,
   });
@@ -187,6 +234,8 @@ class BackendAccount {
   final String campusId;
   final String verificationStatus;
   final String accountStatus;
+  final String accountAccessType;
+  final bool mustChangePassword;
   final DateTime? createdAt;
   final DateTime? lastSignInAt;
   final DateTime? invitationSentAt;
@@ -195,6 +244,14 @@ class BackendAccount {
   final DateTime? suspendedUntil;
   final bool isSelf;
   final bool activityMetricsAvailable;
+  final String? organizationSlotId;
+  final String? organizationSlotLabel;
+  final String? organizationUnitId;
+  final String? organizationUnitName;
+  final String? organizationUnitCode;
+  final String? organizationUnitType;
+  final String? organizationUnitBookingAudience;
+  final DateTime? passwordIssuedAt;
   final int reservationCount;
   final DateTime? lastReservationAt;
 
@@ -207,6 +264,9 @@ class BackendAccount {
     campusId: (json['campus_id'] as String?) ?? '',
     verificationStatus: (json['verification_status'] as String?) ?? 'none',
     accountStatus: (json['account_status'] as String?) ?? 'active',
+    accountAccessType:
+        (json['account_access_type'] as String?) ?? 'legacy_unassigned',
+    mustChangePassword: (json['must_change_password'] as bool?) ?? false,
     createdAt: _date(json['created_at']),
     lastSignInAt: _date(json['last_sign_in_at']),
     invitationSentAt: _date(json['invitation_sent_at']),
@@ -216,6 +276,15 @@ class BackendAccount {
     isSelf: (json['is_self'] as bool?) ?? false,
     activityMetricsAvailable:
         (json['activity_metrics_available'] as bool?) ?? false,
+    organizationSlotId: json['organization_slot_id'] as String?,
+    organizationSlotLabel: json['organization_slot_label'] as String?,
+    organizationUnitId: json['organization_unit_id'] as String?,
+    organizationUnitName: json['organization_unit_name'] as String?,
+    organizationUnitCode: json['organization_unit_code'] as String?,
+    organizationUnitType: json['organization_unit_type'] as String?,
+    organizationUnitBookingAudience:
+        json['organization_unit_booking_audience'] as String?,
+    passwordIssuedAt: _date(json['password_issued_at']),
     reservationCount: (json['reservation_count'] as num?)?.toInt() ?? 0,
     lastReservationAt: _date(json['last_reservation_at']),
   );
@@ -236,14 +305,94 @@ String _accountRole(Object? value) {
   };
 }
 
-class BackendCreatedAdministrator {
-  const BackendCreatedAdministrator({
+class BackendCreatedAccount {
+  const BackendCreatedAccount({
     required this.account,
     required this.temporaryPassword,
   });
 
   final BackendAccount account;
   final String temporaryPassword;
+}
+
+typedef BackendCreatedAdministrator = BackendCreatedAccount;
+
+class BackendOrganizationUnit {
+  const BackendOrganizationUnit({
+    required this.id,
+    this.parentId,
+    required this.name,
+    this.code,
+    required this.unitType,
+    required this.active,
+    required this.requiresRepresentative,
+    this.bookingAudience,
+  });
+
+  final String id;
+  final String? parentId;
+  final String name;
+  final String? code;
+  final String unitType;
+  final bool active;
+  final bool requiresRepresentative;
+  final String? bookingAudience;
+
+  factory BackendOrganizationUnit.fromJson(Map<String, dynamic> json) =>
+      BackendOrganizationUnit(
+        id: json['id'] as String,
+        parentId: json['parent_id'] as String?,
+        name: (json['name'] as String?) ?? '',
+        code: json['code'] as String?,
+        unitType: (json['unit_type'] as String?) ?? 'department',
+        active: (json['active'] as bool?) ?? true,
+        requiresRepresentative:
+            (json['requires_representative'] as bool?) ?? true,
+        bookingAudience: json['booking_audience'] as String?,
+      );
+}
+
+class BackendOrganizationAccountSlot {
+  const BackendOrganizationAccountSlot({
+    required this.id,
+    required this.unitId,
+    required this.label,
+    required this.active,
+    this.unit,
+    this.assignedProfileId,
+    this.assignedName,
+    this.assignedEmail,
+  });
+
+  final String id;
+  final String unitId;
+  final String label;
+  final bool active;
+  final BackendOrganizationUnit? unit;
+  final String? assignedProfileId;
+  final String? assignedName;
+  final String? assignedEmail;
+
+  factory BackendOrganizationAccountSlot.fromJson(
+    Map<String, dynamic> json, {
+    BackendAccount? assignedAccount,
+  }) {
+    final unitJson = json['organizational_units'];
+    return BackendOrganizationAccountSlot(
+      id: json['id'] as String,
+      unitId: json['unit_id'] as String,
+      label: (json['label'] as String?) ?? 'Authorized representative',
+      active: (json['active'] as bool?) ?? true,
+      unit: unitJson is Map
+          ? BackendOrganizationUnit.fromJson(
+              Map<String, dynamic>.from(unitJson),
+            )
+          : null,
+      assignedProfileId: assignedAccount?.id,
+      assignedName: assignedAccount?.fullName,
+      assignedEmail: assignedAccount?.email,
+    );
+  }
 }
 
 class BackendVerification {
@@ -470,8 +619,8 @@ class BackendReservationQuote {
               discountKind: DiscountKind.fromRaw(
                 '${discount['discount_kind'] ?? ''}',
               ),
-              fixedAmountCentavos:
-                  (discount['fixed_amount_centavos'] as num?)?.toInt(),
+              fixedAmountCentavos: (discount['fixed_amount_centavos'] as num?)
+                  ?.toInt(),
               percentage: (discount['percentage'] as num?)?.toDouble(),
               discountAmountCentavos:
                   (discount['discount_amount_centavos'] as num?)?.toInt() ?? 0,
@@ -602,6 +751,98 @@ class BackendReservationAttachment {
       );
 }
 
+class BackendReservationUseAssessment {
+  const BackendReservationUseAssessment({
+    required this.id,
+    required this.requestId,
+    required this.occurrenceId,
+    required this.facilityId,
+    required this.requesterId,
+    required this.adminId,
+    required this.cleanlinessRating,
+    required this.equipmentConditionRating,
+    required this.leftUnclean,
+    required this.equipmentDamaged,
+    required this.comment,
+    required this.revision,
+    required this.createdAt,
+    required this.updatedAt,
+    this.files = const [],
+  });
+
+  final String id;
+  final String requestId;
+  final String occurrenceId;
+  final String facilityId;
+  final String requesterId;
+  final String adminId;
+  final int cleanlinessRating;
+  final int equipmentConditionRating;
+  final bool leftUnclean;
+  final bool equipmentDamaged;
+  final String comment;
+  final int revision;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final List<BackendReservationUseAssessmentFile> files;
+
+  factory BackendReservationUseAssessment.fromJson(Map<String, dynamic> json) =>
+      BackendReservationUseAssessment(
+        id: '${json['id']}',
+        requestId: '${json['request_id']}',
+        occurrenceId: '${json['occurrence_id']}',
+        facilityId: '${json['facility_id']}',
+        requesterId: '${json['requester_id']}',
+        adminId: '${json['admin_id']}',
+        cleanlinessRating: (json['cleanliness_rating'] as num?)?.toInt() ?? 1,
+        equipmentConditionRating:
+            (json['equipment_condition_rating'] as num?)?.toInt() ?? 1,
+        leftUnclean: json['left_unclean'] as bool? ?? false,
+        equipmentDamaged: json['equipment_damaged'] as bool? ?? false,
+        comment: '${json['comment'] ?? ''}',
+        revision: (json['revision'] as num?)?.toInt() ?? 1,
+        createdAt: DateTime.parse('${json['created_at']}'),
+        updatedAt: DateTime.parse('${json['updated_at']}'),
+        files: [
+          for (final raw
+              in (json['reservation_use_assessment_files'] as List? ??
+                  const []))
+            BackendReservationUseAssessmentFile.fromJson(
+              Map<String, dynamic>.from(raw as Map),
+            ),
+        ],
+      );
+}
+
+class BackendReservationUseAssessmentFile {
+  const BackendReservationUseAssessmentFile({
+    required this.id,
+    required this.assessmentId,
+    required this.storagePath,
+    required this.fileName,
+    required this.mimeType,
+    required this.byteSize,
+  });
+
+  final String id;
+  final String assessmentId;
+  final String storagePath;
+  final String fileName;
+  final String mimeType;
+  final int byteSize;
+
+  factory BackendReservationUseAssessmentFile.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendReservationUseAssessmentFile(
+    id: '${json['id']}',
+    assessmentId: '${json['assessment_id']}',
+    storagePath: '${json['storage_path'] ?? ''}',
+    fileName: '${json['file_name'] ?? ''}',
+    mimeType: '${json['mime_type'] ?? ''}',
+    byteSize: (json['byte_size'] as num?)?.toInt() ?? 0,
+  );
+}
+
 class BackendReservationEvent {
   const BackendReservationEvent({
     required this.id,
@@ -724,6 +965,7 @@ class BackendReservation {
     this.acceptedTerms = const [],
     this.feedback,
     this.permit,
+    this.useAssessments = const [],
   });
 
   final String id;
@@ -772,6 +1014,7 @@ class BackendReservation {
   final List<AcceptedTerms> acceptedTerms;
   final BackendFeedback? feedback;
   final ReservationPermit? permit;
+  final List<BackendReservationUseAssessment> useAssessments;
 
   factory BackendReservation.fromJson(Map<String, dynamic> json) {
     List<T> rows<T>(String key, T Function(Map<String, dynamic>) parse) =>
@@ -871,6 +1114,13 @@ class BackendReservation {
               _embeddedOne(json['reservation_feedback'])!,
             ),
       permit: _activePermit(json['reservation_permits']),
+      useAssessments: [
+        for (final raw
+            in (json['reservation_use_assessments'] as List? ?? const []))
+          BackendReservationUseAssessment.fromJson(
+            Map<String, dynamic>.from(raw as Map),
+          ),
+      ],
     );
   }
 }
@@ -907,6 +1157,9 @@ PaymentTransaction _paymentTransaction(Map<String, dynamic> json) =>
       verifiedBy: json['verified_by'] as String?,
       verifiedAt: _date(json['verified_at']),
       rejectionReason: json['rejection_reason'] as String?,
+      correctionDueAt: _date(json['correction_due_at']),
+      correctionCount: (json['correction_count'] as num?)?.toInt() ?? 0,
+      lastCorrectedAt: _date(json['last_corrected_at']),
     );
 
 class ReservationActionCommand {
@@ -1764,11 +2017,9 @@ class BackendLoyaltyDiscountOffer {
         id: '${json['id']}',
         name: '${json['name'] ?? ''}',
         description: '${json['description'] ?? ''}',
-        requiredPoints:
-            (json['required_points'] as num?)?.toDouble() ?? 0,
+        requiredPoints: (json['required_points'] as num?)?.toDouble() ?? 0,
         discountKind: '${json['discount_kind'] ?? 'fixed_amount'}',
-        fixedAmountCentavos:
-            (json['fixed_amount_centavos'] as num?)?.toInt(),
+        fixedAmountCentavos: (json['fixed_amount_centavos'] as num?)?.toInt(),
         percentage: (json['percentage'] as num?)?.toDouble(),
         facilityId: json['facility_id'] as String?,
         facilityName: json['facility_name'] as String?,
@@ -1890,8 +2141,7 @@ class BackendLoyaltyDiscountClaim {
       percentage: (json['percentage'] as num?)?.toDouble(),
       facilityId: json['facility_id'] as String?,
       facilityName: json['facility_name'] as String?,
-      requiredPoints:
-          (json['required_points'] as num?)?.toDouble() ?? 0,
+      requiredPoints: (json['required_points'] as num?)?.toDouble() ?? 0,
       expiryDate: DateTime.parse('${json['expiry_date']}'),
       pointsSpent: (json['points_spent'] as num?)?.toDouble() ?? 0,
       status: '${json['effective_status'] ?? json['status'] ?? 'claimed'}',
@@ -2050,8 +2300,7 @@ class BackendLoyaltySummary {
         eligible: json['eligible'] as bool? ?? true,
         balance: (json['balance'] as num?)?.toDouble() ?? 0,
         lifetimeEarned: (json['lifetime_earned'] as num?)?.toDouble() ?? 0,
-        lifetimeRedeemed:
-            (json['lifetime_redeemed'] as num?)?.toDouble() ?? 0,
+        lifetimeRedeemed: (json['lifetime_redeemed'] as num?)?.toDouble() ?? 0,
         rules: {
           for (final entry
               in (json['rules'] as Map<String, dynamic>? ?? const {}).entries)
@@ -2134,8 +2383,7 @@ class BackendLoyaltyBalanceRow {
         email: '${json['email'] ?? ''}',
         balance: (json['balance'] as num?)?.toDouble() ?? 0,
         lifetimeEarned: (json['lifetime_earned'] as num?)?.toDouble() ?? 0,
-        lifetimeRedeemed:
-            (json['lifetime_redeemed'] as num?)?.toDouble() ?? 0,
+        lifetimeRedeemed: (json['lifetime_redeemed'] as num?)?.toDouble() ?? 0,
         lastActivityAt: _date(json['last_activity_at']),
       );
 
@@ -2214,8 +2462,7 @@ class BackendLoyaltyAdminClaim {
         offerId: '${json['offer_id']}',
         offerName: '${json['offer_name'] ?? ''}',
         discountKind: '${json['discount_kind'] ?? 'fixed_amount'}',
-        fixedAmountCentavos:
-            (json['fixed_amount_centavos'] as num?)?.toInt(),
+        fixedAmountCentavos: (json['fixed_amount_centavos'] as num?)?.toInt(),
         percentage: (json['percentage'] as num?)?.toDouble(),
         facilityId: json['facility_id'] as String?,
         facilityName: json['facility_name'] as String?,
@@ -2330,20 +2577,11 @@ class BackendAssistantMessage {
 abstract interface class SmartReserveBackend {
   User? get user;
   Stream<AuthState> get authChanges;
-  Future<void> signUp({
-    required String fullName,
-    required String email,
-    required String password,
-  });
-  Future<void> confirmSignup(String email, String token);
-  Future<void> resendSignup(String email);
   Future<void> signIn(String email, String password);
-  Future<void> sendRecovery(String email);
-  Future<void> verifyRecovery(String email, String token);
-  Future<void> updatePassword(String password);
   Future<void> signOut();
   Future<SessionProfile?> currentProfile();
   Future<void> completeGuestOnboarding();
+  Future<SessionProfile> completeInitialPasswordChange(String password);
   Future<BackendVerification> submitVerification({
     required String claimType,
     required String campusId,
@@ -2440,11 +2678,53 @@ abstract interface class SmartReserveBackend {
     required String email,
     required String role,
     String? note,
+    String? organizationSlotId,
   });
-  Future<BackendCreatedAdministrator> createAdministrator({
+  Future<BackendCreatedAccount> createAdministrator({
     required String email,
     required String role,
     String? note,
+  });
+  Future<BackendCreatedAccount> createOrganizationRepresentative({
+    required String fullName,
+    required String email,
+    required String organizationSlotId,
+  });
+  Future<BackendCreatedAccount> resetOrganizationRepresentativePassword(
+    String accountId,
+  );
+  Future<List<BackendOrganizationUnit>> organizationUnits();
+  Future<List<BackendOrganizationAccountSlot>> organizationSlots();
+  Future<BackendOrganizationUnit> createOrganizationUnit({
+    String? parentId,
+    required String name,
+    String? code,
+    required String unitType,
+    required bool requiresRepresentative,
+    String? bookingAudience,
+  });
+  Future<BackendOrganizationUnit> updateOrganizationUnit({
+    required String unitId,
+    String? parentId,
+    required String name,
+    String? code,
+    required String unitType,
+    String? bookingAudience,
+  });
+  Future<BackendOrganizationUnit> archiveOrganizationUnit(String unitId);
+  Future<BackendAccount> assignOrganizationRepresentative({
+    required String profileId,
+    required String slotId,
+  });
+  Future<BackendAccount> transferOrganizationRepresentative({
+    required String currentProfileId,
+    required String replacementProfileId,
+    required String slotId,
+  });
+  Future<BackendAccount> removeOrganizationRepresentative(String profileId);
+  Future<BackendAccount> convertLegacyAccountToExternalGuest({
+    required String profileId,
+    required String reason,
   });
   Future<BackendAccount> resendAdminInvite(String accountId);
   Future<String> revokeAdminInvite(String accountId);
@@ -2487,14 +2767,31 @@ abstract interface class SmartReserveCoreBackend {
   Future<PaymentSummary> paymentSummary(String requestId);
   Future<List<PaymentTransaction>> payments(String requestId);
   Future<PaymentTransaction> submitPayment(PaymentSubmissionDraft draft);
+  Future<PaymentTransaction> correctPaymentSubmission({
+    required PaymentTransaction payment,
+    required int amountCentavos,
+    required String referenceNumber,
+    required ReservationUpload proof,
+  });
   Future<PaymentTransaction> decidePayment({
     required String paymentId,
     required String decision,
     String? reason,
   });
   Future<String> paymentProofUrl(String path);
+  Future<void> submitReservationUseAssessment({
+    required String requestId,
+    required String occurrenceId,
+    required int cleanlinessRating,
+    required int equipmentConditionRating,
+    required bool leftUnclean,
+    required bool equipmentDamaged,
+    required String comment,
+    List<ReservationUpload> evidence,
+  });
   Future<ReservationPermit> issuePermit(String requestId);
   Future<void> uploadPermitPdf({
+    required String permitId,
     required String requestId,
     required String requesterId,
     required String permitNumber,
@@ -2971,46 +3268,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   User? get user => _client.auth.currentUser;
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
 
-  Future<void> signUp({
-    required String fullName,
-    required String email,
-    required String password,
-  }) async {
-    await _client.auth.signUp(
-      email: email,
-      password: password,
-      data: {'full_name': fullName},
-    );
-  }
-
-  Future<void> confirmSignup(String email, String token) async {
-    await _client.auth.verifyOTP(
-      email: email,
-      token: token,
-      type: OtpType.signup,
-    );
-  }
-
-  Future<void> resendSignup(String email) =>
-      _client.auth.resend(type: OtpType.signup, email: email);
-
   Future<void> signIn(String email, String password) =>
       _client.auth.signInWithPassword(email: email, password: password);
-
-  Future<void> sendRecovery(String email) =>
-      _client.auth.resetPasswordForEmail(email);
-
-  Future<void> verifyRecovery(String email, String token) async {
-    await _client.auth.verifyOTP(
-      email: email,
-      token: token,
-      type: OtpType.recovery,
-    );
-  }
-
-  Future<void> updatePassword(String password) async {
-    await _client.auth.updateUser(UserAttributes(password: password));
-  }
 
   Future<void> signOut() => _client.auth.signOut();
 
@@ -3020,16 +3279,51 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     await _client.rpc('normalize_my_expired_suspension');
     final row = await _client
         .from('profiles')
-        .select()
+        .select(
+          '*,organization_account_slots(id,label,unit_id,organizational_units(id,name,code,unit_type,booking_audience,requires_representative))',
+        )
         .eq('id', currentUser.id)
         .maybeSingle();
     if (row == null) return null;
-    return SessionProfile.fromJson(Map<String, dynamic>.from(row));
+    final json = Map<String, dynamic>.from(row);
+    final slot = json['organization_account_slots'];
+    if (slot is Map) {
+      final slotJson = Map<String, dynamic>.from(slot);
+      final unit = slotJson['organizational_units'];
+      if (unit is Map) {
+        final unitJson = Map<String, dynamic>.from(unit);
+        json['organization_slot_label'] = slotJson['label'];
+        json['organization_unit_id'] = unitJson['id'] ?? slotJson['unit_id'];
+        json['organization_unit_name'] = unitJson['name'];
+        json['organization_unit_code'] = unitJson['code'];
+        json['organization_unit_type'] = unitJson['unit_type'];
+        json['organization_unit_booking_audience'] =
+            unitJson['booking_audience'];
+      }
+    }
+    return SessionProfile.fromJson(json);
   }
 
   Future<void> completeGuestOnboarding() async {
     if (user == null) throw const AuthException('Please sign in again.');
     await _client.rpc('complete_guest_onboarding');
+  }
+
+  Future<SessionProfile> completeInitialPasswordChange(String password) async {
+    if (user == null) throw const AuthException('Please sign in again.');
+    final response = await _client.functions.invoke(
+      'complete-initial-password',
+      body: {'password': password},
+    );
+    final data = response.data;
+    if (data is! Map) {
+      throw AccountManagementException.invalidResponse(status: response.status);
+    }
+    final profile = Map<String, dynamic>.from(data)['profile'];
+    if (profile is! Map) {
+      throw AccountManagementException.invalidResponse(status: response.status);
+    }
+    return SessionProfile.fromJson(Map<String, dynamic>.from(profile));
   }
 
   Future<BackendVerification> submitVerification({
@@ -3151,7 +3445,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'reservation_price_lines(*),'
       'reservation_terms_acceptances(accepted_at,content_hash,terms_versions(id,title,version,content)),'
       'payment_method:facility_payment_methods!reservation_requests_payment_method_id_fkey(*),'
-      'reservation_feedback(*),reservation_permits(*)';
+      'reservation_feedback(*),reservation_permits(*),'
+      'reservation_use_assessments(*,reservation_use_assessment_files(*))';
 
   @override
   Future<List<BackendReservation>> reservations() async {
@@ -3438,6 +3733,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         verifiedBy: json['verified_by'] as String?,
         verifiedAt: _date(json['verified_at']),
         rejectionReason: json['rejection_reason'] as String?,
+        correctionDueAt: _date(json['correction_due_at']),
+        correctionCount: (json['correction_count'] as num?)?.toInt() ?? 0,
+        lastCorrectedAt: _date(json['last_corrected_at']),
       );
 
   @override
@@ -3463,6 +3761,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       balanceDueAt: _date(json['balance_due_at']),
       downPaymentPercent: (json['down_payment_percent'] as num?)?.toInt() ?? 50,
       paymentExemption: '${json['payment_exemption'] ?? 'none'}',
+      correctionAmountCentavos:
+          (json['correction_amount_centavos'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -3543,6 +3843,63 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       _client.storage.from('payment-proofs').createSignedUrl(path, 60 * 10);
 
   @override
+  Future<void> submitReservationUseAssessment({
+    required String requestId,
+    required String occurrenceId,
+    required int cleanlinessRating,
+    required int equipmentConditionRating,
+    required bool leftUnclean,
+    required bool equipmentDamaged,
+    required String comment,
+    List<ReservationUpload> evidence = const [],
+  }) async {
+    final uploaded = <String>[];
+    final metadata = <Map<String, dynamic>>[];
+    try {
+      for (final file in evidence.take(3)) {
+        final extension = file.mimeType == 'image/png' ? '.png' : '.jpg';
+        final path = '$requestId/$occurrenceId/${_uuid()}$extension';
+        await _client.storage
+            .from('facility-assessment-evidence')
+            .uploadBinary(
+              path,
+              file.bytes,
+              fileOptions: FileOptions(contentType: file.mimeType),
+            );
+        uploaded.add(path);
+        metadata.add({
+          'storage_path': path,
+          'file_name': file.name,
+          'mime_type': file.mimeType,
+          'byte_size': file.bytes.lengthInBytes,
+        });
+      }
+      await _client.rpc(
+        'submit_reservation_use_assessment',
+        params: {
+          'p_occurrence_id': occurrenceId,
+          'p_cleanliness_rating': cleanlinessRating,
+          'p_equipment_condition_rating': equipmentConditionRating,
+          'p_left_unclean': leftUnclean,
+          'p_equipment_damaged': equipmentDamaged,
+          'p_comment': comment.trim(),
+          'p_attachment_metadata': metadata,
+          'p_idempotency_key': _uuid(),
+        },
+      );
+    } catch (_) {
+      if (uploaded.isNotEmpty) {
+        try {
+          await _client.storage
+              .from('facility-assessment-evidence')
+              .remove(uploaded);
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  @override
   Future<ReservationPermit> issuePermit(String requestId) async {
     final data = await _client.rpc(
       'issue_reservation_permit',
@@ -3553,6 +3910,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<void> uploadPermitPdf({
+    required String permitId,
     required String requestId,
     required String requesterId,
     required String permitNumber,
@@ -3570,6 +3928,15 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
             upsert: true,
           ),
         );
+    await _client.rpc(
+      'record_reservation_permit_pdf',
+      params: {
+        'p_permit_id': permitId,
+        'p_storage_path': path,
+        'p_sha256': sha256.convert(bytes).toString(),
+        'p_byte_size': bytes.lengthInBytes,
+      },
+    );
   }
 
   @override
@@ -3770,6 +4137,51 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
+  Future<PaymentTransaction> correctPaymentSubmission({
+    required PaymentTransaction payment,
+    required int amountCentavos,
+    required String referenceNumber,
+    required ReservationUpload proof,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    final replacementId = _uuid();
+    final extension = proof.name.contains('.')
+        ? '.${proof.name.split('.').last.toLowerCase()}'
+        : '';
+    final path =
+        '${currentUser.id}/${payment.requestId}/$replacementId$extension';
+    try {
+      await _client.storage
+          .from('payment-proofs')
+          .uploadBinary(
+            path,
+            proof.bytes,
+            fileOptions: FileOptions(contentType: proof.mimeType),
+          )
+          .timeout(const Duration(seconds: 90));
+      final data = await _client
+          .rpc(
+            'correct_payment_submission',
+            params: {
+              'p_payment_id': payment.id,
+              'p_amount_centavos': amountCentavos,
+              'p_reference_number': referenceNumber,
+              'p_proof_path': path,
+              'p_idempotency_key': _uuid(),
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+      return _paymentFromJson(Map<String, dynamic>.from(data as Map));
+    } catch (_) {
+      try {
+        await _client.storage.from('payment-proofs').remove([path]);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  @override
   Future<BackendLoyaltyDiscountClaim> claimLoyaltyDiscount(
     String offerId,
   ) async {
@@ -3927,6 +4339,19 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   Future<ReservationActionResult> performReservationAction(
     ReservationActionCommand command,
   ) async {
+    if (command.action == 'self_check_in') {
+      final response = await _client.rpc(
+        'self_check_in_occurrence',
+        params: {
+          'p_request_id': command.requestId,
+          'p_occurrence_id': command.payload['occurrence_id'],
+          'p_expected_version': command.expectedVersion,
+          'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+        },
+      );
+      final data = Map<String, dynamic>.from(response as Map);
+      return ReservationActionResult(actionId: data['action_id'] as String?);
+    }
     if (command.action == 'approve_bump') {
       final response = await _client.rpc(
         'approve_and_bump_reservation',
@@ -4134,8 +4559,12 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     final data = await _client.rpc(
       'check_my_reservation_overlaps',
       params: {
-        'p_starts_at': [for (final value in startsAt) value.toUtc().toIso8601String()],
-        'p_ends_at': [for (final value in endsAt) value.toUtc().toIso8601String()],
+        'p_starts_at': [
+          for (final value in startsAt) value.toUtc().toIso8601String(),
+        ],
+        'p_ends_at': [
+          for (final value in endsAt) value.toUtc().toIso8601String(),
+        ],
         'p_exclude_request_id': excludeRequestId,
       },
     );
@@ -4543,6 +4972,37 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     }
   }
 
+  Map<String, dynamic> _singleRpcRow(Object? response, String label) {
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+    if (response is List && response.length == 1 && response.first is Map) {
+      return Map<String, dynamic>.from(response.first as Map);
+    }
+    throw StateError('$label returned an invalid response.');
+  }
+
+  BackendOrganizationUnit _organizationUnitResult(Object? response) =>
+      BackendOrganizationUnit.fromJson(
+        _singleRpcRow(response, 'Organization unit'),
+      );
+
+  Future<BackendOrganizationAccountSlot> _organizationSlotResult(
+    Object? response,
+  ) async {
+    final row = _singleRpcRow(response, 'Organization account slot');
+    final assigned = {
+      for (final account in await accounts())
+        if (account.organizationSlotId != null &&
+            account.accountStatus == 'active')
+          account.organizationSlotId!: account,
+    };
+    return BackendOrganizationAccountSlot.fromJson(
+      row,
+      assignedAccount: assigned[row['id']],
+    );
+  }
+
   @override
   Future<List<BackendAccount>> accounts() async {
     final response = await _manageUsers('list');
@@ -4583,38 +5043,268 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     required String email,
     required String role,
     String? note,
-  }) async => _accountResult(
-    await _manageUsers(
-      'invite',
-      fields: {
-        'email': email,
-        'role': role,
-        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-      },
-    ),
-  );
+    String? organizationSlotId,
+  }) async {
+    final fields = <String, dynamic>{'email': email, 'role': role};
+    if (organizationSlotId != null) {
+      fields['organization_slot_id'] = organizationSlotId;
+    }
+    if (note != null && note.trim().isNotEmpty) {
+      fields['note'] = note.trim();
+    }
+    return _accountResult(await _manageUsers('invite', fields: fields));
+  }
 
   @override
-  Future<BackendCreatedAdministrator> createAdministrator({
+  Future<BackendCreatedAccount> createAdministrator({
     required String email,
     required String role,
     String? note,
   }) async {
+    final fields = <String, dynamic>{'email': email, 'role': role};
+    if (note != null && note.trim().isNotEmpty) {
+      fields['note'] = note.trim();
+    }
+    final response = await _manageUsers('create_administrator', fields: fields);
+    final temporaryPassword = response['temporary_password'];
+    if (temporaryPassword is! String || temporaryPassword.isEmpty) {
+      throw StateError('User management did not return temporary credentials.');
+    }
+    return BackendCreatedAccount(
+      account: _accountResult(response),
+      temporaryPassword: temporaryPassword,
+    );
+  }
+
+  @override
+  Future<BackendCreatedAccount> createOrganizationRepresentative({
+    required String fullName,
+    required String email,
+    required String organizationSlotId,
+  }) async {
     final response = await _manageUsers(
-      'create_admin',
+      'create_organization_representative',
       fields: {
+        'full_name': fullName,
         'email': email,
-        'role': role,
-        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        'organization_slot_id': organizationSlotId,
       },
     );
     final temporaryPassword = response['temporary_password'];
     if (temporaryPassword is! String || temporaryPassword.isEmpty) {
       throw StateError('User management did not return temporary credentials.');
     }
-    return BackendCreatedAdministrator(
+    return BackendCreatedAccount(
       account: _accountResult(response),
       temporaryPassword: temporaryPassword,
+    );
+  }
+
+  @override
+  Future<BackendCreatedAccount> resetOrganizationRepresentativePassword(
+    String accountId,
+  ) async {
+    final response = await _manageUsers(
+      'reset_organization_representative_password',
+      fields: {'target_id': accountId},
+    );
+    final temporaryPassword = response['temporary_password'];
+    if (temporaryPassword is! String || temporaryPassword.isEmpty) {
+      throw StateError('User management did not return temporary credentials.');
+    }
+    return BackendCreatedAccount(
+      account: _accountResult(response),
+      temporaryPassword: temporaryPassword,
+    );
+  }
+
+  @override
+  Future<List<BackendOrganizationUnit>> organizationUnits() async {
+    final response = await _client
+        .from('organizational_units')
+        .select(
+          'id,parent_id,name,code,unit_type,active,requires_representative,booking_audience',
+        )
+        .order('name');
+    return [
+      for (final row in response)
+        BackendOrganizationUnit.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<List<BackendOrganizationAccountSlot>> organizationSlots() async {
+    final rows = await _client
+        .from('organization_account_slots')
+        .select(
+          'id,unit_id,label,active,organizational_units(id,parent_id,name,code,unit_type,active,requires_representative,booking_audience)',
+        )
+        .order('label');
+    final assigned = {
+      for (final account in await accounts())
+        if (account.organizationSlotId != null &&
+            account.accountStatus == 'active')
+          account.organizationSlotId!: account,
+    };
+    return [
+      for (final row in rows)
+        BackendOrganizationAccountSlot.fromJson(
+          Map<String, dynamic>.from(row as Map),
+          assignedAccount: assigned[row['id']],
+        ),
+    ];
+  }
+
+  @override
+  Future<BackendOrganizationUnit> createOrganizationUnit({
+    String? parentId,
+    required String name,
+    String? code,
+    required String unitType,
+    required bool requiresRepresentative,
+    String? bookingAudience,
+  }) async => _organizationUnitResult(
+    await _client.rpc(
+      'create_organization_unit',
+      params: {
+        'p_parent_id': parentId,
+        'p_name': name,
+        'p_code': code,
+        'p_unit_type': unitType,
+        'p_requires_representative': requiresRepresentative,
+        'p_booking_audience': bookingAudience,
+      },
+    ),
+  );
+
+  @override
+  Future<BackendOrganizationUnit> updateOrganizationUnit({
+    required String unitId,
+    String? parentId,
+    required String name,
+    String? code,
+    required String unitType,
+    String? bookingAudience,
+  }) async => _organizationUnitResult(
+    await _client.rpc(
+      'update_organization_unit_policy',
+      params: {
+        'p_unit_id': unitId,
+        'p_parent_id': parentId,
+        'p_name': name,
+        'p_code': code,
+        'p_unit_type': unitType,
+        'p_booking_audience': bookingAudience,
+      },
+    ),
+  );
+
+  @override
+  Future<BackendOrganizationUnit> archiveOrganizationUnit(
+    String unitId,
+  ) async => _organizationUnitResult(
+    await _client.rpc(
+      'archive_organization_unit_policy',
+      params: {'p_unit_id': unitId},
+    ),
+  );
+
+  Future<BackendOrganizationAccountSlot> createOrganizationAccountSlot({
+    required String unitId,
+    required String label,
+  }) async => _organizationSlotResult(
+    await _client.rpc(
+      'create_organization_account_slot',
+      params: {'p_unit_id': unitId, 'p_label': label},
+    ),
+  );
+
+  Future<BackendOrganizationAccountSlot> updateOrganizationAccountSlot({
+    required String slotId,
+    required String label,
+    required bool active,
+  }) async => _organizationSlotResult(
+    await _client.rpc(
+      'update_organization_account_slot',
+      params: {'p_slot_id': slotId, 'p_label': label, 'p_active': active},
+    ),
+  );
+
+  Future<BackendOrganizationAccountSlot> archiveOrganizationAccountSlot(
+    String slotId,
+  ) async => _organizationSlotResult(
+    await _client.rpc(
+      'archive_organization_account_slot',
+      params: {'p_slot_id': slotId},
+    ),
+  );
+
+  @override
+  Future<BackendAccount> assignOrganizationRepresentative({
+    required String profileId,
+    required String slotId,
+  }) async {
+    await _client.rpc(
+      'assign_existing_organization_representative',
+      params: {'p_profile_id': profileId, 'p_slot_id': slotId},
+    );
+    final refreshed = await accounts();
+    return refreshed.firstWhere(
+      (account) => account.id == profileId,
+      orElse: () => throw StateError('Assigned account could not be reloaded.'),
+    );
+  }
+
+  @override
+  Future<BackendAccount> transferOrganizationRepresentative({
+    required String currentProfileId,
+    required String replacementProfileId,
+    required String slotId,
+  }) async {
+    await _client.rpc(
+      'transfer_organization_representative',
+      params: {
+        'p_current_profile_id': currentProfileId,
+        'p_replacement_profile_id': replacementProfileId,
+        'p_slot_id': slotId,
+      },
+    );
+    final refreshed = await accounts();
+    return refreshed.firstWhere(
+      (account) => account.id == replacementProfileId,
+      orElse: () =>
+          throw StateError('Transferred account could not be reloaded.'),
+    );
+  }
+
+  @override
+  Future<BackendAccount> removeOrganizationRepresentative(
+    String profileId,
+  ) async {
+    await _client.rpc(
+      'remove_organization_representative',
+      params: {'p_profile_id': profileId},
+    );
+    final refreshed = await accounts();
+    return refreshed.firstWhere(
+      (account) => account.id == profileId,
+      orElse: () => throw StateError('Updated account could not be reloaded.'),
+    );
+  }
+
+  @override
+  Future<BackendAccount> convertLegacyAccountToExternalGuest({
+    required String profileId,
+    required String reason,
+  }) async {
+    await _client.rpc(
+      'convert_legacy_account_to_external_guest',
+      params: {'p_profile_id': profileId, 'p_reason': reason},
+    );
+    final refreshed = await accounts();
+    return refreshed.firstWhere(
+      (account) => account.id == profileId,
+      orElse: () => throw StateError('Updated account could not be reloaded.'),
     );
   }
 

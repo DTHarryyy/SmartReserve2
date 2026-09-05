@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
@@ -15,6 +17,7 @@ Future<void> showUserDetail(
   required AppState state,
   required Account account,
 }) {
+  if (state.isInternalAdmin) unawaited(state.refreshOrganizationRegistry());
   if (SR.isCompact(MediaQuery.sizeOf(context).width)) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -30,7 +33,7 @@ Future<void> showUserDetail(
   );
 }
 
-enum _Action { none, role, suspend }
+enum _Action { none, role, suspend, assignOrganization, convertGuest }
 
 class _UserDetailDialog extends StatefulWidget {
   const _UserDetailDialog({
@@ -54,6 +57,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
   final _scrollController = ScrollController();
   final _feedbackKey = GlobalKey();
   AccountRole _roleDraft = AccountRole.user;
+  OrganizationAccountSlot? _slotDraft;
   bool _attempted = false;
   bool _busy = false;
   String? _operationError;
@@ -121,6 +125,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
       _operationError = null;
       _reason.clear();
       if (action == _Action.role) _roleDraft = _account.role;
+      _slotDraft = null;
       if (action == _Action.suspend) {
         _untilDate = null;
         _until.clear();
@@ -131,6 +136,15 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
   void _clearOperationError() {
     if (_operationError != null) _operationError = null;
   }
+
+  List<OrganizationAccountSlot> get _vacantSlots => [
+    for (final slot in widget.state.organizationSlots)
+      if (slot.active && !slot.assigned && (slot.unit?.active ?? true)) slot,
+  ]..sort((a, b) {
+    final aLabel = a.unit?.label ?? a.label;
+    final bLabel = b.unit?.label ?? b.label;
+    return aLabel.toLowerCase().compareTo(bLabel.toLowerCase());
+  });
 
   Future<void> _pickUntil() async {
     final now = DateTime.now();
@@ -267,6 +281,14 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
               border: context.srColors.redLine,
               foreground: context.srColors.redInk,
             ),
+          if (_account.isLegacyUnassigned)
+            _Note(
+              text:
+                  'Organization assignment required. This account cannot reserve until assigned to an authorized organization slot or converted to an external guest account.',
+              background: context.srColors.amberTint,
+              border: context.srColors.amberLine,
+              foreground: context.srColors.amberTitle,
+            ),
 
           const SizedBox(height: 12),
           SrCellGrid(
@@ -322,6 +344,8 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
 
           if (_action == _Action.role) _roleForm(),
           if (_action == _Action.suspend) _suspendForm(),
+          if (_action == _Action.assignOrganization) _assignOrganizationForm(),
+          if (_action == _Action.convertGuest) _convertGuestForm(),
           if (_operationError != null)
             KeyedSubtree(
               key: _feedbackKey,
@@ -373,43 +397,78 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     ],
   );
 
-  Widget _normalActions(String? blocked) => Row(
+  Widget _normalActions(String? blocked) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Expanded(
-        child: SrButton(
-          label: 'Change role',
-          expand: true,
-          fontSize: 12.5,
-          minHeight: 40,
-          onPressed: blocked != null || _busy
-              ? null
-              : () => _openAction(_Action.role),
-        ),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: _account.status == AccountStatus.suspended
-            ? SrButton(
-                label: 'Lift suspension',
+      if (widget.state.isInternalAdmin && _account.isLegacyUnassigned) ...[
+        Row(
+          children: [
+            Expanded(
+              child: SrButton(
+                label: 'Assign to organization',
                 kind: SrButtonKind.primary,
                 expand: true,
                 fontSize: 12.5,
                 minHeight: 40,
                 onPressed: _busy
                     ? null
-                    : () =>
-                          _perform(() => widget.state.liftSuspension(_account)),
-              )
-            : SrButton(
-                label: 'Suspend account',
-                kind: SrButtonKind.danger,
+                    : () => _openAction(_Action.assignOrganization),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SrButton(
+                label: 'Convert to guest',
                 expand: true,
                 fontSize: 12.5,
                 minHeight: 40,
-                onPressed: _account.isSelf || _busy
-                    ? null
-                    : () => _openAction(_Action.suspend),
+                onPressed: _busy ? null : () => _openAction(_Action.convertGuest),
               ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+      ],
+      Row(
+        children: [
+          Expanded(
+            child: SrButton(
+              label: 'Change role',
+              expand: true,
+              fontSize: 12.5,
+              minHeight: 40,
+              onPressed: blocked != null || _busy
+                  ? null
+                  : () => _openAction(_Action.role),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _account.status == AccountStatus.suspended
+                ? SrButton(
+                    label: 'Lift suspension',
+                    kind: SrButtonKind.primary,
+                    expand: true,
+                    fontSize: 12.5,
+                    minHeight: 40,
+                    onPressed: _busy
+                        ? null
+                        : () => _perform(
+                            () => widget.state.liftSuspension(_account),
+                          ),
+                  )
+                : SrButton(
+                    label: 'Suspend account',
+                    kind: SrButtonKind.danger,
+                    expand: true,
+                    fontSize: 12.5,
+                    minHeight: 40,
+                    onPressed: _account.isSelf || _busy
+                        ? null
+                        : () => _openAction(_Action.suspend),
+                  ),
+          ),
+        ],
       ),
     ],
   );
@@ -584,6 +643,156 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                       _action = _Action.none;
                       _attempted = false;
                       _operationError = null;
+                    }),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _assignOrganizationForm() => Container(
+    margin: const EdgeInsets.only(top: 12),
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: context.srColors.surfaceSubtle,
+      borderRadius: BorderRadius.circular(11),
+      border: Border.all(color: context.srColors.hairline),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Assign organization account', style: sans(12, w: 600)),
+        const SizedBox(height: 3),
+        Text(
+          'The selected account becomes the one named representative for that organization.',
+          style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+        ),
+        const SizedBox(height: 12),
+        const SrLabel('Vacant organization account'),
+        SrSelect<OrganizationAccountSlot>(
+          value: _slotDraft,
+          items: _vacantSlots,
+          placeholder: _vacantSlots.isEmpty
+              ? 'No vacant organization slots'
+              : 'Choose an organization',
+          semanticLabel: 'Vacant organization account',
+          labelOf: (slot) => slot.unit?.label ?? slot.label,
+          subtitleOf: (slot) =>
+              OrganizationUnit.audienceLabel(slot.unit?.bookingAudience),
+          onChanged: _busy
+              ? (_) {}
+              : (slot) => setState(() {
+                  _slotDraft = slot;
+                  _clearOperationError();
+                }),
+        ),
+        if (_attempted && _slotDraft == null)
+          const SrErrorText('Choose a vacant organization account.'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            SrButton(
+              kind: SrButtonKind.primary,
+              label: _busy ? 'Assigning...' : 'Assign account',
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      if (_slotDraft == null) {
+                        setState(() => _attempted = true);
+                        return;
+                      }
+                      await _perform(
+                        () => widget.state.assignOrganizationRepresentative(
+                          profileId: _account.id,
+                          slotId: _slotDraft!.id,
+                        ),
+                      );
+                    },
+            ),
+            const SizedBox(width: 8),
+            SrButton(
+              label: 'Cancel',
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                      _action = _Action.none;
+                      _attempted = false;
+                      _slotDraft = null;
+                      _operationError = null;
+                    }),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _convertGuestForm() => Container(
+    margin: const EdgeInsets.only(top: 12),
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: context.srColors.amberTint,
+      borderRadius: BorderRadius.circular(11),
+      border: Border.all(color: context.srColors.amberLine),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Convert to external guest',
+          style: sans(12, w: 600, color: context.srColors.amberTitle),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          'Use this only when the account should book as an outside renter, not as a campus organization.',
+          style: sans(11.5, height: 1.6, color: context.srColors.amberTitle),
+        ),
+        const SizedBox(height: 12),
+        const SrLabel('Reason', required: true),
+        SrTextField(
+          controller: _reason,
+          placeholder: 'e.g. Existing external client account',
+          fontSize: 12.5,
+          minLines: 2,
+          maxLines: 4,
+          hasError: _attempted && _reason.text.trim().isEmpty,
+          keyboardType: TextInputType.multiline,
+          onChanged: (_) => setState(_clearOperationError),
+        ),
+        if (_attempted && _reason.text.trim().isEmpty)
+          const SrErrorText('Enter a reason for the audit log.'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            SrButton(
+              kind: SrButtonKind.primary,
+              label: _busy ? 'Converting...' : 'Convert account',
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      if (_reason.text.trim().isEmpty) {
+                        setState(() => _attempted = true);
+                        return;
+                      }
+                      await _perform(
+                        () => widget.state.convertLegacyAccountToExternalGuest(
+                          profileId: _account.id,
+                          reason: _reason.text.trim(),
+                        ),
+                      );
+                    },
+            ),
+            const SizedBox(width: 8),
+            SrButton(
+              label: 'Cancel',
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                      _action = _Action.none;
+                      _attempted = false;
+                      _operationError = null;
+                      _reason.clear();
                     }),
             ),
           ],

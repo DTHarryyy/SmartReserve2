@@ -16,7 +16,7 @@ import '../../theme/sr_theme.dart';
 
 enum FacilityFilter {
   all('All'),
-  active('Active'),
+  active('Available'),
   needsPin('Needs a pin'),
   draft('Draft');
 

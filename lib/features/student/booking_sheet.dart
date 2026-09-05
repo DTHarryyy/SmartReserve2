@@ -10,6 +10,7 @@ import '../../model/account.dart';
 import '../../model/amenity_request.dart';
 import '../../model/facility.dart';
 import '../../model/loyalty.dart';
+import '../../model/notice.dart';
 import '../../model/reservation.dart';
 import '../../model/payment.dart';
 import '../../theme/sr_tokens.dart';
@@ -316,10 +317,7 @@ class _BookingSheetState extends State<_BookingSheet> {
         headcount: _headcount,
         discountClaimId: _selectedVoucherId,
       ),
-      widget.state.checkReservationOverlaps(
-        startsAt: startsAt,
-        endsAt: endsAt,
-      ),
+      widget.state.checkReservationOverlaps(startsAt: startsAt, endsAt: endsAt),
     ]);
     if (!mounted || request != _quoteRequest) return;
     final quote = results[0] as BackendReservationQuote?;
@@ -344,18 +342,33 @@ class _BookingSheetState extends State<_BookingSheet> {
     );
     if (file == null) return;
     final bytes = await file.readAsBytes();
-    if (bytes.isEmpty || bytes.lengthInBytes > 10 * 1024 * 1024) return;
+    if (bytes.isEmpty || bytes.lengthInBytes > 10 * 1024 * 1024) {
+      widget.state.showToast(
+        const ToastMessage(
+          'Supporting files must be 10 MB or smaller.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
     final mime = switch (file.name.split('.').last.toLowerCase()) {
       'jpg' || 'jpeg' => 'image/jpeg',
       'png' => 'image/png',
       'pdf' => 'application/pdf',
       _ => '',
     };
-    if (mime.isNotEmpty) {
-      _attachments.add(
-        ReservationUpload(name: file.name, mimeType: mime, bytes: bytes),
+    if (mime.isEmpty) {
+      widget.state.showToast(
+        const ToastMessage(
+          'Attach a PDF, JPG, or PNG supporting file.',
+          tone: AdvisoryTone.block,
+        ),
       );
+      return;
     }
+    _attachments.add(
+      ReservationUpload(name: file.name, mimeType: mime, bytes: bytes),
+    );
     if (mounted) setState(() {});
   }
 
@@ -536,7 +549,8 @@ class _BookingSheetState extends State<_BookingSheet> {
   }
 
   List<LoyaltyDiscountClaim> get _eligibleVouchers => [
-    for (final claim in widget.state.loyalty?.claims ?? const <LoyaltyDiscountClaim>[])
+    for (final claim
+        in widget.state.loyalty?.claims ?? const <LoyaltyDiscountClaim>[])
       if (claim.isUsable && claim.appliesTo(facility.id)) claim,
   ];
 }
@@ -876,7 +890,7 @@ class _BookingForm extends StatelessWidget {
             text:
                 '$headcount people in a ${facility.capacity}-seat room. '
                 'Lower the attendee count or pick a bigger space — this '
-              'cannot be sent as it stands.',
+                'cannot be sent as it stands.',
           ),
         ],
         if (vouchers.isNotEmpty) ...[
@@ -912,7 +926,8 @@ class _BookingForm extends StatelessWidget {
                     if (quote != null && quote!.discountAmountCentavos > 0) ...[
                       _MoneyRow(
                         label: 'Subtotal',
-                        value: quote!.facilityAmountCentavos +
+                        value:
+                            quote!.facilityAmountCentavos +
                             quote!.amenityAmountCentavos,
                       ),
                       const SizedBox(height: 4),

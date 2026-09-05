@@ -47,9 +47,13 @@ void main() {
   ) async {
     final state = AppState()..view = AppView.facilities;
     AppView? selected;
-    await _pumpSideNav(tester, state: state, onSelect: (section) {
-      selected = section;
-    });
+    await _pumpSideNav(
+      tester,
+      state: state,
+      onSelect: (section) {
+        selected = section;
+      },
+    );
 
     final reservations = find.byKey(
       const ValueKey('side-nav-item-reservations'),

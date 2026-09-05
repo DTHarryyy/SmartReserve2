@@ -190,9 +190,8 @@ class AnomaliesScreen extends StatelessWidget {
         SrToggle(
           value: filters.includeObserve,
           label: 'Calibration signals',
-          onChanged: (value) => state.setAnomalyFilters(
-            filters.copyWith(includeObserve: value),
-          ),
+          onChanged: (value) =>
+              state.setAnomalyFilters(filters.copyWith(includeObserve: value)),
         ),
       ],
     );

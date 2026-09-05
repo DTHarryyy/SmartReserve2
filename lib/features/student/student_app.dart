@@ -1,16 +1,13 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
-import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
-import '../../model/notice.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
@@ -33,6 +30,7 @@ import '../calendar/calendar_screen.dart';
 import 'booking_sheet.dart';
 import 'facility_preview.dart';
 import 'feedback_dialog.dart';
+import 'payment_proof_sheet.dart';
 import 'loyalty_page.dart';
 
 enum StudentTab {
@@ -1108,11 +1106,75 @@ class _StudentAppState extends State<StudentApp> {
                               style: sans(10.5, color: context.srColors.muted),
                             ),
                         ],
+                        if (request.paymentTransactions.any(
+                          (payment) =>
+                              payment.status ==
+                              PaymentDecisionStatus.needsCorrection,
+                        )) ...[
+                          const SizedBox(height: 8),
+                          for (final payment in request.paymentTransactions)
+                            if (payment.status ==
+                                PaymentDecisionStatus.needsCorrection)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.all(9),
+                                decoration: BoxDecoration(
+                                  color: context.srColors.amberTint,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Down payment pending correction',
+                                      style: sans(
+                                        12.5,
+                                        w: 600,
+                                        color: context.srColors.amberTitle,
+                                      ),
+                                    ),
+                                    if (payment.rejectionReason != null)
+                                      Text(
+                                        'Reason: ${payment.rejectionReason}',
+                                        style: sans(
+                                          11.5,
+                                          color: context.srColors.amberTitle,
+                                        ),
+                                      ),
+                                    if (payment.correctionDueAt != null)
+                                      Text(
+                                        'Correct by: ${formatStamp(campusWallTime(payment.correctionDueAt!))}',
+                                        style: sans(
+                                          11.5,
+                                          color: context.srColors.amberTitle,
+                                        ),
+                                      ),
+                                    const SizedBox(height: 6),
+                                    SrButton(
+                                      label: 'Fix payment proof',
+                                      kind: SrButtonKind.primary,
+                                      dense: true,
+                                      onPressed:
+                                          state.reservationActionsPending
+                                              .contains('payment:${payment.id}')
+                                          ? null
+                                          : () => _submitPayment(
+                                              state,
+                                              request,
+                                              correctingPayment: payment,
+                                            ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                        ],
                         if (request.outstandingAmountCentavos > 0 &&
                             !request.paymentTransactions.any(
                               (payment) =>
                                   payment.status ==
-                                  PaymentDecisionStatus.submitted,
+                                      PaymentDecisionStatus.submitted ||
+                                  payment.status ==
+                                      PaymentDecisionStatus.needsCorrection,
                             ) &&
                             (request.lifecycleStatus ==
                                     ReservationLifecycleStatus
@@ -1147,6 +1209,7 @@ class _StudentAppState extends State<StudentApp> {
                   const SizedBox(height: 8),
                   PermitPanel(state: state, request: request),
                 ],
+                ..._selfCheckInRows(state, request),
                 if (request.amenities.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Text(
@@ -1392,6 +1455,46 @@ class _StudentAppState extends State<StudentApp> {
 
   Widget _feedbackSection(AppState state, ReservationRequest request) {
     final c = context.srColors;
+    if (request.useAssessments.isNotEmpty) {
+      final assessment = request.useAssessments.last;
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: c.surfaceSunken,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Admin facility-use feedback', style: SrType.label()),
+              const SizedBox(height: 5),
+              Text(
+                'Cleanliness ${assessment.cleanlinessRating}/5 · '
+                'Equipment ${assessment.equipmentConditionRating}/5',
+                style: sans(12, w: 600, color: c.textSecondary),
+              ),
+              if (assessment.leftUnclean || assessment.equipmentDamaged)
+                Text(
+                  [
+                    if (assessment.leftUnclean) 'Left unclean',
+                    if (assessment.equipmentDamaged) 'Equipment damaged',
+                  ].join(' · '),
+                  style: sans(12, w: 600, color: c.redInk),
+                ),
+              if (assessment.comment.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  assessment.comment,
+                  style: sans(12, height: 1.4, color: c.textSecondary),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
     if (request.feedbackRating != null) {
       return Padding(
         padding: const EdgeInsets.only(top: 10),
@@ -1446,196 +1549,88 @@ class _StudentAppState extends State<StudentApp> {
     return const SizedBox.shrink();
   }
 
-  Future<void> _submitPayment(
-    AppState state,
-    ReservationRequest request,
-  ) async {
-    Facility? facility;
-    for (final item in state.facilities) {
-      if (item.id == request.facilityId) {
-        facility = item;
-        break;
-      }
+  List<Widget> _selfCheckInRows(AppState state, ReservationRequest request) {
+    if (request.lifecycleStatus != ReservationLifecycleStatus.confirmed) {
+      return const [];
     }
-    FacilityPaymentMethod? method = request.paymentMethod;
-    if (method == null) {
-      for (final item
-          in facility?.paymentMethods ?? const <FacilityPaymentMethod>[]) {
-        if (item.enabled) {
-          method = item;
-          break;
-        }
-      }
-    }
-    if (method == null) {
-      state.showToast(
-        const ToastMessage(
-          'This facility has not published a GCash account yet. '
-          'Contact the administrator before sending payment.',
-          tone: AdvisoryTone.block,
-        ),
+    final rows = <Widget>[];
+    for (final occurrence in request.occurrences.where(
+      (item) => item.isBooked,
+    )) {
+      final now = campusNow();
+      final opensAt = occurrence.startsAt.subtract(const Duration(minutes: 30));
+      final closesAt = occurrence.startsAt.add(const Duration(minutes: 15));
+      final checkedIn = occurrence.stage.index >= BookingStage.checkedIn.index;
+      final inWindow = !now.isBefore(opensAt) && !now.isAfter(closesAt);
+      final busy = state.reservationActionsPending.contains(
+        'checkin:${occurrence.id}',
       );
-      return;
-    }
-
-    final depositRemaining =
-        request.requiredDownPaymentCentavos - request.verifiedAmountCentavos;
-    final fullPaymentDue =
-        request.balanceDueAt != null &&
-        !request.balanceDueAt!.isAfter(DateTime.now());
-    final amount =
-        request.lifecycleStatus == ReservationLifecycleStatus.awaitingPayment &&
-            !fullPaymentDue
-        ? (depositRemaining < 1
-              ? 1
-              : depositRemaining > request.outstandingAmountCentavos
-              ? request.outstandingAmountCentavos
-              : depositRemaining)
-        : request.outstandingAmountCentavos;
-    final amountController = TextEditingController(
-      text: (amount / 100).toStringAsFixed(2),
-    );
-    final referenceController = TextEditingController();
-    ReservationUpload? proof;
-    String? localError;
-
-    final submitted = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Submit GCash proof'),
-          content: SizedBox(
-            width: 430,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: context.srColors.surfaceSunken,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (method != null) ...[
+                Text(
+                  '${formatCampusDate(occurrence.startsAt)} · '
+                  '${_reservationClock(occurrence.startsAt)}',
+                  style: mono(10.5, color: context.srColors.ink3),
+                ),
+                if (checkedIn)
+                  SrPill(
+                    label: 'Checked in',
+                    background: context.srColors.greenTint,
+                    foreground: context.srColors.greenDark,
+                    fontSize: 10.5,
+                  )
+                else if (inWindow)
+                  SrButton(
+                    label: busy ? 'Checking in...' : 'Check in',
+                    kind: SrButtonKind.primary,
+                    dense: true,
+                    onPressed: busy
+                        ? null
+                        : () =>
+                              state.selfCheckInOccurrence(request, occurrence),
+                  )
+                else
                   Text(
-                    '${method.accountName} · ${method.accountNumber}',
-                    style: sans(13, w: 600),
+                    now.isBefore(opensAt)
+                        ? 'Check-in opens 30 minutes before start.'
+                        : 'Check-in closed 15 minutes after start.',
+                    style: sans(11, color: context.srColors.muted),
                   ),
-                  if (method.instructions.isNotEmpty)
-                    Text(
-                      method.instructions,
-                      style: sans(
-                        11,
-                        height: 1.5,
-                        color: context.srColors.muted,
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-                ],
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(labelText: 'Amount (PHP)'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: referenceController,
-                  decoration: const InputDecoration(
-                    labelText: 'GCash reference number',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final file = await FilePicker.pickFile(
-                      type: FileType.custom,
-                      allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
-                    );
-                    if (file == null) return;
-                    final bytes = await file.readAsBytes();
-                    if (bytes.isEmpty ||
-                        bytes.lengthInBytes > 10 * 1024 * 1024) {
-                      setDialogState(
-                        () => localError = 'Proof must be at most 10 MB.',
-                      );
-                      return;
-                    }
-                    final extension = file.name.split('.').last.toLowerCase();
-                    final mime = switch (extension) {
-                      'jpg' || 'jpeg' => 'image/jpeg',
-                      'png' => 'image/png',
-                      'pdf' => 'application/pdf',
-                      _ => '',
-                    };
-                    if (mime.isEmpty) {
-                      setDialogState(
-                        () => localError = 'Use a JPG, PNG, or PDF receipt.',
-                      );
-                      return;
-                    }
-                    setDialogState(() {
-                      proof = ReservationUpload(
-                        name: file.name,
-                        mimeType: mime,
-                        bytes: bytes,
-                      );
-                      localError = null;
-                    });
-                  },
-                  icon: const Icon(Icons.attach_file_rounded),
-                  label: Text(proof?.name ?? 'Choose receipt or screenshot'),
-                ),
-                if (localError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    localError!,
-                    style: sans(11, color: context.srColors.red),
-                  ),
-                ],
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final pesos = double.tryParse(amountController.text.trim());
-                if (pesos == null ||
-                    pesos <= 0 ||
-                    proof == null ||
-                    referenceController.text.trim().length < 6) {
-                  setDialogState(() {
-                    localError = 'Enter a valid amount, reference, and proof.';
-                  });
-                  return;
-                }
-                Navigator.pop(context, true);
-              },
-              child: const Text('Submit proof'),
-            ),
-          ],
         ),
-      ),
-    );
-    try {
-      if (submitted == true && proof != null) {
-        final amountCentavos =
-            (double.parse(amountController.text.trim()) * 100).round();
-        await state.submitReservationPayment(
-          request: request,
-          purpose:
-              request.lifecycleStatus ==
-                  ReservationLifecycleStatus.awaitingPayment
-              ? PaymentPurpose.downPayment
-              : PaymentPurpose.balance,
-          amountCentavos: amountCentavos,
-          referenceNumber: referenceController.text,
-          proof: proof!,
-        );
-      }
-    } finally {
-      amountController.dispose();
-      referenceController.dispose();
+      );
     }
+    return rows;
+  }
+
+  Future<void> _submitPayment(
+    AppState state,
+    ReservationRequest request, {
+    PaymentTransaction? correctingPayment,
+  }) async {
+    await showPaymentProofSheet(
+      context,
+      state: state,
+      request: request,
+      mode: correctingPayment == null
+          ? PaymentProofMode.initialSubmission
+          : PaymentProofMode.correctionSubmission,
+      correctingPayment: correctingPayment,
+    );
   }
 
   Future<void> _editAndResubmit(
@@ -2472,9 +2467,7 @@ class _AssistantButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: colors.isDark ? colors.surfaceElevated : Colors.white,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: hovered ? colors.brand : colors.border,
-              ),
+              border: Border.all(color: hovered ? colors.brand : colors.border),
               boxShadow: hovered ? SR.popoverShadow : SR.floatShadow,
             ),
             child: const SrAssistantLogo(
@@ -2842,17 +2835,20 @@ String _facilityAvailabilityLabelFor(Facility facility) =>
       FacilityState.maintenance => 'Unavailable · maintenance',
       FacilityState.underReview => 'Unavailable · under review',
       FacilityState.draft => 'Unavailable · draft',
-      FacilityState.active => facility.bookableForCurrentUser
-          ? (facility.approvalRequired ? 'Approval required' : 'Books instantly')
-          : switch (facility.bookingBlockReason) {
-              FacilityBookingBlockReason.noActiveInternalAdmin =>
-                'Unavailable · no active internal administrator',
-              FacilityBookingBlockReason.noActiveExternalAdmin =>
-                'Unavailable · no active external administrator',
-              FacilityBookingBlockReason.notAvailableForAccountType =>
-                'Unavailable · not available for your account type',
-              _ => 'Unavailable · no administrator',
-            },
+      FacilityState.active =>
+        facility.bookableForCurrentUser
+            ? (facility.approvalRequired
+                  ? 'Approval required'
+                  : 'Books instantly')
+            : switch (facility.bookingBlockReason) {
+                FacilityBookingBlockReason.noActiveInternalAdmin =>
+                  'Unavailable · no active internal administrator',
+                FacilityBookingBlockReason.noActiveExternalAdmin =>
+                  'Unavailable · no active external administrator',
+                FacilityBookingBlockReason.notAvailableForAccountType =>
+                  'Unavailable · not available for your account type',
+                _ => 'Unavailable · no administrator',
+              },
     };
 
 /// The consistent explanation shown wherever a facility is unbookable

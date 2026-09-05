@@ -22,6 +22,60 @@ enum BookingStage {
   bool operator >=(BookingStage other) => index >= other.index;
 }
 
+class ReservationUseAssessment {
+  const ReservationUseAssessment({
+    required this.id,
+    required this.requestId,
+    required this.occurrenceId,
+    required this.facilityId,
+    required this.requesterId,
+    required this.adminId,
+    required this.cleanlinessRating,
+    required this.equipmentConditionRating,
+    required this.leftUnclean,
+    required this.equipmentDamaged,
+    required this.comment,
+    required this.revision,
+    required this.createdAt,
+    required this.updatedAt,
+    this.files = const [],
+  });
+
+  final String id;
+  final String requestId;
+  final String occurrenceId;
+  final String facilityId;
+  final String requesterId;
+  final String adminId;
+  final int cleanlinessRating;
+  final int equipmentConditionRating;
+  final bool leftUnclean;
+  final bool equipmentDamaged;
+  final String comment;
+  final int revision;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final List<ReservationUseAssessmentFile> files;
+}
+
+class ReservationUseAssessmentFile {
+  const ReservationUseAssessmentFile({
+    required this.id,
+    required this.assessmentId,
+    required this.storagePath,
+    required this.fileName,
+    required this.mimeType,
+    required this.byteSize,
+  });
+
+  final String id;
+  final String assessmentId;
+  final String storagePath;
+  final String fileName;
+  final String mimeType;
+  final int byteSize;
+}
+
 enum RequestStatus {
   pending('pending', 'Needs decision', SrTone.warning),
   approved('approved', 'Approved', SrTone.success),
@@ -209,6 +263,7 @@ class ReservationRequest {
     this.feedbackComment = '',
     this.feedbackAt,
     this.permit,
+    List<ReservationUseAssessment>? useAssessments,
   }) : seriesExceptions = seriesExceptions ?? <String>[],
        slotDay = slotDay ?? parseCampusDate(date),
        occurrences = occurrences ?? <ReservationOccurrence>[],
@@ -216,7 +271,8 @@ class ReservationRequest {
        amenities = amenities ?? <String>[],
        paymentTransactions = paymentTransactions ?? <PaymentTransaction>[],
        priceLines = priceLines ?? <PriceSnapshotLine>[],
-       acceptedTerms = acceptedTerms ?? <AcceptedTerms>[];
+       acceptedTerms = acceptedTerms ?? <AcceptedTerms>[],
+       useAssessments = useAssessments ?? <ReservationUseAssessment>[];
 
   final String id;
   final String? requesterId;
@@ -280,6 +336,7 @@ class ReservationRequest {
   final List<PriceSnapshotLine> priceLines;
   final List<AcceptedTerms> acceptedTerms;
   final ReservationPermit? permit;
+  final List<ReservationUseAssessment> useAssessments;
 
   bool get isPaymentExempt => paymentExemption != 'none';
 
@@ -311,6 +368,11 @@ class ReservationRequest {
     }
     if (verifiedAmountCentavos >= requiredDownPaymentCentavos) {
       return AggregatePaymentStatus.downPaymentVerified;
+    }
+    if (paymentTransactions.any(
+      (payment) => payment.status == PaymentDecisionStatus.needsCorrection,
+    )) {
+      return AggregatePaymentStatus.needsCorrection;
     }
     if (paymentTransactions.any(
       (payment) => payment.status == PaymentDecisionStatus.submitted,

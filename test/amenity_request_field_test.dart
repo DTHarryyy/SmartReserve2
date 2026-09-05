@@ -41,23 +41,26 @@ Future<void> _openPicker(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('facility with no included amenities can request all catalog items', (
+  testWidgets(
+    'facility with no included amenities can request all catalog items',
+    (tester) async {
+      await _pumpField(
+        tester,
+        includedAmenities: const [],
+        requestableAmenities: standardAmenityLabels,
+      );
+
+      await _openPicker(tester);
+
+      for (final label in standardAmenityLabels) {
+        expect(find.byKey(ValueKey('amenity-row-$label')), findsOneWidget);
+      }
+    },
+  );
+
+  testWidgets('included standard amenities are not requestable', (
     tester,
   ) async {
-    await _pumpField(
-      tester,
-      includedAmenities: const [],
-      requestableAmenities: standardAmenityLabels,
-    );
-
-    await _openPicker(tester);
-
-    for (final label in standardAmenityLabels) {
-      expect(find.byKey(ValueKey('amenity-row-$label')), findsOneWidget);
-    }
-  });
-
-  testWidgets('included standard amenities are not requestable', (tester) async {
     await _pumpField(
       tester,
       includedAmenities: const ['Wi-Fi', 'Projector'],
@@ -116,8 +119,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('amenity-chip-Smart TV')), findsNothing);
-    expect(find.byKey(const ValueKey('amenity-chip-Projector')), findsOneWidget);
-    expect(find.byKey(const ValueKey('amenity-chip-Generator')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('amenity-chip-Projector')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('amenity-chip-Generator')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('custom included tags do not become requestable options', (
