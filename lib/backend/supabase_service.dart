@@ -194,6 +194,119 @@ class SessionProfile {
   );
 }
 
+/// A sanitized failure from the authentication and session-profile handshake.
+///
+/// The fields are for development diagnostics only. UI code must map [kind] to
+/// a fixed message rather than displaying an exception returned by Supabase.
+enum AuthFailureKind {
+  invalidCredentials,
+  emailUnconfirmed,
+  rateLimited,
+  network,
+  profileMissing,
+  profileContractUnavailable,
+  profileAccessDenied,
+  unknown,
+}
+
+class AuthSessionException implements Exception {
+  const AuthSessionException({
+    required this.kind,
+    this.statusCode,
+    this.backendCode,
+    this.cause,
+  });
+
+  final AuthFailureKind kind;
+  final String? statusCode;
+  final String? backendCode;
+  final Object? cause;
+
+  @override
+  String toString() => 'Auth session failure: ${kind.name}';
+}
+
+AuthSessionException classifyAuthFailure(Object error) {
+  if (error is AuthSessionException) return error;
+
+  if (error is AuthException) {
+    final message = error.message.toLowerCase();
+    final status = '${error.statusCode ?? ''}';
+    if (status == '429' || message.contains('rate limit')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.rateLimited,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (message.contains('invalid login credentials') ||
+        message.contains('invalid credentials')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.invalidCredentials,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (message.contains('email not confirmed')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.emailUnconfirmed,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+  }
+
+  if (error is PostgrestException) {
+    final code = error.code ?? '';
+    if (code == '42501' || code == 'PGRST301') {
+      return AuthSessionException(
+        kind: AuthFailureKind.profileAccessDenied,
+        backendCode: code,
+        cause: error,
+      );
+    }
+    if (code == 'PGRST200' ||
+        code == 'PGRST201' ||
+        code == 'PGRST202' ||
+        code == '42883') {
+      return AuthSessionException(
+        kind: AuthFailureKind.profileContractUnavailable,
+        backendCode: code,
+        cause: error,
+      );
+    }
+  }
+
+  final message = error.toString().toLowerCase();
+  if (message.contains('socketexception') ||
+      message.contains('clientexception') ||
+      message.contains('failed host lookup') ||
+      message.contains('network request failed') ||
+      message.contains('xmlhttprequest')) {
+    return AuthSessionException(kind: AuthFailureKind.network, cause: error);
+  }
+  if (message.contains('pgrst200') ||
+      message.contains('pgrst201') ||
+      message.contains('pgrst202') ||
+      message.contains('schema cache') ||
+      message.contains('get_my_session_profile')) {
+    return AuthSessionException(
+      kind: AuthFailureKind.profileContractUnavailable,
+      cause: error,
+    );
+  }
+  if (message.contains('permission denied') || message.contains('42501')) {
+    return AuthSessionException(
+      kind: AuthFailureKind.profileAccessDenied,
+      cause: error,
+    );
+  }
+  return AuthSessionException(kind: AuthFailureKind.unknown, cause: error);
+}
+
 class BackendAccount {
   const BackendAccount({
     required this.id,
@@ -2578,6 +2691,7 @@ abstract interface class SmartReserveBackend {
   User? get user;
   Stream<AuthState> get authChanges;
   Future<void> signIn(String email, String password);
+  Future<SessionProfile> signInAndLoadProfile(String email, String password);
   Future<void> signOut();
   Future<SessionProfile?> currentProfile();
   Future<void> completeGuestOnboarding();
@@ -3271,37 +3385,107 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   Future<void> signIn(String email, String password) =>
       _client.auth.signInWithPassword(email: email, password: password);
 
+  @override
+  Future<SessionProfile> signInAndLoadProfile(
+    String email,
+    String password,
+  ) async {
+    var sessionEstablished = false;
+    try {
+      await signIn(email, password);
+      sessionEstablished = user != null;
+      final profile = await currentProfile();
+      if (profile == null) {
+        throw const AuthSessionException(kind: AuthFailureKind.profileMissing);
+      }
+      return profile;
+    } catch (error) {
+      final failure = classifyAuthFailure(error);
+      if (sessionEstablished &&
+          failure.kind != AuthFailureKind.invalidCredentials &&
+          failure.kind != AuthFailureKind.emailUnconfirmed) {
+        try {
+          await signOut();
+        } catch (_) {
+          // The local client will still clear the session when it is recreated.
+        }
+      }
+      throw failure;
+    }
+  }
+
   Future<void> signOut() => _client.auth.signOut();
 
   Future<SessionProfile?> currentProfile() async {
     final currentUser = user;
     if (currentUser == null) return null;
-    await _client.rpc('normalize_my_expired_suspension');
-    final row = await _client
-        .from('profiles')
-        .select(
-          '*,organization_account_slots(id,label,unit_id,organizational_units(id,name,code,unit_type,booking_audience,requires_representative))',
-        )
-        .eq('id', currentUser.id)
-        .maybeSingle();
+    dynamic row;
+    try {
+      row = await _client.rpc('get_my_session_profile');
+    } on PostgrestException catch (error) {
+      // Older hosted prototype deployments predate the session-profile RPC.
+      // Keep existing sessions usable during a rolling client/database release;
+      // new deployments always use the stable RPC above.
+      if (error.code != 'PGRST202' && error.code != '42883') rethrow;
+      return _legacyCurrentProfile(currentUser);
+    }
     if (row == null) return null;
-    final json = Map<String, dynamic>.from(row);
-    final slot = json['organization_account_slots'];
-    if (slot is Map) {
-      final slotJson = Map<String, dynamic>.from(slot);
-      final unit = slotJson['organizational_units'];
-      if (unit is Map) {
-        final unitJson = Map<String, dynamic>.from(unit);
-        json['organization_slot_label'] = slotJson['label'];
-        json['organization_unit_id'] = unitJson['id'] ?? slotJson['unit_id'];
-        json['organization_unit_name'] = unitJson['name'];
-        json['organization_unit_code'] = unitJson['code'];
-        json['organization_unit_type'] = unitJson['unit_type'];
-        json['organization_unit_booking_audience'] =
-            unitJson['booking_audience'];
+    if (row is! Map) {
+      throw StateError('Session profile returned an invalid response.');
+    }
+    return SessionProfile.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<SessionProfile?> _legacyCurrentProfile(User currentUser) async {
+    try {
+      await _client.rpc('normalize_my_expired_suspension');
+      final row = await _client
+          .from('profiles')
+          .select(
+            '*,organization_account_slots(id,label,unit_id,organizational_units(id,name,code,unit_type,booking_audience,requires_representative))',
+          )
+          .eq('id', currentUser.id)
+          .maybeSingle();
+      if (row == null) return null;
+      final json = Map<String, dynamic>.from(row);
+      final slot = json['organization_account_slots'];
+      if (slot is Map) {
+        final slotJson = Map<String, dynamic>.from(slot);
+        final unit = slotJson['organizational_units'];
+        if (unit is Map) {
+          final unitJson = Map<String, dynamic>.from(unit);
+          json['organization_slot_label'] = slotJson['label'];
+          json['organization_unit_id'] = unitJson['id'] ?? slotJson['unit_id'];
+          json['organization_unit_name'] = unitJson['name'];
+          json['organization_unit_code'] = unitJson['code'];
+          json['organization_unit_type'] = unitJson['unit_type'];
+          json['organization_unit_booking_audience'] =
+              unitJson['booking_audience'];
+        }
+      }
+      return SessionProfile.fromJson(json);
+    } on PostgrestException catch (error) {
+      // A project that predates the organization-account migrations cannot
+      // expose the relationship or the suspension helper. Its base profile is
+      // still sufficient to restore an Internal Admin session while it is
+      // upgraded. Do not hide permission failures behind this compatibility
+      // path.
+      if (error.code != 'PGRST200' &&
+          error.code != 'PGRST201' &&
+          error.code != 'PGRST202' &&
+          error.code != '42703' &&
+          error.code != '42883') {
+        rethrow;
       }
     }
-    return SessionProfile.fromJson(json);
+
+    final baseRow = await _client
+        .from('profiles')
+        .select()
+        .eq('id', currentUser.id)
+        .maybeSingle();
+    if (baseRow == null) return null;
+    return SessionProfile.fromJson(Map<String, dynamic>.from(baseRow));
   }
 
   Future<void> completeGuestOnboarding() async {

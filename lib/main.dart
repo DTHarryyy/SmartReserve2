@@ -95,7 +95,8 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
           ),
           home: switch (snapshot.connectionState) {
             ConnectionState.waiting => const _BootSplash(),
-            _ when snapshot.hasError => _BootError(onRetry: _retryBoot),
+            _ when snapshot.hasError =>
+              _BootError(error: snapshot.error!, onRetry: _retryBoot),
             _ => const AppShell(),
           },
         ),
@@ -128,13 +129,37 @@ class _BootSplash extends StatelessWidget {
 }
 
 class _BootError extends StatelessWidget {
-  const _BootError({required this.onRetry});
+  const _BootError({required this.error, required this.onRetry});
 
+  final Object error;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.srColors;
+    final failure = classifyAuthFailure(error);
+    final (icon, title, body) = switch (failure.kind) {
+      AuthFailureKind.network => (
+        Icons.wifi_off_rounded,
+        'Could not connect',
+        'Check your connection and try again.',
+      ),
+      AuthFailureKind.profileContractUnavailable => (
+        Icons.cloud_sync_outlined,
+        'SmartReserve is updating',
+        'Account access is still being updated. Please try again shortly.',
+      ),
+      AuthFailureKind.profileAccessDenied => (
+        Icons.lock_outline_rounded,
+        'Account access unavailable',
+        'This account cannot load its access profile. Contact an Internal Admin.',
+      ),
+      _ => (
+        Icons.error_outline_rounded,
+        'SmartReserve could not start',
+        'Please try again. If this continues, contact an Internal Admin.',
+      ),
+    };
     return Scaffold(
       backgroundColor: colors.canvas,
       body: Center(
@@ -152,16 +177,16 @@ class _BootError extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.wifi_off_rounded,
+                  icon,
                   color: colors.error,
                   size: 24,
                 ),
               ),
               const SizedBox(height: SR.space16),
-              Text('Could not connect', style: SrType.heading()),
+              Text(title, style: SrType.heading()),
               const SizedBox(height: SR.space6),
               Text(
-                'Check your connection and try again.',
+                body,
                 textAlign: TextAlign.center,
                 style: SrType.bodySm(),
               ),

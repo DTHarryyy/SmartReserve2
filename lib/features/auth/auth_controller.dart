@@ -253,12 +253,10 @@ class AuthController extends ChangeNotifier {
     await _perform(() async {
       final backend = _backend;
       if (backend == null) throw StateError('Supabase is not configured.');
-      await backend.signIn(emailField.text.trim(), passwordField.text);
-      final profile = await backend.currentProfile();
-      if (profile == null) {
-        await backend.signOut();
-        throw StateError('The signed-in account has no profile.');
-      }
+      final profile = await backend.signInAndLoadProfile(
+        emailField.text.trim(),
+        passwordField.text,
+      );
       await _state.applyBackendProfile(profile);
       if (!_state.isAdmin) {
         passwordField.clear();
@@ -414,9 +412,19 @@ class AuthController extends ChangeNotifier {
     try {
       await action();
     } catch (error, stackTrace) {
-      debugPrint('SmartReserve auth failure: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      final message = _userMessageFor(error);
+      if (kDebugMode) {
+        if (error case AuthSessionException failure) {
+          debugPrint(
+            'SmartReserve auth failure: ${failure.kind.name} '
+            'status=${failure.statusCode ?? '-'} '
+            'code=${failure.backendCode ?? '-'}',
+          );
+        } else {
+          debugPrint('SmartReserve auth failure: $error');
+        }
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      final message = userMessageFor(error);
       operationError = message;
     } finally {
       busy = false;
@@ -424,7 +432,28 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  String _userMessageFor(Object error) {
+  @visibleForTesting
+  static String userMessageFor(Object error) {
+    if (error case AuthSessionException(:final kind)) {
+      return switch (kind) {
+        AuthFailureKind.invalidCredentials =>
+          'That email address or password is incorrect.',
+        AuthFailureKind.emailUnconfirmed =>
+          'This prototype account is not confirmed. Contact an Internal Admin.',
+        AuthFailureKind.rateLimited =>
+          'Too many sign-in attempts. Wait a few minutes and try again.',
+        AuthFailureKind.network =>
+          'SmartReserve could not be reached. Check your connection and try again.',
+        AuthFailureKind.profileMissing =>
+          'Your credentials were accepted, but this account has not been set up. Contact an Internal Admin.',
+        AuthFailureKind.profileContractUnavailable =>
+          'SmartReserve is updating account access. Please try again shortly.',
+        AuthFailureKind.profileAccessDenied =>
+          'This account cannot load its access profile. Contact an Internal Admin.',
+        AuthFailureKind.unknown =>
+          'We couldn’t complete sign-in. Please try again.',
+      };
+    }
     final message = error.toString().toLowerCase();
     if (message.contains('weak_password') ||
         message.contains('password does not meet')) {

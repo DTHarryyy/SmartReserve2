@@ -137,6 +137,15 @@ temporary password directly to the named account holder. No confirmation,
 invite, password-reset, or OTP email is required for prototype account
 provisioning.
 
+### Prototype bootstrap administrator
+
+`20260905111500_ensure_prototype_internal_admin.sql` intentionally restores
+the documented Internal Admin account and its prototype password so private
+demonstrations can be recovered after a reset or an incomplete deployment. It
+must never be applied to a public production project: replace it with
+environment-controlled administrator provisioning and rotate the prototype
+credential before any public release.
+
 The initial setup target is nine account-bearing organization units:
 
 - CICS: six specialized organizations

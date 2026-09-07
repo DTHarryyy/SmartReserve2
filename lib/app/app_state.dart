@@ -1038,7 +1038,21 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    await refreshFacilities();
+
+    // Authentication is complete once the profile has been accepted. Route the
+    // session before loading workspace data so a later feature failure cannot
+    // strand a valid user on the sign-in screen.
+    view = profile.isAdmin
+        ? AppView.facilities
+        : profile.isActive &&
+              profile.onboardingComplete &&
+              !profile.mustChangePassword &&
+              profile.accountAccessType != 'legacy_unassigned'
+        ? AppView.userApp
+        : AppView.auth;
+    notifyListeners();
+
+    await _runSessionRefresh('facilities', refreshFacilities);
     _facilitySubscription = backend?.facilityStream().listen(
       _applyFacilityRows,
       onError: (Object error) {
@@ -1047,7 +1061,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    await refreshReservations();
+    await _runSessionRefresh('reservations', refreshReservations);
     _reservationSubscription = backend?.reservationStream().listen(
       _applyReservationRows,
       onError: (Object error) {
@@ -1056,7 +1070,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    await refreshNotifications();
+    await _runSessionRefresh('notifications', refreshNotifications);
     _notificationSubscription = backend?.notificationStream().listen(
       _applyNotifications,
       onError: (Object error) {
@@ -1067,7 +1081,7 @@ class AppState extends ChangeNotifier {
     if (profile.isInternalAdmin) {
       _clearAdminLoyaltyState();
       _syncFeedbackSentimentSubscription();
-      await refreshAccounts();
+      await _runSessionRefresh('accounts', refreshAccounts);
       _accountSubscription = backend?.accountStream().listen(
         _applyBackendAccounts,
         onError: (Object error) {
@@ -1076,7 +1090,7 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
-      await refreshVerifications();
+      await _runSessionRefresh('verifications', refreshVerifications);
       _verificationSubscription = backend?.verificationStream().listen(
         (_) {
           unawaited(refreshVerifications());
@@ -1085,8 +1099,7 @@ class AppState extends ChangeNotifier {
             debugPrint('Verifications live refresh failed: $error'),
       );
       unawaited(refreshAnomalyCenter());
-      view = AppView.facilities;
-      await _applyInitialReportLink();
+      await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else if (profile.isExternalAdmin) {
       _syncFeedbackSentimentSubscription();
       if (_useDemoData) {
@@ -1104,18 +1117,19 @@ class AppState extends ChangeNotifier {
               account,
         ];
       } else {
-        await refreshAccounts();
+        await _runSessionRefresh('accounts', refreshAccounts);
       }
       unawaited(refreshAnomalyCenter());
-      view = AppView.facilities;
-      await _applyInitialReportLink();
+      await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else {
       _clearAdminLoyaltyState();
       if (!_useDemoData) accounts = [];
-      myVerification = await backend?.currentVerification();
-      verifications = myVerification == null
-          ? []
-          : [_toVerification(myVerification!)];
+      await _runSessionRefresh('your verification', () async {
+        myVerification = await backend?.currentVerification();
+        verifications = myVerification == null
+            ? []
+            : [_toVerification(myVerification!)];
+      });
       _syncSessionAccount();
       _verificationSubscription = backend?.verificationStream().listen(
         (_) {
@@ -1124,17 +1138,25 @@ class AppState extends ChangeNotifier {
         onError: (Object error) =>
             debugPrint('Verification live refresh failed: $error'),
       );
-      await refreshLoyalty();
+      await _runSessionRefresh('loyalty', refreshLoyalty);
       _syncLoyaltySubscription();
-      view =
-          profile.isActive &&
-              profile.onboardingComplete &&
-              !profile.mustChangePassword &&
-              profile.accountAccessType != 'legacy_unassigned'
-          ? AppView.userApp
-          : AppView.auth;
     }
     notifyListeners();
+  }
+
+  Future<void> _runSessionRefresh(
+    String area,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (error, stackTrace) {
+      // Individual feature refreshers own their visible retry state. This
+      // boundary prevents an uncovered failure from being misreported as an
+      // authentication failure after the session is already established.
+      debugPrint('SmartReserve $area bootstrap failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   String? initialReportFacilityId;
@@ -1587,7 +1609,9 @@ class AppState extends ChangeNotifier {
         account.id,
       );
       _upsertBackendAccount(reset.account);
-      showToast(ToastMessage('Temporary password generated for ${account.name}.'));
+      showToast(
+        ToastMessage('Temporary password generated for ${account.name}.'),
+      );
       return AccountCreationResult.success(
         AccountCredentials(
           title: 'organization representative',
