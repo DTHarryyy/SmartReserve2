@@ -1376,16 +1376,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _upsertOrganizationSlot(BackendOrganizationAccountSlot row) {
-    final slot = _toOrganizationSlot(row);
-    final index = organizationSlots.indexWhere((item) => item.id == slot.id);
-    if (index == -1) {
-      organizationSlots = [...organizationSlots, slot];
-    } else {
-      organizationSlots = [...organizationSlots]..[index] = slot;
-    }
-  }
-
   Future<void> refreshOrganizationRegistry() async {
     final service = backend;
     if (service == null || !isInternalAdmin) return;

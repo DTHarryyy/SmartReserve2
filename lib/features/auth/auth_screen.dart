@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/verification.dart';
@@ -1389,16 +1387,14 @@ class _InlineLink extends StatelessWidget {
   const _InlineLink({
     required this.label,
     required this.onTap,
-    this.enabled = true,
   });
 
   final String label;
   final VoidCallback onTap;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) => TextButton(
-    onPressed: enabled ? onTap : null,
+    onPressed: onTap,
     style: TextButton.styleFrom(
       foregroundColor: SR.primary,
       minimumSize: const Size(44, 44),

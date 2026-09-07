@@ -113,7 +113,7 @@ class SearchHit {
 }
 
 class AddFacilityController extends ChangeNotifier {
-  AddFacilityController({required this._toasts}) {
+  AddFacilityController({required this.toasts}) {
     nameField.addListener(_syncName);
     capacityField.addListener(_syncCapacity);
     descriptionField.addListener(_syncDescription);
@@ -121,7 +121,7 @@ class AddFacilityController extends ChangeNotifier {
     _loadStoredDraft();
   }
 
-  final SrToastController _toasts;
+  final SrToastController toasts;
 
   final FacilityDraft draft = FacilityDraft();
   List<Facility> availableFacilities = const [];
@@ -1043,7 +1043,7 @@ class AddFacilityController extends ChangeNotifier {
   }
 
   void showToast(ToastMessage message, {Duration? duration}) =>
-      _toasts.show(message, duration: duration);
+      toasts.show(message, duration: duration);
 
   void dismissErrorBar() {
     showErrorBar = false;
