@@ -2220,6 +2220,11 @@ class AppState extends ChangeNotifier {
       permit: row.permit,
       signatureRequestId: row.signatureRequestId,
       signatureRequestStatus: row.signatureRequestStatus,
+      requesterCategory: row.requesterCategory,
+      externalCompanyOrganization: row.externalCompanyOrganization,
+      externalCompleteAddress: row.externalCompleteAddress,
+      externalContactNumbers: row.externalContactNumbers,
+      externalAdmissionFeeCentavos: row.externalAdmissionFeeCentavos,
       priceLines: [
         for (final line in row.priceLines)
           PriceSnapshotLine(
@@ -5508,6 +5513,8 @@ class AppState extends ChangeNotifier {
     BackendReservationQuote? quote,
     bool acceptedTerms = false,
     String? discountClaimId,
+    ExternalPermitDetails? externalPermitDetails,
+    Map<String, int> permitItemQuantities = const {},
   }) async {
     final normalizedRequestedAmenities = normalizeRequestedAmenityLabels(
       facility,
@@ -5581,6 +5588,8 @@ class AppState extends ChangeNotifier {
               ? null
               : authoritativeQuote!.pricingFingerprint,
           discountClaimId: discountClaimId,
+          externalPermitDetails: externalPermitDetails,
+          permitItemQuantities: permitItemQuantities,
         ),
       );
       await refreshReservations();
@@ -5706,6 +5715,13 @@ class AppState extends ChangeNotifier {
         decision: decision,
         reason: reason,
       );
+      if (decision == 'verify') {
+        try {
+          await service.ensurePermit(payment.requestId);
+        } catch (_) {
+          // Payment remains verified; readiness explains any remaining permit prerequisite.
+        }
+      }
       await refreshReservations();
       showToast(
         ToastMessage(
@@ -5787,7 +5803,7 @@ class AppState extends ChangeNotifier {
     final service = _coreBackend;
     if (service == null) return false;
     try {
-      await service.issuePermit(requestId);
+      await service.ensurePermit(requestId);
       await refreshReservations();
       return true;
     } catch (error) {
@@ -5802,7 +5818,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> requestReservationSignature(String requestId) async {
-    if (!isInternalAdmin || backend == null) return false;
+    if ((!isInternalAdmin && !isExternalAdmin) || backend == null) return false;
     try {
       await backend!.requestReservationSignature(requestId);
       await refreshReservations();
@@ -5828,6 +5844,7 @@ class AppState extends ChangeNotifier {
         requestId: requestId,
         signature: signature,
       );
+      await _coreBackend?.ensurePermit(requestId);
       await refreshReservations();
       showToast(const ToastMessage('Your e-signature was submitted.'));
       return true;
@@ -5839,11 +5856,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> uploadCeoSignature(ReservationUpload signature) async {
-    if (!isInternalAdmin || backend == null) return false;
+  Future<bool> updateExternalPermitDetails(
+    String requestId,
+    ExternalPermitDetails details,
+  ) async {
+    if (backend == null) return false;
     try {
-      await backend!.uploadCeoSignature(signature);
-      showToast(const ToastMessage('CEO signature updated.'));
+      await backend!.updateExternalPermitDetails(requestId, details);
+      await refreshReservations();
+      showToast(
+        const ToastMessage(
+          'Permit details updated. A fresh signature is required.',
+        ),
+      );
       return true;
     } catch (error) {
       showToast(
@@ -5853,57 +5878,70 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<Uint8List?> permitUserSignature(String signatureId) async {
-    try {
-      return await backend?.permitUserSignature(signatureId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Uint8List?> protectedCeoSignature(
-    String requestId,
-    String permitId,
+  Future<bool> uploadOfficialSignature(
+    OfficialSignatureSlot slot,
+    ReservationUpload signature,
   ) async {
+    if (backend == null) return false;
     try {
-      return await backend?.protectedCeoSignature(requestId, permitId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Uint8List?> officialCeoSignature(
-    String requestId,
-    String permitId,
-  ) async {
-    if (!isInternalAdmin) return null;
-    try {
-      return await backend?.officialCeoSignature(requestId, permitId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> uploadPermitPdf({
-    required String permitId,
-    required String requestId,
-    required String requesterId,
-    required String permitNumber,
-    required int version,
-    required Uint8List bytes,
-  }) async {
-    final service = _coreBackend;
-    if (service == null) return;
-    try {
-      await service.uploadPermitPdf(
-        permitId: permitId,
-        requestId: requestId,
-        requesterId: requesterId,
-        permitNumber: permitNumber,
-        version: version,
-        bytes: bytes,
+      await backend!.uploadOfficialSignature(slot, signature);
+      final lane = slot == OfficialSignatureSlot.internalApprover
+          ? 'internal'
+          : 'external';
+      for (final request in requests.where(
+        (item) => item.adminLane == lane && item.permit?.isDownloadable != true,
+      )) {
+        try {
+          await _coreBackend?.ensurePermit(request.id);
+        } catch (_) {
+          // Other readiness blockers remain visible in the permit panel.
+        }
+      }
+      await refreshReservations();
+      showToast(ToastMessage('${slot.label} signature updated.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
       );
-    } catch (_) {}
+      return false;
+    }
+  }
+
+  Future<PermitReadiness?> permitReadiness(String requestId) async {
+    try {
+      return await _coreBackend?.permitReadiness(requestId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> previewOfficialSignature(
+    OfficialSignatureSlot slot,
+  ) async {
+    try {
+      return await backend?.previewOfficialSignature(slot);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> permitPdfBytes(ReservationPermit permit) async {
+    if (!permit.isDownloadable) return null;
+    try {
+      return await _coreBackend?.downloadPermitPdf(permit.storagePath!);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> previewPermit(String requestId) async {
+    if (!isInternalAdmin && !isExternalAdmin) return null;
+    try {
+      return await _coreBackend?.previewPermit(requestId);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> permitPdfUrl(ReservationPermit permit) async {

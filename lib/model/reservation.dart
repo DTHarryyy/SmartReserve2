@@ -266,6 +266,11 @@ class ReservationRequest {
     this.signatureRequestId,
     this.signatureRequestStatus,
     List<ReservationUseAssessment>? useAssessments,
+    this.requesterCategory = 'external_renter',
+    this.externalCompanyOrganization,
+    this.externalCompleteAddress,
+    List<String>? externalContactNumbers,
+    this.externalAdmissionFeeCentavos,
   }) : seriesExceptions = seriesExceptions ?? <String>[],
        slotDay = slotDay ?? parseCampusDate(date),
        occurrences = occurrences ?? <ReservationOccurrence>[],
@@ -274,7 +279,8 @@ class ReservationRequest {
        paymentTransactions = paymentTransactions ?? <PaymentTransaction>[],
        priceLines = priceLines ?? <PriceSnapshotLine>[],
        acceptedTerms = acceptedTerms ?? <AcceptedTerms>[],
-       useAssessments = useAssessments ?? <ReservationUseAssessment>[];
+       useAssessments = useAssessments ?? <ReservationUseAssessment>[],
+       externalContactNumbers = externalContactNumbers ?? <String>[];
 
   final String id;
   final String? requesterId;
@@ -341,6 +347,11 @@ class ReservationRequest {
   final String? signatureRequestId;
   final String? signatureRequestStatus;
   final List<ReservationUseAssessment> useAssessments;
+  final String requesterCategory;
+  final String? externalCompanyOrganization;
+  final String? externalCompleteAddress;
+  final List<String> externalContactNumbers;
+  final int? externalAdmissionFeeCentavos;
 
   bool get signatureRequested => signatureRequestStatus == 'requested';
   bool get signatureSubmitted => signatureRequestStatus == 'signed';
@@ -392,13 +403,14 @@ class ReservationRequest {
     return AggregatePaymentStatus.unpaid;
   }
 
-  /// Mirrors the server's issue_reservation_permit gate: confirmed, and
-  /// either exempt or fully paid. The server re-checks this independently --
-  /// this getter only decides what the UI offers, never what is allowed.
+  /// Coarse display-only eligibility. The server readiness RPC additionally
+  /// checks printable data, frozen mappings, and official signature slots.
   bool get permitEligible =>
-      lifecycleStatus == ReservationLifecycleStatus.confirmed &&
+      (lifecycleStatus == ReservationLifecycleStatus.confirmed ||
+          lifecycleStatus == ReservationLifecycleStatus.completed) &&
       (totalAmountCentavos == 0 ||
-          verifiedAmountCentavos >= totalAmountCentavos);
+          verifiedAmountCentavos >= totalAmountCentavos) &&
+      signatureSubmitted;
 
   String get initials => requester
       .replaceAll(RegExp(r'^(Prof\.|Dr\.|Atty\.|Ms\.|Mr\.|Dean|Coach)\s+'), '')

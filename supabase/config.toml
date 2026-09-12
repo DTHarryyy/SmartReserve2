@@ -394,6 +394,17 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/feedback-sentiment/index.ts"
 
+[functions.generate-permit]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/generate-permit/index.ts"
+static_files = ["./functions/generate-permit/templates/*.pdf"]
+
+[functions.permit-signatures]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/permit-signatures/index.ts"
+
 [analytics]
 enabled = true
 port = 54327

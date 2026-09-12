@@ -79,6 +79,9 @@ class FacilityAmenity {
     this.description = '',
     this.pricingUnit = 'per_occurrence',
     this.enabled = true,
+    this.internalPermitRowCode,
+    this.externalPermitRowCode,
+    this.permitQuantityRequired = false,
   });
 
   final String id;
@@ -87,6 +90,9 @@ class FacilityAmenity {
   final int priceCentavos;
   final String pricingUnit;
   final bool enabled;
+  final String? internalPermitRowCode;
+  final String? externalPermitRowCode;
+  final bool permitQuantityRequired;
 }
 
 class FacilityAudienceRate {
@@ -186,6 +192,8 @@ class Facility {
     this.locationReviewNote = '',
     this.locationOverrideReason = '',
     this.locationReviewVersion = 1,
+    this.internalPermitRowCode,
+    this.externalPermitRowCode,
   });
 
   final String id;
@@ -258,6 +266,8 @@ class Facility {
   String locationReviewNote;
   String locationOverrideReason;
   int locationReviewVersion;
+  String? internalPermitRowCode;
+  String? externalPermitRowCode;
 
   bool get hasRatings => ratingCount > 0;
   bool get hasVerifiedLocation => locationReviewStatus.isVerified;

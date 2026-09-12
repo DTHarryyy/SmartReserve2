@@ -19,9 +19,18 @@ Future<void> showFacilityConfigurationDialog(
 );
 
 class _AmenityEdit {
-  _AmenityEdit({required this.name, required this.price});
+  _AmenityEdit({
+    required this.name,
+    required this.price,
+    this.internalRow,
+    this.externalRow,
+    this.quantityRequired = false,
+  });
   String name;
   String price;
+  String? internalRow;
+  String? externalRow;
+  bool quantityRequired;
 }
 
 class _FacilityConfigurationDialog extends StatefulWidget {
@@ -50,6 +59,8 @@ class _FacilityConfigurationDialogState
   late final TextEditingController _correctionHours;
   late final TextEditingController _downPaymentPercent;
   late final List<_AmenityEdit> _amenities;
+  String? _internalFacilityRow;
+  String? _externalFacilityRow;
   bool _saving = false;
   String? _error;
 
@@ -92,8 +103,16 @@ class _FacilityConfigurationDialogState
       for (final amenity in facility.amenityOptions.where(
         (item) => item.enabled,
       ))
-        _AmenityEdit(name: amenity.name, price: _pesos(amenity.priceCentavos)),
+        _AmenityEdit(
+          name: amenity.name,
+          price: _pesos(amenity.priceCentavos),
+          internalRow: amenity.internalPermitRowCode,
+          externalRow: amenity.externalPermitRowCode,
+          quantityRequired: amenity.permitQuantityRequired,
+        ),
     ];
+    _internalFacilityRow = facility.internalPermitRowCode;
+    _externalFacilityRow = facility.externalPermitRowCode;
   }
 
   static String _pesos(int centavos) => (centavos / 100).toStringAsFixed(2);
@@ -172,46 +191,175 @@ class _FacilityConfigurationDialogState
                     ],
                   ),
                   const SizedBox(height: 22),
+                  _heading(
+                    'Official permit mappings',
+                    'Explicit rows used when stamping the supplied forms.',
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: _internalFacilityRow,
+                    decoration: const InputDecoration(
+                      labelText: 'Internal facility row',
+                    ),
+                    items:
+                        const {
+                              'audio_visual_main_hall':
+                                  'Audio Visual Room / Main Hall',
+                              'conference_room': 'Conference Room',
+                              'other': 'Others',
+                            }.entries
+                            .map(
+                              (entry) => DropdownMenuItem(
+                                value: entry.key,
+                                child: Text(entry.value),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (value) =>
+                        setState(() => _internalFacilityRow = value),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _externalFacilityRow,
+                    decoration: const InputDecoration(
+                      labelText: 'External facility row',
+                    ),
+                    items:
+                        const {
+                              'gym_auditorium': 'Gymnasium/Auditorium',
+                              'avr': 'AVR',
+                              'accommodation': 'Accomodation',
+                              'love_hall': 'Love Hall',
+                              'other': 'Others',
+                            }.entries
+                            .map(
+                              (entry) => DropdownMenuItem(
+                                value: entry.key,
+                                child: Text(entry.value),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (value) =>
+                        setState(() => _externalFacilityRow = value),
+                  ),
+                  const SizedBox(height: 22),
                   _heading('Amenities', 'Only these IDs can be requested.'),
                   for (var index = 0; index < _amenities.length; index++)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
+                      child: Column(
                         children: [
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: _amenities[index].name,
-                              decoration: const InputDecoration(
-                                labelText: 'Amenity',
-                              ),
-                              onChanged: (value) =>
-                                  _amenities[index].name = value,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 130,
-                            child: TextFormField(
-                              initialValue: _amenities[index].price,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: _amenities[index].name,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Amenity',
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: 'Price',
-                                prefixText: '₱',
+                                  onChanged: (value) =>
+                                      _amenities[index].name = value,
+                                ),
                               ),
-                              onChanged: (value) =>
-                                  _amenities[index].price = value,
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 130,
+                                child: TextFormField(
+                                  initialValue: _amenities[index].price,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Price',
+                                    prefixText: '₱',
+                                  ),
+                                  onChanged: (value) =>
+                                      _amenities[index].price = value,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Remove amenity',
+                                onPressed: () =>
+                                    setState(() => _amenities.removeAt(index)),
+                                icon: const Icon(
+                                  Icons.remove_circle_outline_rounded,
+                                ),
+                              ),
+                            ],
+                          ),
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text(
+                              'Require a requested quantity on the permit',
+                            ),
+                            value: _amenities[index].quantityRequired,
+                            onChanged: (value) => setState(
+                              () => _amenities[index].quantityRequired =
+                                  value ?? false,
                             ),
                           ),
-                          IconButton(
-                            tooltip: 'Remove amenity',
-                            onPressed: () =>
-                                setState(() => _amenities.removeAt(index)),
-                            icon: const Icon(
-                              Icons.remove_circle_outline_rounded,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _amenities[index].internalRow,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Internal form row',
+                                  ),
+                                  items:
+                                      const {
+                                            'sound_system': 'Sound System',
+                                            'overhead_projector':
+                                                'Overhead Projector',
+                                            'lcd_accessories':
+                                                'LCD and Accessories',
+                                            'other': 'Others',
+                                          }.entries
+                                          .map(
+                                            (entry) => DropdownMenuItem(
+                                              value: entry.key,
+                                              child: Text(entry.value),
+                                            ),
+                                          )
+                                          .toList(),
+                                  onChanged: (value) =>
+                                      _amenities[index].internalRow = value,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _amenities[index].externalRow,
+                                  decoration: const InputDecoration(
+                                    labelText: 'External form row',
+                                  ),
+                                  items:
+                                      const {
+                                            'tables_chairs': 'Tables/chairs',
+                                            'lcd_projector': 'LCD Projector',
+                                            'avr': 'AVR',
+                                            'led_video_wall': 'LED Video Wall',
+                                            'accommodation': 'Accomodation',
+                                            'love_hall': 'Love Hall',
+                                            'other': 'Others',
+                                          }.entries
+                                          .map(
+                                            (entry) => DropdownMenuItem(
+                                              value: entry.key,
+                                              child: Text(entry.value),
+                                            ),
+                                          )
+                                          .toList(),
+                                  onChanged: (value) => setState(() {
+                                    _amenities[index].externalRow = value;
+                                    if (value == 'tables_chairs') {
+                                      _amenities[index].quantityRequired = true;
+                                    }
+                                  }),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -350,6 +498,10 @@ class _FacilityConfigurationDialogState
   );
 
   Future<void> _save() async {
+    if (_internalFacilityRow == null || _externalFacilityRow == null) {
+      setState(() => _error = 'Select both official facility permit rows.');
+      return;
+    }
     final rates = <String, int>{};
     for (final audience in audiences) {
       final pesos = double.tryParse(_rates[audience]!.text.trim());
@@ -369,11 +521,21 @@ class _FacilityConfigurationDialogState
         setState(() => _error = 'Each amenity needs a name and valid price.');
         return;
       }
+      if (edit.internalRow == null || edit.externalRow == null) {
+        setState(
+          () => _error =
+              'Every amenity needs internal and external permit-row mappings.',
+        );
+        return;
+      }
       amenities.add(
         FacilityAmenity(
           id: 'draft-$index',
           name: edit.name.trim(),
           priceCentavos: (price * 100).round(),
+          internalPermitRowCode: edit.internalRow,
+          externalPermitRowCode: edit.externalRow,
+          permitQuantityRequired: edit.quantityRequired,
         ),
       );
     }
@@ -412,6 +574,8 @@ class _FacilityConfigurationDialogState
         balanceDueLeadMinutes: balanceHours * 60,
         correctionWindowMinutes: correctionHours * 60,
         downPaymentPercent: percent,
+        internalPermitRowCode: _internalFacilityRow,
+        externalPermitRowCode: _externalFacilityRow,
       ),
     );
     if (!mounted) return;

@@ -1,84 +1,168 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
-import { Resvg, initWasm } from 'npm:@resvg/resvg-wasm';
-import wasm from 'npm:@resvg/resvg-wasm/index_bg.wasm';
-import { encodeBase64, protectedRenditionPayload } from './contract.ts';
+import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  decodeAndValidateImage,
+  encodeBase64,
+  type OfficialSignatureSlot,
+  signatureSlots,
+} from "./contract.ts";
 
-const url = Deno.env.get('SUPABASE_URL')!;
-const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const url = Deno.env.get("SUPABASE_URL")!;
+const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(url, serviceKey);
-const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' };
-let wasmReady: Promise<void> | undefined;
-const ready = () => wasmReady ??= initWasm(wasm);
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+};
+const response = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
 
-const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status, headers: { ...cors, 'Content-Type': 'application/json' },
-});
-
-async function caller(request: Request) {
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+async function authenticatedUser(request: Request) {
+  const token = request.headers.get("authorization")?.replace(
+    /^Bearer\s+/i,
+    "",
+  );
   if (!token) return null;
   const { data } = await admin.auth.getUser(token);
   return data.user ?? null;
 }
 
-async function isInternalAdmin(id: string) {
-  const { data } = await admin.from('profiles').select('role,account_status').eq('id', id).maybeSingle();
-  return data?.role === 'internal_admin' && data.account_status === 'active';
+async function authorizedSlot(userId: string, value: unknown) {
+  if (typeof value !== "string" || !(value in signatureSlots)) return null;
+  const slot = value as OfficialSignatureSlot;
+  const { data } = await admin.from("profiles").select("role,account_status")
+    .eq("id", userId).maybeSingle();
+  return data?.account_status === "active" &&
+      data.role === signatureSlots[slot].role
+    ? slot
+    : null;
 }
 
-function bytes(value: string) {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+async function audit(
+  userId: string,
+  slot: OfficialSignatureSlot,
+  action: string,
+  revisionId?: string,
+) {
+  const { data: profile } = await admin.from("profiles").select(
+    "full_name,email,role",
+  ).eq("id", userId).single();
+  await admin.from("audit_entries").insert({
+    entity_type: "system",
+    target_label: "Official permit signature",
+    actor_id: userId,
+    actor_name: profile?.full_name || profile?.email || userId,
+    actor_role: profile?.role || "system",
+    action,
+    source_type: "permit_official_signature_preview",
+    source_id: crypto.randomUUID(),
+    details: { slot, revisionId },
+  });
 }
 
 Deno.serve(async (request) => {
-  if (request.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  if (request.method !== 'POST') return response({ error: 'POST required' }, 405);
-  const user = await caller(request);
-  if (!user) return response({ error: 'Sign in required' }, 401);
+  if (request.method === "OPTIONS") {
+    return new Response("ok", { headers: cors });
+  }
+  if (request.method !== "POST") {
+    return response({ error: "POST required" }, 405);
+  }
+  const user = await authenticatedUser(request);
+  if (!user) return response({ error: "Sign in required" }, 401);
   const body = await request.json().catch(() => ({}));
-  const action = body.action;
-  const internal = await isInternalAdmin(user.id);
+  const slot = await authorizedSlot(user.id, body.slot);
+  if (!slot) {
+    return response(
+      { error: "You cannot manage that official signature slot" },
+      403,
+    );
+  }
+
   try {
-    if (action === 'upload_ceo') {
-      if (!internal) return response({ error: 'Internal Admin access required' }, 403);
-      if (!['image/png', 'image/jpeg'].includes(body.mimeType) || typeof body.bytesBase64 !== 'string') return response({ error: 'PNG or JPEG required' }, 400);
-      const source = bytes(body.bytesBase64);
-      if (!source.length || source.length > 5 * 1024 * 1024) return response({ error: 'Signature must be 5 MB or smaller' }, 400);
-      const path = `${user.id}/${crypto.randomUUID()}-${body.fileName ?? 'ceo-signature'}`;
-      const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', source))).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-      const { error: uploadError } = await admin.storage.from('ceo-signatures').upload(path, source, { contentType: body.mimeType, upsert: false });
+    if (body.action === "upload") {
+      const source = decodeAndValidateImage(body.bytesBase64, body.mimeType);
+      const extension = body.mimeType === "image/png" ? "png" : "jpg";
+      const path = `${slot}/${crypto.randomUUID()}.${extension}`;
+      const hash = Array.from(
+        new Uint8Array(
+          await crypto.subtle.digest("SHA-256", source.slice().buffer),
+        ),
+      )
+        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const { error: uploadError } = await admin.storage.from(
+        "permit-official-signatures",
+      ).upload(path, source, {
+        contentType: body.mimeType,
+        upsert: false,
+      });
       if (uploadError) throw uploadError;
-      const { error } = await admin.rpc('record_ceo_signature_replacement', { p_storage_path: path, p_file_name: body.fileName ?? 'ceo-signature', p_mime_type: body.mimeType, p_byte_size: source.length, p_sha256: hash, p_actor_id: user.id });
-      if (error) { await admin.storage.from('ceo-signatures').remove([path]); throw error; }
-      return response({ ok: true });
+      const { data: revision, error } = await admin.rpc(
+        "record_official_permit_signature",
+        {
+          p_slot: slot,
+          p_storage_path: path,
+          p_file_name: String(body.fileName || `signature.${extension}`),
+          p_mime_type: body.mimeType,
+          p_byte_size: source.length,
+          p_sha256: hash,
+          p_actor_id: user.id,
+        },
+      );
+      if (error) {
+        await admin.storage.from("permit-official-signatures").remove([path]);
+        throw error;
+      }
+      return response({
+        ok: true,
+        revisionId: revision.id,
+        printedIdentity: signatureSlots[slot].printedIdentity,
+      });
     }
-    const requestId = body.requestId;
-    const permitId = body.permitId;
-    if (typeof requestId !== 'string' || typeof permitId !== 'string') return response({ error: 'Permit reference is required' }, 400);
-    const { data: permit } = await admin.from('reservation_permits').select('id,request_id,ceo_signature_id,reservation_requests!inner(requester_id)').eq('id', permitId).eq('request_id', requestId).maybeSingle();
-    if (!permit) return response({ error: 'Permit not found' }, 404);
-    const requesterId = (permit.reservation_requests as { requester_id: string }).requester_id;
-    if (!internal && requesterId !== user.id) return response({ error: 'Permit access denied' }, 403);
-    if (!permit.ceo_signature_id) return response({ error: 'CEO signature is unavailable' }, 409);
-    const { data: revision, error: revisionError } = await admin.from('ceo_signature_revisions').select('storage_path').eq('id', permit.ceo_signature_id).single();
-    if (revisionError) throw revisionError;
-    const { data: source, error: downloadError } = await admin.storage.from('ceo-signatures').download(revision.storage_path);
-    if (downloadError) throw downloadError;
-    const raw = new Uint8Array(await source.arrayBuffer());
-    if (action === 'official') {
-      if (!internal) return response({ error: 'Internal Admin access required' }, 403);
-      await admin.rpc('reservation_event', { p_request_id: requestId, p_action: 'generated official permit copy', p_details: { permit_id: permitId } });
-      return response({ mimeType: 'image/png', sourceBase64: encodeBase64(raw) });
+    if (body.action === "preview") {
+      const { data: revision, error } = await admin.from(
+        "permit_official_signature_revisions",
+      )
+        .select("id,storage_path,mime_type,uploaded_at").eq("slot", slot).eq(
+          "active",
+          true,
+        ).maybeSingle();
+      if (error) throw error;
+      if (!revision) {
+        return response({
+          active: false,
+          printedIdentity: signatureSlots[slot].printedIdentity,
+        });
+      }
+      const { data: object, error: downloadError } = await admin.storage.from(
+        "permit-official-signatures",
+      ).download(revision.storage_path);
+      if (downloadError || !object) {
+        throw downloadError ?? new Error("Signature object is unavailable");
+      }
+      const source = new Uint8Array(await object.arrayBuffer());
+      await audit(
+        user.id,
+        slot,
+        "previewed official permit signature",
+        revision.id,
+      );
+      return response({
+        active: true,
+        revisionId: revision.id,
+        mimeType: revision.mime_type,
+        uploadedAt: revision.uploaded_at,
+        imageBase64: encodeBase64(source),
+        printedIdentity: signatureSlots[slot].printedIdentity,
+      });
     }
-    if (action !== 'protected') return response({ error: 'Unknown action' }, 400);
-    await ready();
-    const embedded = encodeBase64(raw);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300"><rect width="100%" height="100%" fill="white"/><image href="data:image/png;base64,${embedded}" x="220" y="60" width="460" height="120" preserveAspectRatio="xMidYMid meet"/><text x="450" y="250" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#b91c1c" opacity=".65">SMARTRESERVE • PROTECTED USER COPY</text></svg>`;
-    const flattened = new Resvg(svg, { fitTo: { mode: 'width', value: 900 } }).render().asPng();
-    await admin.rpc('reservation_event', { p_request_id: requestId, p_action: 'generated protected permit copy', p_details: { permit_id: permitId } });
-    return response(protectedRenditionPayload(flattened));
+    return response({ error: "Unknown action" }, 400);
   } catch (error) {
-    return response({ error: error instanceof Error ? error.message : 'Permit signature operation failed' }, 500);
+    return response({
+      error: error instanceof Error
+        ? error.message
+        : "Permit signature operation failed",
+    }, 500);
   }
 });

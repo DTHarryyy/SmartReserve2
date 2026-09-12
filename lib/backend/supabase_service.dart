@@ -617,6 +617,8 @@ class ReservationDraft {
     this.termsVersionIds = const [],
     this.pricingFingerprint,
     this.discountClaimId,
+    this.externalPermitDetails,
+    this.permitItemQuantities = const {},
   });
 
   final String facilityId;
@@ -631,6 +633,8 @@ class ReservationDraft {
   final List<String> termsVersionIds;
   final String? pricingFingerprint;
   final String? discountClaimId;
+  final ExternalPermitDetails? externalPermitDetails;
+  final Map<String, int> permitItemQuantities;
 }
 
 class BackendPriceLine {
@@ -798,6 +802,8 @@ class FacilityConfigurationDraft {
     required this.balanceDueLeadMinutes,
     required this.correctionWindowMinutes,
     this.downPaymentPercent = 50,
+    this.internalPermitRowCode,
+    this.externalPermitRowCode,
   });
 
   final String facilityId;
@@ -810,6 +816,8 @@ class FacilityConfigurationDraft {
   final int balanceDueLeadMinutes;
   final int correctionWindowMinutes;
   final int downPaymentPercent;
+  final String? internalPermitRowCode;
+  final String? externalPermitRowCode;
 }
 
 class BackendReservationOccurrence {
@@ -1106,6 +1114,11 @@ class BackendReservation {
     this.signatureRequestId,
     this.signatureRequestStatus,
     this.useAssessments = const [],
+    this.requesterCategory = 'external_renter',
+    this.externalCompanyOrganization,
+    this.externalCompleteAddress,
+    this.externalContactNumbers = const [],
+    this.externalAdmissionFeeCentavos,
   });
 
   final String id;
@@ -1157,6 +1170,11 @@ class BackendReservation {
   final String? signatureRequestId;
   final String? signatureRequestStatus;
   final List<BackendReservationUseAssessment> useAssessments;
+  final String requesterCategory;
+  final String? externalCompanyOrganization;
+  final String? externalCompleteAddress;
+  final List<String> externalContactNumbers;
+  final int? externalAdmissionFeeCentavos;
 
   factory BackendReservation.fromJson(Map<String, dynamic> json) {
     List<T> rows<T>(String key, T Function(Map<String, dynamic>) parse) =>
@@ -1268,6 +1286,17 @@ class BackendReservation {
             Map<String, dynamic>.from(raw as Map),
           ),
       ],
+      requesterCategory: '${json['requester_category'] ?? 'external_renter'}',
+      externalCompanyOrganization:
+          json['external_company_organization'] as String?,
+      externalCompleteAddress: json['external_complete_address'] as String?,
+      externalContactNumbers: [
+        for (final value
+            in json['external_contact_numbers'] as List? ?? const [])
+          '$value',
+      ],
+      externalAdmissionFeeCentavos:
+          (json['external_admission_fee_centavos'] as num?)?.toInt(),
     );
   }
 }
@@ -2930,10 +2959,17 @@ abstract interface class SmartReserveBackend {
     required String requestId,
     required ReservationUpload signature,
   });
-  Future<void> uploadCeoSignature(ReservationUpload signature);
-  Future<Uint8List?> permitUserSignature(String signatureId);
-  Future<Uint8List?> protectedCeoSignature(String requestId, String permitId);
-  Future<Uint8List?> officialCeoSignature(String requestId, String permitId);
+  Future<void> updateExternalPermitDetails(
+    String requestId,
+    ExternalPermitDetails details,
+  );
+  Future<void> uploadOfficialSignature(
+    OfficialSignatureSlot slot,
+    ReservationUpload signature,
+  );
+  Future<Map<String, dynamic>> previewOfficialSignature(
+    OfficialSignatureSlot slot,
+  );
   String facilityPhotoUrl(String path);
 }
 
@@ -2971,15 +3007,10 @@ abstract interface class SmartReserveCoreBackend {
     required String comment,
     List<ReservationUpload> evidence,
   });
-  Future<ReservationPermit> issuePermit(String requestId);
-  Future<void> uploadPermitPdf({
-    required String permitId,
-    required String requestId,
-    required String requesterId,
-    required String permitNumber,
-    required int version,
-    required Uint8List bytes,
-  });
+  Future<ReservationPermit?> ensurePermit(String requestId);
+  Future<PermitReadiness> permitReadiness(String requestId);
+  Future<Uint8List> downloadPermitPdf(String path);
+  Future<Uint8List> previewPermit(String requestId);
   Future<String> permitDownloadUrl(String path);
   Future<Map<String, dynamic>> verifyPermit(String token);
   Future<void> saveFacilityConfiguration(FacilityConfigurationDraft draft);
@@ -3052,6 +3083,9 @@ FacilityAmenity _facilityAmenity(Map<String, dynamic> json) => FacilityAmenity(
   priceCentavos: (json['price_centavos'] as num?)?.toInt() ?? 0,
   pricingUnit: '${json['pricing_unit'] ?? 'per_occurrence'}',
   enabled: json['enabled'] as bool? ?? true,
+  internalPermitRowCode: json['internal_permit_row_code'] as String?,
+  externalPermitRowCode: json['external_permit_row_code'] as String?,
+  permitQuantityRequired: json['permit_quantity_required'] as bool? ?? false,
 );
 
 FacilityPaymentMethod _facilityPaymentMethod(Map<String, dynamic> json) =>
@@ -3122,6 +3156,8 @@ class BackendFacility {
     this.downPaymentPercent = 50,
     this.ratingAverage,
     this.ratingCount = 0,
+    this.internalPermitRowCode,
+    this.externalPermitRowCode,
   });
 
   final String id;
@@ -3179,6 +3215,8 @@ class BackendFacility {
   final int downPaymentPercent;
   final double? ratingAverage;
   final int ratingCount;
+  final String? internalPermitRowCode;
+  final String? externalPermitRowCode;
 
   factory BackendFacility.fromJson(Map<String, dynamic> json) {
     List<String> strings(String key) =>
@@ -3269,6 +3307,8 @@ class BackendFacility {
           (_embeddedOne(json['facility_rating_stats'])?['rating_count'] as num?)
               ?.toInt() ??
           0,
+      internalPermitRowCode: json['internal_permit_row_code'] as String?,
+      externalPermitRowCode: json['external_permit_row_code'] as String?,
     );
   }
 
@@ -3330,6 +3370,8 @@ class BackendFacility {
     downPaymentPercent: downPaymentPercent,
     ratingAverage: ratingAverage,
     ratingCount: ratingCount,
+    internalPermitRowCode: internalPermitRowCode,
+    externalPermitRowCode: externalPermitRowCode,
   );
 
   Facility toFacility(String Function(String path) publicUrlFor) {
@@ -3403,6 +3445,8 @@ class BackendFacility {
       downPaymentPercent: downPaymentPercent,
       ratingAverage: ratingAverage,
       ratingCount: ratingCount,
+      internalPermitRowCode: internalPermitRowCode,
+      externalPermitRowCode: externalPermitRowCode,
     );
   }
 
@@ -3969,8 +4013,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
           'byte_size': file.bytes.lengthInBytes,
         });
       }
+      final details = draft.externalPermitDetails;
       await _client.rpc(
-        'submit_reservation_v2',
+        'submit_reservation_v3',
         params: {
           'p_request_id': requestId,
           'p_facility_id': draft.facilityId,
@@ -3988,6 +4033,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
           'p_pricing_fingerprint': draft.pricingFingerprint,
           'p_attachment_metadata': uploaded,
           'p_discount_claim_id': draft.discountClaimId,
+          'p_external_company_organization': details?.companyOrOrganization,
+          'p_external_complete_address': details?.completeAddress,
+          'p_external_contact_numbers': details?.contactNumbers,
+          'p_external_admission_fee_centavos': details?.admissionFeeCentavos,
+          'p_item_quantities': draft.permitItemQuantities,
         },
       );
       final row = await _client
@@ -4030,8 +4080,34 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_discount_claim_id': discountClaimId,
       },
     );
-    return BackendReservationQuote.fromJson(
+    final quote = BackendReservationQuote.fromJson(
       Map<String, dynamic>.from(data as Map),
+    );
+    if (quote.adminLane != 'internal') return quote;
+    return BackendReservationQuote(
+      facilityId: quote.facilityId,
+      audience: quote.audience,
+      adminLane: quote.adminLane,
+      facilityAmountCentavos: 0,
+      amenityAmountCentavos: 0,
+      discountAmountCentavos: 0,
+      totalAmountCentavos: 0,
+      requiredDownPaymentCentavos: 0,
+      pricingFingerprint: quote.pricingFingerprint,
+      lines: [
+        for (final line in quote.lines)
+          BackendPriceLine(
+            type: line.type,
+            sourceId: line.sourceId,
+            label: line.label,
+            quantity: line.quantity,
+            unitAmountCentavos: 0,
+            lineTotalCentavos: 0,
+          ),
+      ],
+      terms: quote.terms,
+      downPaymentPercent: quote.downPaymentPercent,
+      paymentExemption: 'internal_user',
     );
   }
 
@@ -4216,43 +4292,49 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<ReservationPermit> issuePermit(String requestId) async {
-    final data = await _client.rpc(
-      'issue_reservation_permit',
-      params: {'p_request_id': requestId},
+  Future<ReservationPermit?> ensurePermit(String requestId) async {
+    final response = await _client.functions.invoke(
+      'generate-permit',
+      body: {'action': 'ensure', 'requestId': requestId},
     );
-    return ReservationPermit.fromJson(Map<String, dynamic>.from(data as Map));
+    if (response.data is! Map) {
+      throw StateError('Permit generator returned an invalid response.');
+    }
+    final data = Map<String, dynamic>.from(response.data as Map);
+    if (data['error'] is String) throw StateError('${data['error']}');
+    final permit = data['permit'];
+    return permit is Map
+        ? ReservationPermit.fromJson(Map<String, dynamic>.from(permit))
+        : null;
   }
 
   @override
-  Future<void> uploadPermitPdf({
-    required String permitId,
-    required String requestId,
-    required String requesterId,
-    required String permitNumber,
-    required int version,
-    required Uint8List bytes,
-  }) async {
-    final path = '$requesterId/$requestId/$permitNumber-v$version.pdf';
-    await _client.storage
-        .from('reservation-permits')
-        .uploadBinary(
-          path,
-          bytes,
-          fileOptions: const FileOptions(
-            contentType: 'application/pdf',
-            upsert: true,
-          ),
-        );
-    await _client.rpc(
-      'record_reservation_permit_pdf',
-      params: {
-        'p_permit_id': permitId,
-        'p_storage_path': path,
-        'p_sha256': sha256.convert(bytes).toString(),
-        'p_byte_size': bytes.lengthInBytes,
-      },
+  Future<PermitReadiness> permitReadiness(String requestId) async {
+    final data = await _client.rpc(
+      'get_reservation_permit_readiness',
+      params: {'p_request_id': requestId},
     );
+    return PermitReadiness.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<Uint8List> downloadPermitPdf(String path) =>
+      _client.storage.from('reservation-permits').download(path);
+
+  @override
+  Future<Uint8List> previewPermit(String requestId) async {
+    final response = await _client.functions.invoke(
+      'generate-permit',
+      body: {'action': 'preview', 'requestId': requestId},
+    );
+    if (response.data is Uint8List) return response.data as Uint8List;
+    if (response.data is List<int>) {
+      return Uint8List.fromList(response.data as List<int>);
+    }
+    if (response.data is Map && (response.data as Map)['error'] != null) {
+      throw StateError('${(response.data as Map)['error']}');
+    }
+    throw StateError('Permit preview service returned an invalid response.');
   }
 
   @override
@@ -4296,8 +4378,27 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<void> uploadCeoSignature(ReservationUpload signature) async {
-    await _signatureFunction('upload_ceo', {
+  Future<void> updateExternalPermitDetails(
+    String requestId,
+    ExternalPermitDetails details,
+  ) => _client.rpc(
+    'update_external_permit_details',
+    params: {
+      'p_request_id': requestId,
+      'p_company_organization': details.companyOrOrganization,
+      'p_complete_address': details.completeAddress,
+      'p_contact_numbers': details.contactNumbers,
+      'p_admission_fee_centavos': details.admissionFeeCentavos,
+    },
+  );
+
+  @override
+  Future<void> uploadOfficialSignature(
+    OfficialSignatureSlot slot,
+    ReservationUpload signature,
+  ) async {
+    await _signatureFunction('upload', {
+      'slot': slot.raw,
       'fileName': signature.name,
       'mimeType': signature.mimeType,
       'bytesBase64': base64Encode(signature.bytes),
@@ -4305,40 +4406,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<Uint8List?> permitUserSignature(String signatureId) async {
-    final row = await _client
-        .from('reservation_user_signatures')
-        .select('storage_path')
-        .eq('id', signatureId)
-        .maybeSingle();
-    if (row == null) return null;
-    return _client.storage
-        .from('reservation-signatures')
-        .download('${row['storage_path']}');
-  }
-
-  @override
-  Future<Uint8List?> protectedCeoSignature(String requestId, String permitId) =>
-      _signatureBytes('protected', requestId, permitId);
-
-  @override
-  Future<Uint8List?> officialCeoSignature(String requestId, String permitId) =>
-      _signatureBytes('official', requestId, permitId);
-
-  Future<Uint8List?> _signatureBytes(
-    String action,
-    String requestId,
-    String permitId,
-  ) async {
-    final data = await _signatureFunction(action, {
-      'requestId': requestId,
-      'permitId': permitId,
-    });
-    final encoded = data['protectedBase64'] ?? data['sourceBase64'];
-    return encoded is String && encoded.isNotEmpty
-        ? base64Decode(encoded)
-        : null;
-  }
+  Future<Map<String, dynamic>> previewOfficialSignature(
+    OfficialSignatureSlot slot,
+  ) => _signatureFunction('preview', {'slot': slot.raw});
 
   Future<Map<String, dynamic>> _signatureFunction(
     String action,
@@ -4374,7 +4444,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     FacilityConfigurationDraft draft,
   ) async {
     await _client.rpc(
-      'save_facility_configuration_v2',
+      'save_facility_configuration_v3',
       params: {
         'p_facility_id': draft.facilityId,
         'p_rates': [
@@ -4388,6 +4458,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
               'description': amenity.description,
               'price_centavos': amenity.priceCentavos,
               'pricing_unit': amenity.pricingUnit,
+              'internal_permit_row_code': amenity.internalPermitRowCode,
+              'external_permit_row_code': amenity.externalPermitRowCode,
+              'permit_quantity_required': amenity.permitQuantityRequired,
             },
         ],
         'p_account_name': draft.accountName,
@@ -4397,6 +4470,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_balance_due_lead_minutes': draft.balanceDueLeadMinutes,
         'p_correction_window_minutes': draft.correctionWindowMinutes,
         'p_down_payment_percent': draft.downPaymentPercent,
+        'p_internal_permit_row_code': draft.internalPermitRowCode,
+        'p_external_permit_row_code': draft.externalPermitRowCode,
       },
     );
   }

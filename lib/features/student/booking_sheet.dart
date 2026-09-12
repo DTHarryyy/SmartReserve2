@@ -13,6 +13,7 @@ import '../../model/loyalty.dart';
 import '../../model/notice.dart';
 import '../../model/reservation.dart';
 import '../../model/payment.dart';
+import '../../model/permit.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/amenity_request_field.dart';
@@ -100,6 +101,13 @@ class _BookingSheetState extends State<_BookingSheet> {
   late String _end;
   final _heads = TextEditingController(text: '20');
   final _purpose = TextEditingController();
+  final _company = TextEditingController();
+  final _address = TextEditingController();
+  final _contacts = TextEditingController();
+  final _admissionFee = TextEditingController();
+  final Map<String, TextEditingController> _itemQuantities = {};
+  bool _individual = false;
+  bool _noAdmissionFee = true;
   bool _attempted = false;
   bool _submitting = false;
   bool _weekly = false;
@@ -128,6 +136,11 @@ class _BookingSheetState extends State<_BookingSheet> {
     _start = slots.first;
     _end = slots.length > 2 ? slots[2] : slots.last;
     _heads.addListener(_scheduleQuote);
+    for (final item in facility.amenityOptions.where(
+      (item) => item.permitQuantityRequired,
+    )) {
+      _itemQuantities[item.id] = TextEditingController();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.state.shouldRefreshLoyaltyForCurrentUser) {
         unawaited(widget.state.refreshLoyalty());
@@ -141,6 +154,13 @@ class _BookingSheetState extends State<_BookingSheet> {
     _heads.removeListener(_scheduleQuote);
     _heads.dispose();
     _purpose.dispose();
+    _company.dispose();
+    _address.dispose();
+    _contacts.dispose();
+    _admissionFee.dispose();
+    for (final controller in _itemQuantities.values) {
+      controller.dispose();
+    }
     _quoteTimer?.cancel();
     super.dispose();
   }
@@ -266,6 +286,36 @@ class _BookingSheetState extends State<_BookingSheet> {
     }
     if (_purpose.text.trim().isEmpty) {
       return 'The assigned administrator reads this — a sentence is enough.';
+    }
+    if (widget.state.userAccount.isExternalGuest ||
+        widget.state.userAccount.isLegacyUnassigned) {
+      if (!_individual && _company.text.trim().isEmpty) {
+        return 'Enter the company/organization or choose Individual.';
+      }
+      if (_address.text.trim().isEmpty) {
+        return 'Enter the complete address for the official permit.';
+      }
+      if (_address.text.trim().length > 110) {
+        return 'Shorten the complete address so it fits the official permit.';
+      }
+      if (_contacts.text
+          .split(RegExp(r'[,;/\n]'))
+          .where((value) => value.trim().isNotEmpty)
+          .isEmpty) {
+        return 'Enter at least one contact number.';
+      }
+      if (!_noAdmissionFee &&
+          (double.tryParse(_admissionFee.text.trim()) ?? -1) < 0) {
+        return 'Enter a valid admission fee amount.';
+      }
+      for (final item in facility.amenityOptions.where(
+        (item) => item.permitQuantityRequired && _amenities.contains(item.name),
+      )) {
+        if ((int.tryParse(_itemQuantities[item.id]?.text.trim() ?? '') ?? 0) <=
+            0) {
+          return 'Enter the requested ${item.name} quantity.';
+        }
+      }
     }
     if (_attachments.isEmpty) {
       return 'Attach at least one supporting file.';
@@ -406,6 +456,33 @@ class _BookingSheetState extends State<_BookingSheet> {
       quote: _serverQuote,
       acceptedTerms: _termsAccepted,
       discountClaimId: _selectedVoucherId,
+      externalPermitDetails:
+          widget.state.userAccount.isExternalGuest ||
+              widget.state.userAccount.isLegacyUnassigned
+          ? ExternalPermitDetails(
+              companyOrOrganization: _individual
+                  ? 'Individual'
+                  : _company.text.trim(),
+              completeAddress: _address.text.trim(),
+              contactNumbers: _contacts.text
+                  .split(RegExp(r'[,;/\n]'))
+                  .map((value) => value.trim())
+                  .where((value) => value.isNotEmpty)
+                  .toList(),
+              admissionFeeCentavos: _noAdmissionFee
+                  ? 0
+                  : ((double.parse(_admissionFee.text.trim()) * 100).round()),
+            )
+          : null,
+      permitItemQuantities: {
+        for (final entry in _itemQuantities.entries)
+          if (_amenities.contains(
+            facility.amenityOptions
+                .firstWhere((item) => item.id == entry.key)
+                .name,
+          ))
+            entry.key: int.tryParse(entry.value.text.trim()) ?? 0,
+      },
     );
     if (!mounted) return;
     setState(() => _submitting = false);
@@ -461,6 +538,13 @@ class _BookingSheetState extends State<_BookingSheet> {
                     times: _times,
                     heads: _heads,
                     purpose: _purpose,
+                    company: _company,
+                    address: _address,
+                    contacts: _contacts,
+                    admissionFee: _admissionFee,
+                    individual: _individual,
+                    noAdmissionFee: _noAdmissionFee,
+                    itemQuantities: _itemQuantities,
                     duration: _duration,
                     clashes: _clashes,
                     ownOverlaps: _ownOverlaps,
@@ -489,6 +573,10 @@ class _BookingSheetState extends State<_BookingSheet> {
                       _scheduleQuote();
                     },
                     onFieldChanged: () => setState(() {}),
+                    onIndividualChanged: (value) =>
+                        setState(() => _individual = value),
+                    onNoAdmissionFeeChanged: (value) =>
+                        setState(() => _noAdmissionFee = value),
                     onWeeklyChanged: (value) {
                       setState(() => _weekly = value);
                       _scheduleQuote();
@@ -581,6 +669,13 @@ class _BookingForm extends StatelessWidget {
     required this.times,
     required this.heads,
     required this.purpose,
+    required this.company,
+    required this.address,
+    required this.contacts,
+    required this.admissionFee,
+    required this.individual,
+    required this.noAdmissionFee,
+    required this.itemQuantities,
     required this.duration,
     required this.clashes,
     required this.ownOverlaps,
@@ -597,6 +692,8 @@ class _BookingForm extends StatelessWidget {
     required this.onStartChanged,
     required this.onEndChanged,
     required this.onFieldChanged,
+    required this.onIndividualChanged,
+    required this.onNoAdmissionFeeChanged,
     required this.onWeeklyChanged,
     required this.onOccurrenceCountChanged,
     required this.onChooseAttachments,
@@ -624,6 +721,13 @@ class _BookingForm extends StatelessWidget {
   final List<String> times;
   final TextEditingController heads;
   final TextEditingController purpose;
+  final TextEditingController company;
+  final TextEditingController address;
+  final TextEditingController contacts;
+  final TextEditingController admissionFee;
+  final bool individual;
+  final bool noAdmissionFee;
+  final Map<String, TextEditingController> itemQuantities;
   final double duration;
   final List<Booking> clashes;
   final List<Map<String, dynamic>> ownOverlaps;
@@ -640,6 +744,8 @@ class _BookingForm extends StatelessWidget {
   final ValueChanged<String> onStartChanged;
   final ValueChanged<String> onEndChanged;
   final VoidCallback onFieldChanged;
+  final ValueChanged<bool> onIndividualChanged;
+  final ValueChanged<bool> onNoAdmissionFeeChanged;
   final ValueChanged<bool> onWeeklyChanged;
   final ValueChanged<int> onOccurrenceCountChanged;
   final VoidCallback onChooseAttachments;
@@ -794,6 +900,67 @@ class _BookingForm extends StatelessWidget {
           hasError: attempted && purpose.text.trim().isEmpty,
           onChanged: (_) => onFieldChanged(),
         ),
+        if (account.isExternalGuest || account.isLegacyUnassigned) ...[
+          const SizedBox(height: 12),
+          Text('Official external permit details', style: sans(12.5, w: 600)),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Requesting as an individual'),
+            value: individual,
+            onChanged: (value) => onIndividualChanged(value ?? false),
+          ),
+          if (!individual) ...[
+            const SrLabel('Company / organization'),
+            SrTextField(
+              controller: company,
+              semanticLabel: 'Company or organization',
+              placeholder: 'Full registered or organization name',
+              onChanged: (_) => onFieldChanged(),
+            ),
+            const SizedBox(height: 10),
+          ],
+          const SrLabel('Complete address'),
+          SrTextField(
+            controller: address,
+            semanticLabel: 'Complete address',
+            placeholder: 'Address as it should appear on the permit',
+            inputFormatters: [LengthLimitingTextInputFormatter(110)],
+            onChanged: (_) => onFieldChanged(),
+          ),
+          const SizedBox(height: 10),
+          const SrLabel('Contact number(s)'),
+          SrTextField(
+            controller: contacts,
+            semanticLabel: 'Contact numbers',
+            placeholder: 'Separate multiple numbers with commas',
+            onChanged: (_) => onFieldChanged(),
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('No admission fee'),
+            value: noAdmissionFee,
+            onChanged: (value) => onNoAdmissionFeeChanged(value ?? true),
+          ),
+          if (!noAdmissionFee) ...[
+            const SrLabel('Admission fee (PHP)'),
+            SrTextField(
+              controller: admissionFee,
+              semanticLabel: 'Admission fee',
+              placeholder: '0.00',
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(
+                  RegExp(r'^\d{0,7}(\.\d{0,2})?'),
+                ),
+              ],
+              onChanged: (_) => onFieldChanged(),
+            ),
+          ],
+        ],
         const SizedBox(height: 12),
         AmenityRequestField(
           includedAmenities: includedFacilityAmenities(facility),
@@ -802,6 +969,23 @@ class _BookingForm extends StatelessWidget {
           onToggle: onToggleAmenity,
           onRemove: onRemoveAmenity,
         ),
+        for (final item in facility.amenityOptions.where(
+          (item) =>
+              item.permitQuantityRequired && amenities.contains(item.name),
+        )) ...[
+          const SizedBox(height: 10),
+          SrTextField(
+            controller: itemQuantities[item.id]!,
+            semanticLabel: '${item.name} quantity',
+            placeholder: '${item.name} quantity',
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(5),
+            ],
+            onChanged: (_) => onFieldChanged(),
+          ),
+        ],
         const SizedBox(height: 12),
         Row(
           children: [

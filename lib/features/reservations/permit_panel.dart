@@ -1,33 +1,26 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
 import '../../model/notice.dart';
 import '../../model/permit.dart';
+import '../../model/payment.dart';
 import '../../model/reservation.dart';
+import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../util/file_export.dart';
-import '../../util/permit_pdf.dart';
 import '../../widgets/decision_widgets.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import 'permit_signature_settings_dialog.dart';
 
-import '../../theme/sr_theme.dart';
-
-/// The permit card shown on both the admin decision panel and the
-/// requester's own reservation detail. What it offers depends entirely on
-/// server-derived state (`request.permit`, `request.permitEligible`) --
-/// nothing here decides eligibility, it only reflects it.
 class PermitPanel extends StatefulWidget {
   const PermitPanel({super.key, required this.state, required this.request});
-
   final AppState state;
   final ReservationRequest request;
 
@@ -38,11 +31,42 @@ class PermitPanel extends StatefulWidget {
 class _PermitPanelState extends State<PermitPanel> {
   bool _busy = false;
   String? _error;
+  PermitReadiness? _readiness;
+
+  bool get _admin =>
+      widget.state.isInternalAdmin || widget.state.isExternalAdmin;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadReadiness());
+  }
+
+  @override
+  void didUpdateWidget(covariant PermitPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.request.id != widget.request.id ||
+        oldWidget.request.version != widget.request.version ||
+        oldWidget.request.permit?.generationStatus !=
+            widget.request.permit?.generationStatus) {
+      unawaited(_loadReadiness());
+    }
+  }
+
+  Future<void> _loadReadiness() async {
+    final value = await widget.state.permitReadiness(widget.request.id);
+    if (!mounted) return;
+    setState(() => _readiness = value);
+    if (value?.ready == true &&
+        widget.request.permit?.isDownloadable != true &&
+        !_busy) {
+      unawaited(_generate());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final request = widget.request;
-    final permit = request.permit;
+    final permit = widget.request.permit;
     return PanelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,14 +77,22 @@ class _PermitPanelState extends State<PermitPanel> {
               const Spacer(),
               if (permit != null)
                 SrStatusChip(
-                  label: permit.status.label,
-                  tone: permit.status.tone,
+                  label: permit.generationStatus == PermitGenerationStatus.ready
+                      ? permit.status.label
+                      : _generationLabel(permit.generationStatus),
+                  tone:
+                      permit.generationStatus ==
+                              PermitGenerationStatus.failed ||
+                          permit.generationStatus ==
+                              PermitGenerationStatus.blockedData
+                      ? SrTone.error
+                      : permit.status.tone,
                   dense: true,
                 ),
             ],
           ),
           const SizedBox(height: SR.space8),
-          ..._body(context, request, permit),
+          ..._body(context),
           if (_error != null) ...[
             const SizedBox(height: SR.space8),
             Text(_error!, style: SrType.bodySm(color: context.srColors.red)),
@@ -70,24 +102,30 @@ class _PermitPanelState extends State<PermitPanel> {
     );
   }
 
-  List<Widget> _body(
-    BuildContext context,
-    ReservationRequest request,
-    ReservationPermit? permit,
-  ) {
-    if (permit != null && permit.status == PermitStatus.active) {
+  List<Widget> _body(BuildContext context) {
+    final request = widget.request;
+    final permit = request.permit;
+    if (permit?.status == PermitStatus.void_ ||
+        permit?.status == PermitStatus.superseded) {
       return [
-        Text(permit.permitNumber, style: SrType.body(w: 600)),
         Text(
-          'Issued ${formatStamp(campusWallTime(permit.issuedAt))}',
+          permit!.status == PermitStatus.void_
+              ? 'This permit is void${permit.voidReason == null ? '' : ' — ${permit.voidReason}'}.'
+              : 'This permit was superseded and is no longer downloadable.',
+          style: SrType.bodySm(color: context.srColors.redInk),
+        ),
+      ];
+    }
+    if (permit?.isDownloadable == true) {
+      return [
+        Text(permit!.permitNumber, style: SrType.body(w: 600)),
+        Text(
+          '${permit.templateKind.label} · Issued ${formatStamp(campusWallTime(permit.issuedAt))}',
           style: SrType.caption(),
         ),
         const SizedBox(height: SR.space12),
         Text(
-          'Your reservation has been confirmed and your approved facility '
-          'reservation permit is now available. Please download and print '
-          'the document and bring the printed copy when you arrive at the '
-          'facility.',
+          'Print this official permit and bring it on the reservation date.',
           style: SrType.bodySm(),
         ),
         const SizedBox(height: SR.space12),
@@ -96,67 +134,36 @@ class _PermitPanelState extends State<PermitPanel> {
           runSpacing: SR.space8,
           children: [
             SrButton(
-              label: _busy ? 'Preparing…' : 'View Permit',
+              label: _busy ? 'Opening…' : 'View Permit',
               kind: SrButtonKind.primary,
               dense: true,
-              onPressed: _busy ? null : () => _view(permit, request),
+              onPressed: _busy ? null : () => _view(permit),
             ),
             SrButton(
               label: 'Download PDF',
               dense: true,
-              onPressed: _busy ? null : () => _download(permit, request),
+              onPressed: _busy ? null : () => _download(permit),
             ),
-            if (widget.state.isInternalAdmin && permit.ceoSignatureId != null)
-              SrButton(
-                label: 'Official copy',
-                dense: true,
-                onPressed: _busy ? null : () => _official(permit, request),
-              ),
           ],
         ),
       ];
     }
-    if (permit != null) {
+    if (request.lifecycleStatus == ReservationLifecycleStatus.pendingApproval ||
+        request.lifecycleStatus ==
+            ReservationLifecycleStatus.changesRequested) {
       return [
         Text(
-          permit.status == PermitStatus.void_
-              ? 'This permit is void${permit.voidReason == null ? '' : ' — ${permit.voidReason}'}.'
-              : 'This permit has been superseded by a newer version.',
-          style: SrType.bodySm(color: context.srColors.redInk),
-        ),
-      ];
-    }
-    if (widget.state.isInternalAdmin &&
-        request.permitEligible &&
-        !request.signatureSubmitted) {
-      return [
-        Text(
-          'Request the requester’s e-signature before issuing this permit.',
+          'Permit not yet available. Your reservation must be approved first.',
           style: SrType.bodySm(),
         ),
-        const SizedBox(height: SR.space8),
-        SrButton(
-          label: request.signatureRequested
-              ? 'Signature requested'
-              : 'Request e-signature',
-          dense: true,
-          onPressed: request.signatureRequested || _busy
-              ? null
-              : () => _requestSignature(request.id),
-        ),
-        const SizedBox(height: SR.space8),
-        SrButton(
-          label: 'Manage CEO signature',
-          dense: true,
-          onPressed: _busy ? null : _pickCeoSignature,
-        ),
       ];
     }
+    final widgets = <Widget>[];
     if (request.signatureRequested &&
         request.requesterId == widget.state.userAccount.id) {
-      return [
+      widgets.addAll([
         Text(
-          'An Internal Admin has requested your e-signature. Upload a PNG or JPEG image to continue.',
+          'Your approved reservation needs your reservation-specific signature.',
           style: SrType.bodySm(),
         ),
         const SizedBox(height: SR.space8),
@@ -166,132 +173,209 @@ class _PermitPanelState extends State<PermitPanel> {
           dense: true,
           onPressed: _busy ? null : () => _pickUserSignature(request),
         ),
-      ];
-    }
-    if (request.signatureSubmitted) {
-      return [
+      ]);
+    } else if (request.adminLane == 'external' &&
+        request.outstandingAmountCentavos > 0) {
+      widgets.add(
         Text(
-          'E-signature submitted. The signed permit is being issued.',
+          'Payment verification is incomplete. Verified: '
+          '${pesoFromCentavos(request.verifiedAmountCentavos)} · Remaining: '
+          '${pesoFromCentavos(request.outstandingAmountCentavos)}. You may submit a requested signature while payment continues.',
           style: SrType.bodySm(),
         ),
-      ];
+      );
+    } else if (permit?.generationStatus == PermitGenerationStatus.failed) {
+      widgets.add(
+        Text(
+          _admin
+              ? 'Generation failed (${permit?.generationErrorCode ?? 'generation_failed'}). Retry after checking readiness.'
+              : 'The permit could not be prepared. The assigned administrator has been notified.',
+          style: SrType.bodySm(),
+        ),
+      );
+    } else if (permit?.generationStatus == PermitGenerationStatus.blockedData) {
+      widgets.add(
+        Text(
+          _admin
+              ? 'Generation is blocked by printable content: ${permit?.generationErrorCode ?? 'content_does_not_fit'}.'
+              : 'Permit details need administrator attention before the document can be prepared.',
+          style: SrType.bodySm(),
+        ),
+      );
+    } else {
+      widgets.add(
+        Text(
+          request.signatureSubmitted
+              ? 'Your requirements are complete. The permit is being prepared.'
+              : 'Waiting for the remaining permit requirements.',
+          style: SrType.bodySm(),
+        ),
+      );
     }
-    return [
-      Text(
-        request.totalAmountCentavos > 0
-            ? 'Locked until fully paid.'
-            : 'Available once the reservation is approved and confirmed.',
-        style: SrType.bodySm(color: context.srColors.muted),
-      ),
-    ];
+    if (request.adminLane == 'external' &&
+        request.requesterId == widget.state.userAccount.id &&
+        _readiness?.blockerCodes.contains('external_details_required') ==
+            true) {
+      widgets.addAll([
+        const SizedBox(height: SR.space8),
+        SrButton(
+          label: 'Complete permit details',
+          kind: SrButtonKind.primary,
+          dense: true,
+          onPressed: _busy ? null : () => _completeExternalDetails(request),
+        ),
+      ]);
+    }
+    if (_admin) {
+      if (_readiness != null && _readiness!.blockerCodes.isNotEmpty) {
+        widgets.addAll([
+          const SizedBox(height: SR.space12),
+          Text('Readiness checklist', style: SrType.body(w: 600)),
+          const SizedBox(height: SR.space4),
+          for (final code in _readiness!.blockerCodes)
+            Text(
+              '• ${_readiness!.messageFor(code)}',
+              style: SrType.bodySm(color: context.srColors.muted),
+            ),
+        ]);
+      }
+      widgets.addAll([
+        const SizedBox(height: SR.space12),
+        Wrap(
+          spacing: SR.space8,
+          runSpacing: SR.space8,
+          children: [
+            if (!request.signatureRequested && !request.signatureSubmitted)
+              SrButton(
+                label: 'Request signature',
+                dense: true,
+                onPressed: _busy ? null : _requestSignature,
+              ),
+            SrButton(
+              label: permit == null ? 'Generate' : 'Retry generation',
+              dense: true,
+              onPressed: _busy || _readiness?.ready != true ? null : _generate,
+            ),
+            SrButton(
+              label: 'Signature settings',
+              dense: true,
+              onPressed: _busy
+                  ? null
+                  : () => showPermitSignatureSettingsDialog(
+                      context,
+                      state: widget.state,
+                    ),
+            ),
+          ],
+        ),
+        SrButton(
+          label: 'Preview populated permit',
+          dense: true,
+          onPressed: _busy || _readiness?.ready != true ? null : _preview,
+        ),
+      ]);
+    }
+    return widgets;
   }
 
-  Future<Uint8List?> _render(
-    ReservationPermit permit,
-    ReservationRequest request, {
-    bool official = false,
-  }) async {
+  String _generationLabel(PermitGenerationStatus status) => switch (status) {
+    PermitGenerationStatus.pending => 'Pending',
+    PermitGenerationStatus.generating => 'Generating',
+    PermitGenerationStatus.ready => 'Ready',
+    PermitGenerationStatus.blockedData => 'Blocked',
+    PermitGenerationStatus.failed => 'Failed',
+  };
+
+  Future<void> _generate() async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
-    try {
-      final user = permit.userSignatureId == null
-          ? null
-          : await widget.state.permitUserSignature(permit.userSignatureId!);
-      final ceo = official
-          ? await widget.state.officialCeoSignature(request.id, permit.id)
-          : await widget.state.protectedCeoSignature(request.id, permit.id);
-      if (permit.userSignatureId != null && (user == null || ceo == null)) {
-        throw StateError('The protected permit signatures are unavailable.');
-      }
-      final bytes = await buildPermitPdf(
-        permit,
-        userSignature: user,
-        ceoSignature: ceo,
-        protectedCopy: !official,
-      );
-      return bytes;
-    } catch (error) {
-      setState(() => _error = 'The permit could not be prepared: $error');
-      return null;
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    final ok = await widget.state.issuePermit(widget.request.id);
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        if (!ok) _error = 'The permit could not be prepared.';
+      });
     }
   }
 
-  Future<void> _view(
-    ReservationPermit permit,
-    ReservationRequest request,
-  ) async {
-    if (await _openStoredPermit(permit)) return;
-    final bytes = await _render(permit, request);
-    if (bytes == null) return;
+  Future<void> _preview() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final bytes = await widget.state.previewPermit(widget.request.id);
+    if (mounted) setState(() => _busy = false);
+    if (bytes == null) {
+      if (mounted) {
+        setState(() => _error = 'The populated preview is unavailable.');
+      }
+      return;
+    }
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+      name: 'Permit preview',
+    );
+  }
+
+  Future<void> _view(ReservationPermit permit) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final bytes = await widget.state.permitPdfBytes(permit);
+    if (mounted) setState(() => _busy = false);
+    if (bytes == null) {
+      if (mounted) {
+        setState(() => _error = 'The stored final permit is unavailable.');
+      }
+      return;
+    }
     await Printing.layoutPdf(onLayout: (_) async => bytes);
   }
 
-  Future<void> _download(
-    ReservationPermit permit,
-    ReservationRequest request,
-  ) async {
-    if (await _openStoredPermit(permit)) return;
-    final bytes = await _render(permit, request);
-    if (bytes == null) return;
+  Future<void> _download(ReservationPermit permit) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final bytes = await widget.state.permitPdfBytes(permit);
+    if (bytes == null) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'The stored final permit is unavailable.';
+        });
+      }
+      return;
+    }
     final result = await saveBinaryFile(
       baseName: permit.permitNumber,
       extension: 'pdf',
       bytes: bytes,
     );
     if (!mounted) return;
-    if (result.ok) {
-      widget.state.showToast(
-        const ToastMessage('Permit downloaded. Print it before you arrive.'),
-      );
-    } else {
-      widget.state.showToast(
-        ToastMessage(
-          'The permit could not be saved: ${result.error}',
-          tone: AdvisoryTone.block,
-        ),
-      );
-    }
+    setState(() => _busy = false);
+    widget.state.showToast(
+      ToastMessage(
+        result.ok
+            ? 'Permit downloaded. Print it before you arrive.'
+            : 'The permit could not be saved: ${result.error}',
+        tone: result.ok ? AdvisoryTone.info : AdvisoryTone.block,
+      ),
+    );
   }
 
-  Future<bool> _openStoredPermit(ReservationPermit permit) async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final url = await widget.state.permitPdfUrl(permit);
-      if (url == null) return false;
-      return await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-      );
-    } catch (_) {
-      return false;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _official(
-    ReservationPermit permit,
-    ReservationRequest request,
-  ) async {
-    final bytes = await _render(permit, request, official: true);
-    if (bytes != null) await Printing.layoutPdf(onLayout: (_) async => bytes);
-  }
-
-  Future<void> _requestSignature(String requestId) async {
+  Future<void> _requestSignature() async {
     setState(() => _busy = true);
-    await widget.state.requestReservationSignature(requestId);
+    await widget.state.requestReservationSignature(widget.request.id);
     if (mounted) setState(() => _busy = false);
   }
 
   Future<void> _pickUserSignature(ReservationRequest request) async {
-    final upload = await _chooseSignature('Select your e-signature');
+    final upload = await _chooseSignature();
     if (upload == null || request.signatureRequestId == null) return;
     setState(() => _busy = true);
     await widget.state.submitReservationSignature(
@@ -302,15 +386,7 @@ class _PermitPanelState extends State<PermitPanel> {
     if (mounted) setState(() => _busy = false);
   }
 
-  Future<void> _pickCeoSignature() async {
-    final upload = await _chooseSignature('Select CEO signature');
-    if (upload == null) return;
-    setState(() => _busy = true);
-    await widget.state.uploadCeoSignature(upload);
-    if (mounted) setState(() => _busy = false);
-  }
-
-  Future<ReservationUpload?> _chooseSignature(String title) async {
+  Future<ReservationUpload?> _chooseSignature() async {
     final picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['png', 'jpg', 'jpeg'],
@@ -333,21 +409,21 @@ class _PermitPanelState extends State<PermitPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
+        title: const Text('Confirm reservation signature'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Image.memory(bytes, height: 130),
             const SizedBox(height: 12),
             const Text(
-              'This image will be locked to the permit after confirmation.',
+              'Material reservation changes will require a new signature.',
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Clear'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
@@ -359,5 +435,154 @@ class _PermitPanelState extends State<PermitPanel> {
     return confirmed == true
         ? ReservationUpload(name: picked.name, mimeType: mime, bytes: bytes)
         : null;
+  }
+
+  Future<void> _completeExternalDetails(ReservationRequest request) async {
+    if (request.signatureSubmitted) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Change signed permit details?'),
+          content: const Text(
+            'The current signature will be superseded and a fresh signature will be requested.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+    }
+    final company = TextEditingController(
+      text: request.externalCompanyOrganization,
+    );
+    final address = TextEditingController(
+      text: request.externalCompleteAddress,
+    );
+    final contacts = TextEditingController(
+      text: request.externalContactNumbers.join(', '),
+    );
+    final fee = TextEditingController(
+      text: request.externalAdmissionFeeCentavos == null
+          ? ''
+          : (request.externalAdmissionFeeCentavos! / 100).toStringAsFixed(2),
+    );
+    var individual = request.externalCompanyOrganization == 'Individual';
+    var noFee = request.externalAdmissionFeeCentavos == 0;
+    final details = await showDialog<ExternalPermitDetails>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('External permit details'),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Individual'),
+                    value: individual,
+                    onChanged: (value) =>
+                        setDialogState(() => individual = value ?? false),
+                  ),
+                  if (!individual)
+                    TextField(
+                      controller: company,
+                      decoration: const InputDecoration(
+                        labelText: 'Company / organization',
+                      ),
+                    ),
+                  TextField(
+                    controller: address,
+                    maxLength: 110,
+                    decoration: const InputDecoration(
+                      labelText: 'Complete address',
+                    ),
+                  ),
+                  TextField(
+                    controller: contacts,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact number(s)',
+                    ),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('No admission fee'),
+                    value: noFee,
+                    onChanged: (value) =>
+                        setDialogState(() => noFee = value ?? true),
+                  ),
+                  if (!noFee)
+                    TextField(
+                      controller: fee,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Admission fee (PHP)',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final contactValues = contacts.text
+                    .split(RegExp(r'[,;/\n]'))
+                    .map((value) => value.trim())
+                    .where((value) => value.isNotEmpty)
+                    .toList();
+                final amount = noFee ? 0 : double.tryParse(fee.text.trim());
+                if ((!individual && company.text.trim().isEmpty) ||
+                    address.text.trim().isEmpty ||
+                    contactValues.isEmpty ||
+                    amount == null ||
+                    amount < 0) {
+                  return;
+                }
+                Navigator.pop(
+                  dialogContext,
+                  ExternalPermitDetails(
+                    companyOrOrganization: individual
+                        ? 'Individual'
+                        : company.text.trim(),
+                    completeAddress: address.text.trim(),
+                    contactNumbers: contactValues,
+                    admissionFeeCentavos: noFee ? 0 : (amount * 100).round(),
+                  ),
+                );
+              },
+              child: const Text('Save and request fresh signature'),
+            ),
+          ],
+        ),
+      ),
+    );
+    company.dispose();
+    address.dispose();
+    contacts.dispose();
+    fee.dispose();
+    if (details == null) return;
+    setState(() => _busy = true);
+    await widget.state.updateExternalPermitDetails(request.id, details);
+    if (mounted) {
+      setState(() => _busy = false);
+      unawaited(_loadReadiness());
+    }
   }
 }

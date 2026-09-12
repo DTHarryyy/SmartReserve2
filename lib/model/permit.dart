@@ -8,24 +8,135 @@ enum PermitStatus {
   const PermitStatus(this.raw, this.label);
   final String raw;
   final String label;
-
   SrTone get tone => switch (this) {
     PermitStatus.active => SrTone.success,
     PermitStatus.superseded => SrTone.neutral,
     PermitStatus.void_ => SrTone.error,
   };
-
   static PermitStatus fromRaw(String raw) => values.firstWhere(
     (value) => value.raw == raw,
     orElse: () => PermitStatus.superseded,
   );
 }
 
-class PermitOccurrence {
-  const PermitOccurrence({required this.startsAt, required this.endsAt});
+enum PermitTemplateKind {
+  internal('internal', 'Internal official template'),
+  external('external', 'External official template');
 
-  final DateTime startsAt;
-  final DateTime endsAt;
+  const PermitTemplateKind(this.raw, this.label);
+  final String raw;
+  final String label;
+  static PermitTemplateKind fromRaw(String raw) => values.firstWhere(
+    (value) => value.raw == raw,
+    orElse: () => PermitTemplateKind.external,
+  );
+}
+
+enum PermitGenerationStatus {
+  pending('pending'),
+  generating('generating'),
+  ready('ready'),
+  blockedData('blocked_data'),
+  failed('failed');
+
+  const PermitGenerationStatus(this.raw);
+  final String raw;
+  static PermitGenerationStatus fromRaw(String raw) => values.firstWhere(
+    (value) => value.raw == raw,
+    orElse: () => PermitGenerationStatus.pending,
+  );
+}
+
+enum OfficialSignatureSlot {
+  internalApprover('internal_approver', 'Internal approving official'),
+  externalRecommender('external_recommender', 'Business Coordinator'),
+  externalAuthorizedOfficial(
+    'external_authorized_official',
+    'President/Authorized Official',
+  );
+
+  const OfficialSignatureSlot(this.raw, this.label);
+  final String raw;
+  final String label;
+}
+
+enum PermitItemRowCode {
+  internalAudioVisualMainHall('facility:audio_visual_main_hall'),
+  internalConferenceRoom('facility:conference_room'),
+  internalFacilityOther('facility:other'),
+  internalSoundSystem('equipment:sound_system'),
+  internalOverheadProjector('equipment:overhead_projector'),
+  internalLcdAccessories('equipment:lcd_accessories'),
+  internalEquipmentOther('equipment:other'),
+  externalGymAuditorium('external:gym_auditorium'),
+  externalTablesChairs('external:tables_chairs'),
+  externalLcdProjector('external:lcd_projector'),
+  externalAvr('external:avr'),
+  externalLedVideoWall('external:led_video_wall'),
+  externalAccommodation('external:accommodation'),
+  externalLoveHall('external:love_hall'),
+  externalOther('external:other');
+
+  const PermitItemRowCode(this.raw);
+  final String raw;
+}
+
+class ExternalPermitDetails {
+  const ExternalPermitDetails({
+    required this.companyOrOrganization,
+    required this.completeAddress,
+    required this.contactNumbers,
+    required this.admissionFeeCentavos,
+  });
+  final String companyOrOrganization;
+  final String completeAddress;
+  final List<String> contactNumbers;
+  final int admissionFeeCentavos;
+  bool get isIndividual => companyOrOrganization == 'Individual';
+}
+
+class PermitReadiness {
+  const PermitReadiness({
+    required this.ready,
+    required this.templateKind,
+    required this.blockerCodes,
+  });
+  final bool ready;
+  final PermitTemplateKind templateKind;
+  final List<String> blockerCodes;
+  factory PermitReadiness.fromJson(Map<String, dynamic> json) =>
+      PermitReadiness(
+        ready: json['ready'] == true,
+        templateKind: PermitTemplateKind.fromRaw(
+          '${json['template_kind'] ?? 'external'}',
+        ),
+        blockerCodes: [
+          for (final code in json['blockers'] as List? ?? const []) '$code',
+        ],
+      );
+  String messageFor(String code) => switch (code) {
+    'not_confirmed' => 'Reservation approval is required.',
+    'full_payment_required' => 'Full payment must be verified.',
+    'requester_unit_required' => 'Office/College is required.',
+    'external_details_required' => 'External permit details are incomplete.',
+    'permit_items_required' => 'Permit item snapshots are missing.',
+    'unmapped_permit_item' =>
+      'A facility or item has no official-form mapping.',
+    'schedule_required' => 'An active reservation schedule is required.',
+    'external_row_limit' =>
+      'The selected items exceed the official eight-row table.',
+    'duplicate_external_row' =>
+      'Multiple items map ambiguously to one official row.',
+    'item_quantity_required' => 'Tables/chairs quantity is required.',
+    'requester_signature_required' => 'Requester signature is required.',
+    'internal_approver_signature_required' =>
+      'Internal approving signature is required.',
+    'external_recommender_signature_required' =>
+      'Business Coordinator signature is required.',
+    'external_authorized_signature_required' =>
+      'President/Authorized Official signature is required.',
+    _ => 'Official permit processing is incomplete.',
+  };
 }
 
 class ReservationPermit {
@@ -35,29 +146,11 @@ class ReservationPermit {
     required this.permitNumber,
     required this.version,
     required this.status,
-    required this.verificationToken,
     required this.issuedAt,
-    required this.institutionName,
-    required this.formCode,
-    required this.requesterName,
-    required this.requesterType,
-    required this.office,
-    required this.facilityName,
-    required this.facilityLocation,
-    required this.purpose,
-    required this.headcount,
-    required this.occurrences,
-    required this.amenities,
-    required this.paymentExemption,
-    required this.paymentRequired,
-    required this.totalAmountCentavos,
-    required this.amountPaidCentavos,
-    required this.remainingBalanceCentavos,
-    required this.signatoryName,
-    required this.signatoryTitle,
-    this.approvedByName,
-    this.approvedByRole,
-    this.approvedAt,
+    required this.templateKind,
+    required this.templateSha256,
+    required this.generationStatus,
+    this.generationErrorCode,
     this.storagePath,
     this.pdfSha256,
     this.pdfByteSize,
@@ -65,39 +158,20 @@ class ReservationPermit {
     this.voidedAt,
     this.voidReason,
     this.userSignatureId,
-    this.ceoSignatureId,
-    this.userSignedAt,
-    this.ceoSignatureUploadedAt,
+    this.internalApproverSignatureId,
+    this.externalRecommenderSignatureId,
+    this.externalAuthorizedSignatureId,
   });
-
   final String id;
   final String requestId;
   final String permitNumber;
   final int version;
   final PermitStatus status;
-  final String verificationToken;
   final DateTime issuedAt;
-  final String institutionName;
-  final String formCode;
-  final String requesterName;
-  final String requesterType;
-  final String office;
-  final String facilityName;
-  final String facilityLocation;
-  final String purpose;
-  final int headcount;
-  final List<PermitOccurrence> occurrences;
-  final List<String> amenities;
-  final String paymentExemption;
-  final bool paymentRequired;
-  final int totalAmountCentavos;
-  final int amountPaidCentavos;
-  final int remainingBalanceCentavos;
-  final String signatoryName;
-  final String signatoryTitle;
-  final String? approvedByName;
-  final String? approvedByRole;
-  final DateTime? approvedAt;
+  final PermitTemplateKind templateKind;
+  final String templateSha256;
+  final PermitGenerationStatus generationStatus;
+  final String? generationErrorCode;
   final String? storagePath;
   final String? pdfSha256;
   final int? pdfByteSize;
@@ -105,83 +179,45 @@ class ReservationPermit {
   final DateTime? voidedAt;
   final String? voidReason;
   final String? userSignatureId;
-  final String? ceoSignatureId;
-  final DateTime? userSignedAt;
-  final DateTime? ceoSignatureUploadedAt;
-
-  bool get isFullyPaid => remainingBalanceCentavos <= 0;
-
-  /// The only content encoded in the permit's QR: a namespaced opaque token,
-  /// never an amount, email, or user id.
-  String get verificationPayload => 'smartreserve:permit:$verificationToken';
-
-  factory ReservationPermit.fromJson(Map<String, dynamic> json) {
-    final snapshot = Map<String, dynamic>.from(
-      (json['snapshot'] as Map?) ?? const {},
-    );
-    List<PermitOccurrence> occurrences() => [
-      for (final raw in (snapshot['occurrences'] as List? ?? const []))
-        PermitOccurrence(
-          startsAt: DateTime.parse('${(raw as Map)['starts_at']}'),
-          endsAt: DateTime.parse('${raw['ends_at']}'),
+  final String? internalApproverSignatureId;
+  final String? externalRecommenderSignatureId;
+  final String? externalAuthorizedSignatureId;
+  bool get isDownloadable =>
+      status == PermitStatus.active &&
+      generationStatus == PermitGenerationStatus.ready &&
+      storagePath?.isNotEmpty == true;
+  factory ReservationPermit.fromJson(Map<String, dynamic> json) =>
+      ReservationPermit(
+        id: '${json['id']}',
+        requestId: '${json['request_id']}',
+        permitNumber: '${json['permit_number'] ?? ''}',
+        version: (json['version'] as num?)?.toInt() ?? 1,
+        status: PermitStatus.fromRaw('${json['status'] ?? 'superseded'}'),
+        issuedAt: DateTime.parse('${json['issued_at']}'),
+        templateKind: PermitTemplateKind.fromRaw(
+          '${json['template_kind'] ?? 'external'}',
         ),
-    ];
-    return ReservationPermit(
-      id: '${json['id']}',
-      requestId: '${json['request_id']}',
-      permitNumber:
-          '${json['permit_number'] ?? snapshot['permit_number'] ?? ''}',
-      version: (json['version'] as num?)?.toInt() ?? 1,
-      status: PermitStatus.fromRaw('${json['status'] ?? 'active'}'),
-      verificationToken: '${json['verification_token'] ?? ''}',
-      issuedAt: DateTime.parse('${json['issued_at']}'),
-      institutionName: '${snapshot['institution_name'] ?? ''}',
-      formCode: '${snapshot['form_code'] ?? ''}',
-      requesterName: '${snapshot['requester_name'] ?? ''}',
-      requesterType: '${snapshot['requester_type'] ?? ''}',
-      office: '${snapshot['office'] ?? ''}',
-      facilityName: '${snapshot['facility_name'] ?? ''}',
-      facilityLocation: '${snapshot['facility_location'] ?? ''}',
-      purpose: '${snapshot['purpose'] ?? ''}',
-      headcount: (snapshot['headcount'] as num?)?.toInt() ?? 0,
-      occurrences: occurrences(),
-      amenities: [
-        for (final value in (snapshot['amenities'] as List? ?? const []))
-          '$value',
-      ],
-      paymentExemption: '${snapshot['payment_exemption'] ?? 'none'}',
-      paymentRequired: snapshot['payment_required'] as bool? ?? false,
-      totalAmountCentavos:
-          (snapshot['total_amount_centavos'] as num?)?.toInt() ?? 0,
-      amountPaidCentavos:
-          (snapshot['amount_paid_centavos'] as num?)?.toInt() ?? 0,
-      remainingBalanceCentavos:
-          (snapshot['remaining_balance_centavos'] as num?)?.toInt() ?? 0,
-      signatoryName: '${snapshot['signatory_name'] ?? ''}',
-      signatoryTitle: '${snapshot['signatory_title'] ?? ''}',
-      approvedByName: snapshot['approved_by_name'] as String?,
-      approvedByRole: snapshot['approved_by_role'] as String?,
-      approvedAt: snapshot['approved_at'] == null
-          ? null
-          : DateTime.parse('${snapshot['approved_at']}'),
-      storagePath: json['storage_path'] as String?,
-      pdfSha256: json['pdf_sha256'] as String?,
-      pdfByteSize: (json['pdf_byte_size'] as num?)?.toInt(),
-      pdfGeneratedAt: json['pdf_generated_at'] == null
-          ? null
-          : DateTime.parse('${json['pdf_generated_at']}'),
-      voidedAt: json['voided_at'] == null
-          ? null
-          : DateTime.parse('${json['voided_at']}'),
-      voidReason: json['void_reason'] as String?,
-      userSignatureId: json['user_signature_id'] as String?,
-      ceoSignatureId: json['ceo_signature_id'] as String?,
-      userSignedAt: snapshot['user_signed_at'] == null
-          ? null
-          : DateTime.parse('${snapshot['user_signed_at']}'),
-      ceoSignatureUploadedAt: snapshot['ceo_signature_uploaded_at'] == null
-          ? null
-          : DateTime.parse('${snapshot['ceo_signature_uploaded_at']}'),
-    );
-  }
+        templateSha256: '${json['template_sha256'] ?? ''}',
+        generationStatus: PermitGenerationStatus.fromRaw(
+          '${json['generation_status'] ?? 'pending'}',
+        ),
+        generationErrorCode: json['generation_error_code'] as String?,
+        storagePath: json['storage_path'] as String?,
+        pdfSha256: json['pdf_sha256'] as String?,
+        pdfByteSize: (json['pdf_byte_size'] as num?)?.toInt(),
+        pdfGeneratedAt: json['pdf_generated_at'] == null
+            ? null
+            : DateTime.parse('${json['pdf_generated_at']}'),
+        voidedAt: json['voided_at'] == null
+            ? null
+            : DateTime.parse('${json['voided_at']}'),
+        voidReason: json['void_reason'] as String?,
+        userSignatureId: json['user_signature_id'] as String?,
+        internalApproverSignatureId:
+            json['internal_approver_signature_id'] as String?,
+        externalRecommenderSignatureId:
+            json['external_recommender_signature_id'] as String?,
+        externalAuthorizedSignatureId:
+            json['external_authorized_signature_id'] as String?,
+      );
 }
