@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/verification.dart';
@@ -1891,7 +1890,10 @@ class _Outcome extends StatelessWidget {
 }
 
 class _InlineLink extends StatelessWidget {
-  const _InlineLink({required this.label, required this.onTap});
+  const _InlineLink({
+    required this.label,
+    required this.onTap,
+  });
 
   final String label;
   final VoidCallback onTap;

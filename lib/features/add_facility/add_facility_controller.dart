@@ -39,11 +39,11 @@ export 'photos_controller.dart' show PhotosController;
 /// than to this coordinator, so an edit in one area of the form never
 /// forces an unrelated area (in particular the map) to rebuild.
 class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
-  AddFacilityController({required SrToastController toasts})
-    : _toasts = toasts {
+  AddFacilityController({required SrToastController toastController})
+    : toasts = toastController {
     map = MapEditorController(
       draft: draft,
-      toasts: toasts,
+      toasts: toastController,
       onBuildingResolvedFromMap: (v) => form.setBuildingFromMap(v),
       onFieldEdited: _onFieldEdited,
     );
@@ -60,18 +60,18 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
     );
     photos = PhotosController(
       draft: draft,
-      toasts: toasts,
+      toasts: toastController,
       onFieldEdited: _onFieldEdited,
     );
     amenities = AmenitiesController(
       draft: draft,
-      toasts: toasts,
+      toasts: toastController,
       onFieldEdited: _onFieldEdited,
     );
     _loadStoredDraft();
   }
 
-  final SrToastController _toasts;
+  final SrToastController toasts;
 
   final FacilityDraft draft = FacilityDraft();
 
@@ -149,7 +149,7 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
   }
 
   void showToast(ToastMessage message, {Duration? duration}) =>
-      _toasts.show(message, duration: duration);
+      toasts.show(message, duration: duration);
 
   void dismissErrorBar() {
     showErrorBar = false;
