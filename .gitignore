@@ -31,7 +31,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/android/build/
 /coverage/
+/Microsoft/Windows/PowerShell/ModuleAnalysisCache
 
 # Symbolication related
 app.*.symbols
