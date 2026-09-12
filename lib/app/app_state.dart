@@ -231,6 +231,15 @@ class AppState extends ChangeNotifier {
   AppView _profileOrigin = AppView.auth;
 
   void goTo(AppView next) {
+    if (next == AppView.organizations && !isInternalAdmin) {
+      showToast(
+        const ToastMessage(
+          'Organization management is restricted to Internal Admins.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
     if (isExternalAdmin &&
         (next == AppView.verifications || next == AppView.audit)) {
       showToast(
@@ -1038,7 +1047,21 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    await refreshFacilities();
+
+    // Authentication is complete once the profile has been accepted. Route the
+    // session before loading workspace data so a later feature failure cannot
+    // strand a valid user on the sign-in screen.
+    view = profile.isAdmin
+        ? AppView.facilities
+        : profile.isActive &&
+              profile.onboardingComplete &&
+              !profile.mustChangePassword &&
+              profile.accountAccessType != 'legacy_unassigned'
+        ? AppView.userApp
+        : AppView.auth;
+    notifyListeners();
+
+    await _runSessionRefresh('facilities', refreshFacilities);
     _facilitySubscription = backend?.facilityStream().listen(
       _applyFacilityRows,
       onError: (Object error) {
@@ -1047,7 +1070,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    await refreshReservations();
+    await _runSessionRefresh('reservations', refreshReservations);
     _reservationSubscription = backend?.reservationStream().listen(
       _applyReservationRows,
       onError: (Object error) {
@@ -1056,7 +1079,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    await refreshNotifications();
+    await _runSessionRefresh('notifications', refreshNotifications);
     _notificationSubscription = backend?.notificationStream().listen(
       _applyNotifications,
       onError: (Object error) {
@@ -1067,7 +1090,7 @@ class AppState extends ChangeNotifier {
     if (profile.isInternalAdmin) {
       _clearAdminLoyaltyState();
       _syncFeedbackSentimentSubscription();
-      await refreshAccounts();
+      await _runSessionRefresh('accounts', refreshAccounts);
       _accountSubscription = backend?.accountStream().listen(
         _applyBackendAccounts,
         onError: (Object error) {
@@ -1076,7 +1099,7 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
-      await refreshVerifications();
+      await _runSessionRefresh('verifications', refreshVerifications);
       _verificationSubscription = backend?.verificationStream().listen(
         (_) {
           unawaited(refreshVerifications());
@@ -1085,8 +1108,7 @@ class AppState extends ChangeNotifier {
             debugPrint('Verifications live refresh failed: $error'),
       );
       unawaited(refreshAnomalyCenter());
-      view = AppView.facilities;
-      await _applyInitialReportLink();
+      await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else if (profile.isExternalAdmin) {
       _syncFeedbackSentimentSubscription();
       if (_useDemoData) {
@@ -1104,18 +1126,19 @@ class AppState extends ChangeNotifier {
               account,
         ];
       } else {
-        await refreshAccounts();
+        await _runSessionRefresh('accounts', refreshAccounts);
       }
       unawaited(refreshAnomalyCenter());
-      view = AppView.facilities;
-      await _applyInitialReportLink();
+      await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else {
       _clearAdminLoyaltyState();
       if (!_useDemoData) accounts = [];
-      myVerification = await backend?.currentVerification();
-      verifications = myVerification == null
-          ? []
-          : [_toVerification(myVerification!)];
+      await _runSessionRefresh('your verification', () async {
+        myVerification = await backend?.currentVerification();
+        verifications = myVerification == null
+            ? []
+            : [_toVerification(myVerification!)];
+      });
       _syncSessionAccount();
       _verificationSubscription = backend?.verificationStream().listen(
         (_) {
@@ -1124,17 +1147,25 @@ class AppState extends ChangeNotifier {
         onError: (Object error) =>
             debugPrint('Verification live refresh failed: $error'),
       );
-      await refreshLoyalty();
+      await _runSessionRefresh('loyalty', refreshLoyalty);
       _syncLoyaltySubscription();
-      view =
-          profile.isActive &&
-              profile.onboardingComplete &&
-              !profile.mustChangePassword &&
-              profile.accountAccessType != 'legacy_unassigned'
-          ? AppView.userApp
-          : AppView.auth;
     }
     notifyListeners();
+  }
+
+  Future<void> _runSessionRefresh(
+    String area,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+    } catch (error, stackTrace) {
+      // Individual feature refreshers own their visible retry state. This
+      // boundary prevents an uncovered failure from being misreported as an
+      // authentication failure after the session is already established.
+      debugPrint('SmartReserve $area bootstrap failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   String? initialReportFacilityId;
@@ -1410,6 +1441,20 @@ class AppState extends ChangeNotifier {
     if (service == null || !isInternalAdmin) {
       return 'Only an internal admin can manage organizations.';
     }
+    final normalizedName = name.trim().toLowerCase();
+    if (normalizedName.length < 2) {
+      return 'Enter an organization name with at least two characters.';
+    }
+    final duplicate = organizationUnits.any(
+      (unit) =>
+          unit.active &&
+          unit.id != unitId &&
+          unit.parentId == parentId &&
+          unit.name.trim().toLowerCase() == normalizedName,
+    );
+    if (duplicate) {
+      return 'An active organization named "${name.trim()}" already exists under this parent.';
+    }
     try {
       final row = unitId == null
           ? await service.createOrganizationUnit(
@@ -1432,6 +1477,11 @@ class AppState extends ChangeNotifier {
       await refreshOrganizationRegistry();
       organizationRegistryError = null;
       notifyListeners();
+      if (unitId == null) {
+        showToast(ToastMessage('Organization "${row.name}" created.'));
+      } else {
+        showToast(ToastMessage('Organization "${row.name}" updated.'));
+      }
       return null;
     } catch (error) {
       return _accountActionError(error, 'Organization was not saved.');
@@ -1577,7 +1627,9 @@ class AppState extends ChangeNotifier {
         account.id,
       );
       _upsertBackendAccount(reset.account);
-      showToast(ToastMessage('Temporary password generated for ${account.name}.'));
+      showToast(
+        ToastMessage('Temporary password generated for ${account.name}.'),
+      );
       return AccountCreationResult.success(
         AccountCredentials(
           title: 'organization representative',
@@ -1674,7 +1726,17 @@ class AppState extends ChangeNotifier {
 
   static String _accountError(Object error) {
     if (error is! AccountManagementException) {
-      return 'SmartReserve could not complete this account action. Try again.';
+      final raw = '$error'.toLowerCase();
+      if (raw.contains('duplicate key') ||
+          raw.contains('already exists') ||
+          raw.contains('unique constraint')) {
+        return 'An organization with this name already exists under the selected parent.';
+      }
+      return friendlyBackendMessage(
+        '$error',
+        fallback:
+            'SmartReserve could not complete this account action. Try again.',
+      );
     }
     final reference = error.requestId == null
         ? ''
@@ -2156,6 +2218,8 @@ class AppState extends ChangeNotifier {
       paymentTransactions: row.payments,
       paymentMethod: row.paymentMethod,
       permit: row.permit,
+      signatureRequestId: row.signatureRequestId,
+      signatureRequestStatus: row.signatureRequestStatus,
       priceLines: [
         for (final line in row.priceLines)
           PriceSnapshotLine(
@@ -5354,6 +5418,7 @@ class AppState extends ChangeNotifier {
     required List<DateTime> startsAt,
     required List<DateTime> endsAt,
     int? headcount,
+    List<String> amenityIds = const [],
     String? discountClaimId,
   }) async {
     final service = _coreBackend;
@@ -5422,7 +5487,7 @@ class AppState extends ChangeNotifier {
         startsAt: startsAt,
         endsAt: endsAt,
         headcount: headcount ?? 1,
-        amenityIds: const [],
+        amenityIds: amenityIds,
         discountClaimId: discountClaimId,
       );
     } catch (error) {
@@ -5439,6 +5504,7 @@ class AppState extends ChangeNotifier {
     required String purpose,
     List<ReservationUpload> attachments = const [],
     List<String> requestedAmenities = const [],
+    List<String> amenityIds = const [],
     BackendReservationQuote? quote,
     bool acceptedTerms = false,
     String? discountClaimId,
@@ -5477,6 +5543,7 @@ class AppState extends ChangeNotifier {
             startsAt: startsAt,
             endsAt: endsAt,
             headcount: heads,
+            amenityIds: amenityIds,
             discountClaimId: discountClaimId,
           );
       if (core != null && authoritativeQuote == null) {
@@ -5504,7 +5571,7 @@ class AppState extends ChangeNotifier {
               authoritativeQuote?.totalAmountCentavos ??
               quoteFor(facility, duration) * 100,
           requestedAmenities: normalizedRequestedAmenities,
-          amenityIds: const [],
+          amenityIds: amenityIds,
           termsVersionIds: [
             for (final term
                 in authoritativeQuote?.terms ?? const <BackendTermsVersion>[])
@@ -5731,6 +5798,89 @@ class AppState extends ChangeNotifier {
         ),
       );
       return false;
+    }
+  }
+
+  Future<bool> requestReservationSignature(String requestId) async {
+    if (!isInternalAdmin || backend == null) return false;
+    try {
+      await backend!.requestReservationSignature(requestId);
+      await refreshReservations();
+      showToast(const ToastMessage('E-signature request sent.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> submitReservationSignature({
+    required String signatureRequestId,
+    required String requestId,
+    required ReservationUpload signature,
+  }) async {
+    if (backend == null) return false;
+    try {
+      await backend!.submitReservationSignature(
+        signatureRequestId: signatureRequestId,
+        requestId: requestId,
+        signature: signature,
+      );
+      await refreshReservations();
+      showToast(const ToastMessage('Your e-signature was submitted.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> uploadCeoSignature(ReservationUpload signature) async {
+    if (!isInternalAdmin || backend == null) return false;
+    try {
+      await backend!.uploadCeoSignature(signature);
+      showToast(const ToastMessage('CEO signature updated.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<Uint8List?> permitUserSignature(String signatureId) async {
+    try {
+      return await backend?.permitUserSignature(signatureId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> protectedCeoSignature(
+    String requestId,
+    String permitId,
+  ) async {
+    try {
+      return await backend?.protectedCeoSignature(requestId, permitId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> officialCeoSignature(
+    String requestId,
+    String permitId,
+  ) async {
+    if (!isInternalAdmin) return null;
+    try {
+      return await backend?.officialCeoSignature(requestId, permitId);
+    } catch (_) {
+      return null;
     }
   }
 

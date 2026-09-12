@@ -15,7 +15,6 @@ import '../../theme/sr_theme.dart';
 import '../../util/campus_calendar.dart';
 import '../reservations/permit_panel.dart';
 import '../../widgets/amenity_request_field.dart';
-import '../../widgets/decision_widgets.dart';
 import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/rating_display.dart';
@@ -43,9 +42,9 @@ enum StudentTab {
   ),
   mine(
     'My reservations',
-    'Mine',
-    Icons.event_note_outlined,
-    Icons.event_note_rounded,
+    'Reservation',
+    Icons.book_online_outlined,
+    Icons.book_online_rounded,
   ),
   account(
     'Account',
@@ -92,6 +91,13 @@ class _StudentAppState extends State<StudentApp> {
     '100+ seats': 100,
     '500+ seats': 500,
   };
+
+  String _timeGreeting([DateTime? now]) {
+    final hour = (now ?? DateTime.now()).hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   @override
   void initState() {
@@ -156,6 +162,7 @@ class _StudentAppState extends State<StudentApp> {
                 width,
                 narrow,
                 key: const ValueKey(StudentTab.account),
+                fullWidth: true,
               ),
             },
           ),
@@ -180,18 +187,25 @@ class _StudentAppState extends State<StudentApp> {
     context,
   ).push(MaterialPageRoute(builder: (_) => const LoyaltyPage()));
 
-  Widget _scrollable(Widget child, double width, bool narrow, {Key? key}) =>
-      SrScrollView(
-        key: key,
-        padding: SR.pageInsets(width, top: narrow ? 14 : 20),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1080),
-            child: child,
+  Widget _scrollable(
+    Widget child,
+    double width,
+    bool narrow, {
+    Key? key,
+    bool fullWidth = false,
+  }) => SrScrollView(
+    key: key,
+    padding: SR.pageInsets(width, top: narrow ? 14 : 20),
+    child: fullWidth
+        ? SizedBox(width: double.infinity, child: child)
+        : Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1080),
+              child: child,
+            ),
           ),
-        ),
-      );
+  );
 
   Widget _header(AppState state, Account account, bool narrow) {
     final tiny = MediaQuery.sizeOf(context).width < 340;
@@ -202,9 +216,11 @@ class _StudentAppState extends State<StudentApp> {
         narrow ? 16 : 24,
         _tab == StudentTab.browse ? 20 : 16,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF1A73E8), Color(0xFF00A8EF)],
+          colors: context.srColors.isDark
+              ? const [Color(0xFF0C2742), Color(0xFF123551)]
+              : const [Color(0xFF1A73E8), Color(0xFF1479B8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -236,15 +252,6 @@ class _StudentAppState extends State<StudentApp> {
                       else
                         Row(
                           children: [
-                            Text(
-                              'Hello, ',
-                              style: sans(
-                                narrow ? 18 : 21,
-                                w: 600,
-                                tracking: -.02,
-                                color: Colors.white,
-                              ),
-                            ),
                             Flexible(
                               child: Text(
                                 account.name,
@@ -258,20 +265,11 @@ class _StudentAppState extends State<StudentApp> {
                                 ),
                               ),
                             ),
-                            Text(
-                              '! 👋',
-                              style: sans(
-                                narrow ? 18 : 21,
-                                w: 600,
-                                tracking: -.02,
-                                color: Colors.white,
-                              ),
-                            ),
                           ],
                         ),
                       const SizedBox(height: 2),
                       Text(
-                        account.email,
+                        _timeGreeting(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: mono(10, color: SR.onDarkMuted),
@@ -618,10 +616,21 @@ class _StudentAppState extends State<StudentApp> {
                           facility: facility,
                         ),
                       ),
-                      onReserve: () => showBookingSheet(
+                      onReserve: () => showFacilityPreview(
                         context,
                         state: state,
                         facility: facility,
+                        reserveEnabled: reserveEnabled,
+                        reserveReason:
+                            _facilityAdminUnavailabilityExplanationFor(
+                              facility,
+                            ) ??
+                            availabilityLabel,
+                        onReserve: (reserveContext) => showBookingSheet(
+                          reserveContext,
+                          state: state,
+                          facility: facility,
+                        ),
                       ),
                     );
                   },
@@ -684,7 +693,7 @@ class _StudentAppState extends State<StudentApp> {
               ),
             ),
             if (filtersActive) clear,
-            const SizedBox(width: 8),
+            const SizedBox(width: SR.space8),
             CompactFilterButton(
               activeCount:
                   (selectedCategory == 'All categories' ? 0 : 1) +
@@ -1894,124 +1903,50 @@ class _StudentAppState extends State<StudentApp> {
 
   Widget _account(AppState state, Account account) {
     final width = MediaQuery.sizeOf(context).width;
-    final narrow = width < 900;
+    final wide = width >= SR.expandedMin;
     final compact = SR.isCompact(width);
-    final left = Column(
+    final hasProfileDetails =
+        state.userDetailsEditable ||
+        (account.verification != VerificationState.none &&
+            (account.idNumber.trim().isNotEmpty ||
+                account.unit.trim().isNotEmpty));
+    final bookingAndDetails = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Panel(
-          child: compact
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Initials(
-                          text: account.initials,
-                          size: 46,
-                          fontSize: 14,
-                        ),
-                        const SizedBox(width: 13),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                account.name,
-                                style: sans(16, w: 600, tracking: -.015),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                account.email,
-                                style: mono(11, color: context.srColors.muted),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                'Joined ${account.joined}',
-                                style: mono(
-                                  10.5,
-                                  color: context.srColors.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: SrPill(
-                        label: account.verification.label,
-                        background: account.verification.background,
-                        foreground: account.verification.foreground,
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Initials(text: account.initials, size: 46, fontSize: 14),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            account.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: sans(16, w: 600, tracking: -.015),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            account.email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: mono(11, color: context.srColors.muted),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Joined ${account.joined}',
-                            style: mono(10.5, color: context.srColors.muted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SrPill(
-                      label: account.verification.label,
-                      background: account.verification.background,
-                      foreground: account.verification.foreground,
-                    ),
-                  ],
-                ),
-        ),
         _verificationPanel(state, account),
-        _Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Your details', style: sans(12.5, w: 600)),
-              const SizedBox(height: 2),
-              Text(
-                state.hasSession
-                    ? 'These details come from your authenticated account and '
-                          'verification submission.'
-                    : 'Anything drawn from a verified document is fixed — '
-                          're-submit to correct it.',
-                style: sans(11, color: context.srColors.muted),
-              ),
-              const SizedBox(height: 12),
-              _detailsGrid(state, account),
-            ],
-          ),
-        ),
+        if (hasProfileDetails) ...[
+          const SizedBox(height: SR.space16),
+          _profileDetailsPanel(state, account),
+        ],
       ],
     );
 
-    final right = Column(
+    final preferences = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (state.loyaltyAvailableForCurrentUser) ...[
+          SrCard.bare(
+            child: SrListRow(
+              key: const Key('student-loyalty-entry'),
+              icon: Icons.stars_rounded,
+              label: 'Rewards & points',
+              value: '${state.loyalty?.balance ?? 0} pts',
+              valueMono: true,
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () => _openLoyalty(context),
+            ),
+          ),
+          const SizedBox(height: SR.space16),
+        ],
+        _preferencesPanel(state, compact),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _accountOverview(account, compact),
+        const SizedBox(height: SR.space16),
         SrCellGrid(
           columns: 3,
           children: [
@@ -2024,104 +1959,85 @@ class _StudentAppState extends State<StudentApp> {
             SrKeyCell(label: 'NO-SHOWS', value: '${account.noShows}'),
           ],
         ),
-        const SizedBox(height: 12),
-        if (state.loyaltyAvailableForCurrentUser) ...[
-          _Panel(
-            child: SrListRow(
-              key: const Key('student-loyalty-entry'),
-              icon: Icons.stars_rounded,
-              label: 'Rewards & points',
-              value: '${state.loyalty?.balance ?? 0} pts',
-              valueMono: true,
-              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-              onTap: () => _openLoyalty(context),
-            ),
-          ),
-          const SizedBox(height: 12),
+        const SizedBox(height: SR.space16),
+        if (wide)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 7, child: bookingAndDetails),
+              const SizedBox(width: SR.space16),
+              Expanded(flex: 5, child: preferences),
+            ],
+          )
+        else ...[
+          bookingAndDetails,
+          const SizedBox(height: SR.space16),
+          preferences,
         ],
-        _Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Notifications', style: sans(12.5, w: 600)),
-              const SizedBox(height: 13),
-              for (final entry in state.notificationPreferences.entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(entry.key, style: sans(12, w: 500))),
-                      SrToggle(
-                        value: entry.value,
-                        label: entry.key,
-                        onChanged: (v) =>
-                            state.setNotificationPreference(entry.key, v),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        _Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Appearance', style: sans(12.5, w: 600)),
-              const SizedBox(height: 4),
-              Text(
-                'Follow this device or choose a theme for SmartReserve.',
-                style: sans(11, color: context.srColors.muted),
-              ),
-              const SizedBox(height: 12),
-              SrThemeSelector(
-                value: state.themePreference,
-                compact: compact,
-                onChanged: state.setThemePreference,
-              ),
-            ],
-          ),
-        ),
-        _Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Security', style: sans(12.5, w: 600)),
-              const SizedBox(height: 12),
-              SrCellGrid(
-                columns: 1,
-                children: const [
-                  SrKeyCell(label: 'PASSWORD', value: 'Changed 3 months ago'),
-                  SrKeyCell(label: 'SESSION', value: 'Expires in 30 days'),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SrButton(
-                label: 'Sign out',
-                kind: SrButtonKind.danger,
-                expand: true,
-                minHeight: 42,
-                fontSize: 12.5,
-                onPressed: () => state.signOut(),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-
-    if (narrow) {
-      return Column(children: [left, const SizedBox(height: 12), right]);
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: left),
-        const SizedBox(width: 12),
-        Expanded(child: right),
+        const SizedBox(height: SR.space16),
+        _accountActions(state),
       ],
     );
   }
+
+  Widget _accountOverview(Account account, bool compact) => SrCard(
+    key: const Key('student-account-overview'),
+    padding: EdgeInsets.all(compact ? SR.space16 : SR.space20),
+    child: compact
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _accountIdentity(account),
+              const SizedBox(height: SR.space12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _verificationPill(account),
+              ),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(child: _accountIdentity(account)),
+              const SizedBox(width: SR.space16),
+              _verificationPill(account),
+            ],
+          ),
+  );
+
+  Widget _accountIdentity(Account account) => Row(
+    children: [
+      SrAvatar(initials: account.initials, size: 52),
+      const SizedBox(width: SR.space12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              account.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SrType.heading(),
+            ),
+            const SizedBox(height: SR.space2),
+            Text(
+              account.email,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SrType.code(color: context.srColors.muted),
+            ),
+            const SizedBox(height: SR.space4),
+            Text('Joined ${account.joined}', style: SrType.caption()),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _verificationPill(Account account) => SrPill(
+    label: account.verification.label,
+    background: account.verification.background,
+    foreground: account.verification.foreground,
+  );
 
   Widget _verificationPanel(AppState state, Account account) {
     final (
@@ -2173,12 +2089,18 @@ class _StudentAppState extends State<StudentApp> {
       ),
     };
 
-    return _Panel(
-      background: bg,
-      border: border,
+    return Container(
+      padding: const EdgeInsets.all(SR.space20),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(SR.rLg),
+        border: Border.all(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text('BOOKING ACCESS', style: keyLabel),
+          const SizedBox(height: SR.space8),
           Text(title, style: sans(13.5, w: 600, tracking: -.01, color: accent)),
           const SizedBox(height: 6),
           Text(
@@ -2200,153 +2122,260 @@ class _StudentAppState extends State<StudentApp> {
     );
   }
 
+  Widget _profileDetailsPanel(AppState state, Account account) => SrCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Profile details', style: SrType.subhead()),
+        const SizedBox(height: SR.space2),
+        Text(
+          state.userDetailsEditable
+              ? 'Update the details stored with this account.'
+              : 'Campus information is provided by your account and verification record.',
+          style: SrType.caption(),
+        ),
+        const SizedBox(height: SR.space16),
+        _detailsGrid(state, account),
+      ],
+    ),
+  );
+
   Widget _detailsGrid(AppState state, Account account) {
     final locked = !state.userDetailsEditable;
-    final lockedNote = state.hasSession
-        ? 'From your authenticated account'
-        : account.verification == VerificationState.verified
-        ? 'From your verified document'
-        : null;
-    final rows = [
-      _detailRow(
-        state,
-        label: 'FULL NAME',
-        field: 'name',
-        value: account.name,
-        locked: locked,
-        lockedNote: lockedNote,
-      ),
-      _detailRow(
-        state,
-        label: 'ID NUMBER',
-        field: 'idNumber',
-        value: account.idNumber,
-        locked: locked,
-        lockedNote: lockedNote,
-        valueMono: true,
-      ),
-      _detailRow(
-        state,
-        label: 'PROGRAMME / UNIT',
-        field: 'unit',
-        value: account.unit,
-        locked: locked,
-        lockedNote: lockedNote,
-      ),
-      _detailRow(
-        state,
-        label: 'ROLE',
-        field: 'role',
-        value: account.role.label,
-        locked: true,
-        lockedNote: lockedNote,
-      ),
+    final tiles = <Widget>[
+      if (!locked)
+        _detailTile(
+          state,
+          label: 'FULL NAME',
+          field: 'name',
+          value: account.name,
+          locked: false,
+        ),
+      if (!locked ||
+          (account.verification != VerificationState.none &&
+              account.idNumber.trim().isNotEmpty))
+        _detailTile(
+          state,
+          label: 'ID NUMBER',
+          field: 'idNumber',
+          value: account.idNumber,
+          locked: locked,
+          valueMono: true,
+        ),
+      if (!locked ||
+          (account.verification != VerificationState.none &&
+              account.unit.trim().isNotEmpty))
+        _detailTile(
+          state,
+          label: 'PROGRAMME / UNIT',
+          field: 'unit',
+          value: account.unit,
+          locked: locked,
+        ),
     ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 520 ? 2 : 1;
+        final tileWidth =
+            (constraints.maxWidth - (columns - 1) * SR.space12) / columns;
+        return Wrap(
+          spacing: SR.space12,
+          runSpacing: SR.space12,
+          children: [
+            for (final tile in tiles) SizedBox(width: tileWidth, child: tile),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _detailTile(
+    AppState state, {
+    required String label,
+    required String field,
+    required String value,
+    required bool locked,
+    bool valueMono = false,
+  }) {
+    final editing = _editingField == field;
     return Container(
+      constraints: const BoxConstraints(minHeight: 108),
+      padding: const EdgeInsets.all(SR.space12),
       decoration: BoxDecoration(
-        color: context.srColors.hairline,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.srColors.hairline),
+        color: context.srColors.surfaceSubtle,
+        borderRadius: BorderRadius.circular(SR.rMd),
+        border: Border.all(color: context.srColors.border),
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0) const SizedBox(height: 1),
-            rows[i],
+          Text(label, style: keyLabel),
+          const SizedBox(height: SR.space8),
+          if (editing) ...[
+            SrTextField(
+              controller: _editController,
+              semanticLabel: label,
+              mono: valueMono,
+              fontSize: 12.5,
+              autofocus: true,
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+              onSubmitted: (_) => _saveDetail(state, field),
+            ),
+            const SizedBox(height: SR.space8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                SrButton(
+                  label: 'Cancel',
+                  dense: true,
+                  fontSize: 11,
+                  onPressed: () => setState(() => _editingField = null),
+                ),
+                const SizedBox(width: SR.space6),
+                SrButton(
+                  label: 'Save',
+                  kind: SrButtonKind.primary,
+                  dense: true,
+                  fontSize: 11,
+                  onPressed: () => _saveDetail(state, field),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: valueMono ? mono(12.5, w: 500) : sans(12.5, w: 500),
+            ),
+            if (!locked) ...[
+              const SizedBox(height: SR.space8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: SrButton(
+                  label: 'Edit',
+                  dense: true,
+                  fontSize: 11,
+                  onPressed: () {
+                    _editController.text = value;
+                    setState(() => _editingField = field);
+                  },
+                ),
+              ),
+            ],
           ],
         ],
       ),
     );
   }
 
-  Widget _detailRow(
-    AppState state, {
-    required String label,
-    required String field,
-    required String value,
-    required bool locked,
-    String? lockedNote,
-    bool valueMono = false,
-  }) {
-    final editing = _editingField == field;
-    return Container(
-      color: context.srColors.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: editing
-                ? SrTextField(
-                    controller: _editController,
-                    semanticLabel: label,
-                    mono: valueMono,
-                    fontSize: 12.5,
-                    autofocus: true,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 7,
-                    ),
-                    onSubmitted: (_) => _saveDetail(state, field),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(label, style: keyLabel),
-                      const SizedBox(height: 4),
-                      Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: valueMono
-                            ? mono(12.5, w: 500)
-                            : sans(12.5, w: 500),
-                      ),
-                      if (locked && lockedNote != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          lockedNote,
-                          style: sans(10.5, color: context.srColors.muted),
-                        ),
-                      ],
-                    ],
-                  ),
+  Widget _preferencesPanel(AppState state, bool compact) => SrCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SrSectionHeader(
+          title: 'Preferences',
+          description: 'Control notifications and how SmartReserve looks.',
+          icon: Icons.tune_rounded,
+        ),
+        Text('Notifications', style: SrType.label()),
+        const SizedBox(height: SR.space8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: context.srColors.border),
+            borderRadius: BorderRadius.circular(SR.rMd),
           ),
-          if (editing) ...[
-            const SizedBox(width: 8),
-            SrButton(
-              label: 'Cancel',
-              dense: true,
-              fontSize: 11,
-              onPressed: () => setState(() => _editingField = null),
-            ),
-            const SizedBox(width: 6),
-            SrButton(
-              label: 'Save',
-              kind: SrButtonKind.primary,
-              dense: true,
-              fontSize: 11,
-              onPressed: () => _saveDetail(state, field),
-            ),
-          ] else if (!locked) ...[
-            const SizedBox(width: 8),
-            SrButton(
-              label: 'Edit',
-              dense: true,
-              fontSize: 11,
-              onPressed: () {
-                _editController.text = value;
-                setState(() => _editingField = field);
-              },
-            ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (
+                var index = 0;
+                index < state.notificationPreferences.entries.length;
+                index++
+              ) ...[
+                SrListRow(
+                  label: state.notificationPreferences.entries
+                      .elementAt(index)
+                      .key,
+                  trailing: SrToggle(
+                    value: state.notificationPreferences.entries
+                        .elementAt(index)
+                        .value,
+                    label: state.notificationPreferences.entries
+                        .elementAt(index)
+                        .key,
+                    onChanged: (value) => state.setNotificationPreference(
+                      state.notificationPreferences.entries
+                          .elementAt(index)
+                          .key,
+                      value,
+                    ),
+                  ),
+                ),
+                if (index != state.notificationPreferences.entries.length - 1)
+                  Divider(height: 1, color: context.srColors.border),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: SR.space16),
+        Divider(height: 1, color: context.srColors.border),
+        const SizedBox(height: SR.space16),
+        Text('Appearance', style: SrType.label()),
+        const SizedBox(height: SR.space4),
+        Text(
+          'Follow this device or choose a theme for SmartReserve.',
+          style: SrType.caption(),
+        ),
+        const SizedBox(height: SR.space12),
+        SrThemeSelector(
+          value: state.themePreference,
+          compact: compact,
+          onChanged: state.setThemePreference,
+        ),
+      ],
+    ),
+  );
+
+  Widget _accountActions(AppState state) => SrCard(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final stack = constraints.maxWidth < 440;
+        final heading = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Account actions', style: SrType.subhead()),
+            const SizedBox(height: SR.space2),
+            Text('End this session on this device.', style: SrType.caption()),
           ],
-        ],
-      ),
-    );
-  }
+        );
+        final action = SrButton(
+          label: 'Sign out',
+          kind: SrButtonKind.danger,
+          expand: stack,
+          minHeight: SR.controlMd,
+          fontSize: 12.5,
+          onPressed: () => state.signOut(),
+        );
+        return stack
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  heading,
+                  const SizedBox(height: SR.space12),
+                  action,
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: heading),
+                  const SizedBox(width: SR.space16),
+                  action,
+                ],
+              );
+      },
+    ),
+  );
 
   void _saveDetail(AppState state, String field) {
     state.updateUserDetail(field, _editController.text);
@@ -2384,7 +2413,7 @@ class _BottomNav extends StatelessWidget {
           children: [
             Expanded(
               child: Container(
-                height: 58,
+                height: 60,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
                   color: context.srColors.surface,
@@ -2462,7 +2491,7 @@ class _AssistantButton extends StatelessWidget {
           child: AnimatedContainer(
             duration: SR.stateChange,
             width: 58,
-            height: 58,
+            height: 60,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: colors.isDark ? colors.surfaceElevated : Colors.white,
@@ -2899,26 +2928,6 @@ FacilityCatalogueCardData _cardDataFromFacility(
     placeholderIcon: facility.categoryIcon,
     ratingAverage: facility.ratingAverage,
     ratingCount: facility.ratingCount,
-  );
-}
-
-class _Panel extends StatelessWidget {
-  const _Panel({required this.child, this.background, this.border});
-
-  final Widget child;
-  final Color? background;
-  final Color? border;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-    decoration: BoxDecoration(
-      color: background ?? context.srColors.surface,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: border ?? context.srColors.border),
-    ),
-    child: child,
   );
 }
 

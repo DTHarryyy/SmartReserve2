@@ -263,6 +263,8 @@ class ReservationRequest {
     this.feedbackComment = '',
     this.feedbackAt,
     this.permit,
+    this.signatureRequestId,
+    this.signatureRequestStatus,
     List<ReservationUseAssessment>? useAssessments,
   }) : seriesExceptions = seriesExceptions ?? <String>[],
        slotDay = slotDay ?? parseCampusDate(date),
@@ -336,7 +338,12 @@ class ReservationRequest {
   final List<PriceSnapshotLine> priceLines;
   final List<AcceptedTerms> acceptedTerms;
   final ReservationPermit? permit;
+  final String? signatureRequestId;
+  final String? signatureRequestStatus;
   final List<ReservationUseAssessment> useAssessments;
+
+  bool get signatureRequested => signatureRequestStatus == 'requested';
+  bool get signatureSubmitted => signatureRequestStatus == 'signed';
 
   bool get isPaymentExempt => paymentExemption != 'none';
 

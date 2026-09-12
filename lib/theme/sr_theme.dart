@@ -784,23 +784,70 @@ class SrThemeSelector extends StatelessWidget {
   final ValueChanged<SrThemePreference> onChanged;
   final bool compact;
 
+  IconData get _icon => switch (value) {
+    SrThemePreference.system => Icons.brightness_auto_rounded,
+    SrThemePreference.light => Icons.light_mode_rounded,
+    SrThemePreference.dark => Icons.dark_mode_rounded,
+  };
+
   @override
-  Widget build(BuildContext context) => SegmentedButton<SrThemePreference>(
-    showSelectedIcon: false,
-    segments: [
-      for (final preference in SrThemePreference.values)
-        ButtonSegment(
-          value: preference,
-          icon: Icon(switch (preference) {
-            SrThemePreference.system => Icons.brightness_auto_rounded,
-            SrThemePreference.light => Icons.light_mode_rounded,
-            SrThemePreference.dark => Icons.dark_mode_rounded,
-          }, size: 17),
-          label: compact ? null : Text(preference.label),
-          tooltip: '${preference.label} appearance',
+  Widget build(BuildContext context) {
+    if (compact) {
+      return PopupMenuButton<SrThemePreference>(
+        tooltip: 'Appearance: ${value.label}',
+        onSelected: onChanged,
+        itemBuilder: (context) => [
+          for (final preference in SrThemePreference.values)
+            CheckedPopupMenuItem(
+              value: preference,
+              checked: preference == value,
+              child: Row(
+                children: [
+                  Icon(switch (preference) {
+                    SrThemePreference.system => Icons.brightness_auto_rounded,
+                    SrThemePreference.light => Icons.light_mode_rounded,
+                    SrThemePreference.dark => Icons.dark_mode_rounded,
+                  }, size: 18),
+                  const SizedBox(width: 10),
+                  Text(preference.label),
+                ],
+              ),
+            ),
+        ],
+        child: Semantics(
+          button: true,
+          label: 'Appearance: ${value.label}',
+          child: Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: context.srColors.surface,
+              borderRadius: BorderRadius.circular(SR.rSm),
+              border: Border.all(color: context.srColors.border),
+            ),
+            child: Icon(_icon, size: 19, color: context.srColors.ink2),
+          ),
         ),
-    ],
-    selected: {value},
-    onSelectionChanged: (selection) => onChanged(selection.first),
-  );
+      );
+    }
+    return SegmentedButton<SrThemePreference>(
+      showSelectedIcon: false,
+      segments: [
+        for (final preference in SrThemePreference.values)
+          ButtonSegment(
+            value: preference,
+            icon: Icon(switch (preference) {
+              SrThemePreference.system => Icons.brightness_auto_rounded,
+              SrThemePreference.light => Icons.light_mode_rounded,
+              SrThemePreference.dark => Icons.dark_mode_rounded,
+            }, size: 17),
+            label: Text(preference.label),
+            tooltip: '${preference.label} appearance',
+          ),
+      ],
+      selected: {value},
+      onSelectionChanged: (selection) => onChanged(selection.first),
+    );
+  }
 }

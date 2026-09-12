@@ -114,83 +114,75 @@ class _AuditScreenState extends State<AuditScreen> {
 
     return SrScrollView(
       padding: SR.pageInsets(width, top: stacked ? 14 : 20),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (SR.isCompact(width))
-                _compactFilters(state, actors.toList(), rows.length, total)
-              else
-                _desktopToolbar(state, actors.toList(), rows.length, total),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (SR.isCompact(width))
+            _compactFilters(state, actors.toList(), rows.length, total)
+          else
+            _desktopToolbar(state, actors.toList(), rows.length, total),
 
-              if (state.auditLoading && rows.isNotEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 10),
-                  child: LinearProgressIndicator(),
-                ),
-              if (state.auditError case final error?)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: SR.space8 + 2),
-                  child: Text(
-                    error,
-                    style: SrType.bodySm(color: context.srColors.red),
-                  ),
-                ),
-
-              RecordTable(
-                columns: _columns,
-                children: state.auditLoading && rows.isEmpty
-                    ? [
-                        for (final leadWidth in const [.6, .45, .7, .5, .55])
-                          SkeletonRow(columns: _columns, leadWidth: leadWidth),
-                      ]
-                    : rows.isEmpty
-                    ? [
-                        ListEmptyState(
-                          icon: Icons.filter_alt_off_rounded,
-                          title: 'No entries match',
-                          body:
-                              'Clear a filter, or turn off "material '
-                              'changes only".',
-                          action: _hasActiveFilter
-                              ? SrButton(
-                                  label: 'Clear filters',
-                                  onPressed: () => _clearAll(state),
-                                )
-                              : null,
-                        ),
-                      ]
-                    : [
-                        for (final entry in rows)
-                          _AuditRow(
-                            key: ValueKey(entry.id),
-                            entry: entry,
-                            expanded: _expanded.contains(entry.id),
-                            onToggle: () => _toggle(entry.id),
-                            onRevert: () => state.revertAudit(entry),
-                          ),
-                      ],
+          if (state.auditLoading && rows.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: LinearProgressIndicator(),
+            ),
+          if (state.auditError case final error?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: SR.space8 + 2),
+              child: Text(
+                error,
+                style: SrType.bodySm(color: context.srColors.red),
               ),
+            ),
 
-              if (state.backend != null && rows.length < state.auditTotal)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: SrButton(
-                    label: state.auditLoadingMore ? 'Loading…' : 'Load more',
-                    onPressed: state.auditLoadingMore
-                        ? null
-                        : state.loadMoreAudit,
-                  ),
-                ),
-
-              const SizedBox(height: 12),
-              _retentionDisclosure(),
-            ],
+          RecordTable(
+            columns: _columns,
+            children: state.auditLoading && rows.isEmpty
+                ? [
+                    for (final leadWidth in const [.6, .45, .7, .5, .55])
+                      SkeletonRow(columns: _columns, leadWidth: leadWidth),
+                  ]
+                : rows.isEmpty
+                ? [
+                    ListEmptyState(
+                      icon: Icons.filter_alt_off_rounded,
+                      title: 'No entries match',
+                      body:
+                          'Clear a filter, or turn off "material '
+                          'changes only".',
+                      action: _hasActiveFilter
+                          ? SrButton(
+                              label: 'Clear filters',
+                              onPressed: () => _clearAll(state),
+                            )
+                          : null,
+                    ),
+                  ]
+                : [
+                    for (final entry in rows)
+                      _AuditRow(
+                        key: ValueKey(entry.id),
+                        entry: entry,
+                        expanded: _expanded.contains(entry.id),
+                        onToggle: () => _toggle(entry.id),
+                        onRevert: () => state.revertAudit(entry),
+                      ),
+                  ],
           ),
-        ),
+
+          if (state.backend != null && rows.length < state.auditTotal)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: SrButton(
+                label: state.auditLoadingMore ? 'Loading…' : 'Load more',
+                onPressed: state.auditLoadingMore ? null : state.loadMoreAudit,
+              ),
+            ),
+
+          const SizedBox(height: 12),
+          _retentionDisclosure(),
+        ],
       ),
     );
   }

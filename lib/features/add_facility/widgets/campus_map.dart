@@ -5,7 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 
 import '../../../data/campus_data.dart';
 import '../../../theme/sr_tokens.dart';
-import '../add_facility_controller.dart';
+import '../map_editor_controller.dart';
 
 import '../../../theme/sr_theme.dart';
 
@@ -17,34 +17,35 @@ TileLayer srTileLayer(
 }) => TileLayer(
   key: ValueKey('${layer.name}-$generation'),
   urlTemplate: switch (layer) {
-    MapLayer.street =>
-      dark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    // CARTO's raster tiles now require an API key. Use the same no-key,
+    // attribution-compliant OSM source for the standard and light views.
+    MapLayer.street || MapLayer.light =>
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     MapLayer.satellite =>
       'https://server.arcgisonline.com/ArcGIS/rest/services/'
           'World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    MapLayer.light =>
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
   },
-  subdomains: layer == MapLayer.light || (layer == MapLayer.street && dark)
-      ? const ['a', 'b', 'c', 'd']
-      : const [],
+  minZoom: campusMinimumZoom,
+  maxZoom: campusMaximumZoom,
   maxNativeZoom: 19,
+  keepBuffer: 1,
+  panBuffer: 0,
   userAgentPackageName: 'ph.edu.csu.smartreserve',
   errorTileCallback: onTileError == null ? null : (_, _, _) => onTileError(),
+  tileBuilder: layer == MapLayer.street && dark ? darkModeTileBuilder : null,
+  tileDisplay: const TileDisplay.instantaneous(),
 );
 
 String attributionFor(MapLayer layer) => switch (layer) {
-  MapLayer.street => '© OpenStreetMap · © CARTO',
+  MapLayer.street => '© OpenStreetMap contributors',
   MapLayer.satellite => 'Imagery © Esri',
-  MapLayer.light => '© OpenStreetMap · © CARTO',
+  MapLayer.light => '© OpenStreetMap contributors',
 };
 
 class CampusMap extends StatefulWidget {
   const CampusMap({super.key, required this.controller});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   @override
   State<CampusMap> createState() => _CampusMapState();
@@ -95,8 +96,8 @@ class _CampusMapState extends State<CampusMap> {
         initialCenter:
             pin ?? buildingNamed(c.draft.building)?.coords ?? campus.center,
         initialZoom: c.zoom,
-        minZoom: 3,
-        maxZoom: 21,
+        minZoom: campusMinimumZoom,
+        maxZoom: campusMaximumZoom,
         backgroundColor: context.srColors.mapBg,
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
@@ -168,7 +169,7 @@ class _CampusMapState extends State<CampusMap> {
                     alignment: Alignment.topCenter,
                     child: _BuildingChip(
                       name: b.name,
-                      selected: b.name == c.draft.building,
+                      selected: b.name == c.selectedBuildingLabel,
                     ),
                   ),
               for (final f in c.availableFacilities)
@@ -281,7 +282,7 @@ class _DraggablePin extends StatefulWidget {
     required this.valid,
   });
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   final int dropId;
   final bool valid;

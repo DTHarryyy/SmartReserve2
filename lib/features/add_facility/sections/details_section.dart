@@ -25,132 +25,135 @@ class DetailsSection extends StatelessWidget {
   static const _nameLimit = 60;
 
   @override
-  Widget build(BuildContext context) {
-    final draft = controller.draft;
-    final errors = controller.errors;
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([controller.form, controller]),
+    builder: (context, _) {
+      final draft = controller.draft;
+      final errors = controller.errors;
 
-    return SectionCard(
-      anchorKey: controller.sectionKeys[RequiredItem.name],
-      number: '01',
-      title: 'Facility details',
-      caption: 'What people will search for',
-      dense: dense,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SrLabel(
-            'Facility name',
-            required: true,
-            meta: Text(
-              '${draft.name.length}/$_nameLimit',
-              style: mono(10.5, color: context.srColors.mutedLight),
-            ),
-          ),
-          SrTextField(
-            controller: controller.nameField,
-            placeholder: 'e.g. Computer Laboratory 2',
-            semanticLabel: 'Facility name',
-            hasError: errors.containsKey(RequiredItem.name),
-            inputFormatters: [LengthLimitingTextInputFormatter(_nameLimit)],
-          ),
-          SrErrorText(errors[RequiredItem.name]),
-          const SizedBox(height: 14),
-
-          FieldRow(
-            stacked: stacked,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Category', required: true),
-                  SrSelect<String>(
-                    value: draft.category.isEmpty ? null : draft.category,
-                    items: categories,
-                    placeholder: 'Choose a category',
-                    semanticLabel: 'Category',
-                    hasError: errors.containsKey(RequiredItem.category),
-                    labelOf: (c) => c,
-                    onChanged: (v) {
-                      if (v != null) controller.setCategory(v);
-                    },
-                  ),
-                  SrErrorText(errors[RequiredItem.category]),
-                ],
+      return SectionCard(
+        anchorKey: controller.sectionKeys[RequiredItem.name],
+        number: '01',
+        title: 'Facility details',
+        caption: 'What people will search for',
+        dense: dense,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SrLabel(
+              'Facility name',
+              required: true,
+              meta: Text(
+                '${draft.name.length}/$_nameLimit',
+                style: mono(10.5, color: context.srColors.mutedLight),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Capacity', required: true),
-                  SrTextField(
-                    controller: controller.capacityField,
-                    placeholder: '0',
-                    mono: true,
-                    semanticLabel: 'Capacity in seats',
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(5),
-                    ],
-                    hasError: errors.containsKey(RequiredItem.capacity),
-                    padding: const EdgeInsets.only(left: 12),
-                    suffix: Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 11),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: context.srColors.hairline),
+            ),
+            SrTextField(
+              controller: controller.form.nameField,
+              placeholder: 'e.g. Computer Laboratory 2',
+              semanticLabel: 'Facility name',
+              hasError: errors.containsKey(RequiredItem.name),
+              inputFormatters: [LengthLimitingTextInputFormatter(_nameLimit)],
+            ),
+            SrErrorText(errors[RequiredItem.name]),
+            const SizedBox(height: 14),
+
+            FieldRow(
+              stacked: stacked,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Category', required: true),
+                    SrSelect<String>(
+                      value: draft.category.isEmpty ? null : draft.category,
+                      items: categories,
+                      placeholder: 'Choose a category',
+                      semanticLabel: 'Category',
+                      hasError: errors.containsKey(RequiredItem.category),
+                      labelOf: (c) => c,
+                      onChanged: (v) {
+                        if (v != null) controller.form.setCategory(v);
+                      },
+                    ),
+                    SrErrorText(errors[RequiredItem.category]),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Capacity', required: true),
+                    SrTextField(
+                      controller: controller.form.capacityField,
+                      placeholder: '0',
+                      mono: true,
+                      semanticLabel: 'Capacity in seats',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(5),
+                      ],
+                      hasError: errors.containsKey(RequiredItem.capacity),
+                      padding: const EdgeInsets.only(left: 12),
+                      suffix: Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 11),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            left: BorderSide(color: context.srColors.hairline),
+                          ),
+                        ),
+                        child: Text(
+                          'seats',
+                          style: sans(11, color: context.srColors.muted),
                         ),
                       ),
-                      child: Text(
-                        'seats',
-                        style: sans(11, color: context.srColors.muted),
-                      ),
                     ),
-                  ),
-                  SrErrorText(errors[RequiredItem.capacity]),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          const SrLabel('Description'),
-          SrTextField(
-            controller: controller.descriptionField,
-            placeholder:
-                'Who it is for, what equipment is fixed in the room, anything '
-                'a requester should know before booking.',
-            semanticLabel: 'Description',
-            fontSize: 12.5,
-            minLines: 3,
-            maxLines: 6,
-            keyboardType: TextInputType.multiline,
-          ),
-          const SizedBox(height: 14),
-
-          const SrLabel('Status'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final status in FacilityStatus.values)
-                _StatusOption(
-                  status: status,
-                  selected: draft.status == status,
-                  onTap: () => controller.setStatus(status),
+                    SrErrorText(errors[RequiredItem.capacity]),
+                  ],
                 ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          Text(
-            draft.status.hint,
-            style: sans(11, height: 1.5, color: context.srColors.muted),
-          ),
-        ],
-      ),
-    );
-  }
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            const SrLabel('Description'),
+            SrTextField(
+              controller: controller.form.descriptionField,
+              placeholder:
+                  'Who it is for, what equipment is fixed in the room, anything '
+                  'a requester should know before booking.',
+              semanticLabel: 'Description',
+              fontSize: 12.5,
+              minLines: 3,
+              maxLines: 6,
+              keyboardType: TextInputType.multiline,
+            ),
+            const SizedBox(height: 14),
+
+            const SrLabel('Status'),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final status in FacilityStatus.values)
+                  _StatusOption(
+                    status: status,
+                    selected: draft.status == status,
+                    onTap: () => controller.form.setStatus(status),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(
+              draft.status.hint,
+              style: sans(11, height: 1.5, color: context.srColors.muted),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _StatusOption extends StatelessWidget {

@@ -12,7 +12,14 @@ class DraftBanner extends StatelessWidget {
   final AddFacilityController controller;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) => controller.draftFound
+        ? _banner(context)
+        : const SizedBox.shrink(),
+  );
+
+  Widget _banner(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     decoration: BoxDecoration(

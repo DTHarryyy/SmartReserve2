@@ -31,13 +31,16 @@ class DetectedSection extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => SectionCard(
-    anchorKey: controller.sectionKeys[RequiredItem.pin],
-    number: '03',
-    title: 'Detected location',
-    caption: 'Read from the pin — editable',
-    dense: dense,
-    child: controller.hasPin ? _resolved(context) : _empty(context),
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([controller.map, controller]),
+    builder: (context, _) => SectionCard(
+      anchorKey: controller.sectionKeys[RequiredItem.pin],
+      number: '03',
+      title: 'Detected location',
+      caption: 'Read from the pin — editable',
+      dense: dense,
+      child: controller.map.hasPin ? _resolved(context) : _empty(context),
+    ),
   );
 
   Widget _empty(BuildContext context) => DashedBox(
@@ -71,7 +74,7 @@ class DetectedSection extends StatelessWidget {
       SrCellGrid(
         columns: stacked ? 2 : 4,
         children: [
-          for (final stat in controller.liveStats(context))
+          for (final stat in controller.map.liveStats(context))
             SrKeyCell(
               label: stat.key,
               value: stat.value,
@@ -81,7 +84,7 @@ class DetectedSection extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 14),
-      if (controller.geoState == GeoState.loading)
+      if (controller.map.geoState == GeoState.loading)
         const _Resolving()
       else
         FieldRow(
@@ -168,11 +171,11 @@ class _GeoField extends StatelessWidget {
           ),
         ),
         SrTextField(
-          controller: controller.geoFields[field.key]!,
+          controller: controller.map.geoFields[field.key]!,
           semanticLabel: field.label,
           fontSize: 12,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          onChanged: (v) => controller.editGeoField(field.key, v),
+          onChanged: (v) => controller.map.editGeoField(field.key, v),
         ),
       ],
     );

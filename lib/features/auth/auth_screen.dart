@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/verification.dart';
@@ -209,6 +210,10 @@ class AuthScreen extends StatelessWidget {
   Widget _body(BuildContext context) => AutofillGroup(
     child: switch (controller.step) {
       AuthStep.signIn => _signIn(context),
+      AuthStep.passwordResetRequest => _passwordResetRequest(context),
+      AuthStep.passwordResetSent => _passwordResetSent(context),
+      AuthStep.passwordReset => _passwordReset(context),
+      AuthStep.createAccount => _createAccount(context),
       AuthStep.initialPassword => _initialPassword(context),
       AuthStep.accessRequired => _accessRequired(context),
       AuthStep.question => _question(context),
@@ -224,7 +229,7 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('Sign in to SmartReserve'),
       _Lede(
-        'Organization accounts are issued by an Internal Admin. Contact your organization administrator to request access.',
+        'Sign in to manage your reservations and payments. Campus organization accounts are issued by an Internal Admin.',
       ),
 
       const SizedBox(height: 22),
@@ -253,9 +258,12 @@ class AuthScreen extends StatelessWidget {
 
       const SizedBox(height: 8),
 
-      Text(
-        'Need a password reset? Contact an Internal Admin. They can issue new temporary credentials.',
-        style: sans(11, height: 1.55, color: context.srColors.muted),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: _InlineLink(
+          label: 'Forgot password?',
+          onTap: () => controller.goTo(AuthStep.passwordResetRequest),
+        ),
       ),
 
       const SizedBox(height: 12),
@@ -263,6 +271,266 @@ class AuthScreen extends StatelessWidget {
       _submitButton(context, 'Sign in', 'Signing in…', controller.submitSignIn),
 
       SrErrorText(controller.operationError),
+      if (controller.operationNotice case final notice?) ...[
+        const SizedBox(height: 10),
+        _Notice(message: notice),
+      ],
+
+      const SizedBox(height: 8),
+
+      Text.rich(
+        TextSpan(
+          text: 'Renting a facility or paying for a reservation? ',
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: _InlineLink(
+                label: 'Create an account',
+                onTap: () => controller.goTo(AuthStep.createAccount),
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+      ),
+    ],
+  );
+
+  Widget _passwordResetRequest(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title('Reset your password'),
+      _Lede(
+        'Enter the email address for your SmartReserve account and we’ll send a reset link.',
+      ),
+      const SizedBox(height: 22),
+      const SrLabel('Email address'),
+      SrTextField(
+        controller: controller.emailField,
+        placeholder: 'name@example.com',
+        semanticLabel: 'Email address',
+        keyboardType: TextInputType.emailAddress,
+        hasError: controller.emailError != null,
+        textInputAction: TextInputAction.done,
+        autofillHints: const [AutofillHints.username, AutofillHints.email],
+        autocorrect: false,
+        onSubmitted: (_) =>
+            controller.busy ? null : controller.requestPasswordReset(),
+      ),
+      SrErrorText(controller.emailError),
+      const SizedBox(height: 14),
+      _submitButton(
+        context,
+        'Send reset link',
+        'Sending reset link…',
+        controller.requestPasswordReset,
+      ),
+      SrErrorText(controller.operationError),
+      const SizedBox(height: 8),
+      Text.rich(
+        TextSpan(
+          text: 'Remembered your password? ',
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: _InlineLink(
+                label: 'Sign in',
+                onTap: () => controller.goTo(AuthStep.signIn),
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+      ),
+    ],
+  );
+
+  Widget _passwordResetSent(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title('Check your email'),
+      _Lede(
+        'If an account matches that address, we’ve sent a six-digit reset code. Check your inbox and spam folder.',
+      ),
+      const SizedBox(height: 22),
+      const SrLabel('Six-digit code'),
+      _RecoveryCodeInput(
+        value: controller.resetCodeField.text,
+        onChanged: controller.setResetCode,
+        hasError: controller.resetCodeError != null,
+        enabled: !controller.busy,
+        onSubmitted: controller.verifyPasswordResetCode,
+      ),
+      SrErrorText(controller.resetCodeError),
+      const SizedBox(height: 14),
+      _submitButton(
+        context,
+        'Verify code',
+        'Verifying code…',
+        controller.verifyPasswordResetCode,
+      ),
+      SrErrorText(controller.operationError),
+      const SizedBox(height: 8),
+      Text.rich(
+        TextSpan(
+          text: 'Didn’t receive a code? ',
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: _InlineLink(
+                label: 'Request another code',
+                onTap: () => controller.goTo(AuthStep.passwordResetRequest),
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+      ),
+      _InlineLink(
+        label: 'Back to sign in',
+        onTap: () => controller.goTo(AuthStep.signIn),
+      ),
+    ],
+  );
+
+  Widget _passwordReset(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title('Choose a new password'),
+      _Lede('Create a new password for your SmartReserve account.'),
+      const SizedBox(height: 22),
+      const SrLabel('New password'),
+      _PasswordField(
+        controller: controller,
+        newPassword: true,
+        placeholder: 'Create a secure password',
+      ),
+      const SizedBox(height: 8),
+      _PasswordRequirements(requirements: controller.passwordRequirements),
+      SrErrorText(controller.passwordError),
+      const SizedBox(height: 10),
+      const SrLabel('Confirm new password'),
+      _PasswordField(
+        controller: controller,
+        fieldController: controller.confirmPasswordField,
+        placeholder: 'Enter the same password again',
+        semanticLabel: 'Confirm new password',
+        hasError: controller.confirmPasswordError != null,
+        newPassword: true,
+        onSubmitted: (_) =>
+            controller.busy ? null : controller.submitPasswordReset(),
+      ),
+      SrErrorText(controller.confirmPasswordError),
+      const SizedBox(height: 14),
+      _submitButton(
+        context,
+        'Save new password',
+        'Saving password…',
+        controller.submitPasswordReset,
+      ),
+      SrErrorText(controller.operationError),
+    ],
+  );
+
+  Widget _createAccount(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title('Create your renter account'),
+      _Lede(
+        'For outside renters and paying customers. You can browse available facilities, submit reservations, and manage payments here.',
+      ),
+
+      const SizedBox(height: 22),
+
+      const SrLabel('Full name'),
+      SrTextField(
+        controller: controller.fullNameField,
+        placeholder: 'Your full name',
+        semanticLabel: 'Full name',
+        hasError: controller.fullNameError != null,
+        textCapitalization: TextCapitalization.words,
+        textInputAction: TextInputAction.next,
+        autofillHints: const [AutofillHints.name],
+      ),
+      SrErrorText(controller.fullNameError),
+
+      const SizedBox(height: 10),
+
+      const SrLabel('Email address'),
+      SrTextField(
+        controller: controller.emailField,
+        placeholder: 'name@example.com',
+        semanticLabel: 'Email address',
+        keyboardType: TextInputType.emailAddress,
+        hasError: controller.emailError != null,
+        textInputAction: TextInputAction.next,
+        autofillHints: const [AutofillHints.username, AutofillHints.email],
+        autocorrect: false,
+      ),
+      SrErrorText(controller.emailError),
+
+      const SizedBox(height: 10),
+
+      const SrLabel('Password'),
+      _PasswordField(
+        controller: controller,
+        newPassword: true,
+        placeholder: 'Create a secure password',
+      ),
+      const SizedBox(height: 8),
+      _PasswordRequirements(requirements: controller.passwordRequirements),
+      SrErrorText(controller.passwordError),
+
+      const SizedBox(height: 10),
+
+      const SrLabel('Confirm password'),
+      _PasswordField(
+        controller: controller,
+        fieldController: controller.confirmPasswordField,
+        placeholder: 'Enter the same password again',
+        semanticLabel: 'Confirm password',
+        hasError: controller.confirmPasswordError != null,
+        newPassword: true,
+        onSubmitted: (_) =>
+            controller.busy ? null : controller.createExternalGuestAccount(),
+      ),
+      SrErrorText(controller.confirmPasswordError),
+
+      const SizedBox(height: 14),
+
+      _submitButton(
+        context,
+        'Create renter account',
+        'Creating account…',
+        controller.createExternalGuestAccount,
+      ),
+      SrErrorText(controller.operationError),
+
+      const SizedBox(height: 8),
+
+      Text.rich(
+        TextSpan(
+          text: 'Already have an account? ',
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: _InlineLink(
+                label: 'Sign in',
+                onTap: () => controller.goTo(AuthStep.signIn),
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+      ),
     ],
   );
 
@@ -766,8 +1034,10 @@ class _HeroBanner extends StatelessWidget {
     decoration: BoxDecoration(
       color: context.srColors.navBg,
       borderRadius: BorderRadius.circular(18),
-      gradient: const LinearGradient(
-        colors: [Color(0xFF1A73E8), Color(0xFF00B4FF)],
+      gradient: LinearGradient(
+        colors: context.srColors.isDark
+            ? const [Color(0xFF102D4B), Color(0xFF163A58)]
+            : const [Color(0xFF1A73E8), Color(0xFF1479B8)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -873,9 +1143,11 @@ class _Pitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [Color(0xFF1A73E8), Color(0xFF00A8EF)],
+        colors: context.srColors.isDark
+            ? const [Color(0xFF071A2F), Color(0xFF102E49)]
+            : const [Color(0xFF1A73E8), Color(0xFF1479B8)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -1181,6 +1453,240 @@ class _PasswordRequirements extends StatelessWidget {
           ],
         ),
     ],
+  );
+}
+
+class _RecoveryCodeInput extends StatefulWidget {
+  const _RecoveryCodeInput({
+    required this.value,
+    required this.onChanged,
+    required this.hasError,
+    required this.enabled,
+    required this.onSubmitted,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool hasError;
+  final bool enabled;
+  final VoidCallback onSubmitted;
+
+  @override
+  State<_RecoveryCodeInput> createState() => _RecoveryCodeInputState();
+}
+
+class _RecoveryCodeInputState extends State<_RecoveryCodeInput> {
+  static const _length = 6;
+  late final List<TextEditingController> _cells;
+  late final List<FocusNode> _focusNodes;
+  bool _synchronizing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cells = List.generate(_length, (_) => TextEditingController());
+    _focusNodes = List.generate(_length, (_) => FocusNode());
+    for (final node in _focusNodes) {
+      node.addListener(_handleFocusChange);
+    }
+    _setCells(widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecoveryCodeInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != _value) _setCells(widget.value);
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _cells) {
+      controller.dispose();
+    }
+    for (final node in _focusNodes) {
+      node
+        ..removeListener(_handleFocusChange)
+        ..dispose();
+    }
+    super.dispose();
+  }
+
+  String get _value => _cells.map((cell) => cell.text).join();
+
+  void _handleFocusChange() => mounted ? setState(() {}) : null;
+
+  void _setCells(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    _synchronizing = true;
+    for (var index = 0; index < _length; index++) {
+      final text = index < digits.length ? digits[index] : '';
+      _cells[index].value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+    _synchronizing = false;
+  }
+
+  void _emit() => widget.onChanged(_value);
+
+  void _handleChanged(int index, String value) {
+    if (_synchronizing) return;
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) {
+      _emit();
+      if (index > 0) _focusNodes[index - 1].requestFocus();
+      return;
+    }
+    if (digits.length > 1) {
+      _synchronizing = true;
+      for (var cell = index; cell < _length; cell++) {
+        final digitIndex = cell - index;
+        final text = digitIndex < digits.length ? digits[digitIndex] : '';
+        _cells[cell].value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      }
+      _synchronizing = false;
+      _emit();
+      final next = (index + digits.length).clamp(0, _length - 1).toInt();
+      _focusNodes[next].requestFocus();
+      return;
+    }
+    _cells[index].value = TextEditingValue(
+      text: digits,
+      selection: TextSelection.collapsed(offset: digits.length),
+    );
+    _emit();
+    if (index < _length - 1) _focusNodes[index + 1].requestFocus();
+  }
+
+  KeyEventResult _handleKeyEvent(int index, KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.backspace ||
+        index == 0 ||
+        _cells[index].text.isNotEmpty) {
+      return KeyEventResult.ignored;
+    }
+    _cells[index - 1].clear();
+    _focusNodes[index - 1].requestFocus();
+    _emit();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final spacing = constraints.maxWidth < 350 ? 6.0 : 9.0;
+      final width = ((constraints.maxWidth - spacing * (_length - 1)) / _length)
+          .clamp(38.0, 52.0)
+          .toDouble();
+      return Semantics(
+        label: 'Six-digit reset code',
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var index = 0; index < _length; index++) ...[
+              if (index > 0) SizedBox(width: spacing),
+              SizedBox(
+                width: width,
+                height: 54,
+                child: Focus(
+                  onKeyEvent: (node, event) => _handleKeyEvent(index, event),
+                  child: AnimatedContainer(
+                    duration: SR.stateChange,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: context.srColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: widget.hasError
+                            ? context.srColors.error
+                            : _focusNodes[index].hasFocus
+                            ? SR.primary
+                            : context.srColors.borderField,
+                        width: _focusNodes[index].hasFocus ? 1.5 : 1,
+                      ),
+                    ),
+                    child: TextField(
+                      controller: _cells[index],
+                      focusNode: _focusNodes[index],
+                      enabled: widget.enabled,
+                      keyboardType: TextInputType.number,
+                      textInputAction: index == _length - 1
+                          ? TextInputAction.done
+                          : TextInputAction.next,
+                      textAlign: TextAlign.center,
+                      style: mono(21, w: 700, tracking: .04),
+                      maxLines: 1,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      autofillHints: index == 0
+                          ? const [AutofillHints.oneTimeCode]
+                          : null,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        filled: true,
+                        fillColor: Colors.transparent,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (value) => _handleChanged(index, value),
+                      onSubmitted: (_) {
+                        if (index == _length - 1) {
+                          widget.onSubmitted();
+                        } else {
+                          _focusNodes[index + 1].requestFocus();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _Notice extends StatelessWidget {
+  const _Notice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(11),
+    decoration: BoxDecoration(
+      color: context.srColors.successContainer,
+      borderRadius: BorderRadius.circular(9),
+      border: Border.all(color: context.srColors.success.withValues(alpha: .3)),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.check_circle_outline,
+          size: 16,
+          color: context.srColors.success,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: sans(11.5, height: 1.5, color: context.srColors.ink3),
+          ),
+        ),
+      ],
+    ),
   );
 }
 

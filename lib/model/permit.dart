@@ -64,6 +64,10 @@ class ReservationPermit {
     this.pdfGeneratedAt,
     this.voidedAt,
     this.voidReason,
+    this.userSignatureId,
+    this.ceoSignatureId,
+    this.userSignedAt,
+    this.ceoSignatureUploadedAt,
   });
 
   final String id;
@@ -100,6 +104,10 @@ class ReservationPermit {
   final DateTime? pdfGeneratedAt;
   final DateTime? voidedAt;
   final String? voidReason;
+  final String? userSignatureId;
+  final String? ceoSignatureId;
+  final DateTime? userSignedAt;
+  final DateTime? ceoSignatureUploadedAt;
 
   bool get isFullyPaid => remainingBalanceCentavos <= 0;
 
@@ -166,6 +174,14 @@ class ReservationPermit {
           ? null
           : DateTime.parse('${json['voided_at']}'),
       voidReason: json['void_reason'] as String?,
+      userSignatureId: json['user_signature_id'] as String?,
+      ceoSignatureId: json['ceo_signature_id'] as String?,
+      userSignedAt: snapshot['user_signed_at'] == null
+          ? null
+          : DateTime.parse('${snapshot['user_signed_at']}'),
+      ceoSignatureUploadedAt: snapshot['ceo_signature_uploaded_at'] == null
+          ? null
+          : DateTime.parse('${snapshot['ceo_signature_uploaded_at']}'),
     );
   }
 }

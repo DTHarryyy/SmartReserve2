@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/sr_tokens.dart';
 import '../../../widgets/sr_controls.dart';
-import '../add_facility_controller.dart';
+import '../map_editor_controller.dart';
 
 import '../../../theme/sr_theme.dart';
 
@@ -13,7 +13,7 @@ class MapSearchBar extends StatelessWidget {
     required this.compact,
   });
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
   final bool compact;
 
   @override
@@ -42,7 +42,7 @@ class MapSearchBar extends StatelessWidget {
 class _Field extends StatelessWidget {
   const _Field({required this.controller, required this.compact});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
   final bool compact;
 
   @override
@@ -108,7 +108,7 @@ class _Field extends StatelessWidget {
 class _LayerSwitch extends StatelessWidget {
   const _LayerSwitch({required this.controller, required this.compact});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
   final bool compact;
 
   @override
@@ -169,7 +169,7 @@ class _LayerSwitch extends StatelessWidget {
 class _Results extends StatelessWidget {
   const _Results({required this.controller});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   @override
   Widget build(BuildContext context) {

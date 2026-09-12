@@ -23,117 +23,121 @@ class LocationSection extends StatelessWidget {
   final bool dense;
 
   @override
-  Widget build(BuildContext context) {
-    final draft = controller.draft;
-    final selected = buildingNamed(draft.building);
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([controller.form, controller.map, controller]),
+    builder: (context, _) {
+      final draft = controller.draft;
+      final selected = buildingNamed(draft.building);
 
-    return SectionCard(
-      anchorKey: controller.sectionKeys[RequiredItem.building],
-      number: '02',
-      title: 'Where it sits',
-      caption: 'Drives the map pin',
-      dense: dense,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FieldRow(
-            stacked: stacked,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Campus'),
-                  SrSelect<String>(
-                    value: draft.campusName,
-                    items: campuses,
-                    semanticLabel: 'Campus',
-                    labelOf: (c) => c,
-                    onChanged: (v) {
-                      if (v != null) controller.setCampus(v);
-                    },
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SrLabel(
-                    'Building',
-                    required: true,
-                    meta: selected == null
-                        ? null
-                        : Text(
-                            selected.mapped ? 'MAPPED' : 'NOT MAPPED',
-                            style: mono(
-                              10,
-                              tracking: .04,
-                              color: selected.mapped
-                                  ? context.srColors.greenDark
-                                  : context.srColors.amber,
-                            ),
-                          ),
-                  ),
-                  SrSelect<String>(
-                    value: draft.building.isEmpty ? null : draft.building,
-                    items: [for (final b in buildings) b.name],
-                    placeholder: 'Choose a building',
-                    semanticLabel: 'Building',
-                    hasError: controller.errors.containsKey(
-                      RequiredItem.building,
+      return SectionCard(
+        anchorKey: controller.sectionKeys[RequiredItem.building],
+        number: '02',
+        title: 'Where it sits',
+        caption: 'Drives the map pin',
+        dense: dense,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FieldRow(
+              stacked: stacked,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Campus'),
+                    SrSelect<String>(
+                      value: draft.campusName,
+                      items: campuses,
+                      semanticLabel: 'Campus',
+                      labelOf: (c) => c,
+                      onChanged: (v) {
+                        if (v != null) controller.form.setCampus(v);
+                      },
                     ),
-                    labelOf: (b) => b,
-                    subtitleOf: (b) =>
-                        buildingNamed(b)?.mapped == false ? 'NOT MAPPED' : null,
-                    onChanged: (v) {
-                      if (v != null) controller.setBuilding(v);
-                    },
-                  ),
-                  SrErrorText(controller.errors[RequiredItem.building]),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Floor'),
-                  SrSelect<String>(
-                    value: draft.floor,
-                    items: floors,
-                    semanticLabel: 'Floor',
-                    labelOf: (f) => f,
-                    onChanged: (v) {
-                      if (v != null) controller.setFloor(v);
-                    },
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Room number'),
-                  SrTextField(
-                    controller: controller.roomField,
-                    placeholder: 'e.g. CL-204',
-                    semanticLabel: 'Room number',
-                    mono: true,
-                  ),
-                ],
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SrLabel(
+                      'Building',
+                      required: true,
+                      meta: selected == null
+                          ? null
+                          : Text(
+                              selected.mapped ? 'MAPPED' : 'NOT MAPPED',
+                              style: mono(
+                                10,
+                                tracking: .04,
+                                color: selected.mapped
+                                    ? context.srColors.greenDark
+                                    : context.srColors.amber,
+                              ),
+                            ),
+                    ),
+                    SrSelect<String>(
+                      value: draft.building.isEmpty ? null : draft.building,
+                      items: [for (final b in buildings) b.name],
+                      placeholder: 'Choose a building',
+                      semanticLabel: 'Building',
+                      hasError: controller.errors.containsKey(
+                        RequiredItem.building,
+                      ),
+                      labelOf: (b) => b,
+                      subtitleOf: (b) => buildingNamed(b)?.mapped == false
+                          ? 'NOT MAPPED'
+                          : null,
+                      onChanged: (v) {
+                        if (v != null) controller.form.setBuilding(v);
+                      },
+                    ),
+                    SrErrorText(controller.errors[RequiredItem.building]),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Floor'),
+                    SrSelect<String>(
+                      value: draft.floor,
+                      items: floors,
+                      semanticLabel: 'Floor',
+                      labelOf: (f) => f,
+                      onChanged: (v) {
+                        if (v != null) controller.form.setFloor(v);
+                      },
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Room number'),
+                    SrTextField(
+                      controller: controller.form.roomField,
+                      placeholder: 'e.g. CL-204',
+                      semanticLabel: 'Room number',
+                      mono: true,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            if (_hint(selected) case final hint?) ...[
+              const SizedBox(height: 13),
+              _BuildingHint(
+                text: hint,
+
+                onCenter: selected != null && selected.mapped
+                    ? () => controller.map.centerOn(selected.coords, zoom: 18.5)
+                    : null,
               ),
             ],
-          ),
-          if (_hint(selected) case final hint?) ...[
-            const SizedBox(height: 13),
-            _BuildingHint(
-              text: hint,
-
-              onCenter: selected != null && selected.mapped
-                  ? () => controller.centerOn(selected.coords, zoom: 18.5)
-                  : null,
-            ),
           ],
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    },
+  );
 
   String? _hint(CampusBuilding? selected) {
     if (selected == null) return null;

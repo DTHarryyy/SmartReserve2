@@ -309,12 +309,14 @@ class _BookingSheetState extends State<_BookingSheet> {
     final count = _weekly ? _occurrenceCount : 1;
     final startsAt = [for (var i = 0; i < count; i++) _at(_start, i)];
     final endsAt = [for (var i = 0; i < count; i++) _at(_end, i)];
+    final amenityIds = _selectedAmenityIds;
     final results = await Future.wait<Object?>([
       widget.state.quoteReservation(
         facility: facility,
         startsAt: startsAt,
         endsAt: endsAt,
         headcount: _headcount,
+        amenityIds: amenityIds,
         discountClaimId: _selectedVoucherId,
       ),
       widget.state.checkReservationOverlaps(startsAt: startsAt, endsAt: endsAt),
@@ -378,6 +380,11 @@ class _BookingSheetState extends State<_BookingSheet> {
     });
   }
 
+  List<String> get _selectedAmenityIds => [
+    for (final amenity in facility.amenityOptions)
+      if (_amenities.contains(amenity.name)) amenity.id,
+  ];
+
   void _removeAmenity(String label) {
     setState(() => _amenities.remove(label));
   }
@@ -395,6 +402,7 @@ class _BookingSheetState extends State<_BookingSheet> {
       purpose: _purpose.text.trim(),
       attachments: _attachments,
       requestedAmenities: normalizeRequestedAmenityLabels(facility, _amenities),
+      amenityIds: _selectedAmenityIds,
       quote: _serverQuote,
       acceptedTerms: _termsAccepted,
       discountClaimId: _selectedVoucherId,

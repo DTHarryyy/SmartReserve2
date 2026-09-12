@@ -18,7 +18,17 @@ class ProgressStrip extends StatelessWidget {
   final void Function(RequiredItem) onJump;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([
+      controller.form,
+      controller.map,
+      controller.photos,
+      controller,
+    ]),
+    builder: (context, _) => _content(context),
+  );
+
+  Widget _content(BuildContext context) {
     final draft = controller.draft;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
