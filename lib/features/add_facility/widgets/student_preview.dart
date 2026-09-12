@@ -55,7 +55,17 @@ class StudentPreview extends StatelessWidget {
   final AddFacilityController controller;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([
+      controller.form,
+      controller.map,
+      controller.photos,
+      controller.amenities,
+    ]),
+    builder: (context, _) => _content(context),
+  );
+
+  Widget _content(BuildContext context) {
     final data = _cardDataFromDraft(controller.draft);
     final tooltip = 'Preview reserve action for ${data.name}';
 
@@ -84,7 +94,7 @@ class StudentPreview extends StatelessWidget {
             const SizedBox(height: 9),
             Center(
               child: Text(
-                controller.coordLabel,
+                controller.map.coordLabel,
                 style: mono(10.5, color: context.srColors.muted),
               ),
             ),

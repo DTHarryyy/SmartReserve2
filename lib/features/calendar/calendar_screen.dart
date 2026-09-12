@@ -700,13 +700,13 @@ class _CalendarBody extends StatelessWidget {
     }
 
     final emptyState = _calendarEmptyState(data);
-    final calendar = compact
-        ? _CompactAgenda(data: data)
-        : switch (data.viewMode) {
-            CalendarViewMode.month => _MonthView(data: data),
-            CalendarViewMode.week => _WeekView(data: data),
-            CalendarViewMode.day => _DayView(data: data),
-          };
+    final calendar = switch (data.viewMode) {
+      CalendarViewMode.month => _MonthView(data: data, compact: compact),
+      CalendarViewMode.week when compact => _CompactAgenda(data: data),
+      CalendarViewMode.day when compact => _CompactAgenda(data: data),
+      CalendarViewMode.week => _WeekView(data: data),
+      CalendarViewMode.day => _DayView(data: data),
+    };
 
     if (emptyState == null) return calendar;
     final card = _CalendarEmptyStateCard(
@@ -1107,8 +1107,9 @@ class _CompactAgenda extends StatelessWidget {
 }
 
 class _MonthView extends StatelessWidget {
-  const _MonthView({required this.data});
+  const _MonthView({required this.data, this.compact = false});
   final _CalendarData data;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1121,10 +1122,15 @@ class _MonthView extends StatelessWidget {
           final availableWidth = constraints.maxWidth.isFinite
               ? constraints.maxWidth
               : 760.0;
-          final narrow = availableWidth < 760;
+          final narrow = !compact && availableWidth < 760;
           final grid = SizedBox(
             width: narrow ? 760 : availableWidth,
-            child: _grid(context, start, events, narrow ? 104 : 118),
+            child: _grid(
+              context,
+              start,
+              events,
+              compact ? 62 : (narrow ? 104 : 118),
+            ),
           );
           return narrow
               ? SingleChildScrollView(

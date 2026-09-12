@@ -201,6 +201,8 @@ class SessionProfile {
 enum AuthFailureKind {
   invalidCredentials,
   emailUnconfirmed,
+  emailConfirmationRequired,
+  emailAlreadyRegistered,
   rateLimited,
   network,
   profileMissing,
@@ -226,12 +228,35 @@ class AuthSessionException implements Exception {
   String toString() => 'Auth session failure: ${kind.name}';
 }
 
+const _profileContractErrorCodes = <String>{
+  // PostgREST cannot resolve an embedded relationship, RPC, or table from its
+  // schema cache. These are deployment/schema failures, not user failures.
+  'PGRST200',
+  'PGRST201',
+  'PGRST202',
+  'PGRST205',
+  // PostgreSQL undefined column, table, and function errors respectively.
+  '42703',
+  '42P01',
+  '42883',
+};
+
+bool _isProfileContractError(PostgrestException error) =>
+    _profileContractErrorCodes.contains(error.code);
+
+AuthSessionException _profileContractFailure(Object cause, {String? code}) =>
+    AuthSessionException(
+      kind: AuthFailureKind.profileContractUnavailable,
+      backendCode: code,
+      cause: cause,
+    );
+
 AuthSessionException classifyAuthFailure(Object error) {
   if (error is AuthSessionException) return error;
 
   if (error is AuthException) {
     final message = error.message.toLowerCase();
-    final status = '${error.statusCode ?? ''}';
+    final status = error.statusCode?.toString() ?? '';
     if (status == '429' || message.contains('rate limit')) {
       return AuthSessionException(
         kind: AuthFailureKind.rateLimited,
@@ -257,6 +282,15 @@ AuthSessionException classifyAuthFailure(Object error) {
         cause: error,
       );
     }
+    if (message.contains('already registered') ||
+        message.contains('already been registered')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.emailAlreadyRegistered,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
   }
 
   if (error is PostgrestException) {
@@ -268,15 +302,8 @@ AuthSessionException classifyAuthFailure(Object error) {
         cause: error,
       );
     }
-    if (code == 'PGRST200' ||
-        code == 'PGRST201' ||
-        code == 'PGRST202' ||
-        code == '42883') {
-      return AuthSessionException(
-        kind: AuthFailureKind.profileContractUnavailable,
-        backendCode: code,
-        cause: error,
-      );
+    if (_isProfileContractError(error)) {
+      return _profileContractFailure(error, code: code);
     }
   }
 
@@ -291,12 +318,10 @@ AuthSessionException classifyAuthFailure(Object error) {
   if (message.contains('pgrst200') ||
       message.contains('pgrst201') ||
       message.contains('pgrst202') ||
+      message.contains('pgrst205') ||
       message.contains('schema cache') ||
       message.contains('get_my_session_profile')) {
-    return AuthSessionException(
-      kind: AuthFailureKind.profileContractUnavailable,
-      cause: error,
-    );
+    return _profileContractFailure(error);
   }
   if (message.contains('permission denied') || message.contains('42501')) {
     return AuthSessionException(
@@ -1078,6 +1103,8 @@ class BackendReservation {
     this.acceptedTerms = const [],
     this.feedback,
     this.permit,
+    this.signatureRequestId,
+    this.signatureRequestStatus,
     this.useAssessments = const [],
   });
 
@@ -1127,6 +1154,8 @@ class BackendReservation {
   final List<AcceptedTerms> acceptedTerms;
   final BackendFeedback? feedback;
   final ReservationPermit? permit;
+  final String? signatureRequestId;
+  final String? signatureRequestStatus;
   final List<BackendReservationUseAssessment> useAssessments;
 
   factory BackendReservation.fromJson(Map<String, dynamic> json) {
@@ -1140,6 +1169,9 @@ class BackendReservation {
     )..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     final events = rows('reservation_events', BackendReservationEvent.fromJson)
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final signature = _latestSignatureRequest(
+      json['reservation_signature_requests'],
+    );
     return BackendReservation(
       id: json['id'] as String,
       requesterId: json['requester_id'] as String,
@@ -1227,6 +1259,8 @@ class BackendReservation {
               _embeddedOne(json['reservation_feedback'])!,
             ),
       permit: _activePermit(json['reservation_permits']),
+      signatureRequestId: signature?.id,
+      signatureRequestStatus: signature?.status,
       useAssessments: [
         for (final raw
             in (json['reservation_use_assessments'] as List? ?? const []))
@@ -1245,6 +1279,19 @@ ReservationPermit? _activePermit(dynamic raw) {
   final active = rows.where((row) => row['status'] == 'active').toList();
   if (active.isEmpty) return null;
   return ReservationPermit.fromJson(active.first);
+}
+
+({String id, String status})? _latestSignatureRequest(dynamic raw) {
+  final rows =
+      (raw as List? ?? const [])
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList()
+        ..sort(
+          (a, b) => '${b['requested_at']}'.compareTo('${a['requested_at']}'),
+        );
+  if (rows.isEmpty) return null;
+  final row = rows.first;
+  return (id: '${row['id']}', status: '${row['status']}');
 }
 
 String _legacyLifecycle(String status) => switch (status) {
@@ -2692,6 +2739,17 @@ abstract interface class SmartReserveBackend {
   Stream<AuthState> get authChanges;
   Future<void> signIn(String email, String password);
   Future<SessionProfile> signInAndLoadProfile(String email, String password);
+  Future<void> requestPasswordReset(String email);
+  Future<void> verifyPasswordResetCode({
+    required String email,
+    required String code,
+  });
+  Future<void> updatePassword(String password);
+  Future<SessionProfile> createExternalGuestAccount({
+    required String fullName,
+    required String email,
+    required String password,
+  });
   Future<void> signOut();
   Future<SessionProfile?> currentProfile();
   Future<void> completeGuestOnboarding();
@@ -2866,6 +2924,16 @@ abstract interface class SmartReserveBackend {
   Future<AuditPage> auditEntries(AuditQuery query);
   Future<void> recordAuditExport(AuditQuery query, int rowCount);
   Future<void> revertAuditEntry(String entryId, String reason);
+  Future<void> requestReservationSignature(String requestId);
+  Future<void> submitReservationSignature({
+    required String signatureRequestId,
+    required String requestId,
+    required ReservationUpload signature,
+  });
+  Future<void> uploadCeoSignature(ReservationUpload signature);
+  Future<Uint8List?> permitUserSignature(String signatureId);
+  Future<Uint8List?> protectedCeoSignature(String requestId, String permitId);
+  Future<Uint8List?> officialCeoSignature(String requestId, String permitId);
   String facilityPhotoUrl(String path);
 }
 
@@ -3386,6 +3454,21 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       _client.auth.signInWithPassword(email: email, password: password);
 
   @override
+  Future<void> requestPasswordReset(String email) =>
+      _client.auth.resetPasswordForEmail(email);
+
+  @override
+  Future<void> verifyPasswordResetCode({
+    required String email,
+    required String code,
+  }) =>
+      _client.auth.verifyOTP(email: email, token: code, type: OtpType.recovery);
+
+  @override
+  Future<void> updatePassword(String password) =>
+      _client.auth.updateUser(UserAttributes(password: password));
+
+  @override
   Future<SessionProfile> signInAndLoadProfile(
     String email,
     String password,
@@ -3414,6 +3497,33 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     }
   }
 
+  @override
+  Future<SessionProfile> createExternalGuestAccount({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final response = await _client.auth.signUp(
+        email: email,
+        password: password,
+        data: {'full_name': fullName},
+      );
+      if (response.session == null || user == null) {
+        throw const AuthSessionException(
+          kind: AuthFailureKind.emailConfirmationRequired,
+        );
+      }
+      final profile = await currentProfile();
+      if (profile == null) {
+        throw const AuthSessionException(kind: AuthFailureKind.profileMissing);
+      }
+      return profile;
+    } catch (error) {
+      throw classifyAuthFailure(error);
+    }
+  }
+
   Future<void> signOut() => _client.auth.signOut();
 
   Future<SessionProfile?> currentProfile() async {
@@ -3431,9 +3541,21 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     }
     if (row == null) return null;
     if (row is! Map) {
-      throw StateError('Session profile returned an invalid response.');
+      throw _profileContractFailure(
+        StateError('Session profile returned an invalid response.'),
+      );
     }
-    return SessionProfile.fromJson(Map<String, dynamic>.from(row));
+    return _parseSessionProfile(Map<String, dynamic>.from(row));
+  }
+
+  SessionProfile _parseSessionProfile(Map<String, dynamic> row) {
+    try {
+      return SessionProfile.fromJson(row);
+    } on FormatException catch (error) {
+      // A valid account paired with an unparseable row means the client and
+      // database profile contracts were deployed out of sync.
+      throw _profileContractFailure(error);
+    }
   }
 
   Future<SessionProfile?> _legacyCurrentProfile(User currentUser) async {
@@ -3463,29 +3585,38 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
               unitJson['booking_audience'];
         }
       }
-      return SessionProfile.fromJson(json);
+      return _parseSessionProfile(json);
     } on PostgrestException catch (error) {
       // A project that predates the organization-account migrations cannot
       // expose the relationship or the suspension helper. Its base profile is
       // still sufficient to restore an Internal Admin session while it is
       // upgraded. Do not hide permission failures behind this compatibility
       // path.
-      if (error.code != 'PGRST200' &&
-          error.code != 'PGRST201' &&
-          error.code != 'PGRST202' &&
-          error.code != '42703' &&
-          error.code != '42883') {
+      if (!_isProfileContractError(error)) {
         rethrow;
       }
     }
 
-    final baseRow = await _client
-        .from('profiles')
-        .select()
-        .eq('id', currentUser.id)
-        .maybeSingle();
+    dynamic baseRow;
+    try {
+      baseRow = await _client
+          .from('profiles')
+          .select()
+          .eq('id', currentUser.id)
+          .maybeSingle();
+    } on PostgrestException catch (error) {
+      if (_isProfileContractError(error)) {
+        throw _profileContractFailure(error, code: error.code);
+      }
+      rethrow;
+    }
     if (baseRow == null) return null;
-    return SessionProfile.fromJson(Map<String, dynamic>.from(baseRow));
+    if (baseRow is! Map) {
+      throw _profileContractFailure(
+        StateError('Legacy session profile returned an invalid response.'),
+      );
+    }
+    return _parseSessionProfile(Map<String, dynamic>.from(baseRow));
   }
 
   Future<void> completeGuestOnboarding() async {
@@ -3630,6 +3761,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'reservation_terms_acceptances(accepted_at,content_hash,terms_versions(id,title,version,content)),'
       'payment_method:facility_payment_methods!reservation_requests_payment_method_id_fkey(*),'
       'reservation_feedback(*),reservation_permits(*),'
+      'reservation_signature_requests(id,status,requested_at,signed_at),'
       'reservation_use_assessments(*,reservation_use_assessment_files(*))';
 
   @override
@@ -4121,6 +4253,109 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_byte_size': bytes.lengthInBytes,
       },
     );
+  }
+
+  @override
+  Future<void> requestReservationSignature(String requestId) => _client.rpc(
+    'request_reservation_signature',
+    params: {'p_request_id': requestId},
+  );
+
+  @override
+  Future<void> submitReservationSignature({
+    required String signatureRequestId,
+    required String requestId,
+    required ReservationUpload signature,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    final path = '${currentUser.id}/$requestId/${_uuid()}-${signature.name}';
+    await _client.storage
+        .from('reservation-signatures')
+        .uploadBinary(
+          path,
+          signature.bytes,
+          fileOptions: FileOptions(contentType: signature.mimeType),
+        );
+    try {
+      await _client.rpc(
+        'submit_reservation_signature',
+        params: {
+          'p_signature_request_id': signatureRequestId,
+          'p_storage_path': path,
+          'p_file_name': signature.name,
+          'p_mime_type': signature.mimeType,
+          'p_byte_size': signature.bytes.lengthInBytes,
+          'p_sha256': sha256.convert(signature.bytes).toString(),
+        },
+      );
+    } catch (_) {
+      await _client.storage.from('reservation-signatures').remove([path]);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> uploadCeoSignature(ReservationUpload signature) async {
+    await _signatureFunction('upload_ceo', {
+      'fileName': signature.name,
+      'mimeType': signature.mimeType,
+      'bytesBase64': base64Encode(signature.bytes),
+    });
+  }
+
+  @override
+  Future<Uint8List?> permitUserSignature(String signatureId) async {
+    final row = await _client
+        .from('reservation_user_signatures')
+        .select('storage_path')
+        .eq('id', signatureId)
+        .maybeSingle();
+    if (row == null) return null;
+    return _client.storage
+        .from('reservation-signatures')
+        .download('${row['storage_path']}');
+  }
+
+  @override
+  Future<Uint8List?> protectedCeoSignature(String requestId, String permitId) =>
+      _signatureBytes('protected', requestId, permitId);
+
+  @override
+  Future<Uint8List?> officialCeoSignature(String requestId, String permitId) =>
+      _signatureBytes('official', requestId, permitId);
+
+  Future<Uint8List?> _signatureBytes(
+    String action,
+    String requestId,
+    String permitId,
+  ) async {
+    final data = await _signatureFunction(action, {
+      'requestId': requestId,
+      'permitId': permitId,
+    });
+    final encoded = data['protectedBase64'] ?? data['sourceBase64'];
+    return encoded is String && encoded.isNotEmpty
+        ? base64Decode(encoded)
+        : null;
+  }
+
+  Future<Map<String, dynamic>> _signatureFunction(
+    String action,
+    Map<String, dynamic> values,
+  ) async {
+    final response = await _client.functions.invoke(
+      'permit-signatures',
+      body: {'action': action, ...values},
+    );
+    if (response.data is! Map) {
+      throw StateError(
+        'Permit signature service returned an invalid response.',
+      );
+    }
+    final data = Map<String, dynamic>.from(response.data as Map);
+    if (data['error'] is String) throw StateError('${data['error']}');
+    return data;
   }
 
   @override

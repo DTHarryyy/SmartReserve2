@@ -41,7 +41,10 @@ class MapPane extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (showHeader) ...[
-          _Header(controller: controller),
+          AnimatedBuilder(
+            animation: Listenable.merge([controller.map, controller.form]),
+            builder: (context, _) => _Header(controller: controller),
+          ),
           const SizedBox(height: 12),
         ],
 
@@ -62,13 +65,25 @@ class MapPane extends StatelessWidget {
               strip: strip,
             ),
           ),
-        if (controller.advisory case final advisory?) ...[
-          const SizedBox(height: 12),
-          AdvisoryCard(advisory: advisory),
-        ],
+        AnimatedBuilder(
+          animation: Listenable.merge([controller.map, controller.form]),
+          builder: (context, _) => switch (controller.map.advisory) {
+            final advisory? => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 12),
+                AdvisoryCard(advisory: advisory),
+              ],
+            ),
+            null => const SizedBox.shrink(),
+          },
+        ),
         if (showFooter) ...[
           const SizedBox(height: 12),
-          _Footer(controller: controller),
+          AnimatedBuilder(
+            animation: controller.map,
+            builder: (context, _) => _Footer(controller: controller.map),
+          ),
         ],
       ],
     ),
@@ -82,7 +97,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (badge, badgeBg, badgeFg) = controller.pinBadge(context);
+    final (badge, badgeBg, badgeFg) = controller.map.pinBadge(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -110,14 +125,14 @@ class _Header extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                controller.mapHint,
+                controller.map.mapHint,
                 style: sans(11, color: context.srColors.ink4),
               ),
             ],
           ),
         ),
         const SizedBox(width: 10),
-        _TabSwitch(controller: controller),
+        _TabSwitch(controller: controller.map),
       ],
     );
   }
@@ -126,7 +141,7 @@ class _Header extends StatelessWidget {
 class _TabSwitch extends StatelessWidget {
   const _TabSwitch({required this.controller});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -205,58 +220,64 @@ class _MapSurface extends StatelessWidget {
   double get _control => compact ? 40 : 32;
 
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(13),
-    child: Container(
-      decoration: BoxDecoration(
-        color: context.srColors.mapBg,
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller.map,
+    builder: (context, _) {
+      final map = controller.map;
+      return ClipRRect(
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: context.srColors.borderField),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Positioned.fill(child: CampusMap(controller: controller)),
-
-          if (!controller.hasPin && !controller.mapOffline)
-            const Center(child: _DropHint()),
-
-          Positioned(
-            left: 12,
-            right: 12,
-            top: 12,
-            child: MapSearchBar(controller: controller, compact: compact),
+        child: Container(
+          decoration: BoxDecoration(
+            color: context.srColors.mapBg,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: context.srColors.borderField),
           ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Positioned.fill(child: CampusMap(controller: map)),
 
-          Positioned(
-            right: 12,
-            bottom: strip ? 12 : 64,
-            child: _MapTools(
-              controller: controller,
-              size: _control,
-              horizontal: strip,
-            ),
-          ),
+              if (!map.hasPin && !map.mapOffline)
+                const Center(child: _DropHint()),
 
-          if (controller.hasPin)
-            Positioned(
-              left: 12,
-              bottom: 12,
-              child: _PinReadout(
-                controller: controller,
-                compact: compact,
-                strip: strip,
+              Positioned(
+                left: 12,
+                right: 12,
+                top: 12,
+                child: MapSearchBar(controller: map, compact: compact),
               ),
-            ),
 
-          if (controller.mapOffline)
-            Positioned.fill(child: _OfflinePanel(controller: controller)),
+              Positioned(
+                right: 12,
+                bottom: strip ? 12 : 64,
+                child: _MapTools(
+                  controller: map,
+                  size: _control,
+                  horizontal: strip,
+                ),
+              ),
 
-          if (controller.tab == MapTab.preview)
-            Positioned.fill(child: StudentPreview(controller: controller)),
-        ],
-      ),
-    ),
+              if (map.hasPin)
+                Positioned(
+                  left: 12,
+                  bottom: 12,
+                  child: _PinReadout(
+                    controller: map,
+                    compact: compact,
+                    strip: strip,
+                  ),
+                ),
+
+              if (map.mapOffline)
+                Positioned.fill(child: _OfflinePanel(controller: map)),
+
+              if (map.tab == MapTab.preview)
+                Positioned.fill(child: StudentPreview(controller: controller)),
+            ],
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -299,7 +320,7 @@ class _MapTools extends StatelessWidget {
     required this.horizontal,
   });
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
   final double size;
 
   final bool horizontal;
@@ -382,7 +403,7 @@ class _MapTools extends StatelessWidget {
   static List<
     ({String glyph, String tooltip, bool active, VoidCallback onPressed})
   >
-  _tools(AddFacilityController c) => [
+  _tools(MapEditorController c) => [
     (
       glyph: '⌖',
       tooltip: 'Fit the campus',
@@ -421,7 +442,7 @@ class _PinReadout extends StatelessWidget {
     required this.strip,
   });
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
   final bool compact;
   final bool strip;
 
@@ -504,7 +525,7 @@ class _FloatingCard extends StatelessWidget {
 class _NudgePad extends StatelessWidget {
   const _NudgePad({required this.controller, required this.compact});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
   final bool compact;
 
   @override
@@ -560,7 +581,7 @@ class _NudgePad extends StatelessWidget {
 class _OfflinePanel extends StatelessWidget {
   const _OfflinePanel({required this.controller});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -626,7 +647,7 @@ class _OfflinePanel extends StatelessWidget {
 class _Footer extends StatelessWidget {
   const _Footer({required this.controller});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -657,7 +678,7 @@ class _Footer extends StatelessWidget {
   );
 }
 
-LatLng defaultMapCenter(AddFacilityController controller) =>
+LatLng defaultMapCenter(MapEditorController controller) =>
     controller.draft.pin ??
     buildingNamed(controller.draft.building)?.coords ??
     campus.center;

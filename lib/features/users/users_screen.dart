@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
+import '../../app/app_view.dart';
 import '../../model/account.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/decision_widgets.dart';
@@ -11,7 +12,6 @@ import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
 import 'invite_dialog.dart';
-import 'organization_accounts_dialog.dart';
 import 'user_detail_dialog.dart';
 
 import '../../theme/sr_theme.dart';
@@ -107,15 +107,13 @@ class _UsersScreenState extends State<UsersScreen> {
               actions: [
                 if (state.isInternalAdmin)
                   SrButton(
-                    label: 'Organization accounts',
+                    label: 'Organizations',
                     icon: const Icon(
                       Icons.account_tree_rounded,
                       size: SR.iconMd,
                       color: SR.onDark,
                     ),
-                    kind: SrButtonKind.primary,
-                    onPressed: () =>
-                        showOrganizationAccountsDialog(context, state),
+                    onPressed: () => state.goTo(AppView.organizations),
                   ),
                 if (state.isInternalAdmin)
                   SrButton(

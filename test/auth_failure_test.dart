@@ -32,6 +32,28 @@ void main() {
       );
     });
 
+    test('classifies missing legacy profile schema as a deployment issue', () {
+      for (final error in const [
+        PostgrestException(
+          message: 'The relationship could not be found in the schema cache',
+          code: 'PGRST200',
+        ),
+        PostgrestException(
+          message: 'Could not find the table in the schema cache',
+          code: 'PGRST205',
+        ),
+        PostgrestException(message: 'relation does not exist', code: '42P01'),
+      ]) {
+        final failure = classifyAuthFailure(error);
+
+        expect(failure.kind, AuthFailureKind.profileContractUnavailable);
+        expect(
+          AuthController.userMessageFor(failure),
+          'SmartReserve is updating account access. Please try again shortly.',
+        );
+      }
+    });
+
     test('maps profile and policy failures to safe fixed messages', () {
       expect(
         AuthController.userMessageFor(

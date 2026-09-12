@@ -36,7 +36,12 @@ const _grey = PdfColors.grey700;
 /// staff already recognise. No signature (the requester's or the
 /// signatory's) is drawn -- both are left as blank rules for a physical pen,
 /// or left entirely off when the paper form has none.
-Future<Uint8List> buildPermitPdf(ReservationPermit permit) async {
+Future<Uint8List> buildPermitPdf(
+  ReservationPermit permit, {
+  Uint8List? userSignature,
+  Uint8List? ceoSignature,
+  bool protectedCopy = true,
+}) async {
   final regular = pw.Font.ttf(
     await rootBundle.load('assets/fonts/IBMPlexSans-Regular.ttf'),
   );
@@ -72,7 +77,15 @@ Future<Uint8List> buildPermitPdf(ReservationPermit permit) async {
       build: (context) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Expanded(child: _formFrame(permit, fonts)),
+          pw.Expanded(
+            child: _formFrame(
+              permit,
+              fonts,
+              userSignature: userSignature,
+              ceoSignature: ceoSignature,
+              protectedCopy: protectedCopy,
+            ),
+          ),
           pw.SizedBox(height: 8),
           _recordStrip(permit, fonts),
         ],
@@ -99,7 +112,13 @@ class _Fonts {
   final pw.Font mono;
 }
 
-pw.Widget _formFrame(ReservationPermit permit, _Fonts f) => pw.Container(
+pw.Widget _formFrame(
+  ReservationPermit permit,
+  _Fonts f, {
+  Uint8List? userSignature,
+  Uint8List? ceoSignature,
+  required bool protectedCopy,
+}) => pw.Container(
   width: double.infinity,
   decoration: pw.BoxDecoration(border: pw.Border.all(color: _line, width: 0.9)),
   padding: const pw.EdgeInsets.all(14),
@@ -137,7 +156,13 @@ pw.Widget _formFrame(ReservationPermit permit, _Fonts f) => pw.Container(
         ),
       ),
       pw.SizedBox(height: 14),
-      _ruledField('Requested by:', '', f),
+      _signatureField(
+        'Requested by:',
+        permit.requesterName,
+        userSignature,
+        permit.userSignedAt,
+        f,
+      ),
       pw.Padding(
         padding: const pw.EdgeInsets.only(left: 68, top: 2),
         child: pw.Text(
@@ -154,7 +179,12 @@ pw.Widget _formFrame(ReservationPermit permit, _Fonts f) => pw.Container(
       pw.Spacer(),
       pw.Align(
         alignment: pw.Alignment.centerRight,
-        child: _approvalBlock(permit, f),
+        child: _approvalBlock(
+          permit,
+          f,
+          signature: ceoSignature,
+          protectedCopy: protectedCopy,
+        ),
       ),
     ],
   ),
@@ -501,14 +531,73 @@ pw.Widget _ruledField(
   ],
 );
 
-pw.Widget _approvalBlock(ReservationPermit permit, _Fonts f) => pw.Column(
+pw.Widget _signatureField(
+  String label,
+  String name,
+  Uint8List? signature,
+  DateTime? signedAt,
+  _Fonts f,
+) => pw.Row(
+  crossAxisAlignment: pw.CrossAxisAlignment.end,
+  children: [
+    pw.SizedBox(
+      width: 68,
+      child: pw.Text(
+        label,
+        style: pw.TextStyle(font: f.semiBold, fontSize: 9.5, color: _ink),
+      ),
+    ),
+    pw.SizedBox(width: 6),
+    pw.Expanded(
+      child: pw.Container(
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(bottom: pw.BorderSide(color: _line, width: 0.7)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            if (signature != null)
+              pw.Image(
+                pw.MemoryImage(signature),
+                height: 25,
+                fit: pw.BoxFit.contain,
+              ),
+            pw.Text(
+              name,
+              style: pw.TextStyle(font: f.regular, fontSize: 9.5, color: _ink),
+            ),
+            if (signedAt != null)
+              pw.Text(
+                'Signed ${formatDay(campusWallTime(signedAt))}',
+                style: pw.TextStyle(
+                  font: f.regular,
+                  fontSize: 7.5,
+                  color: _grey,
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  ],
+);
+
+pw.Widget _approvalBlock(
+  ReservationPermit permit,
+  _Fonts f, {
+  Uint8List? signature,
+  required bool protectedCopy,
+}) => pw.Column(
   crossAxisAlignment: pw.CrossAxisAlignment.end,
   children: [
     pw.Text(
       'APPROVED:',
       style: pw.TextStyle(font: f.semiBold, fontSize: 10, color: _ink),
     ),
-    pw.SizedBox(height: 26),
+    if (signature != null)
+      pw.Image(pw.MemoryImage(signature), height: 28, fit: pw.BoxFit.contain)
+    else
+      pw.SizedBox(height: 26),
     pw.Text(
       permit.signatoryName,
       style: pw.TextStyle(font: f.bold, fontSize: 10.5, color: _ink),
@@ -517,6 +606,20 @@ pw.Widget _approvalBlock(ReservationPermit permit, _Fonts f) => pw.Column(
       permit.signatoryTitle,
       style: pw.TextStyle(font: f.regular, fontSize: 9, color: _grey),
     ),
+    if (permit.ceoSignatureUploadedAt != null)
+      pw.Text(
+        'Signed ${formatDay(campusWallTime(permit.ceoSignatureUploadedAt!))}',
+        style: pw.TextStyle(font: f.regular, fontSize: 7.5, color: _grey),
+      ),
+    if (protectedCopy)
+      pw.Text(
+        'PROTECTED USER COPY',
+        style: pw.TextStyle(
+          font: f.semiBold,
+          fontSize: 7,
+          color: PdfColors.red,
+        ),
+      ),
   ],
 );
 

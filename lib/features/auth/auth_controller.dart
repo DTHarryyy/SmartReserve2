@@ -1,14 +1,22 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/app_state.dart';
+import '../../app/app_view.dart';
 import '../../backend/supabase_service.dart';
 import '../../model/verification.dart';
 
 enum AuthStep {
   signIn,
+  passwordResetRequest,
+  passwordResetSent,
+  passwordReset,
+  createAccount,
   initialPassword,
   accessRequired,
   question,
@@ -77,6 +85,7 @@ class AuthController extends ChangeNotifier {
   AuthController(this._state) {
     _hadSession = _state.hasSession;
     _state.addListener(_handleAppStateChanged);
+    _authSubscription = _backend?.authChanges.listen(_handleAuthChange);
     final profile = _state.sessionProfile;
     if (_state.hasSession && !_state.isAdmin && profile != null) {
       submissionId = _state.myVerification?.id;
@@ -87,23 +96,29 @@ class AuthController extends ChangeNotifier {
   final AppState _state;
   final _picker = ImagePicker();
   late bool _hadSession;
+  StreamSubscription<AuthState>? _authSubscription;
 
   AuthStep step = AuthStep.signIn;
   final emailField = TextEditingController();
+  final fullNameField = TextEditingController();
   final passwordField = TextEditingController();
   final confirmPasswordField = TextEditingController();
+  final resetCodeField = TextEditingController();
   final idField = TextEditingController();
   final unitField = TextEditingController();
   CampusClaim claim = CampusClaim.student;
   SelectedDocument? document;
   String? submissionId;
   String? emailError;
+  String? fullNameError;
   String? passwordError;
   String? confirmPasswordError;
+  String? resetCodeError;
   String? idError;
   String? unitError;
   String? documentError;
   String? operationError;
+  String? operationNotice;
   bool busy = false;
 
   SmartReserveBackend? get _backend => _state.backend;
@@ -140,9 +155,12 @@ class AuthController extends ChangeNotifier {
   @override
   void dispose() {
     _state.removeListener(_handleAppStateChanged);
+    _authSubscription?.cancel();
     emailField.dispose();
+    fullNameField.dispose();
     passwordField.dispose();
     confirmPasswordField.dispose();
+    resetCodeField.dispose();
     idField.dispose();
     unitField.dispose();
     super.dispose();
@@ -150,15 +168,30 @@ class AuthController extends ChangeNotifier {
 
   void refresh() => notifyListeners();
 
+  void setResetCode(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    final code = digits.length > 6 ? digits.substring(0, 6) : digits;
+    if (resetCodeField.text == code) return;
+    resetCodeField.value = TextEditingValue(
+      text: code,
+      selection: TextSelection.collapsed(offset: code.length),
+    );
+    resetCodeError = null;
+    notifyListeners();
+  }
+
   void goTo(AuthStep next) {
     step = next;
     emailError = null;
+    fullNameError = null;
     passwordError = null;
     confirmPasswordError = null;
+    resetCodeError = null;
     idError = null;
     unitError = null;
     documentError = null;
     operationError = null;
+    operationNotice = null;
     notifyListeners();
   }
 
@@ -168,8 +201,10 @@ class AuthController extends ChangeNotifier {
 
   void resetToSignIn() {
     emailField.clear();
+    fullNameField.clear();
     passwordField.clear();
     confirmPasswordField.clear();
+    resetCodeField.clear();
     idField.clear();
     unitField.clear();
     document = null;
@@ -184,6 +219,12 @@ class AuthController extends ChangeNotifier {
     final signedOut = _hadSession && !hasSession;
     _hadSession = hasSession;
     if (signedOut) resetToSignIn();
+  }
+
+  void _handleAuthChange(AuthState authState) {
+    if (authState.event != AuthChangeEvent.passwordRecovery) return;
+    _state.goTo(AppView.auth);
+    goTo(AuthStep.passwordReset);
   }
 
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
@@ -263,6 +304,96 @@ class AuthController extends ChangeNotifier {
         confirmPasswordField.clear();
         goTo(_nextStepFor(profile));
       }
+    });
+  }
+
+  Future<void> requestPasswordReset() async {
+    if (!_validateCredentials(requirePassword: false)) return;
+    await _perform(() async {
+      final backend = _backend;
+      if (backend == null) throw StateError('Supabase is not configured.');
+      await backend.requestPasswordReset(emailField.text.trim());
+      goTo(AuthStep.passwordResetSent);
+    });
+  }
+
+  Future<void> verifyPasswordResetCode() async {
+    final code = resetCodeField.text.trim();
+    resetCodeError = RegExp(r'^\d{6}$').hasMatch(code)
+        ? null
+        : 'Enter the six-digit code from your email.';
+    if (resetCodeError != null) {
+      notifyListeners();
+      return;
+    }
+    await _perform(() async {
+      final backend = _backend;
+      if (backend == null) throw StateError('Supabase is not configured.');
+      await backend.verifyPasswordResetCode(
+        email: emailField.text.trim(),
+        code: code,
+      );
+      resetCodeField.clear();
+      goTo(AuthStep.passwordReset);
+    });
+  }
+
+  Future<void> submitPasswordReset() async {
+    if (!passwordMeetsRequirements) {
+      passwordError = 'Your password does not meet all requirements.';
+      notifyListeners();
+      return;
+    }
+    if (confirmPasswordField.text != passwordField.text) {
+      confirmPasswordError = 'Enter the same new password again.';
+      notifyListeners();
+      return;
+    }
+    passwordError = null;
+    confirmPasswordError = null;
+    await _perform(() async {
+      final backend = _backend;
+      if (backend == null) throw StateError('Supabase is not configured.');
+      await backend.updatePassword(passwordField.text);
+      passwordField.clear();
+      confirmPasswordField.clear();
+      await _state.signOut();
+      goTo(AuthStep.signIn);
+      operationNotice = 'Password updated. Sign in with your new password.';
+    });
+  }
+
+  Future<void> createExternalGuestAccount() async {
+    fullNameError = fullNameField.text.trim().length >= 2
+        ? null
+        : 'Enter your full name.';
+    if (!_validateCredentials(requirePassword: true)) return;
+    if (fullNameError != null) {
+      notifyListeners();
+      return;
+    }
+    if (!passwordMeetsRequirements) {
+      passwordError = 'Your password does not meet all requirements.';
+      notifyListeners();
+      return;
+    }
+    if (confirmPasswordField.text != passwordField.text) {
+      confirmPasswordError = 'Enter the same password again.';
+      notifyListeners();
+      return;
+    }
+    await _perform(() async {
+      final backend = _backend;
+      if (backend == null) throw StateError('Supabase is not configured.');
+      final profile = await backend.createExternalGuestAccount(
+        fullName: fullNameField.text.trim(),
+        email: emailField.text.trim(),
+        password: passwordField.text,
+      );
+      passwordField.clear();
+      confirmPasswordField.clear();
+      await _state.applyBackendProfile(profile);
+      goTo(AuthStep.guest);
     });
   }
 
@@ -440,6 +571,10 @@ class AuthController extends ChangeNotifier {
           'That email address or password is incorrect.',
         AuthFailureKind.emailUnconfirmed =>
           'This prototype account is not confirmed. Contact an Internal Admin.',
+        AuthFailureKind.emailConfirmationRequired =>
+          'Check your email to confirm this account, then sign in.',
+        AuthFailureKind.emailAlreadyRegistered =>
+          'An account already uses that email address. Sign in instead.',
         AuthFailureKind.rateLimited =>
           'Too many sign-in attempts. Wait a few minutes and try again.',
         AuthFailureKind.network =>

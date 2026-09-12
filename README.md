@@ -120,7 +120,14 @@ flutter analyze
 ```
 
 Before running against a new Supabase project, apply the migrations in
-`supabase/migrations` and deploy the Edge Functions. The facilities migration
+`supabase/migrations` and deploy the Edge Functions. From an authenticated
+Supabase CLI environment, link the intended project and run `supabase db push`
+before releasing the Flutter client. In particular, the
+`20260905110000_auth_session_profile_contract.sql` migration must be applied:
+it installs `get_my_session_profile`, the authenticated login-profile contract.
+If that RPC is absent, valid credentials are accepted and then safely rejected
+because the application cannot establish the account's authorization profile.
+The facilities migration
 creates the table, RLS policies, realtime registration and public catalogue
 photo bucket, then imports the six original catalogue records once without
 fake photos.
@@ -131,11 +138,12 @@ for compatibility with older clients.
 
 ### Auth and prototype account setup
 
-Prototype public sign-up is disabled. Only active Internal Admins can create
+Public email sign-up creates only external guest accounts for outside renters
+and paying customers. Only active Internal Admins can create campus
 organization representative accounts, and they hand off the generated
 temporary password directly to the named account holder. No confirmation,
-invite, password-reset, or OTP email is required for prototype account
-provisioning.
+invite, password-reset, or OTP email is required for prototype organization
+account provisioning.
 
 ### Prototype bootstrap administrator
 
@@ -158,29 +166,32 @@ representative accounts. Each account-bearing organization automatically gets
 one active representative slot. To replace a representative, transfer or remove
 the current holder first; do not create a shared department password.
 
-For local Supabase, keep both public sign-up flags off:
+For local Supabase, enable public email sign-up so outside renters and paying
+customers can create an external guest account. Campus organization
+representative accounts must still be provisioned by an Internal Admin:
 
 ```toml
 [auth]
-enable_signup = false
+enable_signup = true
 
 [auth.email]
-enable_signup = false
+enable_signup = true
 enable_confirmations = false
 ```
 
-For the hosted project, disable public email sign-up and keep email
-confirmation disabled in Authentication settings. Admin API account creation
-continues to work while public sign-up is disabled.
+For the hosted project, enable public email sign-up and keep email
+confirmation disabled only when an immediate sign-in is desired. Public
+registrations are created as `external_guest` accounts; campus organization
+accounts continue to be created through the Admin API.
 
 Password reset, organization representative invitations, and administrator
 invitation resend require custom SMTP before user testing or release.
 Operational reservation, payment, and anomaly notices stay in-app for this
 release.
 
-Do not re-enable Supabase public sign-up or email confirmation for the
-prototype unless custom SMTP is already verified; doing so recreates the
-reported no-code account defect.
+If email confirmation is enabled for production, configure and verify custom
+SMTP first. The app will ask a new renter to confirm their email before signing
+in.
 
 For production, configure SMTP in Supabase Auth settings, not in committed
 files:
@@ -193,7 +204,8 @@ files:
 Set the deployed app URLs before enabling representative invitations:
 
 - Confirmation redirect URL: the app’s email-confirmation route
-- Password reset redirect URL: the app’s recovery route
+- Password reset: SmartReserve verifies the six-digit `{{ .Token }}` recovery
+  code in-app, so no redirect URL is needed for that flow.
 - Invitation redirect URL: the app’s invite/onboarding route, also passed to
   Edge Functions as `INVITE_REDIRECT_TO`
 - Password recovery Edge Function fallback: `RECOVERY_REDIRECT_TO`

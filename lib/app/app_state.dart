@@ -231,6 +231,15 @@ class AppState extends ChangeNotifier {
   AppView _profileOrigin = AppView.auth;
 
   void goTo(AppView next) {
+    if (next == AppView.organizations && !isInternalAdmin) {
+      showToast(
+        const ToastMessage(
+          'Organization management is restricted to Internal Admins.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
     if (isExternalAdmin &&
         (next == AppView.verifications || next == AppView.audit)) {
       showToast(
@@ -1398,16 +1407,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _upsertOrganizationSlot(BackendOrganizationAccountSlot row) {
-    final slot = _toOrganizationSlot(row);
-    final index = organizationSlots.indexWhere((item) => item.id == slot.id);
-    if (index == -1) {
-      organizationSlots = [...organizationSlots, slot];
-    } else {
-      organizationSlots = [...organizationSlots]..[index] = slot;
-    }
-  }
-
   Future<void> refreshOrganizationRegistry() async {
     final service = backend;
     if (service == null || !isInternalAdmin) return;
@@ -1442,6 +1441,20 @@ class AppState extends ChangeNotifier {
     if (service == null || !isInternalAdmin) {
       return 'Only an internal admin can manage organizations.';
     }
+    final normalizedName = name.trim().toLowerCase();
+    if (normalizedName.length < 2) {
+      return 'Enter an organization name with at least two characters.';
+    }
+    final duplicate = organizationUnits.any(
+      (unit) =>
+          unit.active &&
+          unit.id != unitId &&
+          unit.parentId == parentId &&
+          unit.name.trim().toLowerCase() == normalizedName,
+    );
+    if (duplicate) {
+      return 'An active organization named "${name.trim()}" already exists under this parent.';
+    }
     try {
       final row = unitId == null
           ? await service.createOrganizationUnit(
@@ -1464,6 +1477,11 @@ class AppState extends ChangeNotifier {
       await refreshOrganizationRegistry();
       organizationRegistryError = null;
       notifyListeners();
+      if (unitId == null) {
+        showToast(ToastMessage('Organization "${row.name}" created.'));
+      } else {
+        showToast(ToastMessage('Organization "${row.name}" updated.'));
+      }
       return null;
     } catch (error) {
       return _accountActionError(error, 'Organization was not saved.');
@@ -1708,7 +1726,17 @@ class AppState extends ChangeNotifier {
 
   static String _accountError(Object error) {
     if (error is! AccountManagementException) {
-      return 'SmartReserve could not complete this account action. Try again.';
+      final raw = '$error'.toLowerCase();
+      if (raw.contains('duplicate key') ||
+          raw.contains('already exists') ||
+          raw.contains('unique constraint')) {
+        return 'An organization with this name already exists under the selected parent.';
+      }
+      return friendlyBackendMessage(
+        '$error',
+        fallback:
+            'SmartReserve could not complete this account action. Try again.',
+      );
     }
     final reference = error.requestId == null
         ? ''
@@ -2190,6 +2218,8 @@ class AppState extends ChangeNotifier {
       paymentTransactions: row.payments,
       paymentMethod: row.paymentMethod,
       permit: row.permit,
+      signatureRequestId: row.signatureRequestId,
+      signatureRequestStatus: row.signatureRequestStatus,
       priceLines: [
         for (final line in row.priceLines)
           PriceSnapshotLine(
@@ -5388,6 +5418,7 @@ class AppState extends ChangeNotifier {
     required List<DateTime> startsAt,
     required List<DateTime> endsAt,
     int? headcount,
+    List<String> amenityIds = const [],
     String? discountClaimId,
   }) async {
     final service = _coreBackend;
@@ -5456,7 +5487,7 @@ class AppState extends ChangeNotifier {
         startsAt: startsAt,
         endsAt: endsAt,
         headcount: headcount ?? 1,
-        amenityIds: const [],
+        amenityIds: amenityIds,
         discountClaimId: discountClaimId,
       );
     } catch (error) {
@@ -5473,6 +5504,7 @@ class AppState extends ChangeNotifier {
     required String purpose,
     List<ReservationUpload> attachments = const [],
     List<String> requestedAmenities = const [],
+    List<String> amenityIds = const [],
     BackendReservationQuote? quote,
     bool acceptedTerms = false,
     String? discountClaimId,
@@ -5511,6 +5543,7 @@ class AppState extends ChangeNotifier {
             startsAt: startsAt,
             endsAt: endsAt,
             headcount: heads,
+            amenityIds: amenityIds,
             discountClaimId: discountClaimId,
           );
       if (core != null && authoritativeQuote == null) {
@@ -5538,7 +5571,7 @@ class AppState extends ChangeNotifier {
               authoritativeQuote?.totalAmountCentavos ??
               quoteFor(facility, duration) * 100,
           requestedAmenities: normalizedRequestedAmenities,
-          amenityIds: const [],
+          amenityIds: amenityIds,
           termsVersionIds: [
             for (final term
                 in authoritativeQuote?.terms ?? const <BackendTermsVersion>[])
@@ -5765,6 +5798,89 @@ class AppState extends ChangeNotifier {
         ),
       );
       return false;
+    }
+  }
+
+  Future<bool> requestReservationSignature(String requestId) async {
+    if (!isInternalAdmin || backend == null) return false;
+    try {
+      await backend!.requestReservationSignature(requestId);
+      await refreshReservations();
+      showToast(const ToastMessage('E-signature request sent.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> submitReservationSignature({
+    required String signatureRequestId,
+    required String requestId,
+    required ReservationUpload signature,
+  }) async {
+    if (backend == null) return false;
+    try {
+      await backend!.submitReservationSignature(
+        signatureRequestId: signatureRequestId,
+        requestId: requestId,
+        signature: signature,
+      );
+      await refreshReservations();
+      showToast(const ToastMessage('Your e-signature was submitted.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> uploadCeoSignature(ReservationUpload signature) async {
+    if (!isInternalAdmin || backend == null) return false;
+    try {
+      await backend!.uploadCeoSignature(signature);
+      showToast(const ToastMessage('CEO signature updated.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<Uint8List?> permitUserSignature(String signatureId) async {
+    try {
+      return await backend?.permitUserSignature(signatureId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> protectedCeoSignature(
+    String requestId,
+    String permitId,
+  ) async {
+    try {
+      return await backend?.protectedCeoSignature(requestId, permitId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> officialCeoSignature(
+    String requestId,
+    String permitId,
+  ) async {
+    if (!isInternalAdmin) return null;
+    try {
+      return await backend?.officialCeoSignature(requestId, permitId);
+    } catch (_) {
+      return null;
     }
   }
 

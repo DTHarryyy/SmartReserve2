@@ -40,7 +40,7 @@ class FormRail extends StatelessWidget {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (controller.draftFound) DraftBanner(controller: controller),
+        DraftBanner(controller: controller),
         ProgressStrip(controller: controller, onJump: _jumpTo),
         DetailsSection(controller: controller, stacked: stacked, dense: dense),
         LocationSection(controller: controller, stacked: stacked, dense: dense),
@@ -50,8 +50,12 @@ class FormRail extends StatelessWidget {
           columns: photoColumns,
           dense: dense,
         ),
-        AmenitiesSection(controller: controller, dense: dense),
-        RulesSection(controller: controller, stacked: stacked, dense: dense),
+        AmenitiesSection(controller: controller.amenities, dense: dense),
+        RulesSection(
+          controller: controller.form,
+          stacked: stacked,
+          dense: dense,
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 4, 2, 0),
           child: Text(

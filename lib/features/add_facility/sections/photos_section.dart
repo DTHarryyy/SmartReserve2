@@ -30,34 +30,41 @@ class PhotosSection extends StatelessWidget {
       defaultTargetPlatform == TargetPlatform.linux;
 
   @override
-  Widget build(BuildContext context) {
-    final photos = controller.draft.photos;
-    return SectionCard(
-      anchorKey: controller.sectionKeys[RequiredItem.photos],
-      number: '04',
-      title: 'Photos',
-      caption: 'First image becomes the cover',
-      dense: dense,
-      titleSuffix: Text(
-        ' *',
-        style: sans(13.5, w: 600, color: context.srColors.red),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _dropZone(context),
-          SrErrorText(controller.errors[RequiredItem.photos]),
-          if (photos.isNotEmpty) ...[const SizedBox(height: 13), _grid(photos)],
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([controller.photos, controller]),
+    builder: (context, _) {
+      final photos = controller.draft.photos;
+      return SectionCard(
+        anchorKey: controller.sectionKeys[RequiredItem.photos],
+        number: '04',
+        title: 'Photos',
+        caption: 'First image becomes the cover',
+        dense: dense,
+        titleSuffix: Text(
+          ' *',
+          style: sans(13.5, w: 600, color: context.srColors.red),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _dropZone(context),
+            SrErrorText(controller.errors[RequiredItem.photos]),
+            if (photos.isNotEmpty) ...[
+              const SizedBox(height: 13),
+              _grid(photos),
+            ],
+          ],
+        ),
+      );
+    },
+  );
 
   Widget _dropZone(BuildContext context) {
+    final photos = controller.photos;
     final zone = DashedBox(
       radius: 11,
-      color: controller.dragging ? SR.primary : context.srColors.dashed,
-      background: controller.dragging
+      color: photos.dragging ? SR.primary : context.srColors.dashed,
+      background: photos.dragging
           ? context.srColors.primaryTint
           : Colors.transparent,
       child: Column(
@@ -68,7 +75,7 @@ class PhotosSection extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            'JPG or PNG · up to ${AddFacilityController.maxPhotos} images · '
+            'JPG or PNG · up to ${PhotosController.maxPhotos} images · '
             '10 MB each',
             textAlign: TextAlign.center,
             style: sans(11, color: context.srColors.muted),
@@ -83,13 +90,13 @@ class PhotosSection extends StatelessWidget {
                 label: 'Browse files',
                 dense: true,
                 fontSize: 11.5,
-                onPressed: controller.photosFull ? null : controller.pickFiles,
+                onPressed: photos.photosFull ? null : photos.pickFiles,
               ),
               SrButton(
                 label: 'Use camera',
                 dense: true,
                 fontSize: 11.5,
-                onPressed: controller.photosFull ? null : controller.pickCamera,
+                onPressed: photos.photosFull ? null : photos.pickCamera,
               ),
             ],
           ),
@@ -100,11 +107,11 @@ class PhotosSection extends StatelessWidget {
     if (!_supportsFileDrop) return zone;
 
     return DropTarget(
-      onDragEntered: (_) => controller.setDragging(true),
-      onDragExited: (_) => controller.setDragging(false),
+      onDragEntered: (_) => photos.setDragging(true),
+      onDragExited: (_) => photos.setDragging(false),
       onDragDone: (detail) {
-        controller.setDragging(false);
-        controller.addFiles(detail.files);
+        photos.setDragging(false);
+        photos.addFiles(detail.files);
       },
       child: zone,
     );
@@ -128,7 +135,7 @@ class PhotosSection extends StatelessWidget {
           childAspectRatio: 4 / 3,
         ),
         itemBuilder: (context, index) => _PhotoTile(
-          controller: controller,
+          controller: controller.photos,
           photo: photos[index],
           index: index,
           total: photos.length,
@@ -146,7 +153,7 @@ class _PhotoTile extends StatelessWidget {
     required this.total,
   });
 
-  final AddFacilityController controller;
+  final PhotosController controller;
   final FacilityPhoto photo;
   final int index;
   final int total;

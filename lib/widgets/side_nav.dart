@@ -16,6 +16,7 @@ const adminSections = <AppView>[
   AppView.feedback,
   AppView.anomalies,
   AppView.users,
+  AppView.organizations,
   AppView.loyalty,
   AppView.reports,
   AppView.audit,
@@ -37,7 +38,12 @@ const _internalGroups = <NavGroup>[
   ),
   (
     label: 'Administration',
-    items: [AppView.users, AppView.reports, AppView.audit],
+    items: [
+      AppView.users,
+      AppView.organizations,
+      AppView.reports,
+      AppView.audit,
+    ],
   ),
 ];
 

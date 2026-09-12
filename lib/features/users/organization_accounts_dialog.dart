@@ -1,46 +1,29 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../model/account.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/file_export.dart';
+import '../../widgets/record_table.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
+import '../../widgets/sr_scroll_view.dart';
 
-Future<void> showOrganizationAccountsDialog(
-  BuildContext context,
-  AppState state,
-) {
-  if (state.isInternalAdmin) {
-    unawaited(state.refreshOrganizationRegistry());
-  }
-  return showDialog<void>(
-    context: context,
-    barrierColor: context.srColors.scrim,
-    builder: (_) => _OrganizationAccountsDialog(state: state),
-  );
-}
-
-class _OrganizationAccountsDialog extends StatefulWidget {
-  const _OrganizationAccountsDialog({required this.state});
-
-  final AppState state;
+class OrganizationsScreen extends StatefulWidget {
+  const OrganizationsScreen({super.key});
 
   @override
-  State<_OrganizationAccountsDialog> createState() =>
-      _OrganizationAccountsDialogState();
+  State<OrganizationsScreen> createState() => _OrganizationsScreenState();
 }
 
-class _OrganizationAccountsDialogState
-    extends State<_OrganizationAccountsDialog> {
+class _OrganizationsScreenState extends State<OrganizationsScreen> {
   static const _targetAccounts = 9;
   static const _unitTypes = [
     'college',
@@ -69,6 +52,13 @@ class _OrganizationAccountsDialogState
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    final state = AppScope.read(context);
+    if (state.isInternalAdmin) state.refreshOrganizationRegistry();
+  }
+
+  @override
   void dispose() {
     _unitName.dispose();
     _unitCode.dispose();
@@ -79,29 +69,28 @@ class _OrganizationAccountsDialogState
     super.dispose();
   }
 
-  AppState get _state => widget.state;
+  AppState get _state => AppScope.of(context);
 
-  List<OrganizationUnit> get _units => [
-    ..._state.organizationUnits,
-  ]..sort((a, b) {
-    final policy = (a.requiresRepresentative ? 1 : 0)
-        .compareTo(b.requiresRepresentative ? 1 : 0);
-    if (policy != 0) return policy;
-    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-  });
+  List<OrganizationUnit> get _units =>
+      [..._state.organizationUnits]..sort((a, b) {
+        final policy = (a.requiresRepresentative ? 1 : 0).compareTo(
+          b.requiresRepresentative ? 1 : 0,
+        );
+        if (policy != 0) return policy;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
 
   List<OrganizationUnit> get _containers => [
     for (final unit in _state.organizationUnits)
       if (unit.active && !unit.requiresRepresentative) unit,
   ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-  List<OrganizationAccountSlot> get _slots => [
-    ..._state.organizationSlots,
-  ]..sort((a, b) {
-    final aName = a.unit?.name ?? a.label;
-    final bName = b.unit?.name ?? b.label;
-    return aName.toLowerCase().compareTo(bName.toLowerCase());
-  });
+  List<OrganizationAccountSlot> get _slots =>
+      [..._state.organizationSlots]..sort((a, b) {
+        final aName = a.unit?.name ?? a.label;
+        final bName = b.unit?.name ?? b.label;
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
+      });
 
   int get _configuredAccounts =>
       _slots.where((slot) => slot.active && (slot.unit?.active ?? true)).length;
@@ -131,22 +120,23 @@ class _OrganizationAccountsDialogState
         account,
   ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-  Future<void> _perform(Future<String?> Function() action) async {
+  Future<bool> _perform(Future<String?> Function() action) async {
     setState(() {
       _busy = true;
       _error = null;
       _notice = null;
     });
     final error = await action();
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       _busy = false;
       _error = error;
     });
+    return error == null;
   }
 
-  Future<void> _createUnit() async {
-    await _perform(() async {
+  Future<bool> _createUnit() async {
+    return _perform(() async {
       final error = await _state.saveOrganizationUnit(
         parentId: _parent?.id,
         name: _unitName.text,
@@ -165,11 +155,11 @@ class _OrganizationAccountsDialogState
     });
   }
 
-  Future<void> _createRepresentative() async {
+  Future<bool> _createRepresentative() async {
     final slot = _selectedSlot;
     if (slot == null) {
       setState(() => _error = 'Choose a vacant organization slot.');
-      return;
+      return false;
     }
     setState(() {
       _busy = true;
@@ -181,13 +171,13 @@ class _OrganizationAccountsDialogState
       email: _repEmail.text,
       slotId: slot.id,
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     if (result.error != null) {
       setState(() {
         _busy = false;
         _error = result.error;
       });
-      return;
+      return false;
     }
     setState(() {
       _busy = false;
@@ -198,6 +188,7 @@ class _OrganizationAccountsDialogState
       _repEmail.clear();
       _selectedSlot = null;
     });
+    return true;
   }
 
   Future<void> _resetPassword(Account account) async {
@@ -206,7 +197,9 @@ class _OrganizationAccountsDialogState
       _error = null;
       _notice = null;
     });
-    final result = await _state.resetOrganizationRepresentativePassword(account);
+    final result = await _state.resetOrganizationRepresentativePassword(
+      account,
+    );
     if (!mounted) return;
     if (result.error != null) {
       setState(() {
@@ -334,40 +327,40 @@ class _OrganizationAccountsDialogState
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _state,
-    builder: (context, _) => SrAdaptiveDialog(
-      maxWidth: 880,
-      maxHeight: 820,
-      padding: EdgeInsets.all(
-        SR.isCompact(MediaQuery.sizeOf(context).width) ? 16 : 22,
-      ),
-      child: SingleChildScrollView(
+    builder: (context, _) {
+      if (!_state.isInternalAdmin) {
+        return Center(
+          child: Text(
+            'Organization management is restricted to Internal Admins.',
+            style: SrType.bodySm(color: context.srColors.muted),
+          ),
+        );
+      }
+      final width = MediaQuery.sizeOf(context).width;
+      final compact = SR.isCompact(width);
+      return SrScrollView(
+        padding: SR.pageInsets(width, top: compact ? 14 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Organization accounts', style: SrType.heading()),
-                      const SizedBox(height: 5),
-                      Text(
-                        'One named representative account per organization. Direct temporary credentials only.',
-                        style: SrType.bodySm(color: context.srColors.ink4),
-                      ),
-                    ],
-                  ),
-                ),
-                SrButton(
-                  label: 'Close',
-                  dense: true,
-                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                ),
-              ],
+            SrPageHeader(
+              title: 'Organizations',
+              description:
+                  '${_units.length} organization${_units.length == 1 ? '' : 's'} configured',
+              actions: compact ? const [] : _pageActions(),
             ),
+            if (compact) ...[
+              const SizedBox(height: SR.space12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  spacing: SR.space8,
+                  runSpacing: SR.space8,
+                  alignment: WrapAlignment.end,
+                  children: _pageActions(),
+                ),
+              ),
+            ],
             const SizedBox(height: SR.space16),
             _progressCard(),
             const SizedBox(height: SR.space12),
@@ -379,12 +372,11 @@ class _OrganizationAccountsDialogState
               SrErrorText(_state.organizationRegistryError),
               const SizedBox(height: SR.space12),
             ],
-            _setupCard(),
-            const SizedBox(height: SR.space12),
-            _representativeForm(),
-            const SizedBox(height: SR.space12),
-            _registryList(),
-            SrErrorText(_error),
+            _registryTable(),
+            if (_error != null) ...[
+              const SizedBox(height: SR.space12),
+              SrErrorText(_error),
+            ],
             if (_notice != null) ...[
               const SizedBox(height: SR.space8),
               Text(
@@ -394,8 +386,180 @@ class _OrganizationAccountsDialogState
             ],
           ],
         ),
+      );
+    },
+  );
+
+  List<Widget> _pageActions() => [
+    SrButton(
+      label: 'Add organization',
+      icon: const Icon(Icons.add_business_rounded, size: SR.iconSm),
+      onPressed: _busy ? null : _showOrganizationDialog,
+    ),
+    SrButton(
+      label: 'Create representative account',
+      icon: const Icon(Icons.person_add_alt_1_rounded, size: SR.iconSm),
+      kind: SrButtonKind.primary,
+      onPressed: _busy ? null : _showRepresentativeDialog,
+    ),
+  ];
+
+  Future<void> _showOrganizationDialog() => showDialog<void>(
+    context: context,
+    barrierColor: context.srColors.scrim,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => SrAdaptiveDialog(
+        maxWidth: 760,
+        maxHeight: 760,
+        padding: const EdgeInsets.all(SR.space20),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _dialogHeader('Add organization', dialogContext),
+              const SizedBox(height: SR.space16),
+              _setupCard(
+                onSaved: () async {
+                  final saved = await _createUnit();
+                  if (!mounted) return;
+                  setDialogState(() {});
+                  if (saved && dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                },
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: SR.space12),
+                SrErrorText(_error),
+              ],
+            ],
+          ),
+        ),
       ),
     ),
+  );
+
+  Future<void> _showRepresentativeDialog([OrganizationAccountSlot? slot]) {
+    setState(() {
+      _selectedSlot = slot;
+      _error = null;
+    });
+    return showDialog<void>(
+      context: context,
+      barrierColor: context.srColors.scrim,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => SrAdaptiveDialog(
+          maxWidth: 660,
+          maxHeight: 680,
+          padding: const EdgeInsets.all(SR.space20),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _dialogHeader('Create representative account', dialogContext),
+                const SizedBox(height: SR.space16),
+                _representativeForm(
+                  onChanged: () => setDialogState(() {}),
+                  onCreated: () async {
+                    final created = await _createRepresentative();
+                    if (!mounted) return;
+                    setDialogState(() {});
+                    if (created && dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: SR.space12),
+                  SrErrorText(_error),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showTransferDialog(
+    OrganizationAccountSlot slot,
+    Account account,
+  ) {
+    setState(() {
+      _transferReplacement = null;
+      _error = null;
+    });
+    return showDialog<void>(
+      context: context,
+      barrierColor: context.srColors.scrim,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => SrAdaptiveDialog(
+          maxWidth: 520,
+          maxHeight: 440,
+          padding: const EdgeInsets.all(SR.space20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dialogHeader('Transfer representative', dialogContext),
+              const SizedBox(height: SR.space8),
+              Text(
+                'Choose an active, unassigned account to represent ${slot.unit?.label ?? slot.label}.',
+                style: SrType.bodySm(),
+              ),
+              const SizedBox(height: SR.space16),
+              const SrLabel('Replacement account'),
+              SrSelect<Account>(
+                value: _transferReplacement,
+                items: _transferCandidates,
+                placeholder: 'Choose an account',
+                labelOf: (candidate) =>
+                    '${candidate.name} · ${candidate.email}',
+                onChanged: _busy
+                    ? (_) {}
+                    : (value) {
+                        setState(() => _transferReplacement = value);
+                        setDialogState(() {});
+                      },
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: SR.space12),
+                SrErrorText(_error),
+              ],
+              const SizedBox(height: SR.space20),
+              Align(
+                alignment: Alignment.centerRight,
+                child: SrButton(
+                  label: _busy ? 'Transferring...' : 'Transfer',
+                  kind: SrButtonKind.primary,
+                  onPressed: _busy || _transferReplacement == null
+                      ? null
+                      : () async {
+                          await _transferRepresentative(slot, account);
+                          if (!mounted) return;
+                          setDialogState(() {});
+                          if (_error == null && dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                        },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogHeader(String title, BuildContext dialogContext) => Row(
+    children: [
+      Expanded(child: Text(title, style: SrType.heading())),
+      SrIconButton(
+        icon: Icons.close_rounded,
+        tooltip: 'Close',
+        onPressed: _busy ? null : () => Navigator.of(dialogContext).pop(),
+      ),
+    ],
   );
 
   Widget _progressCard() {
@@ -447,7 +611,11 @@ class _OrganizationAccountsDialogState
       children: [
         Row(
           children: [
-            Icon(Icons.vpn_key_rounded, size: 18, color: context.srColors.greenDark),
+            Icon(
+              Icons.vpn_key_rounded,
+              size: 18,
+              color: context.srColors.greenDark,
+            ),
             const SizedBox(width: SR.space8),
             Expanded(
               child: Text('Temporary credentials', style: SrType.body(w: 600)),
@@ -470,7 +638,11 @@ class _OrganizationAccountsDialogState
         SrTextField(controller: _credentialEmail, readOnly: true),
         const SizedBox(height: SR.space8),
         const SrLabel('Temporary password'),
-        SrTextField(controller: _credentialPassword, readOnly: true, mono: true),
+        SrTextField(
+          controller: _credentialPassword,
+          readOnly: true,
+          mono: true,
+        ),
         const SizedBox(height: SR.space8),
         Text(
           'Show this directly to the named representative. It appears here once and must be changed at first sign-in.',
@@ -507,12 +679,10 @@ class _OrganizationAccountsDialogState
     ),
   );
 
-  Widget _setupCard() => SrCard(
+  Widget _setupCard({required Future<void> Function() onSaved}) => SrCard(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Add organization unit', style: SrType.body(w: 600)),
-        const SizedBox(height: SR.space4),
         Text(
           'Use containers for CICS and COLSC. Account-bearing units automatically receive exactly one representative slot.',
           style: SrType.caption(),
@@ -615,10 +785,12 @@ class _OrganizationAccountsDialogState
           value: _requiresRepresentative,
           onChanged: _unitType == 'college' || _busy
               ? null
-              : (value) => setState(
-                  () => _requiresRepresentative = value ?? true,
-                ),
-          title: Text('This unit receives one representative account', style: SrType.bodySm()),
+              : (value) =>
+                    setState(() => _requiresRepresentative = value ?? true),
+          title: Text(
+            'This unit receives one representative account',
+            style: SrType.bodySm(),
+          ),
           subtitle: Text(
             'Turn off only for hierarchy containers such as CICS or COLSC.',
             style: SrType.caption(),
@@ -640,31 +812,52 @@ class _OrganizationAccountsDialogState
         Align(
           alignment: Alignment.centerRight,
           child: SrButton(
-            label: _busy ? 'Saving...' : 'Save organization',
+            label: _busy ? 'Saving...' : 'Add organization',
             icon: _busy
                 ? null
                 : const Icon(Icons.add_business_rounded, size: SR.iconSm),
             kind: SrButtonKind.primary,
-            onPressed: _busy ? null : _createUnit,
+            onPressed: _busy ? null : onSaved,
           ),
         ),
       ],
     ),
   );
 
-  Widget _representativeForm() {
+  Widget _representativeForm({
+    required VoidCallback onChanged,
+    required Future<void> Function() onCreated,
+  }) {
     final slot = _selectedSlot;
     return SrCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Create representative account', style: SrType.body(w: 600)),
-          const SizedBox(height: SR.space4),
           Text(
             slot == null
-                ? 'Choose a vacant account-bearing organization below.'
+                ? 'Choose a vacant account-bearing organization.'
                 : '${slot.unit?.label ?? slot.label} · ${OrganizationUnit.audienceLabel(slot.unit?.bookingAudience)}',
             style: SrType.caption(),
+          ),
+          const SizedBox(height: SR.space12),
+          const SrLabel('Organization'),
+          SrSelect<OrganizationAccountSlot>(
+            value: slot,
+            items: [
+              for (final candidate in _slots)
+                if (candidate.active &&
+                    (candidate.unit?.active ?? true) &&
+                    !candidate.assigned)
+                  candidate,
+            ],
+            placeholder: 'Choose an organization',
+            labelOf: (candidate) => candidate.unit?.label ?? candidate.label,
+            onChanged: _busy
+                ? (_) {}
+                : (value) {
+                    setState(() => _selectedSlot = value);
+                    onChanged();
+                  },
           ),
           const SizedBox(height: SR.space12),
           Wrap(
@@ -709,7 +902,7 @@ class _OrganizationAccountsDialogState
                   ? null
                   : const Icon(Icons.person_add_alt_1_rounded, size: SR.iconSm),
               kind: SrButtonKind.primary,
-              onPressed: _busy || slot == null ? null : _createRepresentative,
+              onPressed: _busy || slot == null ? null : onCreated,
             ),
           ),
         ],
@@ -717,166 +910,141 @@ class _OrganizationAccountsDialogState
     );
   }
 
-  Widget _registryList() => SrCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text('Registry', style: SrType.body(w: 600))),
-            if (_state.organizationRegistryLoading)
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: context.srColors.muted,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (_units.isEmpty)
-          Text(
-            'No organizations configured yet.',
-            style: SrType.bodySm(color: context.srColors.ink4),
-          )
-        else
-          for (final unit in _units) _unitRow(unit),
-      ],
-    ),
-  );
+  static const _registryColumns = [
+    ColSpec('ORGANIZATION', flex: 3),
+    ColSpec('PARENT', flex: 2, hide: ColumnHide.small),
+    ColSpec('REPRESENTATIVE', flex: 3, hide: ColumnHide.medium),
+    ColSpec('STATUS', width: 104),
+    ColSpec('ACTIONS', width: 184, alignRight: true),
+  ];
+
+  Widget _registryTable() {
+    if (_state.organizationRegistryLoading && _units.isEmpty) {
+      return RecordTable(
+        columns: _registryColumns,
+        children: [
+          for (var i = 0; i < 4; i++)
+            SkeletonRow(columns: _registryColumns, leadWidth: .65),
+        ],
+      );
+    }
+    if (_units.isEmpty) {
+      return RecordTable(
+        columns: _registryColumns,
+        children: [
+          ListEmptyState(
+            icon: Icons.account_tree_outlined,
+            title: 'No organizations yet',
+            body: 'Add an organization to create its account registry entry.',
+            action: SrButton(
+              label: 'Add organization',
+              kind: SrButtonKind.primary,
+              onPressed: _showOrganizationDialog,
+            ),
+          ),
+        ],
+      );
+    }
+    return RecordTable(
+      columns: _registryColumns,
+      footerNote:
+          'Each account-bearing organization has one named representative account.',
+      children: [for (final unit in _units) _unitRow(unit)],
+    );
+  }
+
+  String _parentLabel(OrganizationUnit unit) {
+    final parentId = unit.parentId;
+    if (parentId == null) return '—';
+    for (final parent in _units) {
+      if (parent.id == parentId) return parent.label;
+    }
+    return '—';
+  }
 
   Widget _unitRow(OrganizationUnit unit) {
     final slot = _slotForUnit(unit);
     final account = slot == null ? null : _accountForSlot(slot);
-    return Container(
-      margin: const EdgeInsets.only(bottom: SR.space8),
-      padding: const EdgeInsets.all(SR.space12),
-      decoration: BoxDecoration(
-        color: context.srColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(SR.rSm),
-        border: Border.all(color: context.srColors.hairline),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(unit.label, style: SrType.body(w: 600)),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_unitTypeLabel(unit.unitType)} · ${unit.policyLabel}',
-                      style: SrType.caption(),
-                    ),
-                  ],
-                ),
-              ),
-              SrStatusChip(
-                label: !unit.active
-                    ? 'Archived'
-                    : !unit.requiresRepresentative
-                    ? 'Container'
-                    : slot?.assigned == true
-                    ? 'Assigned'
-                    : 'Vacant',
-                tone: !unit.active
-                    ? SrTone.neutral
-                    : !unit.requiresRepresentative
-                    ? SrTone.warning
-                    : slot?.assigned == true
-                    ? SrTone.success
-                    : SrTone.warning,
-              ),
-            ],
-          ),
-          if (slot != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              account == null
-                  ? 'No representative assigned.'
-                  : '${account.name} · ${account.email}${account.mustChangePassword ? ' · password change required' : ''}',
-              style: SrType.bodySm(color: context.srColors.ink4),
-            ),
-            const SizedBox(height: 10),
-            if (account == null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SrButton(
-                  label: 'Create account',
-                  dense: true,
-                  icon: const Icon(Icons.person_add_alt_1_rounded, size: SR.iconSm),
-                  kind: SrButtonKind.primary,
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                          _selectedSlot = slot;
-                          _error = null;
-                        }),
-                ),
-              )
-            else
-              _assignedActions(slot, account),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _assignedActions(OrganizationAccountSlot slot, Account account) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Wrap(
-        spacing: SR.space8,
-        runSpacing: SR.space8,
-        children: [
-          SrButton(
-            label: 'Reset temporary password',
-            dense: true,
-            onPressed: _busy ? null : () => _resetPassword(account),
-          ),
-          SrButton(
-            label: 'Remove representative',
-            dense: true,
-            kind: SrButtonKind.danger,
-            onPressed: _busy ? null : () => _removeRepresentative(account),
-          ),
-        ],
-      ),
-      if (_transferCandidates.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        Row(
+    final status = !unit.active
+        ? 'Archived'
+        : !unit.requiresRepresentative
+        ? 'Container'
+        : slot?.assigned == true
+        ? 'Assigned'
+        : 'Vacant';
+    final tone = !unit.active
+        ? SrTone.neutral
+        : !unit.requiresRepresentative
+        ? SrTone.warning
+        : slot?.assigned == true
+        ? SrTone.success
+        : SrTone.warning;
+    final representative = account == null
+        ? (slot?.assignedName ?? 'No representative assigned')
+        : '${account.name}\n${account.email}${account.mustChangePassword ? ' · password change required' : ''}';
+    return RecordRow(
+      columns: _registryColumns,
+      vertical: 14,
+      cells: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: SrSelect<Account>(
-                value: _transferReplacement,
-                items: _transferCandidates,
-                placeholder: 'Replacement account',
-                labelOf: (candidate) => '${candidate.name} · ${candidate.email}',
-                onChanged: _busy
-                    ? (_) {}
-                    : (value) =>
-                        setState(() => _transferReplacement = value),
-              ),
-            ),
-            const SizedBox(width: SR.space8),
-            SrButton(
-              label: 'Transfer',
-              dense: true,
-              onPressed: _busy
-                  ? null
-                  : () => _transferRepresentative(slot, account),
+            Text(unit.label, style: SrType.body(w: 600)),
+            const SizedBox(height: 2),
+            Text(
+              '${_unitTypeLabel(unit.unitType)} · ${unit.policyLabel}',
+              style: SrType.caption(),
             ),
           ],
         ),
+        Text(_parentLabel(unit), style: SrType.bodySm()),
+        Text(
+          representative,
+          style: SrType.bodySm(color: context.srColors.ink4),
+        ),
+        SrStatusChip(label: status, tone: tone, dense: true),
+        _unitActions(slot, account),
       ],
-    ],
-  );
+    );
+  }
+
+  Widget _unitActions(OrganizationAccountSlot? slot, Account? account) {
+    if (slot == null || !slot.active) {
+      return Text('—', style: SrType.caption());
+    }
+    if (account == null) {
+      return SrButton(
+        label: 'Create account',
+        dense: true,
+        kind: SrButtonKind.primary,
+        onPressed: _busy ? null : () => _showRepresentativeDialog(slot),
+      );
+    }
+    return Wrap(
+      spacing: SR.space6,
+      runSpacing: SR.space6,
+      alignment: WrapAlignment.end,
+      children: [
+        SrButton(
+          label: 'Reset',
+          dense: true,
+          onPressed: _busy ? null : () => _resetPassword(account),
+        ),
+        SrButton(
+          label: 'Remove',
+          dense: true,
+          kind: SrButtonKind.danger,
+          onPressed: _busy ? null : () => _removeRepresentative(account),
+        ),
+        if (_transferCandidates.isNotEmpty)
+          SrButton(
+            label: 'Transfer',
+            dense: true,
+            onPressed: _busy ? null : () => _showTransferDialog(slot, account),
+          ),
+      ],
+    );
+  }
 
   static String _unitTypeLabel(String value) => switch (value) {
     'college' => 'College container',

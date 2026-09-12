@@ -34,33 +34,48 @@ class AddFacilityBody extends StatelessWidget {
         return SuccessView(controller: controller, onBackToList: onBackToList);
       }
       return Stack(
+        fit: StackFit.expand,
         children: [
           Positioned.fill(
             child: Column(
               children: [
                 Expanded(child: _rails(context)),
                 if (layout.isMobile)
-                  _MobileBar(
-                    controller: controller,
-                    onOpenMap: () => MobilePinSheet.open(context, controller),
-                    onSave: onSave,
+                  AnimatedBuilder(
+                    animation: Listenable.merge([
+                      controller.form,
+                      controller.map,
+                      controller.photos,
+                      controller,
+                    ]),
+                    builder: (context, _) => _MobileBar(
+                      controller: controller,
+                      onOpenMap: () =>
+                          MobilePinSheet.open(context, controller.map),
+                      onSave: onSave,
+                    ),
                   ),
               ],
             ),
           ),
-          if (controller.fullscreenMap && !layout.isMobile)
-            Positioned.fill(
-              child: ColoredBox(
-                color: context.srColors.bg,
-                child: SafeArea(
-                  child: MapPane(
-                    controller: controller,
-                    padding: const EdgeInsets.all(16),
-                    compact: layout.belowDesktop,
-                  ),
-                ),
-              ),
-            ),
+          AnimatedBuilder(
+            animation: controller.map,
+            builder: (context, _) =>
+                controller.map.fullscreenMap && !layout.isMobile
+                ? Positioned.fill(
+                    child: ColoredBox(
+                      color: context.srColors.bg,
+                      child: SafeArea(
+                        child: MapPane(
+                          controller: controller,
+                          padding: const EdgeInsets.all(16),
+                          compact: layout.belowDesktop,
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
       );
     },
@@ -167,7 +182,7 @@ class _MobileBar extends StatelessWidget {
                   style: sans(11.5, w: 600),
                 ),
                 Text(
-                  controller.coordLabel,
+                  controller.map.coordLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: mono(10.5, color: context.srColors.muted),

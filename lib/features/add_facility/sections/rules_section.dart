@@ -4,7 +4,7 @@ import '../../../data/campus_data.dart';
 import '../../../theme/sr_tokens.dart';
 import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
-import '../add_facility_controller.dart';
+import '../facility_form_controller.dart';
 
 import '../../../theme/sr_theme.dart';
 
@@ -16,7 +16,7 @@ class RulesSection extends StatelessWidget {
     required this.dense,
   });
 
-  final AddFacilityController controller;
+  final FacilityFormController controller;
   final bool stacked;
   final bool dense;
 
@@ -47,169 +47,173 @@ class RulesSection extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
-    final draft = controller.draft;
-    return SectionCard(
-      number: '06',
-      title: 'Reservation rules',
-      caption: 'Sensible defaults applied',
-      dense: dense,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final rule in _rules)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 11),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: context.srColors.dividerSoft),
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) {
+      final draft = controller.draft;
+      return SectionCard(
+        number: '06',
+        title: 'Reservation rules',
+        caption: 'Sensible defaults applied',
+        dense: dense,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final rule in _rules)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: context.srColors.dividerSoft),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(rule.label, style: sans(12.5, w: 500)),
+                          const SizedBox(height: 2),
+                          Text(
+                            rule.hint,
+                            style: sans(
+                              11,
+                              height: 1.5,
+                              color: context.srColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SrToggle(
+                      value: _value(rule.key),
+                      label: rule.label,
+                      onChanged: (v) => controller.setRule(rule.key, v),
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+
+            const SizedBox(height: 14),
+            const SrLabel('Available days'),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 420;
+                final dayWidth = (compact
+                        ? (constraints.maxWidth - 15) / 4
+                        : (constraints.maxWidth - 30) / 7)
+                    .clamp(0.0, double.infinity);
+                return Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
+                  children: [
+                    for (var i = 0; i < dayLabels.length; i++)
+                      SizedBox(
+                        width: dayWidth,
+                        child: _DayToggle(
+                          label: dayLabels[i],
+                          on: draft.days[i],
+                          onTap: () => controller.toggleDay(i),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+
+            const SizedBox(height: 14),
+            FieldRow(
+              stacked: stacked,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Operating hours'),
+                    Row(
                       children: [
-                        Text(rule.label, style: sans(12.5, w: 500)),
-                        const SizedBox(height: 2),
-                        Text(
-                          rule.hint,
-                          style: sans(
-                            11,
-                            height: 1.5,
-                            color: context.srColors.muted,
+                        Expanded(
+                          child: _TimeField(
+                            value: draft.openTime,
+                            label: 'Opening time',
+                            onChanged: controller.setOpenTime,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 7),
+                          child: Text(
+                            '–',
+                            style: sans(13, color: context.srColors.mutedLight),
+                          ),
+                        ),
+                        Expanded(
+                          child: _TimeField(
+                            value: draft.closeTime,
+                            label: 'Closing time',
+                            onChanged: controller.setCloseTime,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  SrToggle(
-                    value: _value(rule.key),
-                    label: rule.label,
-                    onChanged: (v) => controller.setRule(rule.key, v),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 14),
-          const SrLabel('Available days'),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxWidth < 420;
-              final dayWidth = compact
-                  ? (constraints.maxWidth - 15) / 4
-                  : (constraints.maxWidth - 30) / 7;
-              return Wrap(
-                spacing: 5,
-                runSpacing: 5,
-                children: [
-                  for (var i = 0; i < dayLabels.length; i++)
-                    SizedBox(
-                      width: dayWidth,
-                      child: _DayToggle(
-                        label: dayLabels[i],
-                        on: draft.days[i],
-                        onTap: () => controller.toggleDay(i),
-                      ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Max duration'),
+                    SrSelect<String>(
+                      value: draft.maxDuration,
+                      items: durations,
+                      semanticLabel: 'Maximum booking duration',
+                      fontSize: 12.5,
+                      labelOf: (d) => d,
+                      onChanged: (v) {
+                        if (v != null) controller.setMaxDuration(v);
+                      },
                     ),
-                ],
-              );
-            },
-          ),
-
-          const SizedBox(height: 14),
-          FieldRow(
-            stacked: stacked,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Operating hours'),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _TimeField(
-                          value: draft.openTime,
-                          label: 'Opening time',
-                          onChanged: controller.setOpenTime,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                        child: Text(
-                          '–',
-                          style: sans(13, color: context.srColors.mutedLight),
-                        ),
-                      ),
-                      Expanded(
-                        child: _TimeField(
-                          value: draft.closeTime,
-                          label: 'Closing time',
-                          onChanged: controller.setCloseTime,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Max duration'),
-                  SrSelect<String>(
-                    value: draft.maxDuration,
-                    items: durations,
-                    semanticLabel: 'Maximum booking duration',
-                    fontSize: 12.5,
-                    labelOf: (d) => d,
-                    onChanged: (v) {
-                      if (v != null) controller.setMaxDuration(v);
-                    },
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Advance booking limit'),
-                  SrSelect<String>(
-                    value: draft.advance,
-                    items: advanceLimits,
-                    semanticLabel: 'Advance booking limit',
-                    fontSize: 12.5,
-                    labelOf: (a) => a,
-                    onChanged: (v) {
-                      if (v != null) controller.setAdvance(v);
-                    },
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SrLabel('Buffer between bookings'),
-                  SrSelect<String>(
-                    value: draft.buffer,
-                    items: buffers,
-                    semanticLabel: 'Buffer between bookings',
-                    fontSize: 12.5,
-                    labelOf: (b) => b,
-                    onChanged: (v) {
-                      if (v != null) controller.setBuffer(v);
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Advance booking limit'),
+                    SrSelect<String>(
+                      value: draft.advance,
+                      items: advanceLimits,
+                      semanticLabel: 'Advance booking limit',
+                      fontSize: 12.5,
+                      labelOf: (a) => a,
+                      onChanged: (v) {
+                        if (v != null) controller.setAdvance(v);
+                      },
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SrLabel('Buffer between bookings'),
+                    SrSelect<String>(
+                      value: draft.buffer,
+                      items: buffers,
+                      semanticLabel: 'Buffer between bookings',
+                      fontSize: 12.5,
+                      labelOf: (b) => b,
+                      onChanged: (v) {
+                        if (v != null) controller.setBuffer(v);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _DayToggle extends StatelessWidget {

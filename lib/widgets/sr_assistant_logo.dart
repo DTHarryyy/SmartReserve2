@@ -12,7 +12,7 @@ class SrAssistantLogo extends StatelessWidget {
     this.borderColor,
   });
 
-  static const assetName = 'assets/chatbot logo.png';
+  static const assetName = 'assets/smartreserve logo.png';
   static const _darkModeBoost = ColorFilter.matrix(<double>[
     1.08,
     0,

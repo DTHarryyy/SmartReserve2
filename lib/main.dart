@@ -95,8 +95,10 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
           ),
           home: switch (snapshot.connectionState) {
             ConnectionState.waiting => const _BootSplash(),
-            _ when snapshot.hasError =>
-              _BootError(error: snapshot.error!, onRetry: _retryBoot),
+            _ when snapshot.hasError => _BootError(
+              error: snapshot.error!,
+              onRetry: _retryBoot,
+            ),
             _ => const AppShell(),
           },
         ),
@@ -176,20 +178,12 @@ class _BootError extends StatelessWidget {
                   color: colors.errorContainer,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icon,
-                  color: colors.error,
-                  size: 24,
-                ),
+                child: Icon(icon, color: colors.error, size: 24),
               ),
               const SizedBox(height: SR.space16),
               Text(title, style: SrType.heading()),
               const SizedBox(height: SR.space6),
-              Text(
-                body,
-                textAlign: TextAlign.center,
-                style: SrType.bodySm(),
-              ),
+              Text(body, textAlign: TextAlign.center, style: SrType.bodySm()),
               const SizedBox(height: SR.space20),
               FilledButton(onPressed: onRetry, child: const Text('Try again')),
             ],

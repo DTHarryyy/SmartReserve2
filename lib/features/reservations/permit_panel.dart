@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
+import '../../backend/supabase_service.dart';
 import '../../model/notice.dart';
 import '../../model/permit.dart';
 import '../../model/reservation.dart';
@@ -104,6 +106,12 @@ class _PermitPanelState extends State<PermitPanel> {
               dense: true,
               onPressed: _busy ? null : () => _download(permit, request),
             ),
+            if (widget.state.isInternalAdmin && permit.ceoSignatureId != null)
+              SrButton(
+                label: 'Official copy',
+                dense: true,
+                onPressed: _busy ? null : () => _official(permit, request),
+              ),
           ],
         ),
       ];
@@ -118,14 +126,53 @@ class _PermitPanelState extends State<PermitPanel> {
         ),
       ];
     }
-    if (request.permitEligible) {
+    if (widget.state.isInternalAdmin &&
+        request.permitEligible &&
+        !request.signatureSubmitted) {
       return [
-        Text('Your permit is being prepared.', style: SrType.bodySm()),
+        Text(
+          'Request the requester’s e-signature before issuing this permit.',
+          style: SrType.bodySm(),
+        ),
         const SizedBox(height: SR.space8),
         SrButton(
-          label: 'Check for permit',
+          label: request.signatureRequested
+              ? 'Signature requested'
+              : 'Request e-signature',
           dense: true,
-          onPressed: () => widget.state.issuePermit(request.id),
+          onPressed: request.signatureRequested || _busy
+              ? null
+              : () => _requestSignature(request.id),
+        ),
+        const SizedBox(height: SR.space8),
+        SrButton(
+          label: 'Manage CEO signature',
+          dense: true,
+          onPressed: _busy ? null : _pickCeoSignature,
+        ),
+      ];
+    }
+    if (request.signatureRequested &&
+        request.requesterId == widget.state.userAccount.id) {
+      return [
+        Text(
+          'An Internal Admin has requested your e-signature. Upload a PNG or JPEG image to continue.',
+          style: SrType.bodySm(),
+        ),
+        const SizedBox(height: SR.space8),
+        SrButton(
+          label: 'Upload e-signature',
+          kind: SrButtonKind.primary,
+          dense: true,
+          onPressed: _busy ? null : () => _pickUserSignature(request),
+        ),
+      ];
+    }
+    if (request.signatureSubmitted) {
+      return [
+        Text(
+          'E-signature submitted. The signed permit is being issued.',
+          style: SrType.bodySm(),
         ),
       ];
     }
@@ -139,13 +186,31 @@ class _PermitPanelState extends State<PermitPanel> {
     ];
   }
 
-  Future<Uint8List?> _render(ReservationPermit permit) async {
+  Future<Uint8List?> _render(
+    ReservationPermit permit,
+    ReservationRequest request, {
+    bool official = false,
+  }) async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final bytes = await buildPermitPdf(permit);
+      final user = permit.userSignatureId == null
+          ? null
+          : await widget.state.permitUserSignature(permit.userSignatureId!);
+      final ceo = official
+          ? await widget.state.officialCeoSignature(request.id, permit.id)
+          : await widget.state.protectedCeoSignature(request.id, permit.id);
+      if (permit.userSignatureId != null && (user == null || ceo == null)) {
+        throw StateError('The protected permit signatures are unavailable.');
+      }
+      final bytes = await buildPermitPdf(
+        permit,
+        userSignature: user,
+        ceoSignature: ceo,
+        protectedCopy: !official,
+      );
       return bytes;
     } catch (error) {
       setState(() => _error = 'The permit could not be prepared: $error');
@@ -160,9 +225,8 @@ class _PermitPanelState extends State<PermitPanel> {
     ReservationRequest request,
   ) async {
     if (await _openStoredPermit(permit)) return;
-    final bytes = await _render(permit);
+    final bytes = await _render(permit, request);
     if (bytes == null) return;
-    _persist(permit, request, bytes);
     await Printing.layoutPdf(onLayout: (_) async => bytes);
   }
 
@@ -171,9 +235,8 @@ class _PermitPanelState extends State<PermitPanel> {
     ReservationRequest request,
   ) async {
     if (await _openStoredPermit(permit)) return;
-    final bytes = await _render(permit);
+    final bytes = await _render(permit, request);
     if (bytes == null) return;
-    _persist(permit, request, bytes);
     final result = await saveBinaryFile(
       baseName: permit.permitNumber,
       extension: 'pdf',
@@ -213,22 +276,88 @@ class _PermitPanelState extends State<PermitPanel> {
     }
   }
 
-  void _persist(
+  Future<void> _official(
     ReservationPermit permit,
     ReservationRequest request,
-    Uint8List bytes,
-  ) {
-    final requesterId = request.requesterId;
-    if (requesterId == null) return;
-    unawaited(
-      widget.state.uploadPermitPdf(
-        permitId: permit.id,
-        requestId: request.id,
-        requesterId: requesterId,
-        permitNumber: permit.permitNumber,
-        version: permit.version,
-        bytes: bytes,
+  ) async {
+    final bytes = await _render(permit, request, official: true);
+    if (bytes != null) await Printing.layoutPdf(onLayout: (_) async => bytes);
+  }
+
+  Future<void> _requestSignature(String requestId) async {
+    setState(() => _busy = true);
+    await widget.state.requestReservationSignature(requestId);
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _pickUserSignature(ReservationRequest request) async {
+    final upload = await _chooseSignature('Select your e-signature');
+    if (upload == null || request.signatureRequestId == null) return;
+    setState(() => _busy = true);
+    await widget.state.submitReservationSignature(
+      signatureRequestId: request.signatureRequestId!,
+      requestId: request.id,
+      signature: upload,
+    );
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _pickCeoSignature() async {
+    final upload = await _chooseSignature('Select CEO signature');
+    if (upload == null) return;
+    setState(() => _busy = true);
+    await widget.state.uploadCeoSignature(upload);
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<ReservationUpload?> _chooseSignature(String title) async {
+    final picked = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg'],
+    );
+    if (picked == null) return null;
+    final bytes = await picked.readAsBytes();
+    if (bytes.isEmpty || bytes.lengthInBytes > 5 * 1024 * 1024) {
+      if (mounted) {
+        setState(
+          () =>
+              _error = 'Signatures must be a PNG or JPEG no larger than 5 MB.',
+        );
+      }
+      return null;
+    }
+    final mime = picked.name.toLowerCase().endsWith('.png')
+        ? 'image/png'
+        : 'image/jpeg';
+    if (!mounted) return null;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.memory(bytes, height: 130),
+            const SizedBox(height: 12),
+            const Text(
+              'This image will be locked to the permit after confirmation.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Clear'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirm'),
+          ),
+        ],
       ),
     );
+    return confirmed == true
+        ? ReservationUpload(name: picked.name, mimeType: mime, bytes: bytes)
+        : null;
   }
 }

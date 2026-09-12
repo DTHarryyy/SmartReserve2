@@ -6,19 +6,21 @@ import '../../../data/campus_data.dart';
 import '../../../theme/sr_tokens.dart';
 import '../../../util/geo.dart';
 import '../../../widgets/sr_controls.dart';
-import '../add_facility_controller.dart';
+import '../map_editor_controller.dart';
 import 'campus_map.dart';
 
 import '../../../theme/sr_theme.dart';
 
+typedef _Camera = ({LatLng center, double zoom});
+
 class MobilePinSheet extends StatefulWidget {
   const MobilePinSheet({super.key, required this.controller});
 
-  final AddFacilityController controller;
+  final MapEditorController controller;
 
   static Future<void> open(
     BuildContext context,
-    AddFacilityController controller,
+    MapEditorController controller,
   ) => Navigator.of(context).push(
     MaterialPageRoute<void>(
       fullscreenDialog: true,
@@ -32,13 +34,19 @@ class MobilePinSheet extends StatefulWidget {
 
 class _MobilePinSheetState extends State<MobilePinSheet> {
   final _map = MapController();
-  late LatLng _center =
-      widget.controller.draft.pin ??
-      buildingNamed(widget.controller.draft.building)?.coords ??
-      campus.center;
-  late double _zoom = widget.controller.draft.pin == null ? 17.0 : 19.0;
+  late final _cameraNotifier = ValueNotifier<_Camera>((
+    center:
+        widget.controller.draft.pin ??
+        buildingNamed(widget.controller.draft.building)?.coords ??
+        campus.center,
+    zoom: widget.controller.draft.pin == null ? 17.0 : 19.0,
+  ));
 
-  bool get _inside => inPolygon(_center, campus.boundary);
+  @override
+  void dispose() {
+    _cameraNotifier.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,18 +99,16 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                     child: FlutterMap(
                       mapController: _map,
                       options: MapOptions(
-                        initialCenter: _center,
-                        initialZoom: _zoom,
-                        minZoom: 3,
-                        maxZoom: 21,
+                        initialCenter: _cameraNotifier.value.center,
+                        initialZoom: _cameraNotifier.value.zoom,
+                        minZoom: campusMinimumZoom,
+                        maxZoom: campusMaximumZoom,
                         backgroundColor: context.srColors.mapBg,
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                         ),
-                        onPositionChanged: (camera, _) => setState(() {
-                          _center = camera.center;
-                          _zoom = camera.zoom;
-                        }),
+                        onPositionChanged: (camera, _) => _cameraNotifier
+                            .value = (center: camera.center, zoom: camera.zoom),
                       ),
                       children: [
                         srTileLayer(
@@ -150,8 +156,13 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                           size: 44,
                           fontSize: 16,
                           shadow: SR.floatShadow,
-                          onPressed: () =>
-                              _map.move(_center, (_zoom + 1).clamp(3, 21)),
+                          onPressed: () => _map.move(
+                            _cameraNotifier.value.center,
+                            (_cameraNotifier.value.zoom + 1).clamp(
+                              campusMinimumZoom,
+                              campusMaximumZoom,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         SrIconButton(
@@ -160,8 +171,13 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                           size: 44,
                           fontSize: 16,
                           shadow: SR.floatShadow,
-                          onPressed: () =>
-                              _map.move(_center, (_zoom - 1).clamp(3, 21)),
+                          onPressed: () => _map.move(
+                            _cameraNotifier.value.center,
+                            (_cameraNotifier.value.zoom - 1).clamp(
+                              campusMinimumZoom,
+                              campusMaximumZoom,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -169,27 +185,31 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                 ],
               ),
             ),
-            _ConfirmBar(
-              coords: formatCoords(_center),
-              inside: _inside,
-              accuracy: accuracyForZoom(_zoom),
-              onGps: () async {
-                await c.useGps();
-                final pin = c.draft.pin;
-                if (pin != null && mounted) {
-                  _map.move(pin, 19);
-                  if (context.mounted) Navigator.of(context).pop();
-                }
-              },
-              onConfirm: () {
-                c.syncZoom(_zoom);
-                if (c.draft.pin == null) {
-                  c.dropPin(_center, announce: false);
-                } else {
-                  c.movePin(_center);
-                }
-                Navigator.of(context).pop();
-              },
+            ValueListenableBuilder<_Camera>(
+              valueListenable: _cameraNotifier,
+              builder: (context, cam, _) => _ConfirmBar(
+                coords: formatCoords(cam.center),
+                inside: inPolygon(cam.center, campus.boundary),
+                accuracy: accuracyForZoom(cam.zoom),
+                onGps: () async {
+                  await c.useGps();
+                  final pin = c.draft.pin;
+                  if (pin != null && mounted) {
+                    _map.move(pin, 19);
+                    if (context.mounted) Navigator.of(context).pop();
+                  }
+                },
+                onConfirm: () {
+                  final current = _cameraNotifier.value;
+                  c.syncZoom(current.zoom);
+                  if (c.draft.pin == null) {
+                    c.dropPin(current.center, announce: false);
+                  } else {
+                    c.movePin(current.center);
+                  }
+                  Navigator.of(context).pop();
+                },
+              ),
             ),
           ],
         ),

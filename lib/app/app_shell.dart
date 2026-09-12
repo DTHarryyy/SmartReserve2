@@ -74,10 +74,6 @@ class _AppShellState extends State<AppShell> {
     HardwareKeyboard.instance.addHandler(_onKey);
   }
 
-  void _onFacilityControllerChanged() {
-    if (mounted) setState(() {});
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -85,8 +81,7 @@ class _AppShellState extends State<AppShell> {
     final state = AppScope.read(context);
     _auth ??= AuthController(state);
     if (!_facilityControllerReady) {
-      _addFacility = AddFacilityController(toasts: state.toasts)
-        ..addListener(_onFacilityControllerChanged);
+      _addFacility = AddFacilityController(toasts: state.toasts);
       _facilityControllerReady = true;
     }
   }
@@ -95,7 +90,6 @@ class _AppShellState extends State<AppShell> {
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
     if (_facilityControllerReady) {
-      _addFacility.removeListener(_onFacilityControllerChanged);
       _addFacility.dispose();
     }
     _auth?.dispose();
@@ -123,17 +117,16 @@ class _AppShellState extends State<AppShell> {
       return true;
     }
     if (accel && event.logicalKey == LogicalKeyboardKey.keyK) {
-      if (state.view == AppView.addFacility) _addFacility.openSearch();
+      if (state.view == AppView.addFacility) _addFacility.map.openSearch();
       return true;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       state.closeOverlays();
-      if (_addFacility.fullscreenMap) {
-        _addFacility.setFullscreenMap(false);
+      if (_addFacility.map.fullscreenMap) {
+        _addFacility.map.setFullscreenMap(false);
       } else {
-        _addFacility
-          ..closeSearch()
-          ..closeAmenities();
+        _addFacility.map.closeSearch();
+        _addFacility.amenities.closeAmenities();
       }
       return true;
     }
@@ -227,32 +220,36 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _chrome(AppState state, Layout layout) => Stack(
+    fit: StackFit.expand,
     children: [
       Positioned.fill(
         child: Column(
           children: [
-            AppHeader(
-              crumbs: state.isExternalAdmin && state.view == AppView.users
-                  ? const ['Clients']
-                  : _editingFacility(state)
-                  ? const ['Facilities', 'Edit facility']
-                  : state.view.breadcrumbs,
-              title: state.isExternalAdmin && state.view == AppView.users
-                  ? 'Clients'
-                  : _editingFacility(state)
-                  ? (_addFacility.draft.name.trim().isEmpty
-                        ? 'Edit facility'
-                        : _addFacility.draft.name.trim())
-                  : state.view.title,
-              compact: !layout.isDesktop,
-              mobile: layout.isMobile,
-              avatarInitials: state.currentAdmin.initials,
-              onOpenProfile: () => state.goTo(AppView.profile),
-              onMenu: layout.isDesktop
-                  ? null
-                  : () => _scaffoldKey.currentState?.openDrawer(),
-              chip: _headerChip(state),
-              actions: _headerActions(state, layout),
+            AnimatedBuilder(
+              animation: Listenable.merge([_addFacility, _addFacility.form]),
+              builder: (context, _) => AppHeader(
+                crumbs: state.isExternalAdmin && state.view == AppView.users
+                    ? const ['Clients']
+                    : _editingFacility(state)
+                    ? const ['Facilities', 'Edit facility']
+                    : state.view.breadcrumbs,
+                title: state.isExternalAdmin && state.view == AppView.users
+                    ? 'Clients'
+                    : _editingFacility(state)
+                    ? (_addFacility.draft.name.trim().isEmpty
+                          ? 'Edit facility'
+                          : _addFacility.draft.name.trim())
+                    : state.view.title,
+                compact: !layout.isDesktop,
+                mobile: layout.isMobile,
+                avatarInitials: state.currentAdmin.initials,
+                onOpenProfile: () => state.goTo(AppView.profile),
+                onMenu: layout.isDesktop
+                    ? null
+                    : () => _scaffoldKey.currentState?.openDrawer(),
+                chip: _headerChip(state),
+                actions: _headerActions(state, layout),
+              ),
             ),
             Expanded(child: _body(state, layout)),
           ],
@@ -282,16 +279,21 @@ class _AppShellState extends State<AppShell> {
       ),
     ],
 
-    if (state.view == AppView.addFacility && _addFacility.showErrorBar)
-      Positioned(
-        left: 16,
-        right: 16,
-        bottom: layout.isMobile && state.view == AppView.addFacility ? 84 : 22,
-        child: ErrorBar(
-          text: _addFacility.errorBarText,
-          onJumpToFirst: () => jumpToFirstIssue(_addFacility),
-          onDismiss: _addFacility.dismissErrorBar,
-        ),
+    if (state.view == AppView.addFacility)
+      AnimatedBuilder(
+        animation: _addFacility,
+        builder: (context, _) => _addFacility.showErrorBar
+            ? Positioned(
+                left: 16,
+                right: 16,
+                bottom: layout.isMobile ? 84 : 22,
+                child: ErrorBar(
+                  text: _addFacility.errorBarText,
+                  onJumpToFirst: () => jumpToFirstIssue(_addFacility),
+                  onDismiss: _addFacility.dismissErrorBar,
+                ),
+              )
+            : const SizedBox.shrink(),
       ),
   ];
 
@@ -379,12 +381,12 @@ class _AppShellState extends State<AppShell> {
     ),
     AppView.users when state.isInternalAdmin => FloatingActionButton.extended(
       key: const Key('organization-accounts-fab'),
-      tooltip: 'Organization accounts',
+      tooltip: 'Organizations',
       backgroundColor: SR.primary,
       foregroundColor: SR.onDark,
-      onPressed: () => showOrganizationAccountsDialog(context, state),
+      onPressed: () => state.goTo(AppView.organizations),
       icon: const Icon(Icons.account_tree_rounded),
-      label: const Text('Org accounts'),
+      label: const Text('Organizations'),
     ),
     _ => null,
   };
@@ -413,6 +415,7 @@ class _AppShellState extends State<AppShell> {
           : null,
     ),
     AppView.users => const UsersScreen(),
+    AppView.organizations => const OrganizationsScreen(),
     AppView.feedback => const FeedbackScreen(),
     AppView.anomalies => const AnomaliesScreen(),
     AppView.loyalty => const LoyaltyAdminScreen(),

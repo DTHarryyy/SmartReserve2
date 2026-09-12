@@ -4,7 +4,7 @@ import '../../../data/campus_data.dart';
 import '../../../theme/sr_tokens.dart';
 import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
-import '../add_facility_controller.dart';
+import '../amenities_controller.dart';
 
 import '../../../theme/sr_theme.dart';
 
@@ -15,78 +15,84 @@ class AmenitiesSection extends StatelessWidget {
     required this.dense,
   });
 
-  final AddFacilityController controller;
+  final AmenitiesController controller;
   final bool dense;
 
   @override
-  Widget build(BuildContext context) {
-    final selected = controller.draft.amenities;
-    return SectionCard(
-      number: '05',
-      title: 'Amenities',
-      caption: controller.amenityCountLabel,
-      dense: dense,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-            decoration: BoxDecoration(
-              color: context.srColors.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: controller.amenityOpen
-                    ? SR.primary
-                    : context.srColors.borderField,
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) {
+      final selected = controller.draft.amenities;
+      return SectionCard(
+        number: '05',
+        title: 'Amenities',
+        caption: controller.amenityCountLabel,
+        dense: dense,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              decoration: BoxDecoration(
+                color: context.srColors.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: controller.amenityOpen
+                      ? SR.primary
+                      : context.srColors.borderField,
+                ),
               ),
-            ),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final label in selected)
-                  _Token(
-                    label: label,
-                    onRemove: () => controller.removeAmenity(label),
-                  ),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    minWidth: 150,
-                    maxWidth: 320,
-                  ),
-                  child: TextField(
-                    controller: controller.amenityField,
-                    focusNode: controller.amenityFocus,
-                    onChanged: controller.setAmenityQuery,
-                    onTap: controller.openAmenities,
-                    onSubmitted: (_) => controller.submitAmenityQuery(),
-                    cursorColor: SR.primary,
-                    cursorWidth: 1.5,
-                    style: sans(12.5),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 5,
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final label in selected)
+                    _Token(
+                      label: label,
+                      onRemove: () => controller.removeAmenity(label),
+                    ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 150,
+                      maxWidth: 320,
+                    ),
+                    child: TextField(
+                      controller: controller.amenityField,
+                      focusNode: controller.amenityFocus,
+                      onChanged: controller.setAmenityQuery,
+                      onTap: controller.openAmenities,
+                      onSubmitted: (_) => controller.submitAmenityQuery(),
+                      cursorColor: SR.primary,
+                      cursorWidth: 1.5,
+                      style: sans(12.5),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 5,
+                        ),
+                        hintText: controller.amenityPlaceholder,
+                        hintStyle: sans(
+                          12.5,
+                          color: context.srColors.mutedLight,
+                        ),
                       ),
-                      hintText: controller.amenityPlaceholder,
-                      hintStyle: sans(12.5, color: context.srColors.mutedLight),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          if (controller.amenityOpen) ...[
-            const SizedBox(height: 6),
-            _Results(controller: controller),
+            if (controller.amenityOpen) ...[
+              const SizedBox(height: 6),
+              _Results(controller: controller),
+            ],
           ],
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    },
+  );
 }
 
 class _Token extends StatelessWidget {
@@ -133,7 +139,7 @@ class _Token extends StatelessWidget {
 class _Results extends StatelessWidget {
   const _Results({required this.controller});
 
-  final AddFacilityController controller;
+  final AmenitiesController controller;
 
   @override
   Widget build(BuildContext context) {
