@@ -33,7 +33,6 @@ migrate_working_dir/
 /build/
 /android/build/
 /coverage/
-/Microsoft/Windows/PowerShell/ModuleAnalysisCache
 
 # Symbolication related
 app.*.symbols
