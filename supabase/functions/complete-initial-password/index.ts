@@ -1,4 +1,5 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { classifyPasswordUpdateFailure } from "./contract.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -71,7 +72,10 @@ Deno.serve(async (request) => {
     .eq("id", userData.user.id)
     .single();
   if (profileError || !profile) {
-    return json({ code: "profile_not_found", error: "Profile not found." }, 404);
+    return json(
+      { code: "profile_not_found", error: "Profile not found." },
+      404,
+    );
   }
   if (profile.must_change_password !== true) {
     return json({
@@ -91,10 +95,12 @@ Deno.serve(async (request) => {
     { password },
   );
   if (passwordUpdateError) {
-    return json({
-      code: "password_update_failed",
-      error: "Password could not be updated. Try again.",
-    }, 500);
+    console.error("complete-initial-password auth update failed", {
+      code: passwordUpdateError.code,
+      status: passwordUpdateError.status,
+    });
+    const failure = classifyPasswordUpdateFailure(passwordUpdateError);
+    return json({ code: failure.code, error: failure.error }, failure.status);
   }
 
   const { data: updatedProfile, error: rpcError } = await client.rpc(

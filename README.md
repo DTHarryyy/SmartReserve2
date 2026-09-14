@@ -127,6 +127,18 @@ before releasing the Flutter client. In particular, the
 it installs `get_my_session_profile`, the authenticated login-profile contract.
 If that RPC is absent, valid credentials are accepted and then safely rejected
 because the application cannot establish the account's authorization profile.
+
+Before releasing any client that depends on a new database RPC, verify that
+the linked project has every local migration:
+
+```powershell
+./tool/verify_supabase_migrations.ps1
+```
+
+The command fails when either side has a migration that the other does not.
+Database migrations must be deployed before the corresponding Flutter client;
+the app intentionally does not submit reduced reservation records through an
+older RPC when `submit_reservation_v3` is unavailable.
 The facilities migration
 creates the table, RLS policies, realtime registration and public catalogue
 photo bucket, then imports the six original catalogue records once without

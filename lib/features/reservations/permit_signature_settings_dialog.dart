@@ -84,11 +84,11 @@ class _PermitSignatureSettingsDialogState
 
   String _identity(OfficialSignatureSlot slot) => switch (slot) {
     OfficialSignatureSlot.internalApprover =>
-      'Approving official — fixed name and title on Internal Permit.pdf',
+      'DR. POLICARPIO L. MABBORANG, JR., ASEAN ENGR. — Campus Executive Officer',
     OfficialSignatureSlot.externalRecommender =>
-      'Business Coordinator — fixed name and title on External Permit.pdf',
+      'DIANA GRACE C. LICOPIT, MBA — Business Coordinator',
     OfficialSignatureSlot.externalAuthorizedOfficial =>
-      'President/Authorized Official — fixed name and title on External Permit.pdf',
+      'DR. POLICARPIO L. MABBORANG, JR., ASEAN ENGR. — President/Authorized Official',
   };
 
   Future<void> _preview(OfficialSignatureSlot slot) async {

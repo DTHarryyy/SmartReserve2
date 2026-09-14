@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "D:/Projects/smartreserve/linux"
+    "cmake.sourceDirectory": "D:/Projects/smartreserve/linux",
+    "dart.flutterSdkPath": "D:/Softwares/flutter"
 }

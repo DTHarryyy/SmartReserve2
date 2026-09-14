@@ -556,7 +556,18 @@ class AuthController extends ChangeNotifier {
         debugPrintStack(stackTrace: stackTrace);
       }
       final message = userMessageFor(error);
-      operationError = message;
+      final kind = error is AuthSessionException ? error.kind : null;
+      if (kind == AuthFailureKind.samePassword ||
+          kind == AuthFailureKind.weakPassword) {
+        passwordError = message;
+        operationError = null;
+      } else if (kind == AuthFailureKind.recoveryCodeExpired ||
+          kind == AuthFailureKind.recoveryCodeInvalid) {
+        resetCodeError = message;
+        operationError = null;
+      } else {
+        operationError = message;
+      }
     } finally {
       busy = false;
       notifyListeners();
@@ -569,6 +580,18 @@ class AuthController extends ChangeNotifier {
       return switch (kind) {
         AuthFailureKind.invalidCredentials =>
           'That email address or password is incorrect.',
+        AuthFailureKind.samePassword =>
+          'Your new password must be different from your current password.',
+        AuthFailureKind.weakPassword =>
+          'Choose a password with at least 10 characters, uppercase, lowercase, and a number.',
+        AuthFailureKind.passwordReauthenticationRequired =>
+          'For your security, sign in again before changing your password.',
+        AuthFailureKind.recoveryCodeExpired =>
+          'That password-reset code has expired. Request a new code.',
+        AuthFailureKind.recoveryCodeInvalid =>
+          'That password-reset code is invalid. Check the email and try again.',
+        AuthFailureKind.sessionExpired =>
+          'Your password-change session expired. Start the password reset again.',
         AuthFailureKind.emailUnconfirmed =>
           'This prototype account is not confirmed. Contact an Internal Admin.',
         AuthFailureKind.emailConfirmationRequired =>

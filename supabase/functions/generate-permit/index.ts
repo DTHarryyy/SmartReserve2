@@ -164,6 +164,23 @@ Deno.serve(async (request) => {
     const path =
       `${snapshot.requester_id}/${body.requestId}/${permit.permit_number}-v${permit.version}.pdf`;
     if (body.action === "preview") {
+      const { data: previewActor } = await admin.from("profiles")
+        .select("full_name,email,role").eq("id", auth.user.id).single();
+      const { error: previewAuditError } = await admin.from("audit_entries")
+        .insert({
+          entity_type: "reservation",
+          entity_id: body.requestId,
+          target_label: "Permit preview",
+          actor_id: auth.user.id,
+          actor_name: previewActor?.full_name || previewActor?.email ||
+            auth.user.email || "Administrator",
+          actor_role: previewActor?.role || "administrator",
+          action: "previewed populated official permit",
+          source_type: "reservation_permit_preview",
+          source_id: crypto.randomUUID(),
+          details: { template_kind: snapshot.template_kind },
+        });
+      if (previewAuditError) throw previewAuditError;
       return new Response(pdf.slice().buffer, {
         headers: {
           ...cors,

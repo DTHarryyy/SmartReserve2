@@ -136,6 +136,10 @@ for select to authenticated using (
   )
 );
 revoke insert, update, delete on public.reservation_permits from authenticated;
+-- Retire the legacy authenticated metadata recorder. It allowed a caller to
+-- attach bytes assembled outside the official-template generation function.
+revoke all on function public.record_reservation_permit_pdf(uuid,text,text,integer)
+  from public,anon,authenticated;
 
 create or replace function public.permit_printable_material(p_request_id uuid)
 returns jsonb language plpgsql stable security definer set search_path=public as $$
@@ -212,8 +216,8 @@ begin
     insert into reservation_permit_items(request_id,source_kind,label,row_code,duration_minutes,billing_basis,display_order)
     values(r.id,'requested_amenity',item.label,
       case r.admin_lane when 'internal' then
-        case lower(item.label) when 'sound system' then 'equipment:sound_system' else 'equipment:other' end
-      else 'external:other' end,duration_value,'included',ord);
+        case lower(item.label) when 'sound system' then 'equipment:sound_system' else 'equipment:unmapped' end
+      else 'external:unmapped' end,duration_value,'included',ord);
   end loop;
 end $$;
 revoke all on function public.populate_reservation_permit_items(uuid) from public,anon,authenticated;
@@ -253,7 +257,12 @@ begin
 end $$;
 grant execute on function public.get_reservation_permit_readiness(uuid) to authenticated;
 
-create or replace function public.request_reservation_signature(p_request_id uuid)
+-- The deployed predecessor returned reservation_signature_requests while an
+-- earlier checked-in revision returned void. PostgreSQL cannot change a
+-- function return type through CREATE OR REPLACE, so replace this RPC
+-- explicitly and restore its grant below.
+drop function if exists public.request_reservation_signature(uuid);
+create function public.request_reservation_signature(p_request_id uuid)
 returns void language plpgsql security definer set search_path=public as $$
 declare r reservation_requests%rowtype; actor uuid:=auth.uid(); hash_value text;
 begin
@@ -273,7 +282,10 @@ begin
 end $$;
 grant execute on function public.request_reservation_signature(uuid) to authenticated;
 
-create or replace function public.submit_reservation_signature(
+-- The deployed predecessor returned reservation_user_signatures. Replace it
+-- explicitly for the same return-type compatibility reason as the request RPC.
+drop function if exists public.submit_reservation_signature(uuid,text,text,text,integer,text);
+create function public.submit_reservation_signature(
   p_signature_request_id uuid,p_storage_path text,p_file_name text,p_mime_type text,p_byte_size integer,p_sha256 text
 ) returns void language plpgsql security definer set search_path=public as $$
 declare sr reservation_signature_requests%rowtype; actor uuid:=auth.uid(); current_hash text;
@@ -351,6 +363,12 @@ begin
   if p_byte_size not between 1 and 10485760 or lower(p_sha256)!~'^[0-9a-f]{64}$' then raise exception 'Invalid permit file metadata' using errcode='22023'; end if;
   update reservation_permits set storage_path=p_storage_path,pdf_sha256=lower(p_sha256),pdf_byte_size=p_byte_size,pdf_generated_at=now(),generation_status='ready',generation_error_code=null
   where id=p.id returning * into result;
+  insert into audit_entries(entity_type,entity_id,target_label,actor_id,actor_name,actor_role,action,source_type,source_id,details)
+  select 'reservation',r.id,p.permit_number,p.issued_by,coalesce(nullif(profile.full_name,''),profile.email),profile.role,
+    'embedded official signatures and generated permit','reservation_permit_generation',p.id,
+    jsonb_build_object('template_kind',p.template_kind,'template_sha256',p.template_sha256,'pdf_sha256',lower(p_sha256),'byte_size',p_byte_size)
+  from profiles profile where profile.id=p.issued_by
+  on conflict(source_type,source_id) do nothing;
   perform public.notify_reservation_user(r.id,public.reservation_event(r.id,'issued official reservation permit',null,jsonb_build_object('permit_id',p.id),null,true),
     'permit_available','Your reservation permit is ready','Download and print your official permit and bring it on your reservation date.');
   return result;

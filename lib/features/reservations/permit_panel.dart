@@ -92,6 +92,13 @@ class _PermitPanelState extends State<PermitPanel> {
             ],
           ),
           const SizedBox(height: SR.space8),
+          if (_admin && (permit != null || _readiness != null)) ...[
+            Text(
+              'Template: ${(permit?.templateKind ?? _readiness!.templateKind).label}',
+              style: SrType.caption(),
+            ),
+            const SizedBox(height: SR.space8),
+          ],
           ..._body(context),
           if (_error != null) ...[
             const SizedBox(height: SR.space8),

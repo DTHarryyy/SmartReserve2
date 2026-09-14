@@ -81,7 +81,7 @@ class _AppShellState extends State<AppShell> {
     final state = AppScope.read(context);
     _auth ??= AuthController(state);
     if (!_facilityControllerReady) {
-      _addFacility = AddFacilityController(toasts: state.toasts);
+      _addFacility = AddFacilityController(toastController: state.toasts);
       _facilityControllerReady = true;
     }
   }

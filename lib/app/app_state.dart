@@ -3730,18 +3730,7 @@ class AppState extends ChangeNotifier {
   }
 
   static String _reservationError(Object error) {
-    final message = '$error';
-    if (message.contains('23P01') || message.toLowerCase().contains('booked')) {
-      return 'That time was just booked. Refresh and choose another slot.';
-    }
-    if (message.contains('40001') || message.contains('changed')) {
-      return 'This reservation changed in another session. It has been refreshed.';
-    }
-    if (message.contains('23514')) {
-      return 'One of those values is out of range. Check the attendee count '
-          'and times, then try again.';
-    }
-    return friendlyBackendMessage(message);
+    return reservationBackendMessage(error);
   }
 
   ReservationRequest? requestById(String id) {
@@ -5939,17 +5928,6 @@ class AppState extends ChangeNotifier {
     if (!isInternalAdmin && !isExternalAdmin) return null;
     try {
       return await _coreBackend?.previewPermit(requestId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<String?> permitPdfUrl(ReservationPermit permit) async {
-    final path = permit.storagePath;
-    final service = _coreBackend;
-    if (path == null || path.isEmpty || service == null) return null;
-    try {
-      return await service.permitDownloadUrl(path);
     } catch (_) {
       return null;
     }

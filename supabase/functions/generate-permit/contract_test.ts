@@ -1,5 +1,8 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { PDFDocument } from "npm:pdf-lib@1.17.1";
+import { PDFArray, PDFDocument, PDFRawStream } from "npm:pdf-lib@1.17.1";
+import { PNG } from "npm:pngjs@7.0.0";
+import jpeg from "npm:jpeg-js@0.4.4";
+import { Buffer } from "node:buffer";
 import {
   formatBasis,
   formatDuration,
@@ -8,7 +11,23 @@ import {
   templateHashes,
 } from "./contract.ts";
 import type { PermitSnapshot } from "./contract.ts";
-import { renderPermit } from "./permit_layout.ts";
+import { cropSignatureMargins, renderPermit } from "./permit_layout.ts";
+
+function pageContentStreams(document: PDFDocument) {
+  const contents = document.getPage(0).node.Contents();
+  if (!contents) return [];
+  const entries = contents instanceof PDFArray
+    ? contents.asArray()
+    : [contents];
+  return entries.map((entry) => document.context.lookup(entry))
+    .filter((entry): entry is PDFRawStream => entry instanceof PDFRawStream)
+    .map((entry) => entry.getContents());
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array) {
+  return left.length === right.length &&
+    left.every((byte, index) => byte === right[index]);
+}
 
 for (
   const [kind, file] of [
@@ -43,13 +62,39 @@ Deno.test("weekly schedule and billing labels use official compact forms", () =>
   assertEquals(formatBasis("per_occurrence"), "PER OCC.");
 });
 
-Deno.test("both official templates accept bounded overlays without adding pages", async () => {
-  const signature = Uint8Array.from(
-    atob(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL1WQAAAABJRU5ErkJggg==",
-    ),
-    (value) => value.charCodeAt(0),
+Deno.test("PNG and JPEG signatures are cropped to nonblank content", () => {
+  const width = 40;
+  const height = 20;
+  const rgba = new Uint8Array(width * height * 4).fill(255);
+  for (let y = 8; y <= 11; y++) {
+    for (let x = 14; x <= 25; x++) {
+      const offset = (y * width + x) * 4;
+      rgba[offset] = 0;
+      rgba[offset + 1] = 0;
+      rgba[offset + 2] = 0;
+    }
+  }
+  const sourcePng = new PNG({ width, height });
+  sourcePng.data.set(rgba);
+  const pngResult = PNG.sync.read(
+    Buffer.from(cropSignatureMargins(PNG.sync.write(sourcePng))),
   );
+  const jpegBytes = jpeg.encode({ width, height, data: rgba }, 95).data;
+  const jpegResult = PNG.sync.read(
+    Buffer.from(cropSignatureMargins(jpegBytes)),
+  );
+  for (const result of [pngResult, jpegResult]) {
+    assertEquals(result.width < width, true);
+    assertEquals(result.height < height, true);
+  }
+});
+
+Deno.test("both official templates accept bounded overlays without adding pages", async () => {
+  const signatureImage = new PNG({ width: 4, height: 2 });
+  for (let offset = 0; offset < signatureImage.data.length; offset += 4) {
+    signatureImage.data[offset + 3] = 255;
+  }
+  const signature = new Uint8Array(PNG.sync.write(signatureImage));
   const base = {
     requester_id: "00000000-0000-0000-0000-000000000001",
     requester_name: "Maria Dela Cruz",
@@ -99,11 +144,23 @@ Deno.test("both official templates accept bounded overlays without adding pages"
     const template = await Deno.readFile(
       new URL(`./templates/${file}`, import.meta.url),
     );
+    const originalStreams = pageContentStreams(
+      await PDFDocument.load(template),
+    );
     const signatures = fixture.template_kind === "internal"
       ? [signature, signature]
       : [signature, signature, signature];
     const output = await renderPermit(template, fixture, signatures);
-    assertEquals((await PDFDocument.load(output)).getPageCount(), 1);
+    const rendered = await PDFDocument.load(output);
+    assertEquals(rendered.getPageCount(), 1);
+    const renderedStreams = pageContentStreams(rendered);
+    assertEquals(
+      originalStreams.every((source) =>
+        renderedStreams.some((candidate) => equalBytes(source, candidate))
+      ),
+      true,
+      "the original template page content streams must remain byte-identical",
+    );
     assertEquals(await sha256(template), templateHashes[fixture.template_kind]);
   }
 });

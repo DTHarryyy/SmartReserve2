@@ -1,5 +1,37 @@
 library;
 
+const reservationServiceUpdatingMessage =
+    'Reservation requests are temporarily unavailable while SmartReserve '
+    'is being updated. Please try again shortly.';
+
+/// Returns a stable requester-facing message for reservation failures.
+///
+/// A missing required reservation RPC is a deployment problem, not something
+/// the requester can correct. Keep the database function name and PostgREST
+/// schema details out of the UI while still leaving other validation messages
+/// available through [friendlyBackendMessage].
+String reservationBackendMessage(Object error) {
+  final raw = '$error';
+  final normalized = raw.toLowerCase();
+  final missingSubmissionContract =
+      normalized.contains('submit_reservation_v3') &&
+      (normalized.contains('pgrst202') ||
+          normalized.contains('could not find the function') ||
+          normalized.contains('function not found'));
+  if (missingSubmissionContract) return reservationServiceUpdatingMessage;
+  if (raw.contains('23P01') || normalized.contains('booked')) {
+    return 'That time was just booked. Refresh and choose another slot.';
+  }
+  if (raw.contains('40001') || normalized.contains('changed')) {
+    return 'This reservation changed in another session. It has been refreshed.';
+  }
+  if (raw.contains('23514')) {
+    return 'One of those values is out of range. Check the attendee count '
+        'and times, then try again.';
+  }
+  return friendlyBackendMessage(raw);
+}
+
 /// Turns a thrown backend error into something worth showing a person.
 ///
 /// `PostgrestException.toString()` reads

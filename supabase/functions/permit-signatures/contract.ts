@@ -10,17 +10,16 @@ export const signatureSlots: Record<OfficialSignatureSlot, {
   internal_approver: {
     role: "internal_admin",
     printedIdentity:
-      "Internal approving official (fixed name/title on Internal Permit.pdf)",
+      "DR. POLICARPIO L. MABBORANG, JR., ASEAN ENGR. — Campus Executive Officer",
   },
   external_recommender: {
     role: "external_admin",
-    printedIdentity:
-      "Business Coordinator (fixed name/title on External Permit.pdf)",
+    printedIdentity: "DIANA GRACE C. LICOPIT, MBA — Business Coordinator",
   },
   external_authorized_official: {
     role: "external_admin",
     printedIdentity:
-      "President/Authorized Official (fixed name/title on External Permit.pdf)",
+      "DR. POLICARPIO L. MABBORANG, JR., ASEAN ENGR. — President/Authorized Official",
   },
 };
 

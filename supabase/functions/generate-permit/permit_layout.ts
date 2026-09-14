@@ -6,6 +6,9 @@ import {
   rgb,
   StandardFonts,
 } from "npm:pdf-lib@1.17.1";
+import { PNG } from "npm:pngjs@7.0.0";
+import jpeg from "npm:jpeg-js@0.4.4";
+import { Buffer } from "node:buffer";
 import {
   formatBasis,
   formatDate,
@@ -21,6 +24,60 @@ import {
 
 type Box = { x: number; y: number; width: number; height: number };
 const ink = rgb(0.03, 0.03, 0.03);
+
+export const permitOverlayMasks: Record<"internal" | "external", Box[]> = {
+  internal: [
+    { x: 404, y: 42, width: 134, height: 18 },
+    { x: 57, y: 203, width: 40, height: 107 },
+    { x: 181, y: 268, width: 105, height: 35 },
+    { x: 308, y: 203, width: 39, height: 111 },
+    { x: 430, y: 278, width: 108, height: 29 },
+    { x: 57, y: 347, width: 481, height: 17 },
+    { x: 57, y: 399, width: 481, height: 43 },
+    { x: 57, y: 525, width: 240, height: 24 },
+    { x: 134, y: 574, width: 225, height: 18 },
+    { x: 179, y: 640, width: 259, height: 26 },
+  ],
+  external: [
+    { x: 105, y: 125, width: 321, height: 15 },
+    { x: 460, y: 125, width: 123, height: 15 },
+    { x: 161, y: 141, width: 422, height: 16 },
+    { x: 98, y: 157, width: 485, height: 16 },
+    { x: 95, y: 173, width: 488, height: 16 },
+    ...[223, 243, 263, 282, 302, 322, 341, 361].map((y) => ({
+      x: 18,
+      y,
+      width: 565,
+      height: 19,
+    })),
+    { x: 409, y: 451, width: 159, height: 18 },
+    { x: 18, y: 492, width: 565, height: 22 },
+    { x: 165, y: 520, width: 181, height: 24 },
+    { x: 352, y: 520, width: 86, height: 24 },
+    { x: 443, y: 520, width: 140, height: 24 },
+    { x: 217, y: 553, width: 67, height: 21 },
+    { x: 392, y: 553, width: 191, height: 21 },
+    { x: 400, y: 617, width: 135, height: 26 },
+    { x: 135, y: 681, width: 100, height: 18 },
+    { x: 314, y: 681, width: 13, height: 18 },
+    { x: 217, y: 704, width: 191, height: 24 },
+    { x: 171, y: 752, width: 248, height: 27 },
+  ],
+};
+
+const pageKinds = new WeakMap<PDFPage, "internal" | "external">();
+
+function assertInsideOverlayMask(page: PDFPage, box: Box) {
+  const kind = pageKinds.get(page);
+  if (!kind) throw new Error("Permit page has no overlay-mask context");
+  const epsilon = 0.01;
+  const inside = permitOverlayMasks[kind].some((mask) =>
+    box.x >= mask.x - epsilon && box.y >= mask.y - epsilon &&
+    box.x + box.width <= mask.x + mask.width + epsilon &&
+    box.y + box.height <= mask.y + mask.height + epsilon
+  );
+  if (!inside) throw new Error(`Overlay escaped declared ${kind} mask`);
+}
 
 const pdfY = (page: PDFPage, box: Box) => page.getHeight() - box.y - box.height;
 
@@ -52,6 +109,7 @@ function drawFitted(
     field?: string;
   } = {},
 ) {
+  assertInsideOverlayMask(page, box);
   const text = normalizeText(value);
   if (!text) throw new Error("A required permit field is blank");
   const preferred = options.size ?? 9;
@@ -99,13 +157,59 @@ function check(
   });
 }
 
+export function cropSignatureMargins(bytes: Uint8Array) {
+  const png = bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10]
+    .every((byte, index) => bytes[index] === byte);
+  const jpg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+    bytes[2] === 0xff;
+  if (!png && !jpg) throw new Error("Signature is not a valid PNG or JPEG");
+  const decoded = png
+    ? PNG.sync.read(Buffer.from(bytes))
+    : jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true });
+  const { width, height, data } = decoded;
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4;
+      const alpha = data[offset + 3];
+      const blank = alpha <= 8 ||
+        (data[offset] >= 248 && data[offset + 1] >= 248 &&
+          data[offset + 2] >= 248);
+      if (blank) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top) throw new Error("Signature image is blank");
+  const padding = Math.max(1, Math.round(Math.min(width, height) * 0.01));
+  left = Math.max(0, left - padding);
+  top = Math.max(0, top - padding);
+  right = Math.min(width - 1, right + padding);
+  bottom = Math.min(height - 1, bottom + padding);
+  const output = new PNG({
+    width: right - left + 1,
+    height: bottom - top + 1,
+  });
+  for (let y = top; y <= bottom; y++) {
+    const sourceStart = (y * width + left) * 4;
+    const sourceEnd = (y * width + right + 1) * 4;
+    const targetStart = (y - top) * output.width * 4;
+    output.data.set(data.subarray(sourceStart, sourceEnd), targetStart);
+  }
+  return new Uint8Array(PNG.sync.write(output));
+}
+
 async function embedImage(document: PDFDocument, bytes: Uint8Array) {
-  if (bytes[0] === 0x89 && bytes[1] === 0x50) return document.embedPng(bytes);
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) return document.embedJpg(bytes);
-  throw new Error("Signature is not a valid PNG or JPEG");
+  return document.embedPng(cropSignatureMargins(bytes));
 }
 
 function drawImage(page: PDFPage, image: PDFImage, box: Box) {
+  assertInsideOverlayMask(page, box);
   const scale = Math.min(box.width / image.width, box.height / image.height);
   const width = image.width * scale;
   const height = image.height * scale;
@@ -135,6 +239,7 @@ async function renderInternal(
   signatures: Uint8Array[],
 ) {
   const page = document.getPage(0);
+  pageKinds.set(page, "internal");
   const font = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
   drawFitted(page, font, formatDate(snapshot.user_signed_at), {
@@ -243,6 +348,7 @@ async function renderExternal(
   signatures: Uint8Array[],
 ) {
   const page = document.getPage(0);
+  pageKinds.set(page, "external");
   const font = await document.embedFont(StandardFonts.TimesRoman);
   const bold = await document.embedFont(StandardFonts.TimesRomanBold);
   drawFitted(page, font, snapshot.requester_name, {

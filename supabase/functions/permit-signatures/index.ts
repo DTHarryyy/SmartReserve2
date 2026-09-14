@@ -49,7 +49,7 @@ async function audit(
   const { data: profile } = await admin.from("profiles").select(
     "full_name,email,role",
   ).eq("id", userId).single();
-  await admin.from("audit_entries").insert({
+  const { error } = await admin.from("audit_entries").insert({
     entity_type: "system",
     target_label: "Official permit signature",
     actor_id: userId,
@@ -60,6 +60,7 @@ async function audit(
     source_id: crypto.randomUUID(),
     details: { slot, revisionId },
   });
+  if (error) throw error;
 }
 
 Deno.serve(async (request) => {

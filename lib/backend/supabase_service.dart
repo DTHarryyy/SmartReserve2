@@ -200,6 +200,12 @@ class SessionProfile {
 /// a fixed message rather than displaying an exception returned by Supabase.
 enum AuthFailureKind {
   invalidCredentials,
+  samePassword,
+  weakPassword,
+  passwordReauthenticationRequired,
+  recoveryCodeExpired,
+  recoveryCodeInvalid,
+  sessionExpired,
   emailUnconfirmed,
   emailConfirmationRequired,
   emailAlreadyRegistered,
@@ -254,10 +260,89 @@ AuthSessionException _profileContractFailure(Object cause, {String? code}) =>
 AuthSessionException classifyAuthFailure(Object error) {
   if (error is AuthSessionException) return error;
 
+  if (error is AccountManagementException) {
+    final kind = switch (error.code.toLowerCase()) {
+      'same_password' => AuthFailureKind.samePassword,
+      'weak_password' => AuthFailureKind.weakPassword,
+      'reauthentication_needed' || 'reauthentication_not_valid' =>
+        AuthFailureKind.passwordReauthenticationRequired,
+      'unauthorized' ||
+      'session_expired' ||
+      'session_missing' ||
+      'session_not_found' => AuthFailureKind.sessionExpired,
+      'rate_limited' => AuthFailureKind.rateLimited,
+      _ => AuthFailureKind.unknown,
+    };
+    return AuthSessionException(
+      kind: kind,
+      statusCode: '${error.status}',
+      backendCode: error.code,
+      cause: error,
+    );
+  }
+
   if (error is AuthException) {
     final message = error.message.toLowerCase();
     final status = error.statusCode?.toString() ?? '';
-    if (status == '429' || message.contains('rate limit')) {
+    final code = error.code?.toLowerCase() ?? '';
+    if (code == 'same_password' ||
+        message.contains('different from the old password') ||
+        message.contains('same password')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.samePassword,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (code == 'weak_password' || message.contains('weak password')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.weakPassword,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (code == 'reauthentication_needed' ||
+        code == 'reauthentication_not_valid') {
+      return AuthSessionException(
+        kind: AuthFailureKind.passwordReauthenticationRequired,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (code == 'otp_expired' || code == 'flow_state_expired') {
+      return AuthSessionException(
+        kind: AuthFailureKind.recoveryCodeExpired,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (code == 'flow_state_not_found' ||
+        message.contains('token has expired or is invalid') ||
+        message.contains('invalid otp')) {
+      return AuthSessionException(
+        kind: AuthFailureKind.recoveryCodeInvalid,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (code == 'session_expired' ||
+        code == 'session_missing' ||
+        code == 'session_not_found') {
+      return AuthSessionException(
+        kind: AuthFailureKind.sessionExpired,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (status == '429' ||
+        code.startsWith('over_') && code.endsWith('_rate_limit') ||
+        message.contains('rate limit')) {
       return AuthSessionException(
         kind: AuthFailureKind.rateLimited,
         statusCode: status,
@@ -3011,7 +3096,6 @@ abstract interface class SmartReserveCoreBackend {
   Future<PermitReadiness> permitReadiness(String requestId);
   Future<Uint8List> downloadPermitPdf(String path);
   Future<Uint8List> previewPermit(String requestId);
-  Future<String> permitDownloadUrl(String path);
   Future<Map<String, dynamic>> verifyPermit(String token);
   Future<void> saveFacilityConfiguration(FacilityConfigurationDraft draft);
   Future<List<AuditEntry>> facilityActivity(String facilityId);
@@ -3498,19 +3582,38 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       _client.auth.signInWithPassword(email: email, password: password);
 
   @override
-  Future<void> requestPasswordReset(String email) =>
-      _client.auth.resetPasswordForEmail(email);
+  Future<void> requestPasswordReset(String email) async {
+    try {
+      await _client.auth.resetPasswordForEmail(email);
+    } catch (error) {
+      throw classifyAuthFailure(error);
+    }
+  }
 
   @override
   Future<void> verifyPasswordResetCode({
     required String email,
     required String code,
-  }) =>
-      _client.auth.verifyOTP(email: email, token: code, type: OtpType.recovery);
+  }) async {
+    try {
+      await _client.auth.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.recovery,
+      );
+    } catch (error) {
+      throw classifyAuthFailure(error);
+    }
+  }
 
   @override
-  Future<void> updatePassword(String password) =>
-      _client.auth.updateUser(UserAttributes(password: password));
+  Future<void> updatePassword(String password) async {
+    try {
+      await _client.auth.updateUser(UserAttributes(password: password));
+    } catch (error) {
+      throw classifyAuthFailure(error);
+    }
+  }
 
   @override
   Future<SessionProfile> signInAndLoadProfile(
@@ -3670,15 +3773,34 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   Future<SessionProfile> completeInitialPasswordChange(String password) async {
     if (user == null) throw const AuthException('Please sign in again.');
-    final response = await _client.functions.invoke(
-      'complete-initial-password',
-      body: {'password': password},
-    );
+    late final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'complete-initial-password',
+        body: {'password': password},
+      );
+    } on FunctionException catch (error) {
+      throw classifyAuthFailure(
+        AccountManagementException.fromFunctionException(error),
+      );
+    }
     final data = response.data;
     if (data is! Map) {
       throw AccountManagementException.invalidResponse(status: response.status);
     }
-    final profile = Map<String, dynamic>.from(data)['profile'];
+    final json = Map<String, dynamic>.from(data);
+    if (json['error'] != null) {
+      throw classifyAuthFailure(
+        AccountManagementException(
+          code: json['code'] is String ? json['code'] as String : 'unknown',
+          message: json['error'] is String
+              ? json['error'] as String
+              : 'Password could not be updated.',
+          status: response.status,
+        ),
+      );
+    }
+    final profile = json['profile'];
     if (profile is! Map) {
       throw AccountManagementException.invalidResponse(status: response.status);
     }
@@ -4427,11 +4549,6 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     if (data['error'] is String) throw StateError('${data['error']}');
     return data;
   }
-
-  @override
-  Future<String> permitDownloadUrl(String path) => _client.storage
-      .from('reservation-permits')
-      .createSignedUrl(path, 60 * 10);
 
   @override
   Future<Map<String, dynamic>> verifyPermit(String token) async {
