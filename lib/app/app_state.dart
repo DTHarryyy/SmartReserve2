@@ -1292,6 +1292,7 @@ class AppState extends ChangeNotifier {
   bool accountsLoading = false;
   String? accountsError;
   bool organizationRegistryLoading = false;
+  bool organizationRegistryStale = false;
   String? organizationRegistryError;
 
   Future<void> refreshAccounts() async {
@@ -1410,8 +1411,11 @@ class AppState extends ChangeNotifier {
   Future<void> refreshOrganizationRegistry() async {
     final service = backend;
     if (service == null || !isInternalAdmin) return;
+    final hasVerifiedSnapshot =
+        organizationUnits.isNotEmpty || organizationSlots.isNotEmpty;
     organizationRegistryLoading = true;
     organizationRegistryError = null;
+    organizationRegistryStale = false;
     notifyListeners();
     try {
       final units = await service.organizationUnits();
@@ -1419,9 +1423,11 @@ class AppState extends ChangeNotifier {
       organizationUnits = units.map(_toOrganizationUnit).toList();
       organizationSlots = slots.map(_toOrganizationSlot).toList();
       organizationRegistryLoading = false;
+      organizationRegistryStale = false;
       notifyListeners();
     } catch (error) {
       organizationRegistryLoading = false;
+      organizationRegistryStale = hasVerifiedSnapshot;
       organizationRegistryError =
           'Organization registry could not be loaded: ${_accountError(error)}';
       notifyListeners();
@@ -1495,10 +1501,28 @@ class AppState extends ChangeNotifier {
     }
     try {
       _upsertOrganizationUnit(await service.archiveOrganizationUnit(unitId));
-      notifyListeners();
+      await refreshAccounts();
+      await refreshOrganizationRegistry();
+      showToast(const ToastMessage('Organization archived.'));
       return null;
     } catch (error) {
       return _accountActionError(error, 'Organization was not archived.');
+    }
+  }
+
+  Future<String?> restoreOrganizationUnit(String unitId) async {
+    final service = backend;
+    if (service == null || !isInternalAdmin) {
+      return 'Only an internal admin can restore organizations.';
+    }
+    try {
+      _upsertOrganizationUnit(await service.restoreOrganizationUnit(unitId));
+      await refreshAccounts();
+      await refreshOrganizationRegistry();
+      showToast(const ToastMessage('Organization restored.'));
+      return null;
+    } catch (error) {
+      return _accountActionError(error, 'Organization was not restored.');
     }
   }
 
@@ -1546,6 +1570,7 @@ class AppState extends ChangeNotifier {
       _upsertBackendAccount(
         await service.removeOrganizationRepresentative(profileId),
       );
+      await refreshAccounts();
       await refreshOrganizationRegistry();
       return null;
     } catch (error) {
@@ -1582,6 +1607,7 @@ class AppState extends ChangeNotifier {
         organizationSlotId: slotId,
       );
       _upsertBackendAccount(created.account);
+      await refreshAccounts();
       await refreshOrganizationRegistry();
       final account = _toAccount(created.account);
       log(
@@ -1627,6 +1653,8 @@ class AppState extends ChangeNotifier {
         account.id,
       );
       _upsertBackendAccount(reset.account);
+      await refreshAccounts();
+      await refreshOrganizationRegistry();
       showToast(
         ToastMessage('Temporary password generated for ${account.name}.'),
       );
@@ -1755,9 +1783,18 @@ class AppState extends ChangeNotifier {
         'SmartReserve received an invalid account response. Try again.',
       'server_error' =>
         'SmartReserve could not complete this account action. Try again.$reference',
+      'profile_provision_failed' ||
+      'cleanup_failed' ||
+      'password_reset_reconciliation_required' => '${error.message}$reference',
       'guardrail' ||
       'conflict' ||
+      'invalid_email' ||
+      'invalid_full_name' ||
+      'slot_required' ||
+      'invalid_target' ||
       'email_exists' ||
+      'slot_inactive' ||
+      'slot_occupied' ||
       'invite_not_pending' ||
       'invite_pending' ||
       'invalid_request' ||
@@ -5833,9 +5870,13 @@ class AppState extends ChangeNotifier {
         requestId: requestId,
         signature: signature,
       );
-      await _coreBackend?.ensurePermit(requestId);
       await refreshReservations();
-      showToast(const ToastMessage('Your e-signature was submitted.'));
+      showToast(
+        const ToastMessage(
+          'Your e-signature was submitted. The administrator can now prepare '
+          'the official permit.',
+        ),
+      );
       return true;
     } catch (error) {
       showToast(
@@ -5874,20 +5915,13 @@ class AppState extends ChangeNotifier {
     if (backend == null) return false;
     try {
       await backend!.uploadOfficialSignature(slot, signature);
-      final lane = slot == OfficialSignatureSlot.internalApprover
-          ? 'internal'
-          : 'external';
-      for (final request in requests.where(
-        (item) => item.adminLane == lane && item.permit?.isDownloadable != true,
-      )) {
-        try {
-          await _coreBackend?.ensurePermit(request.id);
-        } catch (_) {
-          // Other readiness blockers remain visible in the permit panel.
-        }
-      }
       await refreshReservations();
-      showToast(ToastMessage('${slot.label} signature updated.'));
+      showToast(
+        ToastMessage(
+          '${slot.label} signature updated. Generate each ready permit from '
+          'its reservation.',
+        ),
+      );
       return true;
     } catch (error) {
       showToast(
@@ -5905,6 +5939,65 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> refreshReservationPermitItemsForMapping(String requestId) async {
+    final service = _coreBackend;
+    if (service == null || !isAdmin) return false;
+    try {
+      await service.refreshReservationPermitItemsForMapping(requestId);
+      await refreshReservations();
+      showToast(
+        const ToastMessage(
+          'Permit mappings refreshed. The requester must sign the updated permit.',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> saveReservationPermitMappings(
+    String requestId,
+    List<PermitMappingUpdate> mappings,
+  ) async {
+    final service = _coreBackend;
+    if (service == null || !isAdmin) return false;
+    try {
+      await service.saveReservationPermitMappings(requestId, mappings);
+      await Future.wait([refreshReservations(), refreshFacilities()]);
+      showToast(
+        const ToastMessage(
+          'Mappings saved. A fresh e-signature request was sent when needed.',
+        ),
+      );
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> deliverReservationPermit(String permitId) async {
+    final service = _coreBackend;
+    if (service == null || !isAdmin) return false;
+    try {
+      await service.deliverReservationPermit(permitId);
+      await refreshReservations();
+      showToast(const ToastMessage('Official permit sent to the requester.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
+      );
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>?> previewOfficialSignature(
     OfficialSignatureSlot slot,
   ) async {
@@ -5916,7 +6009,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<Uint8List?> permitPdfBytes(ReservationPermit permit) async {
-    if (!permit.isDownloadable) return null;
+    if (!permit.isGenerated || (!isAdmin && !permit.isDelivered)) return null;
     try {
       return await _coreBackend?.downloadPermitPdf(permit.storagePath!);
     } catch (_) {

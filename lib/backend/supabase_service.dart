@@ -5,7 +5,6 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/rendering.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,6 +21,13 @@ import '../model/anomaly.dart';
 import '../model/feedback.dart';
 import '../model/loyalty.dart';
 import '../util/geo.dart';
+
+enum AccountManagementRetryability {
+  notRetryable,
+  retryNow,
+  retryAfterDelay,
+  reconciliationRequired,
+}
 
 class AccountManagementException implements Exception {
   const AccountManagementException({
@@ -60,8 +66,21 @@ class AccountManagementException implements Exception {
   final int status;
   final String? requestId;
 
-  bool get isRetryable =>
-      code == 'network' || code == 'rate_limited' || code == 'server_error';
+  AccountManagementRetryability get retryability => switch (code) {
+    'network' ||
+    'server_error' ||
+    'invalid_response' => AccountManagementRetryability.retryNow,
+    'rate_limited' => AccountManagementRetryability.retryAfterDelay,
+    'cleanup_failed' || 'password_reset_reconciliation_required' =>
+      AccountManagementRetryability.reconciliationRequired,
+    _ => AccountManagementRetryability.notRetryable,
+  };
+
+  bool get isRetryable => switch (retryability) {
+    AccountManagementRetryability.retryNow ||
+    AccountManagementRetryability.retryAfterDelay => true,
+    _ => false,
+  };
 
   @override
   String toString() => message;
@@ -78,6 +97,19 @@ Map<String, dynamic> _accountErrorDetails(dynamic details) {
     }
   }
   return const {};
+}
+
+String _permitFunctionErrorMessage(Object error, {required String fallback}) {
+  if (error is FunctionException) {
+    final details = _accountErrorDetails(error.details);
+    final message = details['error'];
+    if (message is String && message.isNotEmpty) return message;
+  }
+  final raw = '$error'.trim();
+  if (raw.isEmpty || raw.toLowerCase().contains('[object object]')) {
+    return fallback;
+  }
+  return raw;
 }
 
 String _accountErrorCode(int status) => switch (status) {
@@ -2998,6 +3030,7 @@ abstract interface class SmartReserveBackend {
     String? bookingAudience,
   });
   Future<BackendOrganizationUnit> archiveOrganizationUnit(String unitId);
+  Future<BackendOrganizationUnit> restoreOrganizationUnit(String unitId);
   Future<BackendAccount> assignOrganizationRepresentative({
     required String profileId,
     required String slotId,
@@ -3094,6 +3127,12 @@ abstract interface class SmartReserveCoreBackend {
   });
   Future<ReservationPermit?> ensurePermit(String requestId);
   Future<PermitReadiness> permitReadiness(String requestId);
+  Future<void> refreshReservationPermitItemsForMapping(String requestId);
+  Future<void> saveReservationPermitMappings(
+    String requestId,
+    List<PermitMappingUpdate> mappings,
+  );
+  Future<ReservationPermit> deliverReservationPermit(String permitId);
   Future<Uint8List> downloadPermitPdf(String path);
   Future<Uint8List> previewPermit(String requestId);
   Future<Map<String, dynamic>> verifyPermit(String token);
@@ -4415,10 +4454,20 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<ReservationPermit?> ensurePermit(String requestId) async {
-    final response = await _client.functions.invoke(
-      'generate-permit',
-      body: {'action': 'ensure', 'requestId': requestId},
-    );
+    late final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'generate-permit',
+        body: {'action': 'ensure', 'requestId': requestId},
+      );
+    } catch (error) {
+      throw StateError(
+        _permitFunctionErrorMessage(
+          error,
+          fallback: 'The permit service is temporarily unavailable. Try again.',
+        ),
+      );
+    }
     if (response.data is! Map) {
       throw StateError('Permit generator returned an invalid response.');
     }
@@ -4440,15 +4489,54 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
+  Future<void> refreshReservationPermitItemsForMapping(String requestId) =>
+      _client.rpc(
+        'refresh_reservation_permit_items_for_mapping',
+        params: {'p_request_id': requestId},
+      );
+
+  @override
+  Future<void> saveReservationPermitMappings(
+    String requestId,
+    List<PermitMappingUpdate> mappings,
+  ) => _client.rpc(
+    'save_reservation_permit_mappings',
+    params: {
+      'p_request_id': requestId,
+      'p_mappings': [for (final mapping in mappings) mapping.toJson()],
+    },
+  );
+
+  @override
+  Future<ReservationPermit> deliverReservationPermit(String permitId) async {
+    final data = await _client.rpc(
+      'deliver_reservation_permit',
+      params: {'p_permit_id': permitId},
+    );
+    return ReservationPermit.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
   Future<Uint8List> downloadPermitPdf(String path) =>
       _client.storage.from('reservation-permits').download(path);
 
   @override
   Future<Uint8List> previewPermit(String requestId) async {
-    final response = await _client.functions.invoke(
-      'generate-permit',
-      body: {'action': 'preview', 'requestId': requestId},
-    );
+    late final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'generate-permit',
+        body: {'action': 'preview', 'requestId': requestId},
+      );
+    } catch (error) {
+      throw StateError(
+        _permitFunctionErrorMessage(
+          error,
+          fallback:
+              'The permit preview service is temporarily unavailable. Try again.',
+        ),
+      );
+    }
     if (response.data is Uint8List) return response.data as Uint8List;
     if (response.data is List<int>) {
       return Uint8List.fromList(response.data as List<int>);
@@ -4471,32 +4559,92 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     required String requestId,
     required ReservationUpload signature,
   }) async {
-    final currentUser = user;
-    if (currentUser == null) throw const AuthException('Please sign in again.');
-    final path = '${currentUser.id}/$requestId/${_uuid()}-${signature.name}';
-    await _client.storage
-        .from('reservation-signatures')
-        .uploadBinary(
-          path,
-          signature.bytes,
-          fileOptions: FileOptions(contentType: signature.mimeType),
-        );
-    try {
-      await _client.rpc(
-        'submit_reservation_signature',
-        params: {
-          'p_signature_request_id': signatureRequestId,
-          'p_storage_path': path,
-          'p_file_name': signature.name,
-          'p_mime_type': signature.mimeType,
-          'p_byte_size': signature.bytes.lengthInBytes,
-          'p_sha256': sha256.convert(signature.bytes).toString(),
-        },
-      );
-    } catch (_) {
-      await _client.storage.from('reservation-signatures').remove([path]);
-      rethrow;
+    final prepared = await _reservationSignatureFunction('prepare', {
+      'signatureRequestId': signatureRequestId,
+      'requestId': requestId,
+      'mimeType': signature.mimeType,
+    }, retryTransportOnce: true);
+    final path = prepared['path'];
+    final token = prepared['token'];
+    if (path is! String || token is! String || path.isEmpty || token.isEmpty) {
+      throw StateError('Signature service returned an invalid upload link.');
     }
+    try {
+      await _client.storage
+          .from('reservation-signatures')
+          .uploadBinaryToSignedUrl(
+            path,
+            token,
+            signature.bytes,
+            FileOptions(contentType: signature.mimeType),
+          );
+      await _reservationSignatureFunction('complete', {
+        'signatureRequestId': signatureRequestId,
+        'requestId': requestId,
+        'path': path,
+        'fileName': signature.name,
+        'mimeType': signature.mimeType,
+      });
+    } on StorageException catch (_) {
+      throw StateError(
+        'Your signature upload could not be completed. Try again.',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> _reservationSignatureFunction(
+    String action,
+    Map<String, dynamic> values, {
+    bool retryTransportOnce = false,
+  }) async {
+    FunctionResponse? response;
+    for (var attempt = 0; attempt < (retryTransportOnce ? 2 : 1); attempt++) {
+      try {
+        response = await _client.functions.invoke(
+          'submit-reservation-signature',
+          body: {'action': action, ...values},
+        );
+        break;
+      } on FunctionsFetchException {
+        // Preparing an upload URL has no stateful side effect. A single retry
+        // smooths over an intermittent browser/Edge transport failure without
+        // ever resubmitting a completed signature.
+        if (attempt == 0 && retryTransportOnce) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          continue;
+        }
+        throw StateError(
+          'The permit signature service could not be reached. Refresh and '
+          'try again.',
+        );
+      } on FunctionException catch (error) {
+        final details = _accountErrorDetails(error.details);
+        final message = details['error'];
+        throw StateError(
+          message is String && message.isNotEmpty
+              ? message
+              : 'Signature service is temporarily unavailable. Try again.',
+        );
+      }
+    }
+    if (response == null) {
+      throw StateError(
+        'Signature service is temporarily unavailable. Try again.',
+      );
+    }
+    if (response.data is! Map) {
+      throw StateError('Signature service returned an invalid response.');
+    }
+    final result = Map<String, dynamic>.from(response.data as Map);
+    if (result['ok'] != true) {
+      final message = result['error'];
+      throw StateError(
+        message is String && message.isNotEmpty
+            ? message
+            : 'Your signature could not be submitted. Try again.',
+      );
+    }
+    return result;
   }
 
   @override
@@ -5816,6 +5964,16 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   ) async => _organizationUnitResult(
     await _client.rpc(
       'archive_organization_unit_policy',
+      params: {'p_unit_id': unitId},
+    ),
+  );
+
+  @override
+  Future<BackendOrganizationUnit> restoreOrganizationUnit(
+    String unitId,
+  ) async => _organizationUnitResult(
+    await _client.rpc(
+      'restore_organization_unit_policy',
       params: {'p_unit_id': unitId},
     ),
   );

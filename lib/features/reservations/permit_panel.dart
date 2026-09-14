@@ -18,6 +18,7 @@ import '../../widgets/decision_widgets.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import 'permit_signature_settings_dialog.dart';
+import 'reservation_permit_mapping_dialog.dart';
 
 class PermitPanel extends StatefulWidget {
   const PermitPanel({super.key, required this.state, required this.request});
@@ -35,6 +36,11 @@ class _PermitPanelState extends State<PermitPanel> {
 
   bool get _admin =>
       widget.state.isInternalAdmin || widget.state.isExternalAdmin;
+
+  bool _isSignedInRequester(ReservationRequest request) =>
+      !_admin &&
+      widget.state.hasSession &&
+      widget.state.sessionProfile?.id == request.requesterId;
 
   @override
   void initState() {
@@ -56,12 +62,29 @@ class _PermitPanelState extends State<PermitPanel> {
   Future<void> _loadReadiness() async {
     final value = await widget.state.permitReadiness(widget.request.id);
     if (!mounted) return;
-    setState(() => _readiness = value);
-    if (value?.ready == true &&
-        widget.request.permit?.isDownloadable != true &&
-        !_busy) {
-      unawaited(_generate());
+    setState(() {
+      _readiness = value;
+      // A completed requester signature is authoritative. Clear any local
+      // error left over from an earlier attempt; the requester has no permit
+      // generation action to repeat.
+      if (!_admin && widget.request.signatureSubmitted) _error = null;
+    });
+  }
+
+  Future<void> _configurePermitMappings(ReservationRequest request) async {
+    final readiness = _readiness;
+    if (readiness == null || readiness.configurationReady) {
+      return;
     }
+    final saved = await showReservationPermitMappingDialog(
+      context,
+      state: widget.state,
+      requestId: request.id,
+      facilityName: request.facility,
+      readiness: readiness,
+    );
+    if (!mounted || saved != true) return;
+    await _loadReadiness();
   }
 
   @override
@@ -123,16 +146,58 @@ class _PermitPanelState extends State<PermitPanel> {
         ),
       ];
     }
-    if (permit?.isDownloadable == true) {
+    if (_readiness?.configurationReady == false) {
+      final missing = _readiness!.missingMappings;
+      if (!_admin) {
+        return [
+          Text(
+            'Permit setup is incomplete. An administrator must complete the facility form mappings before your e-signature can be requested.',
+            style: SrType.bodySm(),
+          ),
+        ];
+      }
       return [
-        Text(permit!.permitNumber, style: SrType.body(w: 600)),
         Text(
-          '${permit.templateKind.label} · Issued ${formatStamp(campusWallTime(permit.issuedAt))}',
+          'Permit blocked — ${missing.length} ${missing.length == 1 ? 'required mapping is' : 'required mappings are'} incomplete.',
+          style: SrType.bodySm(color: context.srColors.redInk),
+        ),
+        const SizedBox(height: SR.space8),
+        for (final item in missing)
+          Text(
+            '• ${item.label}',
+            style: SrType.bodySm(color: context.srColors.muted),
+          ),
+        const SizedBox(height: SR.space12),
+        SrButton(
+          label: 'Complete required mappings',
+          kind: SrButtonKind.primary,
+          dense: true,
+          onPressed: _busy ? null : () => _configurePermitMappings(request),
+        ),
+      ];
+    }
+    if (permit?.isGenerated == true) {
+      final generatedPermit = permit!;
+      final delivered = generatedPermit.isDelivered;
+      if (!_admin && !delivered) {
+        return [
+          Text(
+            'Your official permit has been prepared. It will be sent to you by the assigned administrator.',
+            style: SrType.bodySm(),
+          ),
+        ];
+      }
+      return [
+        Text(generatedPermit.permitNumber, style: SrType.body(w: 600)),
+        Text(
+          '${generatedPermit.templateKind.label} · Issued ${formatStamp(campusWallTime(generatedPermit.issuedAt))}',
           style: SrType.caption(),
         ),
         const SizedBox(height: SR.space12),
         Text(
-          'Print this official permit and bring it on the reservation date.',
+          delivered
+              ? 'Official permit sent. Download and print it before the reservation date.'
+              : 'Official permit generated. Send it to the requester when you are ready.',
           style: SrType.bodySm(),
         ),
         const SizedBox(height: SR.space12),
@@ -144,13 +209,19 @@ class _PermitPanelState extends State<PermitPanel> {
               label: _busy ? 'Opening…' : 'View Permit',
               kind: SrButtonKind.primary,
               dense: true,
-              onPressed: _busy ? null : () => _view(permit),
+              onPressed: _busy ? null : () => _view(generatedPermit),
             ),
             SrButton(
               label: 'Download PDF',
               dense: true,
-              onPressed: _busy ? null : () => _download(permit),
+              onPressed: _busy ? null : () => _download(generatedPermit),
             ),
+            if (_admin && !delivered)
+              SrButton(
+                label: _busy ? 'Sending…' : 'Send permit to requester',
+                dense: true,
+                onPressed: _busy ? null : () => _deliver(generatedPermit),
+              ),
           ],
         ),
       ];
@@ -166,8 +237,7 @@ class _PermitPanelState extends State<PermitPanel> {
       ];
     }
     final widgets = <Widget>[];
-    if (request.signatureRequested &&
-        request.requesterId == widget.state.userAccount.id) {
+    if (request.signatureRequested && _isSignedInRequester(request)) {
       widgets.addAll([
         Text(
           'Your approved reservation needs your reservation-specific signature.',
@@ -181,6 +251,13 @@ class _PermitPanelState extends State<PermitPanel> {
           onPressed: _busy ? null : () => _pickUserSignature(request),
         ),
       ]);
+    } else if (request.signatureRequested && _admin) {
+      widgets.add(
+        Text(
+          'An e-signature request is active. The requester must upload their reservation-specific signature from My reservations before an official permit can be generated or sent.',
+          style: SrType.bodySm(),
+        ),
+      );
     } else if (request.adminLane == 'external' &&
         request.outstandingAmountCentavos > 0) {
       widgets.add(
@@ -188,6 +265,17 @@ class _PermitPanelState extends State<PermitPanel> {
           'Payment verification is incomplete. Verified: '
           '${pesoFromCentavos(request.verifiedAmountCentavos)} · Remaining: '
           '${pesoFromCentavos(request.outstandingAmountCentavos)}. You may submit a requested signature while payment continues.',
+          style: SrType.bodySm(),
+        ),
+      );
+    } else if (!_admin && request.signatureSubmitted) {
+      // A requester has completed the only step they control. A previous
+      // generation attempt can fail while official signatures or mappings are
+      // being configured; showing that as the requester's failure is both
+      // misleading and leaves them with no useful action.
+      widgets.add(
+        Text(
+          'Your e-signature is recorded. The assigned administrator is completing the remaining official permit steps.',
           style: SrType.bodySm(),
         ),
       );
@@ -213,14 +301,14 @@ class _PermitPanelState extends State<PermitPanel> {
       widgets.add(
         Text(
           request.signatureSubmitted
-              ? 'Your requirements are complete. The permit is being prepared.'
+              ? 'Your e-signature is recorded. The system is waiting for the remaining official permit requirements.'
               : 'Waiting for the remaining permit requirements.',
           style: SrType.bodySm(),
         ),
       );
     }
     if (request.adminLane == 'external' &&
-        request.requesterId == widget.state.userAccount.id &&
+        _isSignedInRequester(request) &&
         _readiness?.blockerCodes.contains('external_details_required') ==
             true) {
       widgets.addAll([
@@ -252,17 +340,26 @@ class _PermitPanelState extends State<PermitPanel> {
           spacing: SR.space8,
           runSpacing: SR.space8,
           children: [
-            if (!request.signatureRequested && !request.signatureSubmitted)
+            if (_readiness?.configurationReady == true &&
+                !request.signatureRequested &&
+                !request.signatureSubmitted)
               SrButton(
                 label: 'Request signature',
                 dense: true,
                 onPressed: _busy ? null : _requestSignature,
               ),
-            SrButton(
-              label: permit == null ? 'Generate' : 'Retry generation',
-              dense: true,
-              onPressed: _busy || _readiness?.ready != true ? null : _generate,
-            ),
+            if (request.signatureRequested)
+              SrButton(
+                label: 'Resend e-signature request',
+                dense: true,
+                onPressed: _busy ? null : _requestSignature,
+              ),
+            if (_readiness?.ready == true && permit?.isGenerated != true)
+              SrButton(
+                label: permit == null ? 'Generate permit' : 'Retry generation',
+                dense: true,
+                onPressed: _busy ? null : _generate,
+              ),
             SrButton(
               label: 'Signature settings',
               dense: true,
@@ -275,11 +372,12 @@ class _PermitPanelState extends State<PermitPanel> {
             ),
           ],
         ),
-        SrButton(
-          label: 'Preview populated permit',
-          dense: true,
-          onPressed: _busy || _readiness?.ready != true ? null : _preview,
-        ),
+        if (_readiness?.ready == true)
+          SrButton(
+            label: 'Preview populated permit',
+            dense: true,
+            onPressed: _busy ? null : _preview,
+          ),
       ]);
     }
     return widgets;
@@ -294,7 +392,9 @@ class _PermitPanelState extends State<PermitPanel> {
   };
 
   Future<void> _generate() async {
-    if (_busy) return;
+    // Issuing an official permit is an explicit administrator action. It must
+    // never run in the requester's session just because the panel refreshed.
+    if (!_admin || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -373,6 +473,23 @@ class _PermitPanelState extends State<PermitPanel> {
         tone: result.ok ? AdvisoryTone.info : AdvisoryTone.block,
       ),
     );
+  }
+
+  Future<void> _deliver(ReservationPermit permit) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final delivered = await widget.state.deliverReservationPermit(permit.id);
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        if (!delivered) {
+          _error = 'The permit was generated but could not be sent. Try again.';
+        }
+      });
+    }
   }
 
   Future<void> _requestSignature() async {

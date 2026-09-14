@@ -489,10 +489,17 @@ class _DecisionPanelState extends State<DecisionPanel> {
 
   Widget _eligibilityCard() {
     final r = _request;
-    final requesterType = switch (r.paymentExemption) {
-      'verified_student' => 'Verified student',
-      'verified_faculty' => 'Verified faculty',
-      _ => 'External / unverified',
+    final requesterType = switch (r.requesterCategory) {
+      'organization_representative' =>
+        'Internal organization · ${r.pricingAudience}',
+      'student' => 'Verified student',
+      'faculty' => 'Verified faculty',
+      'staff' => 'Verified staff',
+      _ => switch (r.paymentExemption) {
+        'verified_student' => 'Verified student',
+        'verified_faculty' => 'Verified faculty',
+        _ => 'External / unverified',
+      },
     };
     return PanelCard(
       child: Column(

@@ -46,5 +46,40 @@ void main() {
         'This reservation changed in another session. It has been refreshed.',
       );
     });
+
+    test('hides raw storage RLS failures from signature upload toasts', () {
+      const error = StorageException(
+        'new row violates row-level security policy',
+        statusCode: '403',
+        error: 'Unauthorized',
+      );
+
+      final message = reservationBackendMessage(error);
+
+      expect(
+        message,
+        'Your signature upload was not authorized. Refresh the '
+        'reservation and try again.',
+      );
+      expect(message.toLowerCase(), isNot(contains('row-level security')));
+      expect(message, isNot(contains('403')));
+      expect(message.toLowerCase(), isNot(contains('unauthorized')));
+    });
+
+    test('hides an unreachable permit function failure', () {
+      final message = reservationBackendMessage(
+        const FunctionException(
+          status: 0,
+          details: 'FunctionsFetchException(status: 0)',
+        ),
+      );
+
+      expect(
+        message,
+        'The permit service could not be reached. Refresh and try again.',
+      );
+      expect(message, isNot(contains('FunctionsFetchException')));
+      expect(message, isNot(contains('status: 0')));
+    });
   });
 }

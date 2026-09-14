@@ -398,12 +398,16 @@ entrypoint = "./functions/feedback-sentiment/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/generate-permit/index.ts"
-static_files = ["./functions/generate-permit/templates/*.pdf"]
 
 [functions.permit-signatures]
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/permit-signatures/index.ts"
+
+[functions.submit-reservation-signature]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/submit-reservation-signature/index.ts"
 
 [analytics]
 enabled = true

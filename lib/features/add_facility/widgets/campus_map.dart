@@ -54,6 +54,10 @@ class CampusMap extends StatefulWidget {
 class _CampusMapState extends State<CampusMap> {
   final _map = MapController();
 
+  /// `MapController.camera` and `.move()` throw until [FlutterMap] has rendered
+  /// once, so camera requests are held until [MapOptions.onMapReady] fires.
+  bool _mapReady = false;
+
   int _tileErrors = 0;
   int _seenGeneration = 0;
 
@@ -72,10 +76,12 @@ class _CampusMapState extends State<CampusMap> {
   void _applyCameraRequest() {
     final c = widget.controller;
     if (c.pendingCenter == null && c.pendingZoomTo == null) return;
-    final target = c.pendingCenter ?? _map.camera.center;
-    final zoom = c.pendingZoomTo ?? c.pendingZoom ?? _map.camera.zoom;
+    // Leave the request pending — onMapReady drains it once the map attaches.
+    if (!_mapReady || !mounted) return;
+    final camera = _map.camera;
+    final target = c.pendingCenter ?? camera.center;
+    final zoom = c.pendingZoomTo ?? c.pendingZoom ?? camera.zoom;
     c.consumeCameraRequest();
-    if (!mounted) return;
     _map.move(target, zoom);
     c.syncZoom(zoom);
   }
@@ -99,6 +105,10 @@ class _CampusMapState extends State<CampusMap> {
         minZoom: campusMinimumZoom,
         maxZoom: campusMaximumZoom,
         backgroundColor: context.srColors.mapBg,
+        onMapReady: () {
+          _mapReady = true;
+          _applyCameraRequest();
+        },
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
         ),

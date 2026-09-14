@@ -168,7 +168,16 @@ class SrToast extends StatelessWidget {
               message.text,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: sans(12, height: 1.45, color: context.srColors.ink2),
+              style:
+                  sans(
+                    12,
+                    height: 1.45,
+                    color: context.srColors.ink2,
+                    decoration: TextDecoration.none,
+                  ).copyWith(
+                    decorationColor: Colors.transparent,
+                    decorationStyle: TextDecorationStyle.solid,
+                  ),
             ),
           ),
           if (message.action case final action?) ...[

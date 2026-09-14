@@ -8,7 +8,11 @@ const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 const admin = createClient(url, serviceKey);
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-region",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Expose-Headers": "sb-request-id",
+  "Vary": "Origin, Access-Control-Request-Headers",
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -16,9 +20,89 @@ const json = (body: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
+function generationFailure(detail: string) {
+  if (detail.includes("Signature image is blank")) {
+    return {
+      code: "blank_signature",
+      error:
+        "A required signature image is blank. Replace the affected signature with a visible handwritten signature, then retry generation.",
+    };
+  }
+  const field = detail.match(/field_does_not_fit:([a-z_]+)/)?.[1];
+  if (field) {
+    return {
+      code: "permit_field_does_not_fit",
+      error:
+        `The ${field.replaceAll("_", " ")} does not fit the official permit form. Shorten or correct it, then request a fresh signature.`,
+    };
+  }
+  if (detail.includes("Unsupported internal") || detail.includes("Unsupported external")) {
+    return {
+      code: "unsupported_permit_mapping",
+      error:
+        "A selected facility or equipment mapping is not supported by this official permit template. Correct the mapping, then request a fresh signature.",
+    };
+  }
+  if (detail.includes("template integrity")) {
+    return {
+      code: "permit_template_integrity_failed",
+      error:
+        "The deployed official permit template does not match the approved template hash. Redeploy the approved template before retrying.",
+    };
+  }
+  if (detail.includes("template dimensions") || detail.includes("rotation")) {
+    return {
+      code: "permit_template_geometry_invalid",
+      error:
+        "The deployed official permit template has an unexpected page size or rotation. Restore the approved template before retrying.",
+    };
+  }
+  if (detail.includes("No such file") || detail.includes("os error")) {
+    return {
+      code: "permit_template_asset_missing",
+      error:
+        "The deployed official permit template asset is missing. Redeploy the permit generator with its approved template files.",
+    };
+  }
+  if (detail.includes("template")) {
+    return {
+      code: "permit_template_unavailable",
+      error:
+        "The official permit template could not be verified. Contact SmartReserve support with the support reference.",
+    };
+  }
+  return {
+    code: "permit_renderer_failed",
+    error:
+      "The permit renderer could not prepare this document. Check the required signature images and printable reservation details, then retry.",
+  };
+}
+
+function errorDetail(error: unknown) {
+  if (error instanceof Error) return error.message;
+  try {
+    return JSON.stringify(error);
+  } catch (_) {
+    return String(error);
+  }
+}
+
 async function download(bucket: string, path: string) {
   const { data, error } = await admin.storage.from(bucket).download(path);
   if (error || !data) throw error ?? new Error(`Missing ${bucket} object`);
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+async function loadApprovedTemplate(kind: "internal" | "external") {
+  const path = kind === "internal"
+    ? "internal-permit.pdf"
+    : "external-permit.pdf";
+  const { data, error } = await admin.storage
+    .from("permit-templates")
+    .download(path);
+  if (error || !data) {
+    throw new Error(`Approved ${kind} permit template is unavailable`);
+  }
   return new Uint8Array(await data.arrayBuffer());
 }
 
@@ -27,19 +111,20 @@ Deno.serve(async (request) => {
     return new Response("ok", { headers: cors });
   }
   if (request.method !== "POST") return json({ error: "POST required" }, 405);
+  const requestId = crypto.randomUUID();
   const token = request.headers.get("authorization")?.replace(
     /^Bearer\s+/i,
     "",
   );
-  if (!token) return json({ error: "Sign in required" }, 401);
+  if (!token) return json({ error: "Sign in required", request_id: requestId }, 401);
   const { data: auth } = await admin.auth.getUser(token);
-  if (!auth.user) return json({ error: "Sign in required" }, 401);
+  if (!auth.user) return json({ error: "Sign in required", request_id: requestId }, 401);
   const body = await request.json().catch(() => ({}));
   if (typeof body.requestId !== "string") {
-    return json({ error: "Reservation reference required" }, 400);
+    return json({ error: "Reservation reference required", request_id: requestId }, 400);
   }
   if (body.action !== "ensure" && body.action !== "preview") {
-    return json({ error: "Unknown action" }, 400);
+    return json({ error: "Unknown action", request_id: requestId }, 400);
   }
   let generationStarted = false;
   try {
@@ -53,8 +138,13 @@ Deno.serve(async (request) => {
     if (readinessError) throw readinessError;
     if (!readiness?.ready) {
       return json(
-        { error: "Permit prerequisites are incomplete", readiness },
-        409,
+        {
+          ok: false,
+          code: "permit_prerequisites_incomplete",
+          error: "Permit prerequisites are incomplete.",
+          readiness,
+          request_id: requestId,
+        },
       );
     }
     let permit: Record<string, unknown>;
@@ -111,8 +201,13 @@ Deno.serve(async (request) => {
       if (error) throw error;
       if (!data) {
         return json(
-          { error: "Permit prerequisites are incomplete", readiness },
-          409,
+          {
+            ok: false,
+            code: "permit_prerequisites_incomplete",
+            error: "Permit prerequisites are incomplete.",
+            readiness,
+            request_id: requestId,
+          },
         );
       }
       generationStarted = true;
@@ -122,12 +217,7 @@ Deno.serve(async (request) => {
       }
     }
     const snapshot = permit.snapshot as PermitSnapshot;
-    const templateName = snapshot.template_kind === "internal"
-      ? "internal Permit.pdf"
-      : "External Permit.pdf";
-    const template = await Deno.readFile(
-      new URL(`./templates/${templateName}`, import.meta.url),
-    );
+    const template = await loadApprovedTemplate(snapshot.template_kind);
     const actualTemplateHash = await sha256(template);
     if (
       actualTemplateHash !== templateHashes[snapshot.template_kind] ||
@@ -209,7 +299,14 @@ Deno.serve(async (request) => {
     if (recordError) throw recordError;
     return json({ permit: recorded });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorDetail(error);
+    const classified = generationFailure(detail);
+    console.error("Permit generation failed", {
+      requestId,
+      action: body.action,
+      code: classified.code,
+      detail,
+    });
     if (generationStarted) {
       try {
         await admin.rpc("mark_permit_generation_failed", {
@@ -218,17 +315,11 @@ Deno.serve(async (request) => {
         });
       } catch (_) { /* best-effort status update */ }
     }
-    const { data: profile } = await admin.from("profiles").select("role").eq(
-      "id",
-      auth.user.id,
-    ).maybeSingle();
-    const adminCaller = ["internal_admin", "external_admin"].includes(
-      profile?.role,
-    );
     return json({
-      error: adminCaller
-        ? detail
-        : "The permit could not be prepared. The assigned administrator has been notified.",
-    }, 409);
+      ok: false,
+      code: classified.code,
+      error: classified.error,
+      request_id: requestId,
+    });
   }
 });

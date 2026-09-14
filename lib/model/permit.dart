@@ -95,15 +95,67 @@ class ExternalPermitDetails {
   bool get isIndividual => companyOrOrganization == 'Individual';
 }
 
+/// A real, reservation-specific mapping that is still missing from the
+/// printable official form. These values come from the readiness RPC; they
+/// are never inferred from labels in the client.
+class PermitMappingRequirement {
+  const PermitMappingRequirement({
+    required this.sourceKind,
+    required this.label,
+    required this.lane,
+    this.sourceId,
+    this.canConfigure = false,
+  });
+
+  final String sourceKind;
+  final String? sourceId;
+  final String label;
+  final String lane;
+  final bool canConfigure;
+
+  factory PermitMappingRequirement.fromJson(Map<String, dynamic> json) =>
+      PermitMappingRequirement(
+        sourceKind: '${json['source_kind'] ?? ''}',
+        sourceId: json['source_id'] as String?,
+        label: '${json['label'] ?? 'Permit item'}',
+        lane: '${json['lane'] ?? 'external'}',
+        canConfigure: json['can_configure'] == true,
+      );
+
+  bool get isFacility => sourceKind == 'facility';
+}
+
+class PermitMappingUpdate {
+  const PermitMappingUpdate({
+    required this.sourceKind,
+    required this.sourceId,
+    required this.rowCode,
+  });
+
+  final String sourceKind;
+  final String sourceId;
+  final String rowCode;
+
+  Map<String, dynamic> toJson() => {
+    'source_kind': sourceKind,
+    'source_id': sourceId,
+    'row_code': rowCode,
+  };
+}
+
 class PermitReadiness {
   const PermitReadiness({
     required this.ready,
     required this.templateKind,
     required this.blockerCodes,
+    this.configurationReady = true,
+    this.missingMappings = const [],
   });
   final bool ready;
   final PermitTemplateKind templateKind;
   final List<String> blockerCodes;
+  final bool configurationReady;
+  final List<PermitMappingRequirement> missingMappings;
   factory PermitReadiness.fromJson(Map<String, dynamic> json) =>
       PermitReadiness(
         ready: json['ready'] == true,
@@ -113,6 +165,23 @@ class PermitReadiness {
         blockerCodes: [
           for (final code in json['blockers'] as List? ?? const []) '$code',
         ],
+        configurationReady: json['configuration'] is Map
+            ? (json['configuration'] as Map)['ready'] == true
+            : !(json['blockers'] as List? ?? const []).contains(
+                'unmapped_permit_item',
+              ),
+        missingMappings: [
+          for (final item
+              in ((json['configuration'] is Map
+                          ? (json['configuration'] as Map)['missing_mappings']
+                          : json['missing_mappings'])
+                      as List? ??
+                  const []))
+            if (item is Map)
+              PermitMappingRequirement.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+        ],
       );
   String messageFor(String code) => switch (code) {
     'not_confirmed' => 'Reservation approval is required.',
@@ -121,7 +190,7 @@ class PermitReadiness {
     'external_details_required' => 'External permit details are incomplete.',
     'permit_items_required' => 'Permit item snapshots are missing.',
     'unmapped_permit_item' =>
-      'A facility or item has no official-form mapping.',
+      'Permit setup is incomplete for this reservation.',
     'schedule_required' => 'An active reservation schedule is required.',
     'external_row_limit' =>
       'The selected items exceed the official eight-row table.',
@@ -161,6 +230,8 @@ class ReservationPermit {
     this.internalApproverSignatureId,
     this.externalRecommenderSignatureId,
     this.externalAuthorizedSignatureId,
+    this.deliveryStatus = 'not_sent',
+    this.deliveredAt,
   });
   final String id;
   final String requestId;
@@ -182,10 +253,14 @@ class ReservationPermit {
   final String? internalApproverSignatureId;
   final String? externalRecommenderSignatureId;
   final String? externalAuthorizedSignatureId;
-  bool get isDownloadable =>
+  final String deliveryStatus;
+  final DateTime? deliveredAt;
+  bool get isGenerated =>
       status == PermitStatus.active &&
       generationStatus == PermitGenerationStatus.ready &&
       storagePath?.isNotEmpty == true;
+  bool get isDelivered => deliveryStatus == 'sent' && deliveredAt != null;
+  bool get isDownloadable => isGenerated && isDelivered;
   factory ReservationPermit.fromJson(Map<String, dynamic> json) =>
       ReservationPermit(
         id: '${json['id']}',
@@ -219,5 +294,9 @@ class ReservationPermit {
             json['external_recommender_signature_id'] as String?,
         externalAuthorizedSignatureId:
             json['external_authorized_signature_id'] as String?,
+        deliveryStatus: '${json['delivery_status'] ?? 'not_sent'}',
+        deliveredAt: json['delivered_at'] == null
+            ? null
+            : DateTime.parse('${json['delivered_at']}'),
       );
 }

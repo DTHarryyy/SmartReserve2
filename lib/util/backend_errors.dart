@@ -29,6 +29,24 @@ String reservationBackendMessage(Object error) {
     return 'One of those values is out of range. Check the attendee count '
         'and times, then try again.';
   }
+  final storageUploadDenied =
+      normalized.contains('row-level security') ||
+      (normalized.contains('storage') && normalized.contains('unauthorized'));
+  if (storageUploadDenied) {
+    return 'Your signature upload was not authorized. Refresh the '
+        'reservation and try again.';
+  }
+  // Browser transport errors do not always include the same punctuation or
+  // status text across Flutter web releases. Never expose that SDK exception
+  // to a requester or administrator.
+  final signatureFunctionUnavailable =
+      normalized.contains('functionsfetchexception') ||
+      (normalized.contains('function') &&
+          normalized.contains('fetch') &&
+          normalized.contains('status: 0'));
+  if (signatureFunctionUnavailable) {
+    return 'The permit service could not be reached. Refresh and try again.';
+  }
   return friendlyBackendMessage(raw);
 }
 
@@ -44,7 +62,15 @@ String friendlyBackendMessage(
       'That request could not be sent. Check the details and '
       'try again.',
 }) {
-  final withoutPrefix = raw.replaceFirst(RegExp(r'^.*?message:\s*'), '');
+  final withoutPrefix = raw
+      .replaceFirst(RegExp(r'^.*?message:\s*'), '')
+      .replaceFirst(
+        RegExp(
+          r'^(?:bad state|stateerror|exception)\s*:\s*',
+          caseSensitive: false,
+        ),
+        '',
+      );
   final trimmed = withoutPrefix
       .replaceFirst(RegExp(r',\s*(code|details|hint):.*$', dotAll: true), '')
       .replaceFirst(RegExp(r'\)\s*$'), '')

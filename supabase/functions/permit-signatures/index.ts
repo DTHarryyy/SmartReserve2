@@ -11,7 +11,11 @@ const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(url, serviceKey);
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-api-version, x-region",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Expose-Headers": "sb-request-id",
+  "Vary": "Origin, Access-Control-Request-Headers",
 };
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {

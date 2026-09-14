@@ -7,11 +7,11 @@ import '../../theme/sr_tokens.dart';
 
 import '../../theme/sr_theme.dart';
 
-Future<void> showFacilityConfigurationDialog(
+Future<bool?> showFacilityConfigurationDialog(
   BuildContext context, {
   required AppState state,
   required Facility facility,
-}) => showDialog<void>(
+}) => showDialog<bool>(
   context: context,
   barrierColor: context.srColors.scrim,
   builder: (_) =>
@@ -193,7 +193,7 @@ class _FacilityConfigurationDialogState
                   const SizedBox(height: 22),
                   _heading(
                     'Official permit mappings',
-                    'Explicit rows used when stamping the supplied forms.',
+                    'Map each active lane before this facility accepts permit-backed reservations.',
                   ),
                   DropdownButtonFormField<String>(
                     initialValue: _internalFacilityRow,
@@ -242,7 +242,10 @@ class _FacilityConfigurationDialogState
                         setState(() => _externalFacilityRow = value),
                   ),
                   const SizedBox(height: 22),
-                  _heading('Amenities', 'Only these IDs can be requested.'),
+                  _heading(
+                    'Active amenities',
+                    'These amenities can be requested and must map to their official permit rows.',
+                  ),
                   for (var index = 0; index < _amenities.length; index++)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -580,7 +583,7 @@ class _FacilityConfigurationDialogState
     );
     if (!mounted) return;
     if (success) {
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } else {
       setState(() {
         _saving = false;
