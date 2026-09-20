@@ -196,6 +196,22 @@ Deno.serve(async (request) => {
   // 3. Rate limit, before the provider call so an exhausted user costs nothing.
   const limit = await consumeRateLimit(admin, user.id, requestId);
   if (!limit.allowed) {
+    // Logged, not just returned. outcome = 'rate_limited' is a legal value the
+    // table allowed and nothing ever wrote, because this returned before
+    // reaching any logging -- so the one signal that says "someone is hitting
+    // the ceiling" was the only one invisible in telemetry.
+    await logRequest(admin, {
+      requestId,
+      userId: user.id,
+      conversationId: body.conversationId,
+      route: "llm",
+      toolsUsed: [],
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: Date.now() - started,
+      outcome: "rate_limited",
+      rounds: 0,
+    });
     return failure(
       "rate_limited",
       "You have asked a lot of questions in the last hour. Try again shortly.",
@@ -264,7 +280,18 @@ Deno.serve(async (request) => {
     bookingDraft,
   };
 
+  // 4b. Pre-retrieval. The knowledge base is fetched before the model runs,
+  // not after it decides to ask for it.
+  //
+  // get_policy_or_faq stays registered for follow-ups, but relying on it alone
+  // cost two full round trips for every policy question -- one to choose the
+  // tool, one to answer from it -- and produced nothing at all when the model
+  // chose not to call it. This is the single largest saving available: policy
+  // is the most cacheable, most repeated class of question the assistant gets.
+  const knowledge = await retrieveKnowledge(userClient, message, requestId);
+
   const messages = buildMessages({
+    knowledge,
     system: buildSystemPrompt({
       lane: profile.lane,
       pricingAudience: profile.pricingAudience,
@@ -366,6 +393,7 @@ Deno.serve(async (request) => {
       outcome: "error",
       errorCode: normalized.code,
       rounds,
+      resolvedIntent: resolveIntent(inBookingFlow, toolsUsed),
     });
     return failure(
       normalized.code,
@@ -402,6 +430,7 @@ Deno.serve(async (request) => {
       outcome: "fallback",
       errorCode: verdict.code,
       rounds,
+      resolvedIntent: resolveIntent(inBookingFlow, toolsUsed),
     });
     return json({
       request_id: requestId,
@@ -438,6 +467,7 @@ Deno.serve(async (request) => {
     latencyMs: Date.now() - started,
     outcome: "answered",
     rounds,
+    resolvedIntent: resolveIntent(inBookingFlow, toolsUsed),
   });
   logEvent({
     request_id: requestId,
@@ -583,6 +613,53 @@ async function loadSessionFacts(
   }
 }
 
+/**
+ * Policy text for this question, fetched before the model runs.
+ *
+ * Two chunks, not three: the retrieval is a hint, and the model still has
+ * get_policy_or_faq if the question turns out to be narrower than the search
+ * guessed. Runs on the caller-scoped client, so the knowledge base's own
+ * audience policy decides which chunks are visible -- an external renter must
+ * not be told the internal rules just because a keyword matched.
+ *
+ * A failure here is not an error: the assistant simply answers without the
+ * quotation, exactly as it did before pre-retrieval existed.
+ */
+async function retrieveKnowledge(
+  client: RpcClient,
+  message: string,
+  requestId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await client.rpc("assistant_knowledge_search", {
+      p_query: message,
+      p_limit: 2,
+    });
+    if (error) throw error;
+    const record = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : {};
+    const chunks = Array.isArray(record.chunks) ? record.chunks : [];
+    if (chunks.length === 0) return null;
+
+    const lines: string[] = [];
+    for (const chunk of chunks) {
+      if (!chunk || typeof chunk !== "object") continue;
+      const row = chunk as Record<string, unknown>;
+      const answer = typeof row.answer === "string" ? row.answer : "";
+      if (answer) lines.push(`- ${answer}`);
+    }
+    return lines.length > 0 ? lines.join("\n") : null;
+  } catch (error) {
+    logEvent({
+      request_id: requestId,
+      status: "knowledge_lookup_failed",
+      error_code: sanitizeErrorCode(String(error)),
+    });
+    return null;
+  }
+}
+
 async function consumeRateLimit(
   admin: RpcClient,
   userId: string,
@@ -682,6 +759,16 @@ type RequestLog = {
   outcome: string;
   errorCode?: string;
   rounds: number;
+  /**
+   * What the turn turned out to be about.
+   *
+   * The column and the RPC parameter both existed and nothing ever sent it,
+   * which quietly defeated the point of the table: rows with
+   * outcome = 'fallback' are the backlog of phrasings that should become free
+   * deterministic rules, and without an intent there is nothing to group them
+   * by. 'unknown' is itself the most useful value -- it is the queue.
+   */
+  resolvedIntent?: string | null;
 };
 
 async function logRequest(
@@ -705,6 +792,7 @@ async function logRequest(
       p_tool_rounds: entry.rounds,
       p_outcome: entry.outcome,
       p_error_code: entry.errorCode ?? null,
+      p_resolved_intent: entry.resolvedIntent ?? null,
     });
   } catch (error) {
     // Telemetry must never fail a user's answer.
@@ -714,6 +802,34 @@ async function logRequest(
       error_code: sanitizeErrorCode(String(error)),
     });
   }
+}
+
+/**
+ * What the turn was about, for the telemetry backlog.
+ *
+ * Derived rather than asked for: the tools the model actually reached for say
+ * more about the real subject than the phrasing that could not be classified.
+ * Rows that answer with no tool at all are the interesting ones -- they are
+ * either chat or a gap in the rule layer.
+ */
+function resolveIntent(
+  inBookingFlow: boolean,
+  toolsUsed: readonly string[],
+): string {
+  if (inBookingFlow) return "booking_slot";
+  if (toolsUsed.length === 0) return "unknown";
+  const first = toolsUsed[0];
+  if (first === "get_policy_or_faq" || first === "get_permit_requirements") {
+    return "policy";
+  }
+  if (first.startsWith("get_payment")) return "payment";
+  if (first.startsWith("get_permit")) return "permit";
+  if (first.includes("availability") || first === "get_available_facilities") {
+    return "availability";
+  }
+  if (first.includes("reservation")) return "reservations";
+  if (first.includes("facilit")) return "facilities";
+  return first;
 }
 
 /** Today in Asia/Manila, matching the campus clock the whole app uses. */
