@@ -261,15 +261,34 @@ backfill RPC after the new-feedback path has been observed.
 ### The reservation assistant
 
 The in-app assistant answers reservation, payment, permit, availability,
-equipment and policy questions. Most of it never touches a model: a
-deterministic parser and a rule layer in the Flutter client resolve the common
-questions outright — what you have booked, what you owe, when it is due, why a
-permit is held up, which facility fits 200 people — and a knowledge base in
-Postgres answers policy. That path costs nothing and works offline of any
-provider.
+equipment and policy questions. The work is split by what each layer can
+actually get right.
 
-A cloud model is consulted only for a message the parser cannot classify: loose
-Taglish, an ambiguous reference, a phrasing no rule covers.
+**Records questions never touch a model.** A deterministic parser and a rule
+layer in the Flutter client resolve them outright — what you have booked, what
+you owe, when it is due, why a permit is held up, whether one named room is
+free on a given day — and a knowledge base in Postgres answers policy. That
+path costs nothing, works offline of any provider, and is exact in a way no
+model improves on.
+
+**Discovery questions go to the model.** "What should I book for a pickleball
+event", "what is free Friday afternoon", "somewhere for a thesis defense for
+15" — these need a judgement about a word, and the words people use will never
+all be in a dictionary in this repository. The rule layer could only filter
+and rank a catalogue it was handed, which is how a request for a pickleball
+court once came back as seven unranked rooms under the heading "7 facilities
+match". The model is given the closed list of facility categories and the
+count of everything that matched, so it can map an activity onto a real
+category and — the part that matters — say plainly when nothing here was built
+for what was asked before offering the closest alternative.
+
+Unclassifiable messages escalate too: loose Taglish, an ambiguous reference, a
+phrasing no rule covers.
+
+Every escalation is a strict improvement. With the model disabled, rate
+limited, unreachable or simply absent, each of those turns falls back to the
+rule handler that answered it before — `test/assistant_ai_fallback_test.dart`
+is what keeps that structural rather than aspirational.
 
 The model never computes anything it could get wrong. Amounts and timestamps
 are formatted in Postgres and the edge function before it sees them, and
@@ -286,11 +305,11 @@ before enabling it:
 ```bash
 supabase secrets set ASSISTANT_LLM_PROVIDER=openai
 supabase secrets set OPENAI_API_KEY=...
-supabase secrets set ASSISTANT_MODEL=gpt-4o-mini
+supabase secrets set ASSISTANT_MODEL=gpt-4.1-mini
 supabase secrets set ASSISTANT_MAX_COMPLETION_TOKENS=500
 supabase secrets set ASSISTANT_MAX_INPUT_TOKENS=3000
 supabase secrets set ASSISTANT_PROVIDER_TIMEOUT_MS=15000
-supabase secrets set ASSISTANT_RATE_LIMIT_PER_HOUR=30
+supabase secrets set ASSISTANT_RATE_LIMIT_PER_HOUR=60
 supabase secrets set ASSISTANT_KB_VERSION=1
 supabase secrets set ASSISTANT_ENABLED=false
 ```
@@ -330,11 +349,17 @@ through its existing confirm-card path after an explicit tap.
 Spend is visible in `assistant_llm_requests` — tokens, estimated cost, latency
 and outcome per request, with no message text. Cost is priced against the model
 that actually served the turn, so changing `ASSISTANT_MODEL` does not quietly
-keep reporting the old model's bill. Rows with `outcome = 'fallback'` are the
-backlog for new deterministic rules, grouped by `resolved_intent`, which is how
-model usage falls over time rather than grows. The assistant keeps working with
-`ASSISTANT_ENABLED=false`, with the function undeployed, or with the provider
-down; it simply answers from rules alone.
+keep reporting the old model's bill. Rows with `outcome = 'fallback'` and an
+`error_code` of `ungrounded_amount` or `ungrounded_date` are `checkReply`
+catching an invented claim before a user saw it — those are the system working,
+not a regression. Grouped by `resolved_intent`, the rest of the fallback rows
+are the backlog for new deterministic rules.
+
+A records question appearing on the `llm` route is a cost regression, and the
+cheapest way to spot one: those should be answered by rules and never reach
+here at all. The assistant keeps working with `ASSISTANT_ENABLED=false`, with
+the function undeployed, or with the provider down; it simply answers from
+rules alone, and discovery answers get blunter rather than disappearing.
 
 The final bootstrap migration creates `admin@csu.edu.ph` as the initial active
 internal administrator when that Auth email does not already exist. Its

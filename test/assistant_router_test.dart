@@ -18,14 +18,56 @@ AssistantIntent _intent(String text) =>
 /// Every phrase here must stay answerable without a model call. A case moving
 /// from here to the escalation list is a cost regression, not a refactor, so it
 /// is asserted rather than left to observation.
-void _expectFree(String text, AssistantIntent expected) {
-  final route = _route(text);
+///
+/// Discovery questions -- "what should I book for X" -- were deliberately
+/// moved out of this set: rules can rank a catalogue but cannot map an
+/// arbitrary activity onto one, nor say honestly that nothing here fits. They
+/// are covered by [_expectEscalates] instead, which also pins the other half
+/// of that bargain: with no model available they must come back here.
+void _expectFree(
+  String text,
+  AssistantIntent expected, {
+  AssistantRouteContext context = const AssistantRouteContext(
+    aiAvailable: true,
+  ),
+}) {
+  final route = _route(text, context: context);
   expect(
     route.kind,
     AssistantRouteKind.ruleHandled,
     reason: '"$text" must be answered by rules, not the model',
   );
   expect(route.intent, expected, reason: 'intent for "$text"');
+}
+
+/// A phrase that should reach the model when one is available -- and must
+/// still be rule-answerable when one is not.
+void _expectEscalates(
+  String text,
+  EscalationReason expected, {
+  AssistantRouteContext context = const AssistantRouteContext(
+    aiAvailable: true,
+  ),
+}) {
+  final route = _route(text, context: context);
+  expect(
+    route.kind,
+    AssistantRouteKind.escalate,
+    reason: '"$text" is where the model earns its place',
+  );
+  expect(route.reason, expected, reason: 'escalation reason for "$text"');
+
+  // The governing invariant: the model may only ever improve a turn. Without
+  // one, the same message has to route to a handler that still answers.
+  final offline = _route(
+    text,
+    context: const AssistantRouteContext(aiAvailable: false),
+  );
+  expect(
+    offline.kind,
+    AssistantRouteKind.ruleHandled,
+    reason: '"$text" must still be answerable with the model down',
+  );
 }
 
 void main() {
@@ -76,14 +118,28 @@ void main() {
   });
 
   group('facility discovery', () {
-    test('the named recommendation phrasings are free', () {
-      _expectFree(
+    test('the named recommendation phrasings reach the model', () {
+      _expectEscalates(
         'can you suggest a facility for 200 people',
-        AssistantIntent.recommendFacility,
+        EscalationReason.discovery,
       );
-      _expectFree(
+      _expectEscalates(
         'recommend a facility where i want a office type haved a aircon',
-        AssistantIntent.recommendFacility,
+        EscalationReason.discovery,
+      );
+    });
+
+    test('an activity no dictionary covers still escalates', () {
+      // The case that produced "7 facilities match:" under a bare catalogue
+      // dump. There is no pickleball facility, and saying so is a judgement
+      // no fixed activity map can be relied on to make.
+      _expectEscalates(
+        'what facility do you recommend for a pickleball event',
+        EscalationReason.discovery,
+      );
+      _expectEscalates(
+        'what venues do you suggest for a thesis defense',
+        EscalationReason.discovery,
       );
     });
 
@@ -102,14 +158,36 @@ void main() {
       expect(office.amenities, contains('Air Conditioning'));
     });
 
-    test('ordinary browsing and availability stay free', () {
-      _expectFree(
+    test('open-ended browsing reaches the model', () {
+      _expectEscalates(
         'What facilities are available?',
-        AssistantIntent.findFacilities,
+        EscalationReason.discovery,
       );
+    });
+
+    test('availability for one named facility stays free', () {
+      // The cost guard that matters most, because this is the commonest
+      // question of all: with one facility and a day, the rules read the live
+      // schedule and state the free windows exactly. A model call here would
+      // buy nothing and be charged for on every turn.
       _expectFree(
         'Is the gym available tomorrow?',
         AssistantIntent.checkAvailability,
+        // Supplied by the controller, which is the only layer that can see
+        // the catalogue; the router stays a pure function.
+        context: const AssistantRouteContext(
+          aiAvailable: true,
+          facilityResolved: true,
+        ),
+      );
+    });
+
+    test('availability with no facility named does reach the model', () {
+      // "Which one?" plus eight unranked cards is what the rules can manage
+      // here, which is the answer this whole change exists to replace.
+      _expectEscalates(
+        'what rooms are free on friday afternoon',
+        EscalationReason.discovery,
       );
     });
 

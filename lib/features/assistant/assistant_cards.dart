@@ -569,10 +569,23 @@ class AssistantConfirmCard extends StatelessWidget {
                   onPressed: controller.submitting
                       ? null
                       : () {
+                          // Everything the conversation established travels with
+                          // the tap. The sheet re-validates each value against
+                          // the facility, so this is a head start, not a
+                          // bypass -- the terms still have to be read and
+                          // ticked before anything is sent.
                           showBookingSheet(
                             context,
                             state: state,
                             facility: facility,
+                            prefill: BookingPrefill(
+                              day: draft.day,
+                              startHour: draft.startHour,
+                              endHour: draft.endHour,
+                              heads: draft.heads,
+                              purpose: draft.purpose,
+                              amenities: requestedAmenities.toSet(),
+                            ),
                           );
                         },
                 ),

@@ -10,6 +10,7 @@ import {
   checkReply,
   collectFacilityIds,
   compactHistory,
+  facilityCategories,
   estimateTokens,
   extractChannels,
   isIsoDate,
@@ -907,4 +908,82 @@ Deno.test("every inline slot-fill example in the booking-flow prompt validates t
     slotsSeen,
     new Set(["facility", "date", "time", "heads", "purpose"]),
   );
+});
+
+// ---------------------------------------------------------------------------
+// The closed category vocabulary
+//
+// assistant_recommend_facilities filters on exact text, so a category the
+// model invented returned zero rows -- which the model then reported as
+// "nothing matches". A false negative is the worst failure this assistant
+// has, because it is indistinguishable from a true one. These tests pin the
+// two halves of the fix: the model is told the vocabulary, and is refused
+// when it goes outside it.
+// ---------------------------------------------------------------------------
+
+Deno.test("both category-filtering tools declare the closed vocabulary", () => {
+  for (const tool of ["recommend_facilities", "get_available_facilities"] as const) {
+    const properties = toolSchemas[tool].properties as Record<
+      string,
+      { enum?: readonly string[] }
+    >;
+    assertEquals(
+      properties.category.enum,
+      facilityCategories,
+      `${tool} must constrain category to the categories that exist`,
+    );
+  }
+});
+
+Deno.test("an invented category is refused rather than silently returning nothing", () => {
+  for (const guess of ["gym", "Gym", "Sports Facility", "sports hall", ""]) {
+    assertThrows(
+      () =>
+        validateToolCall("recommend_facilities", { category: guess }),
+      AssistantProviderError,
+      "category",
+      `"${guess}" is not a category this catalogue has`,
+    );
+  }
+});
+
+Deno.test("every real category is accepted, on both tools", () => {
+  for (const category of facilityCategories) {
+    assertEquals(
+      validateToolCall("recommend_facilities", { category }).args.category,
+      category,
+    );
+    assertEquals(
+      validateToolCall("get_available_facilities", {
+        day: "2026-09-25",
+        category,
+      }).args.category,
+      category,
+    );
+  }
+});
+
+Deno.test("the vocabulary matches the client's own category list", () => {
+  // lib/data/campus_data.dart is the other copy. Ten, no duplicates, and
+  // every one a non-empty string -- enough to catch a bad merge here.
+  assertEquals(facilityCategories.length, 10);
+  assertEquals(new Set(facilityCategories).size, 10);
+  for (const category of facilityCategories) {
+    assertEquals(typeof category, "string");
+    assertEquals(category.trim(), category);
+  }
+});
+
+Deno.test("the totals a negative claim rests on survive redaction", () => {
+  // "No facility here is set up for that" is a claim about what does NOT
+  // exist, and the prompt forbids answering from anything but this turn's
+  // tool results. So the evidence for it has to reach the model intact.
+  const redacted = redactForProvider({
+    facilities: [{ id: uuidA, name: "Gymplex", category: "Gymnasium" }],
+    total_matching: 11,
+    catalogue_categories: facilityCategories,
+  }) as Record<string, unknown>;
+
+  assertEquals(redacted.total_matching, 11);
+  assertEquals(redacted.catalogue_categories, facilityCategories);
 });

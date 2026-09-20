@@ -265,6 +265,43 @@ void main() {
     });
   });
 
+  group('discovery reaches the model, and survives without it', () {
+    test('a recommendation question is asked of the model', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(text: 'The Gymplex is the closest fit.'),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('can you suggest a facility for 200 people', state);
+
+      expect(client.calls, hasLength(1));
+      expect(transcript(controller), contains('Gymplex'));
+    });
+
+    test('the same question still answers with the service down', () async {
+      final controller = controllerWith(_ThrowingAiClient());
+
+      await controller.send('can you suggest a facility for 200 people', state);
+
+      // The governing requirement, on the path that now routes through the
+      // model: an outage costs phrasing, never an answer.
+      expect(transcript(controller).trim(), isNotEmpty);
+    });
+
+    test('an activity we cannot host is not answered as a match', () async {
+      final controller = controllerWith(null);
+
+      await controller.send(
+        'what facility do you recommend for a pickleball event',
+        state,
+      );
+
+      final said = transcript(controller).toLowerCase();
+      expect(said, isNot(contains('facilities match')));
+      expect(said, isNot(contains('one match')));
+    });
+  });
+
   group('what is sent upward', () {
     test('a rule-answerable question never reaches the model', () async {
       final client = _FakeAiClient(
@@ -272,14 +309,17 @@ void main() {
       );
       final controller = controllerWith(client);
 
+      // Records and policy questions only. Discovery -- "suggest a facility
+      // for 200 people" -- deliberately left this list: rules can rank a
+      // catalogue but cannot judge what an activity needs, so that class now
+      // goes to the model. The test below pins the other half, that it still
+      // answers when the model is gone.
       for (
         final question in [
           'What reservations do I have?',
-          'can you suggest a facility for 200 people',
           'how much do I still need to pay',
           'can I cancel my reservation',
           'what are the rules for external renters',
-          'Is the gym available tomorrow?',
           'help',
         ]
       ) {
@@ -445,6 +485,72 @@ void main() {
     test('a missing facility_ids field is simply no facilities', () {
       final reply = parseAssistantAiReply({'reply': 'ok'});
       expect(reply.facilityIds, isEmpty);
+    });
+  });
+
+  group('the cards agree with the sentence above them', () {
+    /// The ids of three bookable facilities, deliberately not in catalogue
+    /// order.
+    List<String> reversedIds(AppState state) =>
+        state.bookableFacilities.take(3).map((f) => f.id).toList().reversed
+            .toList();
+
+    test('cards are shown in the order the model ranked them', () async {
+      final ranked = reversedIds(state);
+      final controller = controllerWith(
+        _FakeAiClient(
+          (_) => AssistantAiReply(
+            text: 'The first one is the closest fit.',
+            facilityIds: ranked,
+          ),
+        ),
+      );
+
+      await controller.send('what venue do you suggest for a seminar', state);
+
+      final shown = controller.messages
+          .expand((message) => message.facilities)
+          .map((facility) => facility.id)
+          .toList();
+      // "The first one is the closest fit" is a lie if the first card is not
+      // the one the model put first.
+      expect(shown, ranked);
+    });
+
+    test('one suggestion becomes the draft, so "book it" works next turn', () async {
+      final only = state.bookableFacilities.first;
+      final controller = controllerWith(
+        _FakeAiClient(
+          (_) => AssistantAiReply(
+            text: '${only.name} is the only one that fits.',
+            facilityIds: [only.id],
+          ),
+        ),
+      );
+
+      await controller.send('what venue do you suggest for a seminar', state);
+
+      expect(controller.draft.facility?.id, only.id);
+    });
+
+    test('an id this user cannot book is dropped, not rendered', () async {
+      final real = state.bookableFacilities.first;
+      final controller = controllerWith(
+        _FakeAiClient(
+          (_) => AssistantAiReply(
+            text: 'Two options.',
+            facilityIds: ['not-a-real-facility', real.id],
+          ),
+        ),
+      );
+
+      await controller.send('what venue do you suggest for a seminar', state);
+
+      final shown = controller.messages
+          .expand((message) => message.facilities)
+          .map((facility) => facility.id)
+          .toList();
+      expect(shown, [real.id]);
     });
   });
 }

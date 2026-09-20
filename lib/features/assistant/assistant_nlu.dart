@@ -460,15 +460,34 @@ const Map<String, String> _categorySynonyms = {
 /// that can actually host them.
 ///
 /// Used only to choose and phrase ALTERNATIVES, never as a hard filter: a
-/// request for a sport we cannot host has to be answered honestly, not
+/// request for an activity we cannot host has to be answered honestly, not
 /// silently narrowed to something that merely shares a category.
+///
+/// This is the OFFLINE half of that judgement. Online, the model reads the
+/// closed category list off a tool result and maps any wording at all onto
+/// it, which is the only approach that can cover words nobody wrote down
+/// here. This map is what still answers when the model is disabled, rate
+/// limited or down -- so it is kept broad enough to be useful and is not
+/// mistaken for the intelligence layer.
 const Map<String, Set<String>> activityCategories = {
+  // Sport. No dedicated court exists for any of these.
   'pickleball': {'Gymnasium', 'Outdoor Area'},
   'badminton': {'Gymnasium'},
   'volleyball': {'Gymnasium', 'Outdoor Area'},
   'basketball': {'Gymnasium', 'Outdoor Area'},
   'tennis': {'Outdoor Area'},
   'futsal': {'Gymnasium', 'Outdoor Area'},
+  'zumba': {'Gymnasium', 'Function Hall'},
+  // Academic and campus events, which are the bulk of real bookings.
+  'seminar': {'Auditorium', 'Function Hall', 'Conference Room'},
+  'orientation': {'Auditorium', 'Function Hall'},
+  'graduation': {'Gymnasium', 'Auditorium', 'Function Hall'},
+  'training': {'Conference Room', 'Classroom', 'Computer Laboratory'},
+  'workshop': {'Conference Room', 'Classroom'},
+  'defense': {'Conference Room', 'Classroom'},
+  'pageant': {'Auditorium', 'Function Hall', 'Gymnasium'},
+  'esports': {'Computer Laboratory'},
+  'jobfair': {'Gymnasium', 'Function Hall'},
 };
 
 /// The activity named in a message, if any.
@@ -487,9 +506,9 @@ String? matchActivity(String normalized) {
     for (final key in activityCategories.keys) {
       if (single == key || pair == key) return key;
       // fuzzyWordMatches' prefix branch only requires 3 characters, which
-      // would let "ten" match "tennis" -- every activity key here is 6+
-      // letters, so a short word can only be a real typo, never a genuine
-      // abbreviation, once it is at least half the key's length.
+      // would let "ten" match "tennis". Every activity key here is at least
+      // five letters, so a word of four or more can only be a real typo,
+      // never a genuine abbreviation of one of them.
       if (single.length >= 4 && fuzzyWordMatches(single, key)) return key;
       if (pair != null && fuzzyWordMatches(pair, key)) return key;
     }

@@ -923,7 +923,7 @@ class AssistantController extends ChangeNotifier {
       return 'Please sign in again, then retry this booking.';
     }
     if (message.toLowerCase().contains('terms')) {
-      return 'Open the facility from Browse to review the current reservation terms before sending.';
+      return 'Review and accept the current reservation terms before sending — your details are carried over.';
     }
     return message;
   }
@@ -1279,9 +1279,11 @@ class AssistantController extends ChangeNotifier {
 
     switch (p.intent) {
       case AssistantIntent.findFacilities:
+        if (await _tryDiscoveryAi(p, state)) return;
         _handleFindFacilities(p, state);
         break;
       case AssistantIntent.checkAvailability:
+        if (await _tryDiscoveryAi(p, state)) return;
         await _handleCheckAvailability(p, state);
         break;
       case AssistantIntent.book:
@@ -1305,6 +1307,7 @@ class AssistantController extends ChangeNotifier {
         _handleCancelRequest(p, state);
         break;
       case AssistantIntent.recommendFacility:
+        if (await _tryDiscoveryAi(p, state)) return;
         _handleRecommendFacility(p, state);
         break;
       case AssistantIntent.reservationStatus:
@@ -1367,9 +1370,26 @@ class AssistantController extends ChangeNotifier {
       // decision in a second place.
       aiAvailable: _aiClient != null,
       facilityRequestUnresolved: _facilityRequestUnresolved(p, state),
+      facilityResolved: _resolvesToOneFacility(p, state),
       referenceFrame: frame,
     ),
   );
+
+  /// True when the message names exactly one bookable facility.
+  ///
+  /// This is the test for "the rules can answer this precisely": with one
+  /// facility and a date, `_handleCheckAvailability` reads the live schedule
+  /// and states the free windows, which no model improves on. Without it, the
+  /// same handler can only ask "Which one?" and print the catalogue.
+  bool _resolvesToOneFacility(ParsedMessage p, AppState state) {
+    if (draft.facility != null) return true;
+    final query = p.facilityQuery;
+    if (query == null || query.isEmpty) return false;
+    return _tiedTop(
+          resolveFacilityByName(query, state.bookableFacilities),
+        ).length ==
+        1;
+  }
 
   /// True when the user described a facility we cannot resolve at all.
   ///
@@ -1385,6 +1405,17 @@ class AssistantController extends ChangeNotifier {
     final pool = state.bookableFacilities;
     if (pool.isEmpty) return false;
     return resolveFacilityByName(p.facilityQuery ?? p.raw, pool).isEmpty;
+  }
+
+  /// The model's attempt at a "what should I book" question.
+  ///
+  /// False means the caller should answer it the deterministic way, and every
+  /// caller does. That covers a routing decision that did not escalate, no
+  /// client at all, a client that threw, a disabled or rate-limited service
+  /// and an empty reply -- `_answerWithAi` collapses all of them to false.
+  Future<bool> _tryDiscoveryAi(ParsedMessage p, AppState state) async {
+    if (_routeFor(p, state).reason != EscalationReason.discovery) return false;
+    return _answerWithAi(p, state);
   }
 
   /// Ask the model, surviving a client that misbehaves.
@@ -1487,11 +1518,28 @@ class AssistantController extends ChangeNotifier {
     // what this user may actually book. An id that does not resolve (stale,
     // or from a facility this user cannot book) is simply dropped; nothing
     // else about the reply changes.
+    //
+    // The model ranked these ids, and the sentence above the cards refers to
+    // that order -- "the Gymplex is the closest" reads as a lie if the
+    // Gymplex is third. Indexing rather than scanning the catalogue per id is
+    // what preserves it.
+    final byId = {for (final f in state.bookableFacilities) f.id: f};
     final matches = [
       for (final id in reply.facilityIds)
-        state.bookableFacilities.where((f) => f.id == id).firstOrNull,
-    ].whereType<Facility>().toList();
+        if (byId[id] != null) byId[id]!,
+    ];
     if (matches.isNotEmpty) {
+      if (matches.length == 1) {
+        // One suggestion is a decision, not a menu: "yes, book that" on the
+        // next turn has to work without asking which one again.
+        draft.facility = matches.first;
+        draft.candidates = const [];
+      } else {
+        draft.candidates = matches;
+      }
+      // No caption: the model's own sentence is already sitting above these
+      // cards, and a rule-written header over it is the duplication this
+      // whole change exists to remove.
       _showFacilities(matches);
       return true;
     }
@@ -2692,7 +2740,7 @@ class AssistantController extends ChangeNotifier {
                 fallback:
                     'The price could not be calculated. Please retry before sending.',
               )
-            : 'Review and accept Terms & Conditions for ${facility.name} before sending. Open the booking sheet from Browse so the exact current policy version is recorded.',
+            : 'Review and accept the Terms & Conditions for ${facility.name} before sending. Tap the button below — everything you told me is carried over, so only the terms are left.',
         tone: quote == null ? AdvisoryTone.block : AdvisoryTone.info,
       );
       notifyListeners();
@@ -2823,7 +2871,17 @@ class AssistantController extends ChangeNotifier {
       _say('Nothing bookable matches that right now.');
       return;
     }
-    if (p.activity != null) {
+    // "N facilities match" is a claim, and it only holds when the message
+    // actually constrained something. With no category, capacity, amenity or
+    // facility name in it -- a request for an activity the parser could not
+    // read, say -- `results` is the whole catalogue, and calling that a match
+    // is how an Audio Visual Room got recommended for a pickleball game.
+    final constrained =
+        p.category != null ||
+        p.capacity != null ||
+        p.amenities.isNotEmpty ||
+        (p.facilityQuery != null && p.facilityQuery!.isNotEmpty);
+    if (p.activity != null || !constrained) {
       // The catalogue has nothing for the activity itself; these are the
       // rooms that could host it, which is a different claim.
       _say(_unmatchedCaption(p, matched: false));

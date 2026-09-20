@@ -23,15 +23,150 @@ import 'facility_preview.dart';
 
 import '../../theme/sr_theme.dart';
 
+/// Values an earlier flow already collected, carried into the sheet so the
+/// user is not asked for them twice.
+///
+/// Every field is optional, and every one is checked against what the facility
+/// actually offers before it is applied -- a prefill is a proposal, not an
+/// override. Accepting the terms is deliberately not part of it: filling the
+/// form in for someone is the point, agreeing to a contract for them is not.
+class BookingPrefill {
+  const BookingPrefill({
+    this.day,
+    this.startHour,
+    this.endHour,
+    this.heads,
+    this.purpose,
+    this.amenities = const {},
+  });
+
+  final DateTime? day;
+
+  /// 24-hour decimals on the half hour, the spelling `BookingDraft` uses.
+  final double? startHour;
+  final double? endHour;
+  final int? heads;
+  final String? purpose;
+  final Set<String> amenities;
+
+  bool get isEmpty =>
+      day == null &&
+      startHour == null &&
+      endHour == null &&
+      heads == null &&
+      (purpose == null || purpose!.trim().isEmpty) &&
+      amenities.isEmpty;
+}
+
+/// What a prefill resolved to once checked against the facility's real
+/// schedule: which date and slots to select, and what had to be dropped.
+class BookingPrefillResolution {
+  const BookingPrefillResolution({
+    this.dateIndex,
+    this.start,
+    this.end,
+    this.rejected = const {},
+  });
+
+  /// Index into the sheet's bookable-date list, or null to keep the default.
+  final int? dateIndex;
+
+  /// Slot labels in `HH:MM`, or null to keep the default.
+  final String? start;
+  final String? end;
+
+  /// `'date'` and/or `'time'`, for what the facility could not honour.
+  final Set<String> rejected;
+}
+
+/// 13.5 -> "13:30", the spelling the sheet's slot lists use.
+String? bookingClockLabel(double? hour) {
+  if (hour == null) return null;
+  final minutes = (hour * 60).round();
+  return '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+      '${(minutes % 60).toString().padLeft(2, '0')}';
+}
+
+/// Decide what a [prefill] may actually select.
+///
+/// Pure, and separate from the sheet, because this is the whole substance of
+/// carrying a conversation into a form: everything else is assignment. The
+/// rule it encodes is that a prefill is a proposal, never an override -- a
+/// day the facility is shut on or an hour outside [slots] is reported in
+/// `rejected` and the caller keeps its own valid default, because silently
+/// moving someone to a neighbouring slot books a time they never agreed to.
+///
+/// [slots] must be the slot list for the day this resolution selects, which
+/// is why the caller re-reads it after applying [BookingPrefillResolution.dateIndex].
+BookingPrefillResolution resolveBookingPrefill({
+  required BookingPrefill? prefill,
+  required List<DateTime> dates,
+  required List<String> Function(int dateIndex) slotsFor,
+  required int fallbackDateIndex,
+}) {
+  if (prefill == null || prefill.isEmpty) {
+    return const BookingPrefillResolution();
+  }
+
+  final rejected = <String>{};
+  int? dateIndex;
+
+  final day = prefill.day;
+  if (day != null) {
+    final found = dates.indexWhere(
+      (value) =>
+          value.year == day.year &&
+          value.month == day.month &&
+          value.day == day.day,
+    );
+    if (found >= 0) {
+      dateIndex = found;
+    } else {
+      // Closed that day, or beyond advanceBookingDays.
+      rejected.add('date');
+    }
+  }
+
+  // Which hours are legal depends on which day won above: today's slot list
+  // is shorter than a future day's.
+  final slots = slotsFor(dateIndex ?? fallbackDateIndex);
+  final start = bookingClockLabel(prefill.startHour);
+  final end = bookingClockLabel(prefill.endHour);
+
+  String? chosenStart;
+  String? chosenEnd;
+  if (start != null && slots.contains(start)) {
+    chosenStart = start;
+    if (end != null &&
+        slots.contains(end) &&
+        slots.indexOf(end) > slots.indexOf(start)) {
+      chosenEnd = end;
+    } else {
+      rejected.add('time');
+    }
+  } else if (start != null) {
+    rejected.add('time');
+  }
+
+  return BookingPrefillResolution(
+    dateIndex: dateIndex,
+    start: chosenStart,
+    end: chosenEnd,
+    rejected: rejected,
+  );
+}
+
 Future<void> showBookingSheet(
   BuildContext context, {
   required AppState state,
   required Facility facility,
+  BookingPrefill? prefill,
 }) {
   if (MediaQuery.sizeOf(context).width < SR.tabletMin) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => _MobileFacilityPage(state: state, facility: facility),
+        builder: (_) =>
+            _MobileFacilityPage(state: state, facility: facility, prefill: prefill),
       ),
     );
   }
@@ -39,15 +174,21 @@ Future<void> showBookingSheet(
   return showDialog<void>(
     context: context,
     barrierColor: const Color(0x7010141A),
-    builder: (_) => _BookingSheet(state: state, facility: facility),
+    builder: (_) =>
+        _BookingSheet(state: state, facility: facility, prefill: prefill),
   );
 }
 
 class _MobileFacilityPage extends StatelessWidget {
-  const _MobileFacilityPage({required this.state, required this.facility});
+  const _MobileFacilityPage({
+    required this.state,
+    required this.facility,
+    this.prefill,
+  });
 
   final AppState state;
   final Facility facility;
+  final BookingPrefill? prefill;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -73,7 +214,12 @@ class _MobileFacilityPage extends StatelessWidget {
     ),
     body: SafeArea(
       top: false,
-      child: _BookingSheet(state: state, facility: facility, fullPage: true),
+      child: _BookingSheet(
+        state: state,
+        facility: facility,
+        prefill: prefill,
+        fullPage: true,
+      ),
     ),
   );
 }
@@ -82,11 +228,13 @@ class _BookingSheet extends StatefulWidget {
   const _BookingSheet({
     required this.state,
     required this.facility,
+    this.prefill,
     this.fullPage = false,
   });
 
   final AppState state;
   final Facility facility;
+  final BookingPrefill? prefill;
   final bool fullPage;
 
   @override
@@ -120,6 +268,11 @@ class _BookingSheetState extends State<_BookingSheet> {
   String? _selectedVoucherId;
   List<Map<String, dynamic>> _ownOverlaps = const [];
   bool _termsAccepted = false;
+
+  /// Which prefilled values the facility could not honour, so the sheet can
+  /// say so rather than quietly booking a different day or hour than the one
+  /// the conversation agreed on.
+  final Set<String> _prefillRejected = <String>{};
   Timer? _quoteTimer;
   int _quoteRequest = 0;
   int _selectedPhoto = 0;
@@ -135,6 +288,10 @@ class _BookingSheetState extends State<_BookingSheet> {
     final slots = _times;
     _start = slots.first;
     _end = slots.length > 2 ? slots[2] : slots.last;
+    // Carried over from the assistant, if it sent anything. Runs before the
+    // headcount listener is attached so the first quote is priced on the real
+    // party size instead of the placeholder 20 and then again on the real one.
+    _applyPrefill(widget.prefill);
     _heads.addListener(_scheduleQuote);
     for (final item in facility.amenityOptions.where(
       (item) => item.permitQuantityRequired,
@@ -163,6 +320,45 @@ class _BookingSheetState extends State<_BookingSheet> {
     }
     _quoteTimer?.cancel();
     super.dispose();
+  }
+
+  /// Fill in what an earlier flow already established.
+  ///
+  /// Nothing is forced. A day the facility is shut on, or an hour outside the
+  /// bookable slots, is dropped and recorded in [_prefillRejected]; the sheet
+  /// keeps its own valid default and [_error] names what was lost. Silently
+  /// sliding someone to a neighbouring slot would be the worse failure, since
+  /// it books a time they never agreed to.
+  void _applyPrefill(BookingPrefill? prefill) {
+    if (prefill == null || prefill.isEmpty) return;
+
+    final resolution = resolveBookingPrefill(
+      prefill: prefill,
+      dates: _dateValues,
+      slotsFor: (index) {
+        final slots = _slotsFor(_dateValues[index]);
+        return slots.length >= 2 ? slots : _allSlots;
+      },
+      fallbackDateIndex: _dates.indexOf(_date),
+    );
+
+    if (resolution.dateIndex != null) _date = _dates[resolution.dateIndex!];
+    if (resolution.start != null) _start = resolution.start!;
+    if (resolution.end != null) _end = resolution.end!;
+    _prefillRejected.addAll(resolution.rejected);
+    // Re-anchors whatever survived against the dropdown's own items.
+    _clampTimes();
+
+    if (prefill.heads != null && prefill.heads! > 0) {
+      _heads.text = '${prefill.heads}';
+    }
+    if (prefill.purpose != null && prefill.purpose!.trim().isNotEmpty) {
+      _purpose.text = prefill.purpose!.trim();
+    }
+    // Intersected with what this facility can actually be asked for, so a
+    // stale amenity from the chat cannot arrive as an unrequestable checkbox.
+    final requestable = requestableAmenityLabels(facility).toSet();
+    _amenities.addAll(prefill.amenities.where(requestable.contains));
   }
 
   List<String> get _allSlots => [
@@ -266,6 +462,14 @@ class _BookingSheetState extends State<_BookingSheet> {
   bool get _overCapacity => _headcount > facility.capacity;
 
   String? get _error {
+    // Shown before the first submit attempt, unlike every other message here:
+    // a value the conversation agreed on and the sheet could not keep is
+    // something the user has to see now, not after they press Send.
+    if (_prefillRejected.isNotEmpty) {
+      return _prefillRejected.contains('date')
+          ? '${facility.name} is not open on the day we discussed — pick another date.'
+          : 'That time is no longer open here — pick another slot.';
+    }
     if (!_attempted) return null;
     if (widget.state.userAccount.status == AccountStatus.suspended) {
       return widget.state.userAccount.suspendReason ??
@@ -559,17 +763,24 @@ class _BookingSheetState extends State<_BookingSheet> {
                     submitting: _submitting,
                     onDateChanged: (value) {
                       setState(() {
+                        _prefillRejected.clear();
                         _date = value;
                         _clampTimes();
                       });
                       _scheduleQuote();
                     },
                     onStartChanged: (value) {
-                      setState(() => _start = value);
+                      setState(() {
+                        _prefillRejected.clear();
+                        _start = value;
+                      });
                       _scheduleQuote();
                     },
                     onEndChanged: (value) {
-                      setState(() => _end = value);
+                      setState(() {
+                        _prefillRejected.clear();
+                        _end = value;
+                      });
                       _scheduleQuote();
                     },
                     onFieldChanged: () => setState(() {}),

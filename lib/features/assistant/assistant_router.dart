@@ -34,6 +34,16 @@ enum EscalationReason {
   /// resolve to anything bookable. The rules can only offer an unfiltered
   /// list; naming the gap well is what the model is better at.
   unresolvedFacilityRequest,
+
+  /// A question about what to book at all.
+  ///
+  /// The rules can filter and rank a catalogue they were handed, which is why
+  /// [rankFacilities] stays the ordering authority. What they cannot do is
+  /// decide that a pickleball game belongs in a Gymnasium, or say honestly
+  /// that nothing here was ever built for one -- that needs a judgement about
+  /// a word no dictionary in this repository will ever contain all of. Every
+  /// such turn still falls back to its rule handler if the model is absent.
+  discovery,
 }
 
 class AssistantRoute {
@@ -65,6 +75,7 @@ class AssistantRouteContext {
     this.assistsUsedForStage = 0,
     this.aiAvailable = false,
     this.facilityRequestUnresolved = false,
+    this.facilityResolved = false,
     this.referenceFrame,
   });
 
@@ -83,6 +94,13 @@ class AssistantRouteContext {
   /// True when the user named a facility or activity the catalogue cannot
   /// account for, so the rules can only offer an unfiltered list.
   final bool facilityRequestUnresolved;
+
+  /// True when the message names exactly one bookable facility.
+  ///
+  /// Supplied by the caller rather than computed here so this stays a pure
+  /// function with no `AppState` import, exactly as
+  /// [facilityRequestUnresolved] already is.
+  final bool facilityResolved;
 
   final AssistantReferenceFrame? referenceFrame;
 }
@@ -158,9 +176,34 @@ AssistantRoute routeMessage(
     );
   }
 
+  // Discovery -- "what should I book for X" -- is the class of question the
+  // model exists for. Records questions (reservations, payments, permits,
+  // policy) fall through to the rule handlers below, where they are already
+  // exact, instant and free.
+  if (context.aiAvailable && _isDiscovery(parsed, context)) {
+    return const AssistantRoute.escalate(EscalationReason.discovery);
+  }
+
   // Every other classified intent has a rule handler that either answers
   // outright or asks its own disambiguating question. Neither needs a model.
   return AssistantRoute.rule(parsed.intent);
+}
+
+bool _isDiscovery(ParsedMessage parsed, AssistantRouteContext context) {
+  switch (parsed.intent) {
+    case AssistantIntent.findFacilities:
+    case AssistantIntent.recommendFacility:
+      return true;
+    case AssistantIntent.checkAvailability:
+      // Only when the message did not pin down one facility. "Is the
+      // Auditorium free Friday 2-4" is answered exactly, instantly and for
+      // nothing by the rules; "what is free Friday afternoon" is the
+      // open-ended one where the rule handler can only ask "Which one?" and
+      // print eight unranked cards.
+      return !context.facilityResolved;
+    default:
+      return false;
+  }
 }
 
 bool _isOutOfScope(String normalized) {

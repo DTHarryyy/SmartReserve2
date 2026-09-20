@@ -67,6 +67,33 @@ export const maxToolRounds = 2;
 export const maxToolCallsPerRound = 3;
 
 /**
+ * Every facility category that exists, as one closed list.
+ *
+ * Mirrors `categories` in lib/data/campus_data.dart. It has three jobs and
+ * they have to agree, so it is declared once: it is the `enum` on the two
+ * tool schemas that filter by category, it is quoted in the system prompt,
+ * and it is handed back inside recommend_facilities.
+ *
+ * That last one is the point. `assistant_recommend_facilities` filters on
+ * exact text, so a model guessing "gym" or "Sports Facility" got zero rows
+ * back and reported them to the user as "nothing matches" -- a false negative
+ * dressed as an answer. A closed vocabulary it can both read and be validated
+ * against is what removes the guess.
+ */
+export const facilityCategories = [
+  "Classroom",
+  "Computer Laboratory",
+  "Science Laboratory",
+  "Auditorium",
+  "Conference Room",
+  "Function Hall",
+  "Gymnasium",
+  "Library Space",
+  "Outdoor Area",
+  "Office",
+] as const;
+
+/**
  * Answer length budgets.
  *
  * Two budgets rather than one, because an answer has two shapes. A prose
@@ -246,7 +273,7 @@ export const toolSchemas: Record<ToolName, Record<string, unknown>> = {
       to_hour: { type: "number", minimum: 0, maximum: 24 },
       duration_hours: { type: "number", minimum: 0.5, maximum: 12 },
       min_capacity: { type: "number", minimum: 1, maximum: 5000 },
-      category: { type: "string" },
+      category: { type: "string", enum: facilityCategories },
     },
     required: ["day"],
   },
@@ -319,7 +346,7 @@ export const toolSchemas: Record<ToolName, Record<string, unknown>> = {
     additionalProperties: false,
     properties: {
       min_capacity: { type: "integer", minimum: 1, maximum: 5000 },
-      category: { type: "string" },
+      category: { type: "string", enum: facilityCategories },
       amenities: {
         type: "array",
         items: { type: "string" },
@@ -418,6 +445,15 @@ export function validateToolCall(
         !Array.isArray(value) || value.length > 6 ||
         value.some((item) => typeof item !== "string")
       ) {
+        throw new AssistantProviderError("invalid_tool_argument", key);
+      }
+    } else if (Array.isArray(property.enum)) {
+      // Vocabularies, like the numeric bounds above, are read off the schema
+      // rather than a hand-written list here, so a newly constrained argument
+      // is enforced the moment it is declared. The throw becomes a tool result
+      // the model can recover from, not a failed turn: an off-vocabulary guess
+      // costs one retry instead of producing a confident false negative.
+      if (!property.enum.includes(value)) {
         throw new AssistantProviderError("invalid_tool_argument", key);
       }
     } else if (typeof value !== "string" && typeof value !== "number") {

@@ -11,6 +11,7 @@
 // projection RPCs below.
 
 import {
+  facilityCategories,
   permitBlockerMessage,
   redactForProvider,
   type ToolName,
@@ -389,15 +390,22 @@ export const toolHandlers: Record<ToolName, ToolHandler> = {
           ? args.min_capacity
           : null,
         p_category: typeof args.category === "string" ? args.category : null,
-        p_limit: 5,
+        // The RPC's own ceiling, asked for deliberately: it stops scanning
+        // the moment it has p_limit rows, so a smaller limit would make
+        // "there are no others" unknowable.
+        p_limit: 10,
       }),
     );
-    return pick(payload, [
-      "day",
-      "duration_hours",
-      "requested_window",
-      "facilities",
-    ]);
+    const all = Array.isArray(payload.facilities) ? payload.facilities : [];
+    return {
+      ...pick(payload, ["day", "duration_hours", "requested_window"]),
+      facilities: all.slice(0, 5),
+      // A count, not a total: assistant_available_facilities stops looking
+      // once it has enough, so the true number of free facilities is not
+      // knowable from here. This flag is, and it is all the model needs to
+      // avoid implying the five below are everything.
+      more_beyond_these: all.length > 5,
+    };
   },
 
   get_facility_details: async (client, args) => {
@@ -520,7 +528,20 @@ export const toolHandlers: Record<ToolName, ToolHandler> = {
         missing_amenities: wanted.filter((a) => !ownedLower.includes(a)),
       };
     });
-    return { facilities: annotated.slice(0, 5) };
+    return {
+      facilities: annotated.slice(0, 5),
+      // The five rows above are a page; this is how many matched. Saying
+      // "three fit" versus "three of eleven" is the difference between an
+      // answer and a misleading one. assistant_recommend_facilities is asked
+      // for 20 and caps there, which covers the whole catalogue comfortably
+      // -- if it ever does not, this reads as a floor, never an overstatement.
+      total_matching: annotated.length,
+      // The complete vocabulary. "No facility here is a pickleball court" is
+      // a claim about what does not exist, and the prompt forbids answering
+      // from anything but this turn's tool results -- so the list of what
+      // could exist has to arrive as a tool result too, not be recalled.
+      catalogue_categories: facilityCategories,
+    };
   },
 
   get_booking_draft_state: (_client, _args, context) => {

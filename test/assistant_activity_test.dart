@@ -13,6 +13,20 @@ void main() {
       expect(matchActivity('we can play pickle ball'), 'pickleball');
       expect(matchActivity('pickleball tournament'), 'pickleball');
       expect(matchActivity('badminton practice'), 'badminton');
+      // The typo from the reported transcript. One deletion, so the fuzzy
+      // branch has to carry it.
+      expect(matchActivity('recommend for picleball event'), 'pickleball');
+    });
+
+    test('covers campus events, not only sport', () {
+      // The map used to hold six sports, so every real booking reason --
+      // seminars, defenses, job fairs -- fell through to "N facilities
+      // match" over an unfiltered catalogue.
+      expect(matchActivity('thesis defense'), 'defense');
+      expect(matchActivity('a job fair next month'), 'jobfair');
+      expect(matchActivity('zumba class'), 'zumba');
+      expect(matchActivity('seminar for the college'), 'seminar');
+      expect(matchActivity('esports tournament'), 'esports');
     });
 
     test('does not fire on unrelated short words', () {
@@ -20,7 +34,6 @@ void main() {
       // matchActivity.
       expect(matchActivity('the ten students need a room'), isNull);
       expect(matchActivity('for a department meeting'), isNull);
-      expect(matchActivity('thesis defense'), isNull);
     });
   });
 
