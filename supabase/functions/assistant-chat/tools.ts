@@ -115,6 +115,54 @@ function withFormattedMoney(
   return out;
 }
 
+const manilaDateTime = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  weekday: "short",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+/** "Fri, 25 Sep 2026, 2:00 PM" in Asia/Manila, or null if unparseable. */
+export function manilaTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return manilaDateTime.format(parsed).replace(/,\s*$/, "");
+}
+
+/**
+ * Dates are formatted here, once, for the same reason money is.
+ *
+ * The system prompt tells the model that dates arrive already formatted and
+ * must be repeated exactly. That was untrue: every timestamp reached it as a
+ * raw UTC ISO string, so the only way to answer "when is my payment due" was
+ * to convert and phrase it -- inventing the very thing the prompt forbade,
+ * and in the wrong timezone. Now the string it repeats is the string the app
+ * shows.
+ *
+ * The ISO original is kept under `<field>_iso` only where the value can feed
+ * a slot fill; everywhere else it is dropped, because two spellings of one
+ * timestamp is just tokens.
+ */
+function withFormattedDates(
+  row: Record<string, unknown>,
+  keepIso: readonly string[] = [],
+): Record<string, unknown> {
+  const out = { ...row };
+  for (const [key, value] of Object.entries(row)) {
+    if (!/(?:_at|starts|ends)$/.test(key)) continue;
+    const formatted = manilaTimestamp(value);
+    if (formatted === null) continue;
+    if (keepIso.includes(key)) out[`${key}_iso`] = value;
+    out[key] = formatted;
+  }
+  return out;
+}
+
 const reservationListFields = [
   "id",
   "facility_name",
@@ -136,7 +184,9 @@ async function reservationsFor(
   return {
     scope,
     reservations: rows.map((row) =>
-      withFormattedMoney(pick(asRecord(row), reservationListFields))
+      withFormattedDates(
+        withFormattedMoney(pick(asRecord(row), reservationListFields)),
+      )
     ),
   };
 }
@@ -159,36 +209,41 @@ export const toolHandlers: Record<ToolName, ToolHandler> = {
 
   get_reservation_details: async (client, args) => {
     const detail = await detailFor(client, args.reservation_id);
-    return withFormattedMoney(
-      pick(detail, [
-        "id",
-        "facility_name",
-        "facility_building",
-        "starts_at",
-        "ends_at",
-        "lifecycle_status",
-        "headcount",
-        "purpose",
-        "total_amount_centavos",
-        "outstanding_amount_centavos",
-        "payment_due_at",
-        "balance_due_at",
-        "can_cancel",
-        "permit_downloadable",
-        "permit_number",
-      ]),
+    return withFormattedDates(
+      withFormattedMoney(
+        pick(detail, [
+          "id",
+          "facility_name",
+          "facility_building",
+          "starts_at",
+          "ends_at",
+          "lifecycle_status",
+          "headcount",
+          "purpose",
+          "total_amount_centavos",
+          "outstanding_amount_centavos",
+          "payment_due_at",
+          "balance_due_at",
+          "can_cancel",
+          "permit_downloadable",
+          "permit_number",
+        ]),
+      ),
+      // The schedule is the one field a booking proposal is built from, so the
+      // machine-readable spelling survives alongside the human one.
+      ["starts_at", "ends_at"],
     );
   },
 
   get_reservation_status: async (client, args) => {
     const detail = await detailFor(client, args.reservation_id);
-    return pick(detail, [
+    return withFormattedDates(pick(detail, [
       "id",
       "facility_name",
       "starts_at",
       "lifecycle_status",
       "can_cancel",
-    ]);
+    ]));
   },
 
   get_payment_balance: async (client, args) => {
@@ -232,12 +287,12 @@ export const toolHandlers: Record<ToolName, ToolHandler> = {
 
   get_payment_deadline: async (client, args) => {
     const detail = await detailFor(client, args.reservation_id);
-    return pick(detail, [
+    return withFormattedDates(pick(detail, [
       "id",
       "facility_name",
       "payment_due_at",
       "balance_due_at",
-    ]);
+    ]));
   },
 
   get_permit_status: async (client, args) => {
@@ -282,37 +337,67 @@ export const toolHandlers: Record<ToolName, ToolHandler> = {
     });
   },
 
+  // Free windows, not busy ones.
+  //
+  // This used to return occupied windows on the reasoning that the client's
+  // slot engine subtracts them. True for the client -- but the model reads
+  // this result too, and nothing stopped it doing the subtraction itself and
+  // announcing a time. assistant_facility_free_slots runs the same rules as
+  // that slot engine, in the database, so the answer is a list to repeat
+  // rather than a calculation to attempt.
   check_facility_availability: async (client, args) => {
-    const day = `${args.day}`;
-    const from = new Date(`${day}T00:00:00+08:00`);
-    const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
-    const { data, error } = await client.rpc("facility_busy_windows", {
-      p_facility_ids: [args.facility_id],
-      p_from: from.toISOString(),
-      p_to: to.toISOString(),
-    });
-    if (error) throw new ToolAccessError("lookup_failed");
-
-    const facility = asRecord(
-      await rpc(client, "assistant_facility_summary", {
+    const payload = asRecord(
+      await rpc(client, "assistant_facility_free_slots", {
         p_facility_id: args.facility_id,
+        p_day: args.day,
+        p_duration_hours: typeof args.duration_hours === "number"
+          ? args.duration_hours
+          : 1,
+        p_limit: 6,
+        p_from_hour: typeof args.from_hour === "number" ? args.from_hour : null,
+        p_to_hour: typeof args.to_hour === "number" ? args.to_hour : null,
       }),
     );
-    const busy = Array.isArray(data) ? data : [];
-    return {
-      facility_name: facility.name,
-      day,
-      open_time: facility.open_time,
-      close_time: facility.close_time,
-      bookable_for_me: facility.bookable_for_me,
-      booking_block_reason: facility.booking_block_reason,
-      // Occupied windows, not free ones: the client's slot engine computes
-      // free time from these, and duplicating that maths here would create a
-      // second source of truth for availability.
-      busy: busy.map((window) =>
-        pick(asRecord(window), ["starts_at", "ends_at"])
-      ),
-    };
+    return pick(payload, [
+      "facility_name",
+      "day",
+      "duration_hours",
+      "open_time",
+      "close_time",
+      "bookable_for_me",
+      "booking_block_reason",
+      "unavailable_reason",
+      "free_slots",
+    ]);
+  },
+
+  // "What is free on Friday afternoon?"
+  //
+  // Not expressible as recommend_facilities + one availability call per
+  // candidate: that exceeds the two-round, three-call ceiling as soon as
+  // there are more than three rooms to consider.
+  get_available_facilities: async (client, args) => {
+    const payload = asRecord(
+      await rpc(client, "assistant_available_facilities", {
+        p_day: args.day,
+        p_start_hour: typeof args.from_hour === "number" ? args.from_hour : null,
+        p_end_hour: typeof args.to_hour === "number" ? args.to_hour : null,
+        p_duration_hours: typeof args.duration_hours === "number"
+          ? args.duration_hours
+          : 1,
+        p_min_capacity: typeof args.min_capacity === "number"
+          ? args.min_capacity
+          : null,
+        p_category: typeof args.category === "string" ? args.category : null,
+        p_limit: 5,
+      }),
+    );
+    return pick(payload, [
+      "day",
+      "duration_hours",
+      "requested_window",
+      "facilities",
+    ]);
   },
 
   get_facility_details: async (client, args) => {

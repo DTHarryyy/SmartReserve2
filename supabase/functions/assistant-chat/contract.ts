@@ -84,6 +84,7 @@ export type ToolName =
   | "get_reservation_details"
   | "get_reservation_status"
   | "check_facility_availability"
+  | "get_available_facilities"
   | "get_facility_details"
   | "get_payment_balance"
   | "get_payment_status"
@@ -102,6 +103,7 @@ export const toolNames: readonly ToolName[] = [
   "get_reservation_details",
   "get_reservation_status",
   "check_facility_availability",
+  "get_available_facilities",
   "get_facility_details",
   "get_payment_balance",
   "get_payment_status",
@@ -202,8 +204,24 @@ export const toolSchemas: Record<ToolName, Record<string, unknown>> = {
       facility_id: { type: "string" },
       day: { type: "string", description: "YYYY-MM-DD" },
       duration_hours: { type: "number", minimum: 0.5, maximum: 12 },
+      from_hour: { type: "number", minimum: 0, maximum: 24 },
+      to_hour: { type: "number", minimum: 0, maximum: 24 },
     },
     required: ["facility_id", "day"],
+  },
+  get_available_facilities: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      day: { type: "string", description: "YYYY-MM-DD" },
+      // Hours are 24-hour decimals: 13.5 is 1:30 PM. "Afternoon" is 13 to 17.
+      from_hour: { type: "number", minimum: 0, maximum: 24 },
+      to_hour: { type: "number", minimum: 0, maximum: 24 },
+      duration_hours: { type: "number", minimum: 0.5, maximum: 12 },
+      min_capacity: { type: "number", minimum: 1, maximum: 5000 },
+      category: { type: "string" },
+    },
+    required: ["day"],
   },
   get_facility_details: {
     type: "object",
@@ -340,6 +358,8 @@ export function validateToolCall(
   // legitimate source for one is a previous tool result -- a model that
   // invents an id should fail here rather than at the database.
   for (const [key, value] of Object.entries(args)) {
+    const property = (properties[key] ?? {}) as Record<string, unknown>;
+
     if (key.endsWith("_id")) {
       if (!isUuid(value)) {
         throw new AssistantProviderError("invalid_tool_argument", key);
@@ -348,8 +368,22 @@ export function validateToolCall(
       if (!isIsoDate(value)) {
         throw new AssistantProviderError("invalid_tool_argument", key);
       }
-    } else if (key === "duration_hours" || key === "min_capacity") {
-      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    } else if (property.type === "number" || property.type === "integer") {
+      // Bounds come from the schema rather than a hand-written list, so a new
+      // numeric argument is range-checked the moment it is declared. They were
+      // previously advisory: the model was told 0.5 to 12 hours and could send
+      // 400, and an hour-of-day argument cannot use a "> 0" rule because
+      // midnight is 0.
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new AssistantProviderError("invalid_tool_argument", key);
+      }
+      if (property.type === "integer" && !Number.isInteger(value)) {
+        throw new AssistantProviderError("invalid_tool_argument", key);
+      }
+      if (typeof property.minimum === "number" && value < property.minimum) {
+        throw new AssistantProviderError("invalid_tool_argument", key);
+      }
+      if (typeof property.maximum === "number" && value > property.maximum) {
         throw new AssistantProviderError("invalid_tool_argument", key);
       }
     } else if (key === "amenities") {
@@ -498,6 +532,74 @@ function normalizeAmount(value: string): string {
   return value.replace(/[₱,\s]/g, "");
 }
 
+// Every number a reply is allowed to state, as values rather than substrings.
+//
+// Substring matching made "₱35" grounded by a tool result containing "₱3500":
+// wrong by two orders of magnitude, on the reassuring side, and it passed.
+//
+// The peso/centavos equivalence is deliberately narrow. Only a value that came
+// from a field actually named *_centavos is also offered in pesos; dividing
+// every integer by a hundred would re-introduce exactly the ambiguity above,
+// making "₱35" grounded by "3500" again.
+function addNumber(found: Set<string>, raw: string): void {
+  const plain = raw.replace(/,/g, "");
+  if (!plain) return;
+  found.add(plain);
+  const asNumber = Number(plain);
+  if (Number.isFinite(asNumber)) found.add(String(asNumber));
+}
+
+function collectNumbers(found: Set<string>, value: unknown, key = ""): void {
+  if (typeof value === "number") {
+    addNumber(found, String(value));
+    if (key.endsWith("_centavos") && Number.isInteger(value)) {
+      addNumber(found, String(value / 100));
+      found.add((value / 100).toFixed(2));
+    }
+    return;
+  }
+  if (typeof value === "string") {
+    for (const raw of value.match(/\d[\d,]*(?:\.\d+)?/g) ?? []) {
+      addNumber(found, raw);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectNumbers(found, item, key);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [childKey, child] of Object.entries(value)) {
+      collectNumbers(found, child, childKey);
+    }
+  }
+}
+
+function groundedNumbers(toolResultsJson: readonly string[]): Set<string> {
+  const found = new Set<string>();
+  for (const json of toolResultsJson) {
+    try {
+      collectNumbers(found, JSON.parse(json));
+    } catch (_) {
+      // Not JSON after all; fall back to a flat scan so a malformed result
+      // cannot turn every amount in the reply into a rejection.
+      for (const raw of json.match(/\d[\d,]*(?:\.\d+)?/g) ?? []) {
+        addNumber(found, raw);
+      }
+    }
+  }
+  return found;
+}
+
+// Dates the model might state back. Covers the formatted forms the tool layer
+// emits ("Fri, 25 Sep 2026", "25 Sep 2026") and bare ISO.
+const datePattern =
+  /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})\b/gi;
+
+function normalizeDate(value: string): string {
+  return value.replace(/[.,]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 export function checkReply(
   reply: string,
   toolResultsJson: readonly string[],
@@ -517,27 +619,56 @@ export function checkReply(
   }
 
   const haystack = toolResultsJson.join("\n");
+  const numbers = groundedNumbers(toolResultsJson);
+
   const amounts = text.match(pesoPattern) ?? [];
   for (const amount of amounts) {
     const normalized = normalizeAmount(amount);
-    // Tool results carry centavos; the reply carries pesos. Accept either, so
-    // a correct restatement passes and an invented figure does not.
-    const asPesos = normalized;
-    const asCentavos = String(Math.round(Number(normalized) * 100));
-    if (!Number.isFinite(Number(normalized))) {
+    const asNumber = Number(normalized);
+    if (!Number.isFinite(asNumber)) {
       return { ok: false, code: "ungrounded_amount", detail: amount };
     }
-    if (!haystack.includes(asPesos) && !haystack.includes(asCentavos)) {
+    // Compare values, not text. The tool layer formats pesos without
+    // separators, so a model writing the natural "₱3,500" against a result of
+    // "₱3500" used to be thrown away and the whole turn downgraded to the
+    // rule-based answer -- a correct reply rejected for its punctuation.
+    //
+    // The peso/centavos equivalence is applied to the tool result only, by
+    // groundedNumbers, and never to the reply: multiplying the reply by a
+    // hundred would let "₱35" match a result of 3500 centavos, which is the
+    // ambiguity this check exists to catch.
+    if (
+      !numbers.has(normalized) && !numbers.has(String(asNumber)) &&
+      !numbers.has(asNumber.toFixed(2))
+    ) {
       return { ok: false, code: "ungrounded_amount", detail: amount };
+    }
+  }
+
+  // Dates get the same treatment as amounts. The header of this file and the
+  // system prompt both promised it; only amounts were ever checked, so the
+  // model could state any date at all and be believed.
+  const normalizedHaystack = normalizeDate(haystack);
+  for (const date of text.match(datePattern) ?? []) {
+    if (!normalizedHaystack.includes(normalizeDate(date))) {
+      return { ok: false, code: "ungrounded_date", detail: date };
     }
   }
 
   return { ok: true };
 }
 
-/** Collapse whitespace and clip to the sentence budget. */
+/**
+ * Collapse whitespace and clip to the sentence budget.
+ *
+ * Fenced blocks go first. The slot-fill and proposal channels arrive as a
+ * ```json block appended to the answer, and index.ts parses those from the RAW
+ * reply -- so nothing here needs them, and leaving them in meant the user read
+ * the machinery along with the answer.
+ */
 export function tidyReply(reply: string): string {
-  const collapsed = reply.replace(/\s+/g, " ").trim();
+  const withoutFences = (reply ?? "").replace(/```[\s\S]*?(?:```|$)/g, " ");
+  const collapsed = withoutFences.replace(/\s+/g, " ").trim();
   const sentences = collapsed.match(/[^.!?]+[.!?]*/g) ?? [collapsed];
   if (sentences.length <= maxReplySentences) return collapsed;
   return sentences.slice(0, maxReplySentences).join("").trim();

@@ -21,7 +21,9 @@ const toolDescriptions: Record<ToolName, string> = {
   get_reservation_details: "One reservation in full, by id.",
   get_reservation_status: "Lifecycle status of one reservation.",
   check_facility_availability:
-    "Free time slots for a facility on a day. Max 120 days ahead.",
+    "Bookable time slots for ONE named facility on a day. Optional from_hour/to_hour narrow it (24-hour decimals: 13.5 is 1:30 PM).",
+  get_available_facilities:
+    "Which facilities have free time on a day, optionally within an hour range. Use for 'what is available Friday afternoon'.",
   get_facility_details: "Capacity, hours, limits and amenities of a facility.",
   get_payment_balance: "Amount still owed on one reservation.",
   get_payment_status: "Payment state of one reservation.",

@@ -554,3 +554,128 @@ Deno.test("a malformed provider payload is a typed error", () => {
     assertThrows(() => parseCompletion(bad), AssistantProviderError);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Grounding: the gaps the response contract used to have
+// ---------------------------------------------------------------------------
+
+Deno.test("a thousands separator does not make a correct amount ungrounded", () => {
+  // The tool layer formats pesos without separators. A model writing the
+  // natural "₱3,500" against a result of "₱3500" was rejected, and the whole
+  // turn downgraded to the rule-based answer -- a correct reply thrown away
+  // for its punctuation.
+  const verdict = checkReply(
+    "You still owe ₱3,500 on University Auditorium.",
+    [toolResult],
+  );
+  assert(verdict.ok, verdict.code);
+});
+
+Deno.test("a prefix of a grounded amount is not itself grounded", () => {
+  // Substring matching accepted "₱35" against a haystack containing "₱3500":
+  // wrong by two orders of magnitude, and on the reassuring side.
+  const verdict = checkReply("You still owe ₱35.", [toolResult]);
+  assertFalse(verdict.ok);
+  assertEquals(verdict.code, "ungrounded_amount");
+});
+
+Deno.test("a date that appears in a tool result is accepted", () => {
+  const verdict = checkReply(
+    "Your balance is due on Fri, 25 Sep 2026.",
+    [JSON.stringify({ balance_due_at: "Fri, 25 Sep 2026, 5:00 PM" })],
+  );
+  assert(verdict.ok, verdict.code);
+});
+
+Deno.test("an invented date is rejected", () => {
+  // Dates were never checked, so the model could name any day at all and be
+  // believed -- despite the prompt promising they arrive pre-formatted.
+  const verdict = checkReply(
+    "Your balance is due on Fri, 25 Dec 2026.",
+    [JSON.stringify({ balance_due_at: "Fri, 25 Sep 2026, 5:00 PM" })],
+  );
+  assertFalse(verdict.ok);
+  assertEquals(verdict.code, "ungrounded_date");
+});
+
+Deno.test("a date stated with no tool results at all is rejected", () => {
+  const verdict = checkReply("It is due on 2026-09-25.", []);
+  assertFalse(verdict.ok);
+  assertEquals(verdict.code, "ungrounded_date");
+});
+
+Deno.test("the channel block never reaches the user", () => {
+  // index.ts parses slot_fill and proposal from the RAW reply, so stripping
+  // the fence here loses nothing -- and leaving it in meant the user read the
+  // machinery along with the answer.
+  const tidied = tidyReply(
+    'Sure, booking the gym at 2pm.\n```json\n{"slot_fill":{"slot":"time","start_hour":14,"end_hour":16}}\n```',
+  );
+  assertEquals(tidied, "Sure, booking the gym at 2pm.");
+  assertFalse(tidied.includes("slot_fill"));
+});
+
+Deno.test("an unterminated fence is still stripped", () => {
+  const tidied = tidyReply('Booked.\n```json\n{"slot_fill":');
+  assertEquals(tidied, "Booked.");
+});
+
+// ---------------------------------------------------------------------------
+// Availability tools
+// ---------------------------------------------------------------------------
+
+Deno.test("get_available_facilities is registered and needs only a day", () => {
+  assert(isToolName("get_available_facilities"));
+  const schema = toolSchemas.get_available_facilities;
+  assertEquals(schema.additionalProperties, false);
+  assertEquals(schema.required, ["day"]);
+});
+
+Deno.test("an hour of day may be zero but not twenty-five", () => {
+  // Midnight is a legal hour, so the old "must be > 0" numeric rule would
+  // have refused it.
+  const ok = validateToolCall("get_available_facilities", {
+    day: "2026-09-25",
+    from_hour: 0,
+    to_hour: 12,
+  });
+  assertEquals(ok.args.from_hour, 0);
+
+  assertThrows(
+    () =>
+      validateToolCall("get_available_facilities", {
+        day: "2026-09-25",
+        from_hour: 25,
+      }),
+    AssistantProviderError,
+  );
+});
+
+Deno.test("schema bounds are enforced, not merely declared", () => {
+  // The registry told the model 0.5 to 12 hours and then accepted anything.
+  assertThrows(
+    () =>
+      validateToolCall("check_facility_availability", {
+        facility_id: uuidA,
+        day: "2026-09-25",
+        duration_hours: 400,
+      }),
+    AssistantProviderError,
+  );
+  assertThrows(
+    () =>
+      validateToolCall("get_available_facilities", {
+        day: "2026-09-25",
+        min_capacity: 999999,
+      }),
+    AssistantProviderError,
+  );
+});
+
+Deno.test("min_capacity must be whole, since half a person is not a capacity", () => {
+  assertThrows(
+    () =>
+      validateToolCall("recommend_facilities", { min_capacity: 12.5 }),
+    AssistantProviderError,
+  );
+});
