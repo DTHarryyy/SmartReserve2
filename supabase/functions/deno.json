@@ -1,0 +1,19 @@
+{
+  "//": "Edge function tests were runnable only by remembering the path. `deno task test` from this directory runs every *_test.ts beside its function.",
+  "tasks": {
+    "//test": "generate-permit's tests render real PDFs from the template files on disk, so the suite needs read access; nothing here needs the network.",
+    "test": "deno test --allow-read",
+    "check": "deno check assistant-chat/index.ts generate-permit/index.ts feedback-sentiment/index.ts permit-signatures/index.ts complete-initial-password/index.ts"
+  },
+  "fmt": {
+    "lineWidth": 80,
+    "useTabs": false,
+    "indentWidth": 2,
+    "singleQuote": false
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

@@ -119,6 +119,12 @@ flutter test
 flutter analyze
 ```
 
+The Edge Functions have their own suites, which `flutter test` does not reach:
+
+```bash
+cd supabase/functions && deno task test
+```
+
 Before running against a new Supabase project, apply the migrations in
 `supabase/migrations` and deploy the Edge Functions. From an authenticated
 Supabase CLI environment, link the intended project and run `supabase db push`
