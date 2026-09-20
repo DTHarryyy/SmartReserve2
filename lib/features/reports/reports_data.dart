@@ -650,6 +650,7 @@ enum QualityIssueType {
   unverifiedPin,
   lowCoordinateAccuracy,
   missingPhotos,
+  incompletePermitMapping,
 }
 
 class QualityIssue {
@@ -666,7 +667,7 @@ class QualityIssue {
   final Facility facility;
   final QualitySeverity severity;
   final QualityIssueType type;
-  final FacilityEditorFocus focus;
+  final FacilityEditorFocus? focus;
   final String issue;
   final String actionLabel;
   final String impact;
@@ -705,7 +706,7 @@ List<QualityIssue> qualityIssuesFor(List<Facility> facilities) {
       );
       continue;
     }
-    if (f.pinConfidence != PinConfidence.verified || f.confirmedOutside) {
+    if (f.pinConfidence != PinConfidence.verified) {
       issues.add(
         QualityIssue(
           facility: f,
@@ -731,6 +732,45 @@ List<QualityIssue> qualityIssuesFor(List<Facility> facilities) {
               'doorway.',
           actionLabel: 'Improve precision',
           impact: 'The map can be too vague for doorway-level guidance.',
+        ),
+      );
+      continue;
+    }
+    if (f.internalPermitRowCode == null || f.externalPermitRowCode == null) {
+      issues.add(
+        QualityIssue(
+          facility: f,
+          severity: QualitySeverity.blocking,
+          type: QualityIssueType.incompletePermitMapping,
+          focus: null,
+          issue: 'The facility itself has no official permit-row mapping.',
+          actionLabel: 'Map permit rows',
+          impact: 'Every reservation for this facility is blocked at submission.',
+        ),
+      );
+      continue;
+    }
+    final unmappedAmenity = f.amenityOptions
+        .where(
+          (a) =>
+              a.enabled &&
+              a.requiresPermitMapping &&
+              (a.internalPermitRowCode == null ||
+                  a.externalPermitRowCode == null),
+        )
+        .firstOrNull;
+    if (unmappedAmenity != null) {
+      issues.add(
+        QualityIssue(
+          facility: f,
+          severity: QualitySeverity.warning,
+          type: QualityIssueType.incompletePermitMapping,
+          focus: null,
+          issue:
+              '"${unmappedAmenity.name}" has no official permit-row mapping.',
+          actionLabel: 'Map permit rows',
+          impact:
+              'A reservation requesting this amenity is blocked at submission.',
         ),
       );
       continue;

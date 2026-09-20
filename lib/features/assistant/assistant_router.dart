@@ -29,6 +29,11 @@ enum EscalationReason {
   unknownIntent,
   unparsedBookingSlot,
   ambiguousReference,
+
+  /// A booking request named a facility or activity the rules could not
+  /// resolve to anything bookable. The rules can only offer an unfiltered
+  /// list; naming the gap well is what the model is better at.
+  unresolvedFacilityRequest,
 }
 
 class AssistantRoute {
@@ -59,6 +64,7 @@ class AssistantRouteContext {
     this.stageAccepted = false,
     this.assistsUsedForStage = 0,
     this.aiAvailable = false,
+    this.facilityRequestUnresolved = false,
     this.referenceFrame,
   });
 
@@ -73,6 +79,11 @@ class AssistantRouteContext {
   final int assistsUsedForStage;
 
   final bool aiAvailable;
+
+  /// True when the user named a facility or activity the catalogue cannot
+  /// account for, so the rules can only offer an unfiltered list.
+  final bool facilityRequestUnresolved;
+
   final AssistantReferenceFrame? referenceFrame;
 }
 
@@ -134,6 +145,17 @@ AssistantRoute routeMessage(
     return context.aiAvailable
         ? const AssistantRoute.escalate(EscalationReason.unknownIntent)
         : const AssistantRoute.rule(AssistantIntent.unknown);
+  }
+
+  // A booking we cannot attach to any facility is the one classified intent
+  // worth a model call: the rules can only offer an unfiltered list, and
+  // saying so well is exactly what the model is better at.
+  if (parsed.intent == AssistantIntent.book &&
+      context.aiAvailable &&
+      context.facilityRequestUnresolved) {
+    return const AssistantRoute.escalate(
+      EscalationReason.unresolvedFacilityRequest,
+    );
   }
 
   // Every other classified intent has a rule handler that either answers

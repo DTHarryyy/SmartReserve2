@@ -241,6 +241,7 @@ enum AuthFailureKind {
   emailUnconfirmed,
   emailConfirmationRequired,
   emailAlreadyRegistered,
+  emailSendFailed,
   rateLimited,
   network,
   profileMissing,
@@ -403,6 +404,15 @@ AuthSessionException classifyAuthFailure(Object error) {
         message.contains('already been registered')) {
       return AuthSessionException(
         kind: AuthFailureKind.emailAlreadyRegistered,
+        statusCode: status,
+        backendCode: error.code,
+        cause: error,
+      );
+    }
+    if (message.contains('error sending') ||
+        (code == 'unexpected_failure' && message.contains('sending'))) {
+      return AuthSessionException(
+        kind: AuthFailureKind.emailSendFailed,
         statusCode: status,
         backendCode: error.code,
         cause: error,
@@ -1166,17 +1176,20 @@ class BackendPublicReservationSlot {
     required this.facilityId,
     required this.startsAt,
     required this.endsAt,
+    this.occurrenceId,
   });
 
   final String facilityId;
   final DateTime startsAt;
   final DateTime endsAt;
+  final String? occurrenceId;
 
   factory BackendPublicReservationSlot.fromJson(Map<String, dynamic> json) =>
       BackendPublicReservationSlot(
         facilityId: '${json['facility_id']}',
         startsAt: DateTime.parse('${json['starts_at']}').toUtc(),
         endsAt: DateTime.parse('${json['ends_at']}').toUtc(),
+        occurrenceId: json['occurrence_id'] as String?,
       );
 }
 
@@ -2844,6 +2857,33 @@ class BackendAssistantConversation {
       );
 }
 
+/// One retrieved policy answer.
+///
+/// Deliberately narrow: the assistant restates the stored wording rather than
+/// paraphrasing it, so what the chat says about a rule always matches what the
+/// screens say about the same rule.
+class AssistantKnowledgeChunk {
+  const AssistantKnowledgeChunk({
+    required this.slug,
+    required this.topic,
+    required this.question,
+    required this.answer,
+  });
+
+  final String slug;
+  final String topic;
+  final String question;
+  final String answer;
+
+  factory AssistantKnowledgeChunk.fromJson(Map<String, dynamic> json) =>
+      AssistantKnowledgeChunk(
+        slug: '${json['slug'] ?? ''}',
+        topic: '${json['topic'] ?? ''}',
+        question: '${json['question'] ?? ''}',
+        answer: '${json['answer'] ?? ''}',
+      );
+}
+
 class BackendAssistantMessage {
   const BackendAssistantMessage({
     required this.id,
@@ -2953,6 +2993,11 @@ abstract interface class SmartReserveBackend {
     String? title,
     Map<String, dynamic>? activeDraft,
   });
+  Future<List<AssistantKnowledgeChunk>> assistantKnowledgeSearch(
+    String query, {
+    int limit,
+  });
+  Future<Map<String, dynamic>> assistantChat(Map<String, dynamic> body);
   Future<void> undoReservationAction(String actionId);
   Future<String> reservationAttachmentUrl(String path);
   Future<List<BackendNotification>> notifications();
@@ -3209,6 +3254,7 @@ FacilityAmenity _facilityAmenity(Map<String, dynamic> json) => FacilityAmenity(
   internalPermitRowCode: json['internal_permit_row_code'] as String?,
   externalPermitRowCode: json['external_permit_row_code'] as String?,
   permitQuantityRequired: json['permit_quantity_required'] as bool? ?? false,
+  requiresPermitMapping: json['requires_permit_mapping'] as bool? ?? true,
 );
 
 FacilityPaymentMethod _facilityPaymentMethod(Map<String, dynamic> json) =>
@@ -4082,6 +4128,41 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
+  Future<List<AssistantKnowledgeChunk>> assistantKnowledgeSearch(
+    String query, {
+    int limit = 3,
+  }) async {
+    final data = await _client.rpc(
+      'assistant_knowledge_search',
+      params: {'p_query': query, 'p_limit': limit},
+    );
+    if (data is! Map) return const [];
+    final chunks = Map<String, dynamic>.from(data)['chunks'];
+    if (chunks is! List) return const [];
+    return [
+      for (final chunk in chunks)
+        if (chunk is Map)
+          AssistantKnowledgeChunk.fromJson(Map<String, dynamic>.from(chunk)),
+    ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> assistantChat(Map<String, dynamic> body) async {
+    final response = await _client.functions.invoke(
+      'assistant-chat',
+      body: body,
+    );
+    if (response.data is! Map) {
+      throw StateError('The assistant returned an invalid response.');
+    }
+    // The error envelope is returned as-is rather than thrown: the caller maps
+    // every outcome, success or not, onto "use the model's answer" or "use the
+    // deterministic one", and a throw would lose the code that distinguishes
+    // a rate limit from an outage.
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
   Future<List<BackendBusyWindow>> facilityBusyWindows({
     required List<String> facilityIds,
     required DateTime from,
@@ -4726,6 +4807,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
               'internal_permit_row_code': amenity.internalPermitRowCode,
               'external_permit_row_code': amenity.externalPermitRowCode,
               'permit_quantity_required': amenity.permitQuantityRequired,
+              'requires_permit_mapping': amenity.requiresPermitMapping,
             },
         ],
         'p_account_name': draft.accountName,
@@ -5464,8 +5546,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     List<String> photoPaths,
   ) {
     final outside =
-        draft.pin != null &&
-        (draft.confirmedOutside || !inPolygon(draft.pin!, campus.boundary));
+        draft.pin != null && !inPolygon(draft.pin!, campus.boundary);
     final status = outside
         ? 'under_review'
         : switch (draft.status) {
@@ -5489,7 +5570,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'latitude': draft.pin?.latitude,
       'longitude': draft.pin?.longitude,
       'accuracy': draft.accuracy,
-      'confirmed_outside': draft.confirmedOutside,
+      'confirmed_outside': outside && draft.confirmedOutside,
       'description': draft.description.trim(),
       'geo_building': draft.geoBuilding,
       'street': draft.street,

@@ -164,3 +164,51 @@ Deno.test("both official templates accept bounded overlays without adding pages"
     assertEquals(await sha256(template), templateHashes[fixture.template_kind]);
   }
 });
+
+Deno.test("external permit renders the reported misaligned-overlay reservation without error", async () => {
+  const signatureImage = new PNG({ width: 4, height: 2 });
+  for (let offset = 0; offset < signatureImage.data.length; offset += 4) {
+    signatureImage.data[offset + 3] = 255;
+  }
+  const signature = new Uint8Array(PNG.sync.write(signatureImage));
+  // Exact values from the reservation that produced a permit with fields
+  // drawn on top of / behind the template's own printed labels.
+  const fixture: PermitSnapshot = {
+    template_kind: "external",
+    template_sha256: templateHashes.external,
+    requester_id: "00000000-0000-0000-0000-000000000003",
+    requester_name: "harry",
+    requester_type: "external_renter",
+    requester_unit: "",
+    purpose: "ASDASD",
+    headcount: 20,
+    occurrences: [{
+      starts_at: "2026-09-21T00:00:00+08:00",
+      ends_at: "2026-09-21T01:00:00+08:00",
+    }],
+    items: [{
+      row_code: "external:avr",
+      label: "AVR",
+      duration_minutes: 60,
+      billing_basis: "hourly",
+      unit_amount_centavos: 100000,
+      line_total_centavos: 100000,
+    }],
+    total_amount_centavos: 100000,
+    external_company_organization: "Individual",
+    external_complete_address: "DSASD",
+    external_contact_numbers: ["12321231"],
+    external_admission_fee_centavos: 0,
+    user_signed_at: "2026-09-20T00:00:00+08:00",
+  };
+  const template = await Deno.readFile(
+    new URL(`./templates/External Permit.pdf`, import.meta.url),
+  );
+  const output = await renderPermit(template, fixture, [
+    signature,
+    signature,
+    signature,
+  ]);
+  const rendered = await PDFDocument.load(output);
+  assertEquals(rendered.getPageCount(), 1);
+});

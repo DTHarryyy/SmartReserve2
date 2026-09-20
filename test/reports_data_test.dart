@@ -184,6 +184,24 @@ void main() {
       expect(issues, isEmpty);
     });
 
+    test(
+      'does not re-flag a verified pin because of a stale confirmedOutside '
+      'flag from a past out-of-boundary save',
+      () {
+        final issues = qualityIssuesFor([
+          _facility(
+            name: 'Fixed Pin',
+            coords: const LatLng(18.351092, 121.649970),
+            pinConfidence: PinConfidence.verified,
+            accuracy: 4,
+            confirmedOutside: true,
+          ),
+        ]);
+
+        expect(issues, isEmpty);
+      },
+    );
+
     test('flags an existing unverified pin for review', () {
       final issues = qualityIssuesFor([
         _facility(
@@ -243,6 +261,89 @@ void main() {
         'Add photos',
       ]);
     });
+
+    test('flags a facility with no official permit-row mapping at all', () {
+      final issues = qualityIssuesFor([
+        _facility(
+          name: 'Unmapped Facility',
+          coords: const LatLng(18.351092, 121.649970),
+          pinConfidence: PinConfidence.verified,
+          accuracy: 4,
+          internalPermitRowCode: null,
+          externalPermitRowCode: null,
+        ),
+      ]);
+
+      expect(issues, hasLength(1));
+      expect(issues.single.type, QualityIssueType.incompletePermitMapping);
+      expect(issues.single.severity, QualitySeverity.blocking);
+      expect(issues.single.focus, isNull);
+    });
+
+    test(
+      'flags a required-but-unmapped amenity, ignoring exempt ones',
+      () {
+        final issues = qualityIssuesFor([
+          _facility(
+            name: 'Basketball Court',
+            coords: const LatLng(18.351092, 121.649970),
+            pinConfidence: PinConfidence.verified,
+            accuracy: 4,
+            amenityOptions: const [
+              FacilityAmenity(
+                id: 'parking',
+                name: 'Parking',
+                priceCentavos: 0,
+                requiresPermitMapping: false,
+              ),
+              FacilityAmenity(
+                id: 'sound',
+                name: 'Sound System',
+                priceCentavos: 0,
+                requiresPermitMapping: true,
+                internalPermitRowCode: 'sound_system',
+                externalPermitRowCode: null,
+              ),
+            ],
+          ),
+        ]);
+
+        expect(issues, hasLength(1));
+        expect(issues.single.type, QualityIssueType.incompletePermitMapping);
+        expect(issues.single.severity, QualitySeverity.warning);
+        expect(issues.single.issue, contains('Sound System'));
+      },
+    );
+
+    test(
+      'does not flag amenities exempted from permit mapping',
+      () {
+        final issues = qualityIssuesFor([
+          _facility(
+            name: 'Villa',
+            coords: const LatLng(18.351092, 121.649970),
+            pinConfidence: PinConfidence.verified,
+            accuracy: 4,
+            amenityOptions: const [
+              FacilityAmenity(
+                id: 'parking',
+                name: 'Parking',
+                priceCentavos: 0,
+                requiresPermitMapping: false,
+              ),
+              FacilityAmenity(
+                id: 'wifi',
+                name: 'Wi-Fi',
+                priceCentavos: 0,
+                requiresPermitMapping: false,
+              ),
+            ],
+          ),
+        ]);
+
+        expect(issues, isEmpty);
+      },
+    );
   });
 }
 
@@ -252,6 +353,10 @@ Facility _facility({
   required PinConfidence pinConfidence,
   required int? accuracy,
   int photoCount = 3,
+  bool confirmedOutside = false,
+  String? internalPermitRowCode = 'other',
+  String? externalPermitRowCode = 'other',
+  List<FacilityAmenity> amenityOptions = const [],
 }) => Facility(
   id: name.toLowerCase().replaceAll(' ', '-'),
   name: name,
@@ -274,4 +379,8 @@ Facility _facility({
   updated: 'Test',
   bookings: 0,
   photoCount: photoCount,
+  confirmedOutside: confirmedOutside,
+  internalPermitRowCode: internalPermitRowCode,
+  externalPermitRowCode: externalPermitRowCode,
+  amenityOptions: amenityOptions,
 );

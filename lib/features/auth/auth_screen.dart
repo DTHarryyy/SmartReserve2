@@ -303,7 +303,7 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('Reset your password'),
       _Lede(
-        'Enter the email address for your SmartReserve account and we’ll send a reset link.',
+        'Enter the email address for your SmartReserve account and we’ll send a six-digit reset code.',
       ),
       const SizedBox(height: 22),
       const SrLabel('Email address'),
@@ -323,8 +323,8 @@ class AuthScreen extends StatelessWidget {
       const SizedBox(height: 14),
       _submitButton(
         context,
-        'Send reset link',
-        'Sending reset link…',
+        'Send code',
+        'Sending code…',
         controller.requestPasswordReset,
       ),
       SrErrorText(controller.operationError),

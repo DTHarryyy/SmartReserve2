@@ -1261,29 +1261,25 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         onPressed: _busy || unitPending ? null : () => _restoreUnit(unit),
       );
     }
-    final actions = <Widget>[
-      SrButton(
+    final actions = <_RowAction>[
+      _RowAction(
         label: 'Edit',
-        dense: true,
         onPressed: _busy || unitPending
             ? null
             : () => _showEditOrganizationDialog(unit),
       ),
       if (!archiveBlocked)
-        SrButton(
+        _RowAction(
           label: unitPending ? 'Archiving...' : 'Archive',
-          dense: true,
-          kind: SrButtonKind.danger,
+          danger: true,
           onPressed: _busy || unitPending ? null : () => _archiveUnit(unit),
         ),
     ];
     if (slot != null && slot.active && !slot.assigned && account == null) {
       actions.insert(
         0,
-        SrButton(
+        _RowAction(
           label: 'Create account',
-          dense: true,
-          kind: SrButtonKind.primary,
           onPressed: _busy || unitPending
               ? null
               : () => _showRepresentativeDialog(slot),
@@ -1292,36 +1288,81 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
     }
     if (account != null) {
       actions.insertAll(0, [
-        SrButton(
+        _RowAction(
           label: representativePending ? 'Resetting...' : 'Reset',
-          dense: true,
           onPressed: _busy || unitPending || representativePending
               ? null
               : () => _resetPassword(account),
         ),
-        SrButton(
+        _RowAction(
           label: representativePending ? 'Removing...' : 'Remove',
-          dense: true,
-          kind: SrButtonKind.danger,
+          danger: true,
           onPressed: _busy || unitPending || representativePending
               ? null
               : () => _removeRepresentative(account),
         ),
         if (_transferCandidates.isNotEmpty)
-          SrButton(
+          _RowAction(
             label: unitPending ? 'Transferring...' : 'Transfer',
-            dense: true,
             onPressed: _busy || unitPending || representativePending
                 ? null
                 : () => _showTransferDialog(slot!, account),
           ),
       ]);
     }
-    return Wrap(
-      spacing: SR.space6,
-      runSpacing: SR.space6,
-      alignment: WrapAlignment.end,
-      children: actions,
+    final anyEnabled = actions.any((action) => action.onPressed != null);
+    final colors = context.srColors;
+    return PopupMenuButton<int>(
+      tooltip: 'More actions',
+      enabled: anyEnabled,
+      offset: const Offset(0, 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SR.rMd),
+      ),
+      itemBuilder: (context) => [
+        for (var i = 0; i < actions.length; i++)
+          PopupMenuItem<int>(
+            value: i,
+            enabled: actions[i].onPressed != null,
+            height: 36,
+            child: Text(
+              actions[i].label,
+              style: sans(
+                13,
+                w: 500,
+                color: actions[i].danger ? colors.red : colors.ink2,
+              ),
+            ),
+          ),
+      ],
+      onSelected: (index) => actions[index].onPressed?.call(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: anyEnabled ? colors.surface : colors.dividerSoft,
+          borderRadius: BorderRadius.circular(SR.rMd),
+          border: Border.all(color: colors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'More',
+              style: sans(
+                12,
+                w: 500,
+                color: anyEnabled ? colors.ink2 : colors.muted,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.expand_more_rounded,
+              size: 16,
+              color: anyEnabled ? colors.ink2 : colors.muted,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1333,6 +1374,18 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
     'dean_office' => 'Dean Office',
     _ => value,
   };
+}
+
+class _RowAction {
+  const _RowAction({
+    required this.label,
+    required this.onPressed,
+    this.danger = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool danger;
 }
 
 class _InlineAction extends StatelessWidget {

@@ -122,17 +122,6 @@ class _AssistantPickerSheetState extends State<_AssistantPickerSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.srColors.border,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

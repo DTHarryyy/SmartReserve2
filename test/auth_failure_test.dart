@@ -128,6 +128,22 @@ void main() {
       );
     });
 
+    test('classifies email delivery failures separately from unknown', () {
+      final failure = classifyAuthFailure(
+        const AuthException(
+          'Error sending recovery email',
+          statusCode: '500',
+          code: 'unexpected_failure',
+        ),
+      );
+
+      expect(failure.kind, AuthFailureKind.emailSendFailed);
+      expect(
+        AuthController.userMessageFor(failure),
+        'We couldn’t send that email right now. Please try again in a few minutes or contact an Internal Admin.',
+      );
+    });
+
     test('does not show raw backend details for unknown failures', () {
       const raw = 'PostgrestException(message: private database detail)';
       final message = AuthController.userMessageFor(

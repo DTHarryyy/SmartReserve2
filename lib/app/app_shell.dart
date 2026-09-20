@@ -11,6 +11,7 @@ import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/facilities/facilities_screen.dart';
+import '../features/facilities/facility_configuration_dialog.dart';
 import '../features/feedback/feedback_screen.dart';
 import '../features/loyalty/loyalty_admin_screen.dart';
 import '../features/notes/notes_screen.dart';
@@ -406,12 +407,7 @@ class _AppShellState extends State<AppShell> {
     AppView.verifications => const VerificationsScreen(),
     AppView.reports => ReportsScreen(
       onResolveQualityIssue: state.isAdmin
-          ? (issue) => _openEditor(
-              state,
-              issue.facility,
-              focus: issue.focus,
-              reason: _qualityReason(issue),
-            )
+          ? (issue) => _resolveQualityIssue(state, issue)
           : null,
     ),
     AppView.users => const UsersScreen(),
@@ -442,7 +438,24 @@ class _AppShellState extends State<AppShell> {
     state.goTo(AppView.addFacility);
   }
 
-  FacilityEditorReason _qualityReason(QualityIssue issue) =>
+  void _resolveQualityIssue(AppState state, QualityIssue issue) {
+    if (issue.type == QualityIssueType.incompletePermitMapping) {
+      showFacilityConfigurationDialog(
+        context,
+        state: state,
+        facility: issue.facility,
+      );
+      return;
+    }
+    _openEditor(
+      state,
+      issue.facility,
+      focus: issue.focus,
+      reason: _qualityReason(issue),
+    );
+  }
+
+  FacilityEditorReason? _qualityReason(QualityIssue issue) =>
       switch (issue.type) {
         QualityIssueType.missingPin => FacilityEditorReason.missingPin,
         QualityIssueType.pinOutsideCampus => FacilityEditorReason.outsideCampus,
@@ -450,6 +463,7 @@ class _AppShellState extends State<AppShell> {
         QualityIssueType.lowCoordinateAccuracy =>
           FacilityEditorReason.lowCoordinateAccuracy,
         QualityIssueType.missingPhotos => FacilityEditorReason.photos,
+        QualityIssueType.incompletePermitMapping => null,
       };
 }
 

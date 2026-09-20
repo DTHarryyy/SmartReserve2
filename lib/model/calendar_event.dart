@@ -58,6 +58,7 @@ class CalendarEvent {
     this.statusLabel,
     this.summaryLabel,
     this.privacyMasked = false,
+    this.isMine = false,
   });
 
   final String id;
@@ -79,6 +80,7 @@ class CalendarEvent {
   final String? statusLabel;
   final String? summaryLabel;
   final bool privacyMasked;
+  final bool isMine;
 
   bool get canOpenRequest => requestId != null;
 
@@ -112,9 +114,11 @@ class PublicCalendarSlot {
     required this.facilityId,
     required this.startsAt,
     required this.endsAt,
+    this.occurrenceId,
   });
 
   final String facilityId;
   final DateTime startsAt;
   final DateTime endsAt;
+  final String? occurrenceId;
 }

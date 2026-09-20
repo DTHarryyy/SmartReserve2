@@ -10,7 +10,7 @@ class SrLogo extends StatelessWidget {
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(radius ?? size * 0.27),
     child: Image.asset(
-      'assets/smartreserve logo.png',
+      'assets/smart reserve logo.png',
       width: size,
       height: size,
       fit: BoxFit.cover,

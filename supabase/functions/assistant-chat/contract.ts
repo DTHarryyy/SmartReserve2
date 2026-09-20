@@ -66,9 +66,18 @@ export const maxMessageChars = 500;
 export const maxToolRounds = 2;
 export const maxToolCallsPerRound = 3;
 
-/** Sentences an answer may run to before it is treated as over-long. */
-export const maxReplySentences = 5;
-export const maxReplyChars = 700;
+/**
+ * Answer length budgets.
+ *
+ * Two budgets rather than one, because an answer has two shapes. A prose
+ * answer is clipped by sentence; a list is clipped by line, since every "1."
+ * in a numbered list reads as a sentence terminator and a sentence budget
+ * would therefore cut a list off partway down -- which is exactly what it
+ * used to do.
+ */
+export const maxReplySentences = 6;
+export const maxReplyLines = 12;
+export const maxReplyChars = 1200;
 
 /**
  * The rolling summary's budget.
@@ -487,6 +496,39 @@ export function redactForProvider(value: unknown, depth = 0): unknown {
   return out;
 }
 
+/**
+ * Tool names whose result carries a `facilities[]` array the client can
+ * render as real, tappable cards instead of the model enumerating them in
+ * prose. Ids are not redacted -- they name a facility row, not a person --
+ * so this reads the already-redacted result the same way the model does.
+ */
+const facilityListTools = new Set<string>([
+  "recommend_facilities",
+  "get_available_facilities",
+]);
+
+/**
+ * Pull the facility ids out of one tool's result, if it is one of the tools
+ * that lists facilities. Returns an empty array for every other tool, and
+ * for a malformed result -- this only ever adds cards, never throws.
+ */
+export function collectFacilityIds(
+  toolName: string,
+  result: unknown,
+): string[] {
+  if (!facilityListTools.has(toolName)) return [];
+  if (typeof result !== "object" || result === null) return [];
+  const facilities = (result as Record<string, unknown>).facilities;
+  if (!Array.isArray(facilities)) return [];
+  const ids: string[] = [];
+  for (const entry of facilities) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const id = (entry as Record<string, unknown>).id;
+    if (typeof id === "string" && isUuid(id)) ids.push(id);
+  }
+  return ids;
+}
+
 // ---------------------------------------------------------------------------
 // History compaction
 // ---------------------------------------------------------------------------
@@ -677,19 +719,60 @@ export function checkReply(
 }
 
 /**
- * Collapse whitespace and clip to the sentence budget.
+ * Strip markdown the chat bubble cannot render.
+ *
+ * The bubble is a plain Text widget -- there is no markdown package on the
+ * client -- so **bold**, headings and `- ` bullets would otherwise reach the
+ * user as literal punctuation. Numbered lists ("1. ") are left alone: they
+ * read fine as plain text and the model is told to use them for lists.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "$1")
+    .replace(/(?<!_)_([^_\n]+)_(?!_)/g, "$1")
+    .replace(/^[ \t]*[-*]\s+/gm, "• ");
+}
+
+/**
+ * Clean up the model's reply for display.
  *
  * Fenced blocks go first. The slot-fill and proposal channels arrive as a
  * ```json block appended to the answer, and index.ts parses those from the RAW
  * reply -- so nothing here needs them, and leaving them in meant the user read
  * the machinery along with the answer.
+ *
+ * A reply has one of two shapes, and each is clipped on its own terms. A
+ * single-paragraph answer is clipped by sentence, same as always. A reply
+ * that already has line breaks -- a list, almost always -- is clipped by
+ * line instead: a sentence budget counts every "1." as a sentence end, which
+ * guaranteed a five-item list was cut at item five regardless of length.
+ * Collapsing all whitespace to one space, the previous behaviour, had the
+ * same effect one step earlier by deleting the newlines outright.
  */
 export function tidyReply(reply: string): string {
   const withoutFences = (reply ?? "").replace(/```[\s\S]*?(?:```|$)/g, " ");
-  const collapsed = withoutFences.replace(/\s+/g, " ").trim();
-  const sentences = collapsed.match(/[^.!?]+[.!?]*/g) ?? [collapsed];
-  if (sentences.length <= maxReplySentences) return collapsed;
-  return sentences.slice(0, maxReplySentences).join("").trim();
+  const markdownFree = stripMarkdown(withoutFences);
+
+  const lines = markdownFree
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line, index, all) =>
+      line.length > 0 || all[index - 1]?.length > 0
+    );
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+
+  if (lines.length <= 1) {
+    const collapsed = (lines[0] ?? "").trim();
+    const sentences = collapsed.match(/[^.!?]+[.!?]*/g) ?? [collapsed];
+    if (sentences.length <= maxReplySentences) return collapsed;
+    return sentences.slice(0, maxReplySentences).join("").trim();
+  }
+
+  if (lines.length <= maxReplyLines) return lines.join("\n").trim();
+  return lines.slice(0, maxReplyLines).join("\n").trim();
 }
 
 // ---------------------------------------------------------------------------

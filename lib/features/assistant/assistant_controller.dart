@@ -454,14 +454,10 @@ class AssistantController extends ChangeNotifier {
 
   Future<void> initialize(AppState state, {bool freshVisit = false}) async {
     final accountId = state.userAccount.id;
-    if (freshVisit && _accountId == accountId && _isResumableStage(stage)) {
-      _state = state;
-      if (stage != AssistantStage.confirming && activePicker == null) {
-        await _advanceDraft(state);
-      }
-      notifyListeners();
-      return;
-    }
+    // A newly opened chat page is a new session. Finish saving the session the
+    // user just left, but never restore it implicitly; saved chats remain
+    // available from Chat history when the user explicitly chooses one.
+    if (freshVisit && _accountId == accountId) await _queueSync();
     if (!freshVisit &&
         _accountId == accountId &&
         (messages.isNotEmpty || historyLoading)) {
@@ -484,19 +480,19 @@ class AssistantController extends ChangeNotifier {
     try {
       if (state.assistantHistoryAvailable) {
         conversations.addAll(await state.assistantConversations());
-        final resumable = conversations
-            .where(
-              (conversation) => _isResumableDraft(conversation.activeDraft),
-            )
-            .firstOrNull;
-        if (resumable != null) {
-          await _loadConversation(resumable, state);
-        } else {
-          _startLocalConversation();
+        if (!freshVisit) {
+          final resumable = conversations
+              .where(
+                (conversation) => _isResumableDraft(conversation.activeDraft),
+              )
+              .firstOrNull;
+          if (resumable != null) {
+            await _loadConversation(resumable, state);
+            return;
+          }
         }
-      } else {
-        _startLocalConversation();
       }
+      _startLocalConversation();
     } catch (_) {
       _startLocalConversation();
       historySaveFailed = true;
@@ -540,6 +536,10 @@ class AssistantController extends ChangeNotifier {
   void _startLocalConversation() {
     messages.clear();
     _contextSummary = null;
+    frame.clear();
+    _assistsForStage = 0;
+    _assistStage = null;
+    aiDegraded = false;
     draft = BookingDraft();
     stage = AssistantStage.idle;
     clearActivePicker();
@@ -1285,6 +1285,14 @@ class AssistantController extends ChangeNotifier {
         await _handleCheckAvailability(p, state);
         break;
       case AssistantIntent.book:
+        // A booking whose facility the rules cannot pin down is exactly the
+        // "phrasing no rule covers" case the model exists for. Everything the
+        // parser did resolve still takes the free path below.
+        if (_routeFor(p, state).reason ==
+                EscalationReason.unresolvedFacilityRequest &&
+            await _answerWithAi(p, state)) {
+          return;
+        }
         final result = _mergeSlots(p, state);
         if (result == _StageInputResult.rejected) return;
         if (!await _validateMergedScheduling(state)) return;
@@ -1358,9 +1366,26 @@ class AssistantController extends ChangeNotifier {
       // than throwing. Re-checking the backend here would duplicate that
       // decision in a second place.
       aiAvailable: _aiClient != null,
+      facilityRequestUnresolved: _facilityRequestUnresolved(p, state),
       referenceFrame: frame,
     ),
   );
+
+  /// True when the user described a facility we cannot resolve at all.
+  ///
+  /// Deliberately narrow. A bare "book a room" describes nothing, so it stays
+  /// on the free path and keeps opening the picker; only a request carrying a
+  /// descriptor the catalogue cannot account for is worth a model call.
+  bool _facilityRequestUnresolved(ParsedMessage p, AppState state) {
+    if (draft.facility != null) return false;
+    if (p.activity == null && p.facilityQuery == null) return false;
+    if (p.category != null || p.capacity != null || p.amenities.isNotEmpty) {
+      return false;
+    }
+    final pool = state.bookableFacilities;
+    if (pool.isEmpty) return false;
+    return resolveFacilityByName(p.facilityQuery ?? p.raw, pool).isEmpty;
+  }
 
   /// Ask the model, surviving a client that misbehaves.
   ///
@@ -1457,6 +1482,20 @@ class AssistantController extends ChangeNotifier {
       return true;
     }
 
+    // The model is told to answer a facility question in one sentence and let
+    // the app show the matches as cards -- resolve the ids it named against
+    // what this user may actually book. An id that does not resolve (stale,
+    // or from a facility this user cannot book) is simply dropped; nothing
+    // else about the reply changes.
+    final matches = [
+      for (final id in reply.facilityIds)
+        state.bookableFacilities.where((f) => f.id == id).firstOrNull,
+    ].whereType<Facility>().toList();
+    if (matches.isNotEmpty) {
+      _showFacilities(matches);
+      return true;
+    }
+
     // Always leave a next step, even after a model answer.
     messages.add(AssistantMessage.chips('', _defaultSuggestions()));
     return true;
@@ -1464,11 +1503,16 @@ class AssistantController extends ChangeNotifier {
 
   /// Turn a model proposal into something the user can accept or ignore.
   ///
-  /// Nothing is written here. A booking proposal fills the draft and stops at
-  /// the confirm card; a cancellation proposal surfaces the reservation whose
-  /// own Cancel button does the work. Either way the write happens on a tap,
-  /// through the paths that already carry optimistic concurrency and
-  /// server-side pricing.
+  /// Nothing is written here. A well-formed booking proposal fills the draft
+  /// and either stops at the confirm card, when the exact slot still holds,
+  /// or falls back to the ordinary time/date picker with the same "why"
+  /// _emitIssues already gives a merged reply that stops working mid-flow --
+  /// so a stale suggestion costs a turn, never a bad booking. A cancellation
+  /// proposal surfaces the reservation whose own Cancel button does the work.
+  /// Either way the write happens on a tap, through the paths that already
+  /// carry optimistic concurrency and server-side pricing. Only a malformed
+  /// proposal -- missing or wrongly-shaped fields -- returns false and
+  /// changes nothing, leaving the caller to fall back to the chip menu.
   Future<bool> _renderProposal(
     Map<String, dynamic> proposal,
     AppState state,
@@ -1500,6 +1544,9 @@ class AssistantController extends ChangeNotifier {
         final end = (proposal['end_hour'] as num?)?.toDouble();
         final heads = proposal['heads'];
         final purpose = '${proposal['purpose'] ?? ''}'.trim();
+        // A malformed proposal -- missing or wrongly-shaped fields -- is the
+        // one case that changes nothing: there is no partial draft worth
+        // keeping when the model did not even send a well-formed offer.
         if (facility == null ||
             day == null ||
             start == null ||
@@ -1510,6 +1557,17 @@ class AssistantController extends ChangeNotifier {
           return false;
         }
 
+        // From here the proposal is well-formed; fill the draft with it so
+        // that whatever the checks below reject is the only part reset --
+        // the rest survives, same as a merged reply during ordinary booking.
+        draft
+          ..facility = facility
+          ..day = day
+          ..startHour = start
+          ..endHour = end
+          ..heads = heads.toInt()
+          ..purpose = purpose;
+
         final snapshot = await state.availabilitySnapshotFor(
           [facility],
           fromWall: day,
@@ -1518,7 +1576,15 @@ class AssistantController extends ChangeNotifier {
         );
         // Never offer a slot we could not verify. A stale schedule is exactly
         // the case where a confident-looking suggestion does the most damage.
-        if (!snapshot.isTrusted) return false;
+        if (!snapshot.isTrusted) {
+          stage = AssistantStage.needTime;
+          _setTimeErrorPrompt(facility, day);
+          _say(
+            'Live schedule is unavailable. We can\'t verify this booking yet.',
+            tone: AdvisoryTone.block,
+          );
+          return true;
+        }
 
         final verdict = checkSlot(
           facility: facility,
@@ -1529,15 +1595,19 @@ class AssistantController extends ChangeNotifier {
           busy: snapshot.windows['${facility.id}|${dayKey(day)}'] ?? const [],
           nowWall: campusNow(),
         );
-        if (!verdict.ok) return false;
+        if (!verdict.ok) {
+          await _emitIssues(verdict, state, facility, day);
+          stage = draft.firstMissing;
+          return true;
+        }
 
-        draft
-          ..facility = facility
-          ..day = day
-          ..startHour = start
-          ..endHour = end
-          ..heads = heads.toInt()
-          ..purpose = purpose;
+        // The slot holds. Say plainly, same as the cancellation branch above,
+        // that this is a review step: the model can offer a booking, but only
+        // the user's own tap on the confirm card actually sends it.
+        _say(
+          'Review the details below and tap Send — nothing is booked until you do.',
+          tone: AdvisoryTone.info,
+        );
         clearActivePicker();
         await _advanceDraft(state);
         return true;
@@ -1549,8 +1619,10 @@ class AssistantController extends ChangeNotifier {
 
   /// Let the model read a booking reply the parser could not.
   ///
-  /// It proposes a slot value; the existing validators decide whether that
-  /// value is allowed. A rejected value falls through to the ordinary stage
+  /// It proposes a slot value, or -- when the user supplied every remaining
+  /// slot in one message -- a full booking proposal that jumps straight to
+  /// the confirm card. Either way the existing validators decide whether the
+  /// value is allowed; a rejected one falls through to the ordinary stage
   /// question, so a wrong guess costs a turn, never a bad booking.
   Future<bool> _assistCurrentStage(ParsedMessage p, AppState state) async {
     final client = _aiClient;
@@ -1565,21 +1637,29 @@ class AssistantController extends ChangeNotifier {
 
     final reply = await _askAi(client, _aiRequestFor(p, state));
     _rememberSummary(reply);
-    final fill = reply.slotFill;
 
+    // Whatever happens next, the model's own sentence is shown at most once,
+    // up front -- every branch below either acts on the reply or falls back
+    // to a plain question, and none of them needs to say it again.
+    if (reply.hasText) {
+      messages.add(AssistantMessage.assistant(reply.text!, assisted: true));
+    }
+
+    final fill = reply.slotFill;
     if (fill != null && await _applySlotFill(fill, state)) {
-      if (reply.hasText) {
-        messages.add(AssistantMessage.assistant(reply.text!, assisted: true));
-      }
       clearActivePicker();
       await _advanceDraft(state);
       return true;
     }
 
-    // No usable value, but a sensible question: ask it, and keep the picker
-    // open so tapping is still available.
+    final proposal = reply.proposal;
+    if (proposal != null && await _renderProposal(proposal, state)) {
+      return true;
+    }
+
+    // No usable slot or proposal, but a sensible question: ask it, and keep
+    // the picker open so tapping is still available.
     if (reply.hasText) {
-      messages.add(AssistantMessage.assistant(reply.text!, assisted: true));
       await _advanceDraft(state);
       return true;
     }
@@ -1794,6 +1874,7 @@ class AssistantController extends ChangeNotifier {
       return _StageInputResult.rejected;
     }
 
+    var queryMissed = false;
     if (p.facilityQuery != null && p.facilityQuery!.isNotEmpty) {
       final matches = resolveFacilityByName(p.facilityQuery!, pool);
       if (matches.isNotEmpty) {
@@ -1810,6 +1891,9 @@ class AssistantController extends ChangeNotifier {
             ? _StageInputResult.accepted
             : _StageInputResult.needsSelection;
       }
+      // A query that named nothing is a fact worth keeping: without it the
+      // unfiltered fallback below gets captioned as though it matched.
+      queryMissed = true;
     }
 
     final amenities = p.amenities;
@@ -1820,6 +1904,16 @@ class AssistantController extends ChangeNotifier {
       amenities: amenities,
       category: category,
     );
+
+    final scopedToActivity = _facilitiesForActivity(p.activity, state);
+    if (scopedToActivity != null && category == 'All categories') {
+      // A stated headcount still has to be honoured -- fall back to the
+      // unfiltered activity list only when nothing meets both.
+      final withCapacity = scopedToActivity
+          .where((f) => f.capacity >= minCapacity)
+          .toList();
+      results = withCapacity.isNotEmpty ? withCapacity : scopedToActivity;
+    }
 
     if (results.isEmpty && amenities.isNotEmpty) {
       results = state.searchFacilities(
@@ -1855,12 +1949,16 @@ class AssistantController extends ChangeNotifier {
       results = biggest.take(3).toList();
     }
 
+    final matched = !queryMissed && p.activity == null;
     if (results.length == 1) {
       draft.facility = results.first;
-      _showFacilities(results, caption: 'Best match:');
+      _showFacilities(
+        results,
+        caption: matched ? 'Best match:' : 'Closest option:',
+      );
     } else if (results.length > 1) {
       draft.candidates = results;
-      _say('A few rooms fit — which one?');
+      _say(_unmatchedCaption(p, matched: matched));
       _showFacilities(results);
     } else {
       _say(
@@ -1882,6 +1980,37 @@ class AssistantController extends ChangeNotifier {
     if (bigger.isNotEmpty) {
       _showFacilities(bigger.take(3).toList(), caption: 'Bigger options:');
     }
+  }
+
+  /// Bookable facilities that could host [activity], or null when the
+  /// activity is unknown or nothing in the catalogue fits it.
+  List<Facility>? _facilitiesForActivity(String? activity, AppState state) {
+    if (activity == null) return null;
+    final wanted = activityCategories[activity];
+    if (wanted == null) return null;
+    final scoped = state.bookableFacilities
+        .where((f) => wanted.contains(f.category))
+        .toList();
+    return scoped.isEmpty ? null : scoped;
+  }
+
+  /// What to say above a list of facilities.
+  ///
+  /// "A few rooms fit" is a claim, and it may only be made when something
+  /// actually matched. When the request named an activity or a facility we do
+  /// not have, the list is a set of alternatives and has to read as one.
+  ///
+  /// The activity is preferred over the raw query on purpose: the leftover
+  /// query for a garbled message can be junk like "iwant reservatio", and
+  /// echoing that back is worse than saying nothing.
+  String _unmatchedCaption(ParsedMessage p, {required bool matched}) {
+    if (matched) return 'A few rooms fit — which one?';
+    final activity = p.activity;
+    if (activity != null) {
+      return 'No facility here is set up for $activity. '
+          'These are the closest you can book:';
+    }
+    return "I couldn't match that to a facility. Here's what you can book:";
   }
 
   Future<bool> _validateMergedScheduling(AppState state) async {
@@ -2677,20 +2806,34 @@ class AssistantController extends ChangeNotifier {
   }
 
   void _handleFindFacilities(ParsedMessage p, AppState state) {
-    final results = state.searchFacilities(
+    var results = state.searchFacilities(
       minCapacity: p.capacity?.min ?? 0,
       amenities: p.amenities,
       category: p.category ?? 'All categories',
     );
+    final scopedToActivity = _facilitiesForActivity(p.activity, state);
+    if (scopedToActivity != null && p.category == null) {
+      final minCapacity = p.capacity?.min ?? 0;
+      final withCapacity = scopedToActivity
+          .where((f) => f.capacity >= minCapacity)
+          .toList();
+      results = withCapacity.isNotEmpty ? withCapacity : scopedToActivity;
+    }
     if (results.isEmpty) {
       _say('Nothing bookable matches that right now.');
       return;
     }
-    _say(
-      results.length == 1
-          ? 'One match:'
-          : '${results.length} facilities match:',
-    );
+    if (p.activity != null) {
+      // The catalogue has nothing for the activity itself; these are the
+      // rooms that could host it, which is a different claim.
+      _say(_unmatchedCaption(p, matched: false));
+    } else {
+      _say(
+        results.length == 1
+            ? 'One match:'
+            : '${results.length} facilities match:',
+      );
+    }
     _showFacilities(results.take(8).toList());
   }
 
@@ -2705,7 +2848,11 @@ class AssistantController extends ChangeNotifier {
     if (p.facilityQuery != null && p.facilityQuery!.isNotEmpty) {
       final matches = resolveFacilityByName(p.facilityQuery!, pool);
       if (matches.isEmpty) {
-        _say('I couldn\'t find a bookable room called "${p.facilityQuery}".');
+        _say(
+          p.activity != null
+              ? 'We don\'t have anything set up for ${p.activity}.'
+              : 'I couldn\'t find a bookable room called "${p.facilityQuery}".',
+        );
         return;
       }
       candidates = _tiedTop(matches);
@@ -2993,6 +3140,15 @@ class AssistantController extends ChangeNotifier {
 
     if (ranked.isEmpty) {
       final minCapacity = criteria.minCapacity;
+      // Retry without the free-text query, scoped to whatever could host the
+      // activity: "nothing matches" with no alternatives is a dead end, and
+      // the query is exactly the constraint we know failed.
+      final alternatives = _facilitiesForActivity(p.activity, state);
+      if (alternatives != null) {
+        _say(_unmatchedCaption(p, matched: false));
+        _showFacilities(alternatives.take(5).toList());
+        return;
+      }
       if (minCapacity != null) {
         _suggestBiggerFacilities(minCapacity, state);
       } else {

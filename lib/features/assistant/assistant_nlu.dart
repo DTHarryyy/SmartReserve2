@@ -80,6 +80,7 @@ class ParsedMessage {
     this.ordinal,
     this.purpose,
     this.facilityQuery,
+    this.activity,
   });
 
   final String raw;
@@ -98,6 +99,11 @@ class ParsedMessage {
   final String? purpose;
   final String? facilityQuery;
 
+  /// A sport/activity named in the message that maps to [activityCategories],
+  /// e.g. "pickleball". Set even when no facility here actually hosts it --
+  /// that gap is exactly what callers need to answer honestly.
+  final String? activity;
+
   bool get hasSlots =>
       capacity != null ||
       amenities.isNotEmpty ||
@@ -105,7 +111,8 @@ class ParsedMessage {
       (date != null && !date!.invalid) ||
       time != null ||
       (purpose != null && purpose!.isNotEmpty) ||
-      (facilityQuery != null && facilityQuery!.isNotEmpty);
+      (facilityQuery != null && facilityQuery!.isNotEmpty) ||
+      activity != null;
 }
 
 ParsedMessage parseMessage(String raw, {required DateTime nowWall}) {
@@ -126,6 +133,7 @@ ParsedMessage parseMessage(String raw, {required DateTime nowWall}) {
   final category = _extractCategory(chars, mask);
   final purpose = _extractPurpose(chars, mask);
   final facilityQuery = _leftoverQuery(chars);
+  final activity = matchActivity(normalized);
 
   final abort = _isAbort(normalized);
   final recurringCue = RegExp(
@@ -158,6 +166,7 @@ ParsedMessage parseMessage(String raw, {required DateTime nowWall}) {
     ordinal: ordinal,
     purpose: purpose,
     facilityQuery: facilityQuery,
+    activity: activity,
   );
 }
 
@@ -446,6 +455,47 @@ const Map<String, String> _categorySynonyms = {
   'office': 'Office',
   'classroom': 'Classroom',
 };
+
+/// Activities campus has no dedicated facility for, mapped to the categories
+/// that can actually host them.
+///
+/// Used only to choose and phrase ALTERNATIVES, never as a hard filter: a
+/// request for a sport we cannot host has to be answered honestly, not
+/// silently narrowed to something that merely shares a category.
+const Map<String, Set<String>> activityCategories = {
+  'pickleball': {'Gymnasium', 'Outdoor Area'},
+  'badminton': {'Gymnasium'},
+  'volleyball': {'Gymnasium', 'Outdoor Area'},
+  'basketball': {'Gymnasium', 'Outdoor Area'},
+  'tennis': {'Outdoor Area'},
+  'futsal': {'Gymnasium', 'Outdoor Area'},
+};
+
+/// The activity named in a message, if any.
+///
+/// Adjacent words are joined before testing so "pickle ball" resolves the same
+/// as "pickleball", and [fuzzyWordMatches] covers the near-misses people
+/// actually type. Read from the NORMALIZED message rather than the masked
+/// buffer, so the activity survives whichever extractor consumed the words.
+String? matchActivity(String normalized) {
+  final words = RegExp(
+    r'[a-z]+',
+  ).allMatches(normalized).map((m) => m.group(0)!).toList();
+  for (var i = 0; i < words.length; i++) {
+    final single = words[i];
+    final pair = i + 1 < words.length ? '$single${words[i + 1]}' : null;
+    for (final key in activityCategories.keys) {
+      if (single == key || pair == key) return key;
+      // fuzzyWordMatches' prefix branch only requires 3 characters, which
+      // would let "ten" match "tennis" -- every activity key here is 6+
+      // letters, so a short word can only be a real typo, never a genuine
+      // abbreviation, once it is at least half the key's length.
+      if (single.length >= 4 && fuzzyWordMatches(single, key)) return key;
+      if (pair != null && fuzzyWordMatches(pair, key)) return key;
+    }
+  }
+  return null;
+}
 
 const _monthAbbrev = [
   'jan',
@@ -1056,12 +1106,44 @@ final _purposeRe = RegExp(
   r'\bfor\s+(?:a|an|our|my|the)\s+([a-z][a-z\- ]{2,80})',
 );
 
+const _facilityNouns = {
+  'court',
+  'room',
+  'hall',
+  'gym',
+  'gymnasium',
+  'field',
+  'space',
+  'venue',
+  'area',
+  'lab',
+  'laboratory',
+  'grounds',
+};
+
+/// True when a "for a ..." phrase is naming the thing being booked rather
+/// than why it is being booked.
+bool _describesAFacility(String phrase) {
+  if (matchActivity(phrase) != null) return true;
+  final words = RegExp(
+    r'[a-z]+',
+  ).allMatches(phrase).map((m) => m.group(0)!).toList();
+  if (words.isEmpty) return false;
+  if (_facilityNouns.contains(words.first)) return true;
+  return _categorySynonyms.keys.any(phrase.startsWith);
+}
+
 String? _extractPurpose(List<String> chars, void Function(int, int) mask) {
   final text = chars.join();
   final match = _purposeRe.firstMatch(text);
   if (match == null) return null;
   final phrase = match.group(1)!.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (phrase.length < 3) return null;
+  // "for a court we can play pickle ball" describes the FACILITY, not the
+  // purpose. Returning WITHOUT masking leaves those words in the buffer for
+  // _leftoverQuery, so they can still be matched against the catalogue -- and
+  // keeps them out of draft.purpose, which is submitted verbatim.
+  if (_describesAFacility(phrase)) return null;
   mask(match.start, match.end);
   return phrase;
 }

@@ -287,7 +287,7 @@ before enabling it:
 supabase secrets set ASSISTANT_LLM_PROVIDER=openai
 supabase secrets set OPENAI_API_KEY=...
 supabase secrets set ASSISTANT_MODEL=gpt-4o-mini
-supabase secrets set ASSISTANT_MAX_COMPLETION_TOKENS=300
+supabase secrets set ASSISTANT_MAX_COMPLETION_TOKENS=500
 supabase secrets set ASSISTANT_MAX_INPUT_TOKENS=3000
 supabase secrets set ASSISTANT_PROVIDER_TIMEOUT_MS=15000
 supabase secrets set ASSISTANT_RATE_LIMIT_PER_HOUR=30

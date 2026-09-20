@@ -144,11 +144,17 @@ void main() {
   group('booking proposals', () {
     test('an illegal slot is refused before it is ever offered', () async {
       final facility = state.bookableFacilities.first;
+      // Walk forward to a day the facility is actually open, so the only
+      // issue the slot can trip is the closing-time one this test is about.
+      var day = campusNow().add(const Duration(days: 3));
+      while (!facility.opensOn(day)) {
+        day = day.add(const Duration(days: 1));
+      }
       final client = _ProposingAiClient({
         'kind': 'booking',
         'facility_id': facility.id,
         // Well past the facility's closing time.
-        'day': dayKeyFor(campusNow().add(const Duration(days: 3))),
+        'day': dayKeyFor(day),
         'start_hour': 22.0,
         'end_hour': 23.0,
         'heads': 10,
@@ -159,16 +165,28 @@ void main() {
 
       await controller.send(unknownQuestion, state);
 
-      expect(controller.stage, isNot(AssistantStage.confirming));
-      expect(controller.draft.facility, isNull);
+      // The time was the only bad part of the offer: it is dropped and the
+      // user lands back at the time question, but the rest of what the model
+      // got right -- facility, headcount, purpose -- is not thrown away too.
+      expect(controller.stage, AssistantStage.needTime);
+      expect(controller.draft.facility, facility);
+      expect(controller.draft.heads, 10);
+      expect(controller.draft.purpose, 'Late night session');
+      expect(controller.draft.startHour, isNull);
     });
 
     test('an over-capacity proposal is refused', () async {
       final facility = state.bookableFacilities.first;
+      // Walk forward to a day the facility is actually open, so the only
+      // issue the slot can trip is the capacity one this test is about.
+      var day = campusNow().add(const Duration(days: 3));
+      while (!facility.opensOn(day)) {
+        day = day.add(const Duration(days: 1));
+      }
       final client = _ProposingAiClient({
         'kind': 'booking',
         'facility_id': facility.id,
-        'day': dayKeyFor(campusNow().add(const Duration(days: 3))),
+        'day': dayKeyFor(day),
         'start_hour': 8.0,
         'end_hour': 10.0,
         'heads': facility.capacity + 1000,
@@ -179,6 +197,10 @@ void main() {
 
       await controller.send(unknownQuestion, state);
       expect(controller.stage, isNot(AssistantStage.confirming));
+      // Only the headcount was the problem; the rest of the offer survives
+      // so the user is not asked to restate the whole booking.
+      expect(controller.draft.facility, facility);
+      expect(controller.draft.heads, isNull);
     });
 
     test('an unknown facility is refused', () async {

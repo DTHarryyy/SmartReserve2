@@ -1,11 +1,9 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../../app/app_state.dart';
-import '../../backend/supabase_service.dart';
 import '../../model/notice.dart';
 import '../../model/permit.dart';
 import '../../model/payment.dart';
@@ -19,6 +17,7 @@ import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import 'permit_signature_settings_dialog.dart';
 import 'reservation_permit_mapping_dialog.dart';
+import 'reservation_signature_dialog.dart';
 
 class PermitPanel extends StatefulWidget {
   const PermitPanel({super.key, required this.state, required this.request});
@@ -240,21 +239,22 @@ class _PermitPanelState extends State<PermitPanel> {
     if (request.signatureRequested && _isSignedInRequester(request)) {
       widgets.addAll([
         Text(
-          'Your approved reservation needs your reservation-specific signature.',
+          'Your approved reservation needs your signature. Draw it here to '
+          'let the administrator prepare your official permit.',
           style: SrType.bodySm(),
         ),
         const SizedBox(height: SR.space8),
         SrButton(
-          label: 'Upload e-signature',
+          label: 'Sign e-signature',
           kind: SrButtonKind.primary,
           dense: true,
-          onPressed: _busy ? null : () => _pickUserSignature(request),
+          onPressed: _busy ? null : () => _signReservation(request),
         ),
       ]);
     } else if (request.signatureRequested && _admin) {
       widgets.add(
         Text(
-          'An e-signature request is active. The requester must upload their reservation-specific signature from My reservations before an official permit can be generated or sent.',
+          'An e-signature request is active. The requester must sign from My reservations before an official permit can be generated or sent.',
           style: SrType.bodySm(),
         ),
       );
@@ -498,9 +498,13 @@ class _PermitPanelState extends State<PermitPanel> {
     if (mounted) setState(() => _busy = false);
   }
 
-  Future<void> _pickUserSignature(ReservationRequest request) async {
-    final upload = await _chooseSignature();
-    if (upload == null || request.signatureRequestId == null) return;
+  Future<void> _signReservation(ReservationRequest request) async {
+    if (request.signatureRequestId == null) return;
+    final upload = await showReservationSignatureDialog(
+      context,
+      requestId: request.id,
+    );
+    if (upload == null || !mounted) return;
     setState(() => _busy = true);
     await widget.state.submitReservationSignature(
       signatureRequestId: request.signatureRequestId!,
@@ -508,57 +512,6 @@ class _PermitPanelState extends State<PermitPanel> {
       signature: upload,
     );
     if (mounted) setState(() => _busy = false);
-  }
-
-  Future<ReservationUpload?> _chooseSignature() async {
-    final picked = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: const ['png', 'jpg', 'jpeg'],
-    );
-    if (picked == null) return null;
-    final bytes = await picked.readAsBytes();
-    if (bytes.isEmpty || bytes.lengthInBytes > 5 * 1024 * 1024) {
-      if (mounted) {
-        setState(
-          () =>
-              _error = 'Signatures must be a PNG or JPEG no larger than 5 MB.',
-        );
-      }
-      return null;
-    }
-    final mime = picked.name.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg';
-    if (!mounted) return null;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm reservation signature'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.memory(bytes, height: 130),
-            const SizedBox(height: 12),
-            const Text(
-              'Material reservation changes will require a new signature.',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true
-        ? ReservationUpload(name: picked.name, mimeType: mime, bytes: bytes)
-        : null;
   }
 
   Future<void> _completeExternalDetails(ReservationRequest request) async {

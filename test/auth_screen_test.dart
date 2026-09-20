@@ -53,7 +53,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Reset your password'), findsOneWidget);
-    expect(find.text('Send reset link'), findsOneWidget);
+    expect(find.text('Send code'), findsOneWidget);
 
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();

@@ -25,43 +25,48 @@ import {
 type Box = { x: number; y: number; width: number; height: number };
 const ink = rgb(0.03, 0.03, 0.03);
 
+// Boxes below were measured directly off the two approved template PDFs
+// (rule-line/checkbox pixel positions decoded from the official artwork,
+// cross-checked against the internal template's embedded text layer), not
+// eyeballed — see the permit alignment fix for the calibration method.
 export const permitOverlayMasks: Record<"internal" | "external", Box[]> = {
   internal: [
-    { x: 404, y: 42, width: 134, height: 18 },
-    { x: 57, y: 203, width: 40, height: 107 },
-    { x: 181, y: 268, width: 105, height: 35 },
-    { x: 308, y: 203, width: 39, height: 111 },
-    { x: 430, y: 278, width: 108, height: 29 },
-    { x: 57, y: 347, width: 481, height: 17 },
-    { x: 57, y: 399, width: 481, height: 43 },
-    { x: 57, y: 525, width: 240, height: 24 },
-    { x: 134, y: 574, width: 225, height: 18 },
-    { x: 179, y: 640, width: 259, height: 26 },
+    { x: 404, y: 42, width: 134, height: 16 },
+    { x: 60, y: 208, width: 40, height: 88 },
+    { x: 181, y: 281, width: 100, height: 13 },
+    { x: 310, y: 208, width: 40, height: 98 },
+    { x: 430, y: 291, width: 100, height: 13 },
+    { x: 57, y: 351, width: 481, height: 13 },
+    { x: 57, y: 400, width: 481, height: 41 },
+    { x: 57, y: 523, width: 240, height: 16 },
+    { x: 60, y: 540, width: 235, height: 10 },
+    { x: 134, y: 580, width: 225, height: 13 },
+    { x: 179, y: 637, width: 259, height: 28 },
   ],
   external: [
-    { x: 105, y: 125, width: 321, height: 15 },
-    { x: 460, y: 125, width: 123, height: 15 },
-    { x: 161, y: 141, width: 422, height: 16 },
-    { x: 98, y: 157, width: 485, height: 16 },
-    { x: 95, y: 173, width: 488, height: 16 },
-    ...[223, 243, 263, 282, 302, 322, 341, 361].map((y) => ({
+    { x: 129, y: 124, width: 293, height: 14 },
+    { x: 464, y: 124, width: 115, height: 14 },
+    { x: 223, y: 140, width: 357, height: 14 },
+    { x: 133, y: 156, width: 447, height: 14 },
+    { x: 140, y: 172, width: 440, height: 14 },
+    ...[226, 246, 266, 285, 304, 323, 342, 362].map((y) => ({
       x: 18,
       y,
       width: 565,
       height: 19,
     })),
     { x: 409, y: 451, width: 159, height: 18 },
-    { x: 18, y: 492, width: 565, height: 22 },
-    { x: 165, y: 520, width: 181, height: 24 },
-    { x: 352, y: 520, width: 86, height: 24 },
-    { x: 443, y: 520, width: 140, height: 24 },
-    { x: 217, y: 553, width: 67, height: 21 },
-    { x: 392, y: 553, width: 191, height: 21 },
-    { x: 400, y: 617, width: 135, height: 26 },
+    { x: 15, y: 496, width: 568, height: 18 },
+    { x: 180, y: 518, width: 164, height: 22 },
+    { x: 397, y: 518, width: 39, height: 22 },
+    { x: 499, y: 518, width: 80, height: 22 },
+    { x: 217, y: 554, width: 67, height: 10 },
+    { x: 418, y: 549, width: 161, height: 20 },
+    { x: 400, y: 606, width: 135, height: 35 },
     { x: 135, y: 681, width: 100, height: 18 },
     { x: 314, y: 681, width: 13, height: 18 },
-    { x: 217, y: 704, width: 191, height: 24 },
-    { x: 171, y: 752, width: 248, height: 27 },
+    { x: 210, y: 709, width: 200, height: 14 },
+    { x: 165, y: 759, width: 255, height: 11 },
   ],
 };
 
@@ -222,15 +227,15 @@ function drawImage(page: PDFPage, image: PDFImage, box: Box) {
 }
 
 const internalFacilityRows: Record<string, [number, number]> = {
-  audio_visual_main_hall: [57, 203],
-  conference_room: [57, 241],
-  other: [57, 265],
+  audio_visual_main_hall: [60, 209],
+  conference_room: [60, 246],
+  other: [60, 270],
 };
 const internalEquipmentRows: Record<string, [number, number]> = {
-  sound_system: [308, 203],
-  overhead_projector: [308, 227],
-  lcd_accessories: [308, 251],
-  other: [308, 275],
+  sound_system: [310, 209],
+  overhead_projector: [310, 233],
+  lcd_accessories: [310, 257],
+  other: [310, 281],
 };
 
 async function renderInternal(
@@ -246,8 +251,8 @@ async function renderInternal(
     x: 404,
     y: 42,
     width: 134,
-    height: 18,
-  });
+    height: 16,
+  }, { size: 9, minSize: 7 });
   const facility = snapshot.items.find((item) =>
     item.row_code.startsWith("facility:")
   );
@@ -263,15 +268,15 @@ async function renderInternal(
     facilityRow[0],
     facilityRow[1],
     40,
-    facilityCode === "audio_visual_main_hall" ? 38 : 24,
+    facilityCode === "audio_visual_main_hall" ? 24 : 16,
   );
   if (facilityCode === "other") {
     drawFitted(page, font, facility.label, {
       x: 181,
-      y: 268,
-      width: 105,
-      height: 35,
-    }, { size: 8, maxLines: 2, field: "facilities_other" });
+      y: 281,
+      width: 100,
+      height: 13,
+    }, { size: 8.5, minSize: 7, field: "facilities_other" });
   }
   const equipment = snapshot.items.filter((item) =>
     item.row_code.startsWith("equipment:")
@@ -280,53 +285,53 @@ async function renderInternal(
     const code = item.row_code.split(":")[1];
     const row = internalEquipmentRows[code];
     if (!row) throw new Error(`Unsupported internal equipment row: ${code}`);
-    check(page, bold, row[0], row[1], 39, 24);
+    check(page, bold, row[0], row[1], 40, code === "other" ? 24 : 16);
   }
   const others = equipment.filter((item) => item.row_code.endsWith(":other"))
     .map((item) => item.label);
   if (others.length) {
     drawFitted(page, font, others.join(", "), {
       x: 430,
-      y: 278,
-      width: 108,
-      height: 29,
-    }, { size: 8, maxLines: 2, field: "equipment_other" });
+      y: 291,
+      width: 100,
+      height: 13,
+    }, { size: 8.5, minSize: 7, field: "equipment_other" });
   }
   drawFitted(page, font, formatSchedule(snapshot.occurrences), {
     x: 57,
-    y: 347,
+    y: 351,
     width: 481,
-    height: 17,
-  }, { size: 9, field: "requested_date_of_use" });
+    height: 13,
+  }, { size: 9.5, minSize: 7.5, field: "requested_date_of_use" });
   drawFitted(page, font, snapshot.purpose, {
     x: 57,
-    y: 399,
+    y: 400,
     width: 481,
-    height: 43,
-  }, { size: 9.5, maxLines: 2, field: "purpose" });
+    height: 41,
+  }, { size: 10, minSize: 7.5, maxLines: 2, field: "purpose" });
   drawFitted(page, font, snapshot.requester_name, {
-    x: 57,
-    y: 539,
-    width: 240,
+    x: 60,
+    y: 540,
+    width: 235,
     height: 10,
-  }, { size: 8, field: "requester_name" });
+  }, { size: 8.5, minSize: 7, field: "requester_name" });
   drawFitted(page, font, snapshot.requester_unit, {
     x: 134,
-    y: 574,
+    y: 580,
     width: 225,
-    height: 18,
-  }, { size: 9, field: "office_college" });
+    height: 13,
+  }, { size: 9, minSize: 7, field: "office_college" });
   drawImage(page, await embedImage(document, signatures[0]), {
     x: 57,
-    y: 525,
+    y: 523,
     width: 240,
-    height: 15,
+    height: 16,
   });
   drawImage(page, await embedImage(document, signatures[1]), {
     x: 179,
-    y: 640,
+    y: 637,
     width: 259,
-    height: 26,
+    height: 28,
   });
 }
 
@@ -340,7 +345,7 @@ const externalRows = [
   "love_hall",
   "other",
 ];
-const externalYs = [223, 243, 263, 282, 302, 322, 341, 361];
+const externalYs = [226, 246, 266, 285, 304, 323, 342, 362];
 
 async function renderExternal(
   document: PDFDocument,
@@ -352,35 +357,35 @@ async function renderExternal(
   const font = await document.embedFont(StandardFonts.TimesRoman);
   const bold = await document.embedFont(StandardFonts.TimesRomanBold);
   drawFitted(page, font, snapshot.requester_name, {
-    x: 105,
-    y: 125,
-    width: 321,
-    height: 15,
-  }, { size: 8.5, field: "requesting_party" });
+    x: 129,
+    y: 124,
+    width: 293,
+    height: 14,
+  }, { size: 9, minSize: 7, field: "requesting_party" });
   drawFitted(page, font, formatDate(snapshot.user_signed_at), {
-    x: 460,
-    y: 125,
-    width: 123,
-    height: 15,
-  }, { size: 8 });
+    x: 464,
+    y: 124,
+    width: 115,
+    height: 14,
+  }, { size: 8.5, minSize: 7 });
   drawFitted(page, font, snapshot.external_company_organization, {
-    x: 161,
-    y: 141,
-    width: 422,
-    height: 16,
-  }, { size: 8.5, field: "company_organization" });
+    x: 223,
+    y: 140,
+    width: 357,
+    height: 14,
+  }, { size: 9, minSize: 7, field: "company_organization" });
   drawFitted(page, font, snapshot.external_complete_address, {
-    x: 98,
-    y: 157,
-    width: 485,
-    height: 16,
-  }, { size: 8.5, field: "complete_address" });
+    x: 133,
+    y: 156,
+    width: 447,
+    height: 14,
+  }, { size: 9, minSize: 7, field: "complete_address" });
   drawFitted(page, font, snapshot.external_contact_numbers?.join(" / "), {
-    x: 95,
-    y: 173,
-    width: 488,
-    height: 16,
-  }, { size: 8.5, field: "contact_numbers" });
+    x: 140,
+    y: 172,
+    width: 440,
+    height: 14,
+  }, { size: 9, minSize: 7, field: "contact_numbers" });
   for (const item of snapshot.items) {
     const code = item.row_code.includes(":")
       ? item.row_code.split(":")[1]
@@ -390,8 +395,8 @@ async function renderExternal(
     const y = externalYs[index];
     check(page, bold, 25, y, 13, 18);
     if (code === "other") {
-      drawFitted(page, font, item.label, { x: 140, y, width: 85, height: 19 }, {
-        size: 7.5,
+      drawFitted(page, font, item.label, { x: 140, y, width: 90, height: 18 }, {
+        size: 8, minSize: 6.5,
         field: "other_description",
       });
     }
@@ -400,33 +405,33 @@ async function renderExternal(
         x: 181,
         y,
         width: 44,
-        height: 19,
-      }, { size: 8, align: "center" });
+        height: 18,
+      }, { size: 8.5, minSize: 6.5, align: "center" });
     }
     drawFitted(page, font, formatDuration(item.duration_minutes), {
       x: 228,
       y,
-      width: 47,
-      height: 19,
-    }, { size: 7, align: "center" });
+      width: 58,
+      height: 18,
+    }, { size: 8, minSize: 6.5, align: "center" });
     drawFitted(page, font, formatBasis(item.billing_basis), {
       x: 299,
       y,
-      width: 51,
-      height: 19,
-    }, { size: 6.8, align: "center" });
+      width: 62,
+      height: 18,
+    }, { size: 8, minSize: 6.5, align: "center" });
     drawFitted(page, font, formatMoney(item.unit_amount_centavos ?? 0), {
       x: 395,
       y,
-      width: 42,
-      height: 19,
-    }, { size: 7, align: "center" });
+      width: 50,
+      height: 18,
+    }, { size: 8, minSize: 6.5, align: "center" });
     drawFitted(page, font, formatMoney(item.line_total_centavos ?? 0), {
       x: 460,
       y,
       width: 112,
-      height: 19,
-    }, { size: 7, align: "center" });
+      height: 18,
+    }, { size: 8, minSize: 6.5, align: "center" });
   }
   drawFitted(page, bold, formatMoney(snapshot.total_amount_centavos), {
     x: 409,
@@ -435,11 +440,11 @@ async function renderExternal(
     height: 18,
   }, { size: 9, align: "center" });
   drawFitted(page, font, snapshot.purpose, {
-    x: 18,
-    y: 492,
-    width: 565,
-    height: 22,
-  }, { size: 8.5, maxLines: 2, field: "purposes" });
+    x: 15,
+    y: 496,
+    width: 568,
+    height: 18,
+  }, { size: 9, minSize: 7, maxLines: 2, field: "purposes" });
   const ordered = [...snapshot.occurrences].sort((a, b) =>
     a.starts_at.localeCompare(b.starts_at)
   );
@@ -455,8 +460,9 @@ async function renderExternal(
       formatDateRange(ordered[0].starts_at, ordered.at(-1)!.starts_at)
     } · ${ordered.length} weekly`
     : ordered.map((item) => formatDate(item.starts_at)).join(", ");
-  drawFitted(page, font, dates, { x: 165, y: 520, width: 181, height: 24 }, {
-    size: 8,
+  drawFitted(page, font, dates, { x: 180, y: 518, width: 164, height: 22 }, {
+    size: 8.5,
+    minSize: 6.5,
     field: "inclusive_dates",
   });
   const sameTimes = snapshot.occurrences.every((item) =>
@@ -466,23 +472,23 @@ async function renderExternal(
   );
   if (!sameTimes) throw new Error("External permit schedule has varying times");
   drawFitted(page, font, formatTime(snapshot.occurrences[0].starts_at), {
-    x: 352,
-    y: 520,
-    width: 86,
-    height: 24,
-  }, { size: 8, align: "center" });
+    x: 397,
+    y: 518,
+    width: 39,
+    height: 22,
+  }, { size: 7.5, minSize: 6, align: "center" });
   drawFitted(page, font, formatTime(snapshot.occurrences[0].ends_at), {
-    x: 443,
-    y: 520,
-    width: 140,
-    height: 24,
-  }, { size: 8, align: "center" });
+    x: 499,
+    y: 518,
+    width: 80,
+    height: 22,
+  }, { size: 8, minSize: 6.5, align: "center" });
   drawFitted(page, bold, snapshot.headcount, {
     x: 217,
-    y: 553,
+    y: 554,
     width: 67,
-    height: 21,
-  }, { size: 9, align: "center" });
+    height: 10,
+  }, { size: 8, minSize: 6.5, align: "center" });
   const admission = snapshot.external_admission_fee_centavos === 0
     ? "No admission fee"
     : formatMoney(snapshot.external_admission_fee_centavos!, true);
@@ -490,33 +496,33 @@ async function renderExternal(
     page,
     font,
     admission,
-    { x: 392, y: 553, width: 191, height: 21 },
-    { size: 8, field: "admission_fee" },
+    { x: 418, y: 549, width: 161, height: 20 },
+    { size: 8.5, minSize: 6.5, field: "admission_fee" },
   );
   drawImage(page, await embedImage(document, signatures[0]), {
     x: 400,
-    y: 617,
+    y: 606,
     width: 135,
-    height: 26,
+    height: 35,
   });
   drawFitted(page, bold, formatMoney(snapshot.total_amount_centavos), {
     x: 135,
     y: 681,
     width: 100,
     height: 18,
-  }, { size: 8.5 });
+  }, { size: 9, minSize: 7 });
   check(page, bold, 314, 681, 13, 18);
   drawImage(page, await embedImage(document, signatures[1]), {
-    x: 217,
-    y: 704,
-    width: 191,
-    height: 24,
+    x: 210,
+    y: 709,
+    width: 200,
+    height: 14,
   });
   drawImage(page, await embedImage(document, signatures[2]), {
-    x: 171,
-    y: 752,
-    width: 248,
-    height: 27,
+    x: 165,
+    y: 759,
+    width: 255,
+    height: 11,
   });
 }
 

@@ -12,29 +12,9 @@ class SrAssistantLogo extends StatelessWidget {
     this.borderColor,
   });
 
-  static const assetName = 'assets/smartreserve logo.png';
-  static const _darkModeBoost = ColorFilter.matrix(<double>[
-    1.08,
-    0,
-    0,
-    0,
-    12,
-    0,
-    1.08,
-    0,
-    0,
-    12,
-    0,
-    0,
-    1.08,
-    0,
-    12,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ]);
+  static const _lightAssetName = 'assets/smart reserve logo.png';
+  static const _darkAssetName =
+      'assets/smart reserve logo transpatent.png';
 
   final double size;
   final double? radius;
@@ -53,7 +33,7 @@ class SrAssistantLogo extends StatelessWidget {
         colors.border.withValues(alpha: colors.isDark ? .78 : .66);
 
     final logo = Image.asset(
-      assetName,
+      colors.isDark ? _darkAssetName : _lightAssetName,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
     );
@@ -67,9 +47,7 @@ class SrAssistantLogo extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius ?? size * .5),
         border: Border.all(color: resolvedBorder),
       ),
-      child: colors.isDark
-          ? ColorFiltered(colorFilter: _darkModeBoost, child: logo)
-          : logo,
+      child: logo,
     );
   }
 }

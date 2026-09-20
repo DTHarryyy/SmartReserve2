@@ -23,6 +23,7 @@ import '../../widgets/sr_assistant_logo.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
+import '../assistant/assistant_ai_client.dart';
 import '../assistant/assistant_chat_page.dart';
 import '../assistant/assistant_controller.dart';
 import '../calendar/calendar_screen.dart';
@@ -110,6 +111,11 @@ class _StudentAppState extends State<StudentApp> {
     super.didChangeDependencies();
     _syncBannerDismissal(AppScope.of(context).userAccount);
     final state = AppScope.of(context);
+    // Attached once a real backend exists. Without one the assistant keeps
+    // answering from rules alone, which is the whole fallback guarantee.
+    final backend = state.backend;
+    _assistant.aiClient =
+        backend == null ? null : SupabaseAssistantAiClient(backend);
     if (state.pendingLoyaltyOpen) {
       state.pendingLoyaltyOpen = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -224,7 +230,7 @@ class _StudentAppState extends State<StudentApp> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        // borderRadius: BorderRadius.vertical(bottom: Radius.circular(0)),
       ),
       child: SafeArea(
         bottom: false,
@@ -1670,19 +1676,20 @@ class _StudentAppState extends State<StudentApp> {
             (item) => item.needsNewTime,
             orElse: () => request.occurrences.first,
           );
-    var date = DateTime(
-      occurrence.startsAt.year,
-      occurrence.startsAt.month,
-      occurrence.startsAt.day,
-    );
-    var startTime = TimeOfDay.fromDateTime(occurrence.startsAt);
-    var endTime = TimeOfDay.fromDateTime(occurrence.endsAt);
     final campusTodayValue = campusNow();
     final today = DateTime(
       campusTodayValue.year,
       campusTodayValue.month,
       campusTodayValue.day,
     );
+    var date = DateTime(
+      occurrence.startsAt.year,
+      occurrence.startsAt.month,
+      occurrence.startsAt.day,
+    );
+    if (date.isBefore(today)) date = today;
+    var startTime = TimeOfDay.fromDateTime(occurrence.startsAt);
+    var endTime = TimeOfDay.fromDateTime(occurrence.endsAt);
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(

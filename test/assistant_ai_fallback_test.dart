@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/app/app_state.dart';
 import 'package:smartreserve/features/assistant/assistant_ai_client.dart';
 import 'package:smartreserve/features/assistant/assistant_controller.dart';
+import 'package:smartreserve/model/facility.dart';
 
 /// The governing requirement for this whole feature: SmartReserve must work
 /// exactly as before when the cloud model is unavailable. Because the AI is an
@@ -155,6 +156,109 @@ void main() {
       expect(
         controller.messages.any(
           (m) => m.kind == AssistantMessageKind.chips && m.chips.isNotEmpty,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('an unresolved facility request (the pickleball case)', () {
+    // "iwant to book a reservatio for a coorut that we can play pickle ball"
+    // used to instantly show every bookable facility captioned "A few rooms
+    // fit", as though something had actually matched. It had not.
+    const pickleballMessage =
+        'iwant to book a reservatio for a coorut that we can play pickle ball';
+
+    test(
+        'with the model unavailable, the rules name the gap instead of '
+        'claiming a match', () async {
+      final controller = controllerWith(null);
+
+      await controller.send(pickleballMessage, state);
+
+      final text = transcript(controller);
+      expect(text.toLowerCase(), contains('pickleball'));
+      expect(text, isNot(contains('A few rooms fit')));
+    });
+
+    test('with the model available, the request escalates and its answer '
+        'is used', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(
+          text: "We don't have a pickleball court, but Reading Hall B is "
+              'the closest thing free right now.',
+        ),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send(pickleballMessage, state);
+
+      expect(
+        client.calls,
+        isNotEmpty,
+        reason: 'an unresolvable facility request must reach the model',
+      );
+      final assisted = controller.messages.where((m) => m.assisted).toList();
+      expect(assisted, hasLength(1));
+      expect(
+        transcript(controller),
+        isNot(contains('A few rooms fit')),
+        reason: 'the deterministic fallback must not also run',
+      );
+    });
+
+    test('a bare "book a room" still costs no model call', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(text: 'should not be called'),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('book a room', state);
+
+      expect(client.calls, isEmpty);
+    });
+
+    test('"suggest a facility for pickleball" offers alternatives instead '
+        'of a dead end', () async {
+      // The demo fixture's only Gymnasium facility is under maintenance and
+      // there is no Outdoor Area entry, so nothing here can host pickleball
+      // -- add one so this test actually exercises the alternatives branch,
+      // not the pre-existing capacity-less dead end.
+      final gym = Facility(
+        id: 'gym-fixture',
+        name: 'Open Gym',
+        room: 'GYM-02',
+        building: 'Test Building',
+        category: 'Gymnasium',
+        capacity: 60,
+        pinConfidence: PinConfidence.verified,
+        state: FacilityState.active,
+        floor: 'Ground floor',
+        coords: null,
+        accuracy: 5,
+        description: '',
+        amenities: const [],
+        hours: '07:00–19:00',
+        days: 'Mon–Fri',
+        approvalRequired: false,
+        maxDuration: '4 hours',
+        advance: '30 days ahead',
+        updated: '',
+        bookings: 0,
+      );
+      state.facilities = [...state.facilities, gym];
+      final controller = controllerWith(null);
+
+      await controller.send('suggest a facility for pickleball', state);
+
+      final text = transcript(controller);
+      expect(text.toLowerCase(), contains('pickleball'));
+      expect(text, isNot(contains('Nothing bookable matches that right now')));
+      expect(
+        controller.messages.any(
+          (m) =>
+              m.kind == AssistantMessageKind.facilities &&
+              m.facilities.any((f) => f.id == 'gym-fixture'),
         ),
         isTrue,
       );
@@ -327,6 +431,20 @@ void main() {
       expect(reply.toolsUsed, ['get_payment_balance']);
       expect(reply.slotFill!['heads'], 30);
       expect(reply.proposal!['kind'], 'cancellation');
+    });
+
+    test('facility ids ride along when the answer surfaced matches', () {
+      final reply = parseAssistantAiReply({
+        'reply': '5 facilities fit 20 people.',
+        'tools_used': ['recommend_facilities'],
+        'facility_ids': ['fac-1', 'fac-2'],
+      });
+      expect(reply.facilityIds, ['fac-1', 'fac-2']);
+    });
+
+    test('a missing facility_ids field is simply no facilities', () {
+      final reply = parseAssistantAiReply({'reply': 'ok'});
+      expect(reply.facilityIds, isEmpty);
     });
   });
 }

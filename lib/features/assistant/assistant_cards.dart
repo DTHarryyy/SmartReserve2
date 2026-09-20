@@ -76,11 +76,14 @@ class AssistantBubble extends StatelessWidget {
         children: [
           Text(
             message.text,
-            // Rule-written replies are short by construction; a model answer
-            // can run longer, and clipping one mid-sentence would hide the
-            // qualifier that makes it correct.
-            maxLines: message.assisted ? 24 : 12,
-            overflow: TextOverflow.ellipsis,
+            // Rule-written replies are short by construction and clipped as a
+            // backstop. A model answer is now capped server-side (contract.ts's
+            // maxReplyChars/maxReplyLines), so a client-side ellipsis here
+            // could only ever hide text the user is entitled to see -- ellipsis
+            // truncation with no `maxLines` at all is a no-op, so it is left
+            // off rather than kept as dead code.
+            maxLines: message.assisted ? null : 12,
+            overflow: message.assisted ? null : TextOverflow.ellipsis,
             style: sans(13.5, height: 1.45, color: ink),
           ),
           if (message.assisted) ...[

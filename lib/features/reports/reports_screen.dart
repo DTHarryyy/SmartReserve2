@@ -112,7 +112,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               heatmap != null &&
               performance != null) ...[
             _utilisation(state, utilisation, snapshot, stale: stale),
-            if (snapshot != null) _revenue(state, snapshot, stale: stale),
+            if (snapshot != null && state.isExternalAdmin)
+              _revenue(state, snapshot, stale: stale),
             if (split)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -695,6 +696,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               contents: revenueCsv(
                 snapshot,
                 exportedBy: state.currentAdmin.name,
+                canViewRevenue: state.isExternalAdmin,
                 stale: state.reportState is ReportStale,
               ),
             ),
@@ -1413,6 +1415,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           issues: issues,
           exportedBy: state.currentAdmin.name,
           canViewPerAdmin: state.isInternalAdmin,
+          canViewRevenue: state.isExternalAdmin,
           stale: stale,
           staleReason: failure?.explanation,
         ),
@@ -1425,6 +1428,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       issues: issues,
       exportedBy: state.currentAdmin.name,
       canViewPerAdmin: state.isInternalAdmin,
+      canViewRevenue: state.isExternalAdmin,
       stale: stale,
       staleReason: failure?.explanation,
     );

@@ -552,8 +552,9 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
       );
     }
 
-    if (qualityReason == FacilityEditorReason.outsideCampus ||
-        draft.confirmedOutside) {
+    if (!insideBoundary &&
+        (qualityReason == FacilityEditorReason.outsideCampus ||
+            draft.confirmedOutside)) {
       return MapAdvisory(
         tone: AdvisoryTone.warn,
         icon: Icons.flag_outlined,

@@ -117,11 +117,13 @@ class _BootSplash extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SrLogo(size: 44, radius: SR.rMd),
-          const SizedBox(height: SR.space24),
+          const SrLogo(size: 80, radius: SR.rLg),
+          const SizedBox(height: SR.space20),
+          Text('SmartReserve', style: SrType.title(color: context.srColors.ink)),
+          const SizedBox(height: SR.space32),
           const SizedBox(
-            width: 22,
-            height: 22,
+            width: 26,
+            height: 26,
             child: CircularProgressIndicator(strokeWidth: 2.5),
           ),
         ],

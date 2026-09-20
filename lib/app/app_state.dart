@@ -983,6 +983,21 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Policy answers for the assistant, scoped by the caller's lane in the
+  /// database. Returns empty rather than throwing: a knowledge-base outage must
+  /// degrade the answer, never break the conversation.
+  Future<List<AssistantKnowledgeChunk>> assistantKnowledge(
+    String query, {
+    int limit = 3,
+  }) async {
+    if (!assistantHistoryAvailable) return const [];
+    try {
+      return await backend!.assistantKnowledgeSearch(query, limit: limit);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> initializeBackend() async {
     await loadThemePreference();
     final service = backend;
@@ -2454,13 +2469,14 @@ class AppState extends ChangeNotifier {
             orElse: () => null,
           );
 
+    final outside =
+        draft.pin != null && !inPolygon(draft.pin!, campus.boundary);
     final pinConfidence = draft.pin == null
         ? PinConfidence.none
-        : (draft.confirmedOutside || !inPolygon(draft.pin!, campus.boundary)
-              ? PinConfidence.needsCheck
-              : PinConfidence.verified);
+        : (outside ? PinConfidence.needsCheck : PinConfidence.verified);
+    final confirmedOutside = outside && draft.confirmedOutside;
 
-    final state = draft.confirmedOutside
+    final state = outside
         ? FacilityState.underReview
         : FacilityState.fromLabel(draft.status.label);
 
@@ -2491,7 +2507,7 @@ class AppState extends ChangeNotifier {
         bookings: 0,
         photoCount: draft.photos.length,
         photos: List.of(draft.photos),
-        confirmedOutside: draft.confirmedOutside,
+        confirmedOutside: confirmedOutside,
         geoBuilding: draft.geoBuilding,
         street: draft.street,
         barangay: draft.barangay,
@@ -2512,7 +2528,7 @@ class AppState extends ChangeNotifier {
             'Pinned at ${formatCoords(created.coords!)} · ±'
                 '${created.accuracy ?? 0} m',
         ],
-        reason: draft.confirmedOutside
+        reason: confirmedOutside
             ? 'Pin kept outside the campus boundary and flagged for review.'
             : '',
         recordId: created.id,
@@ -2570,7 +2586,7 @@ class AppState extends ChangeNotifier {
       ..publicListing = draft.publicListing
       ..photoCount = draft.photos.length
       ..photos = List.of(draft.photos)
-      ..confirmedOutside = draft.confirmedOutside
+      ..confirmedOutside = confirmedOutside
       ..geoBuilding = draft.geoBuilding
       ..street = draft.street
       ..barangay = draft.barangay
@@ -2712,6 +2728,7 @@ class AppState extends ChangeNotifier {
   String? userCalendarError;
   List<PublicCalendarSlot> userCalendarSlots = [];
   int _userCalendarRequestId = 0;
+  String? selectedUserCalendarEventId;
 
   List<String> get calendarFacilities => [
     'All facilities',
@@ -2723,6 +2740,7 @@ class AppState extends ChangeNotifier {
     final requestOccurrenceIds = <String>{};
 
     for (final request in requests) {
+      final mine = isMyReservationRequest(request);
       if (request.occurrences.isEmpty) {
         final date = parseCampusDate(request.date);
         if (date == null) continue;
@@ -2746,6 +2764,7 @@ class AppState extends ChangeNotifier {
             state: _calendarStateFor(request),
             lifecycle: request.stage,
             recurrenceLabel: request.recurring,
+            isMine: mine,
           ),
         );
         continue;
@@ -2770,6 +2789,7 @@ class AppState extends ChangeNotifier {
             state: _calendarStateFor(request, occurrence),
             lifecycle: occurrence.stage,
             recurrenceLabel: request.recurring,
+            isMine: mine,
           ),
         );
       }
@@ -2832,18 +2852,34 @@ class AppState extends ChangeNotifier {
   ];
 
   List<CalendarEvent> get userCalendarEvents {
+    final publicFacilityNames = {
+      for (final facility in publicCalendarFacilities) facility.name,
+    };
+    final mineEvents = [
+      for (final event in calendarEvents)
+        if (event.isMine && publicFacilityNames.contains(event.facility))
+          event,
+    ];
+    final mineOccurrenceIds = {
+      for (final event in mineEvents)
+        if (event.occurrenceId != null) event.occurrenceId!,
+    };
     final facilitiesById = {
       for (final facility in facilities) facility.id: facility,
     };
-    final events = <CalendarEvent>[];
+    final othersEvents = <CalendarEvent>[];
     for (final slot in userCalendarSlots) {
+      if (slot.occurrenceId != null &&
+          mineOccurrenceIds.contains(slot.occurrenceId)) {
+        continue;
+      }
       final facility = facilitiesById[slot.facilityId];
       if (facility == null ||
           !facility.publicListing ||
           facility.state != FacilityState.active) {
         continue;
       }
-      events.add(
+      othersEvents.add(
         CalendarEvent(
           id: 'public:${slot.facilityId}:${slot.startsAt.toIso8601String()}:${slot.endsAt.toIso8601String()}',
           startsAt: slot.startsAt,
@@ -2863,6 +2899,7 @@ class AppState extends ChangeNotifier {
         ),
       );
     }
+    final events = [...mineEvents, ...othersEvents];
     events.sort((a, b) => a.startsAt.compareTo(b.startsAt));
     return events;
   }
@@ -2878,6 +2915,15 @@ class AppState extends ChangeNotifier {
     final id = selectedCalendarEventId;
     if (id == null) return null;
     for (final event in calendarEvents) {
+      if (event.id == id) return event;
+    }
+    return null;
+  }
+
+  CalendarEvent? get selectedUserCalendarEvent {
+    final id = selectedUserCalendarEventId;
+    if (id == null) return null;
+    for (final event in userCalendarEvents) {
       if (event.id == id) return event;
     }
     return null;
@@ -2945,6 +2991,11 @@ class AppState extends ChangeNotifier {
 
   void selectCalendarEvent(String? id) {
     selectedCalendarEventId = id;
+    notifyListeners();
+  }
+
+  void selectUserCalendarEvent(String? id) {
+    selectedUserCalendarEventId = id;
     notifyListeners();
   }
 
@@ -3020,6 +3071,7 @@ class AppState extends ChangeNotifier {
             facilityId: row.facilityId,
             startsAt: campusWallTime(row.startsAt),
             endsAt: campusWallTime(row.endsAt),
+            occurrenceId: row.occurrenceId,
           ),
       ]);
     }
@@ -3139,12 +3191,14 @@ class AppState extends ChangeNotifier {
       ),
       CalendarViewMode.day => userCalendarAnchor.add(Duration(days: direction)),
     };
+    selectedUserCalendarEventId = null;
     notifyListeners();
     unawaited(refreshUserCalendar());
   }
 
   void goToUserCalendarToday() {
     userCalendarAnchor = calendarToday;
+    selectedUserCalendarEventId = null;
     notifyListeners();
     unawaited(refreshUserCalendar());
   }
@@ -3152,6 +3206,7 @@ class AppState extends ChangeNotifier {
   void selectUserCalendarDate(DateTime date, {CalendarViewMode? mode}) {
     userCalendarAnchor = DateTime(date.year, date.month, date.day);
     if (mode != null) userCalendarViewMode = mode;
+    selectedUserCalendarEventId = null;
     notifyListeners();
     unawaited(refreshUserCalendar());
   }
@@ -4766,11 +4821,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool isMyReservationRequest(ReservationRequest r) =>
+      r.requesterId == userAccount.id ||
+      (r.requesterId == null && r.requester == userAccount.name);
+
   List<ReservationRequest> get myRequests => [
     for (final r in requests)
-      if (r.requesterId == userAccount.id ||
-          (r.requesterId == null && r.requester == userAccount.name))
-        r,
+      if (isMyReservationRequest(r)) r,
   ];
 
   bool canLeaveFeedback(ReservationRequest request) =>

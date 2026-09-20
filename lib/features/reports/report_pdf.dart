@@ -12,6 +12,7 @@ Future<Uint8List> buildReportPdf({
   required List<QualityIssue> issues,
   required String exportedBy,
   required bool canViewPerAdmin,
+  required bool canViewRevenue,
   bool stale = false,
   String? staleReason,
 }) async {
@@ -77,21 +78,33 @@ Future<Uint8List> buildReportPdf({
         ]),
         pw.SizedBox(height: 16),
         _sectionTitle('Revenue', semiBold),
-        _revenueGrid(snapshot),
-        if (snapshot.monthlyStatistics.isNotEmpty) ...[
-          pw.SizedBox(height: 8),
-          _table([
-            ['Month', 'Submitted', 'Completed', 'Utilisation', 'Net revenue'],
-            for (final row in snapshot.monthlyStatistics)
+        if (canViewRevenue) ...[
+          _revenueGrid(snapshot),
+          if (snapshot.monthlyStatistics.isNotEmpty) ...[
+            pw.SizedBox(height: 8),
+            _table([
               [
-                _month(row.monthStart),
-                '${row.submittedReservations}',
-                '${row.completedOccurrences}',
-                '${(row.utilisationFraction * 100).toStringAsFixed(1)}%',
-                _peso(row.netRevenueCentavos),
+                'Month',
+                'Submitted',
+                'Completed',
+                'Utilisation',
+                'Net revenue',
               ],
-          ]),
-        ],
+              for (final row in snapshot.monthlyStatistics)
+                [
+                  _month(row.monthStart),
+                  '${row.submittedReservations}',
+                  '${row.completedOccurrences}',
+                  '${(row.utilisationFraction * 100).toStringAsFixed(1)}%',
+                  _peso(row.netRevenueCentavos),
+                ],
+            ]),
+          ],
+        ] else
+          pw.Text(
+            'Revenue is restricted to external administrators.',
+            style: const pw.TextStyle(fontSize: 9),
+          ),
         pw.SizedBox(height: 16),
         _sectionTitle('Demand', semiBold),
         pw.Text('Legend: 0 none, low, medium, and peak demand by count.'),

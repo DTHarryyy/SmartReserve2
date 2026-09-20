@@ -25,12 +25,14 @@ class _AmenityEdit {
     this.internalRow,
     this.externalRow,
     this.quantityRequired = false,
+    this.requiresPermitMapping = true,
   });
   String name;
   String price;
   String? internalRow;
   String? externalRow;
   bool quantityRequired;
+  bool requiresPermitMapping;
 }
 
 class _FacilityConfigurationDialog extends StatefulWidget {
@@ -109,6 +111,7 @@ class _FacilityConfigurationDialogState
           internalRow: amenity.internalPermitRowCode,
           externalRow: amenity.externalPermitRowCode,
           quantityRequired: amenity.permitQuantityRequired,
+          requiresPermitMapping: amenity.requiresPermitMapping,
         ),
     ];
     _internalFacilityRow = facility.internalPermitRowCode;
@@ -197,6 +200,7 @@ class _FacilityConfigurationDialogState
                   ),
                   DropdownButtonFormField<String>(
                     initialValue: _internalFacilityRow,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Internal facility row',
                     ),
@@ -210,7 +214,10 @@ class _FacilityConfigurationDialogState
                             .map(
                               (entry) => DropdownMenuItem(
                                 value: entry.key,
-                                child: Text(entry.value),
+                                child: Text(
+                                  entry.value,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             )
                             .toList(),
@@ -220,6 +227,7 @@ class _FacilityConfigurationDialogState
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
                     initialValue: _externalFacilityRow,
+                    isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'External facility row',
                     ),
@@ -234,7 +242,10 @@ class _FacilityConfigurationDialogState
                             .map(
                               (entry) => DropdownMenuItem(
                                 value: entry.key,
-                                child: Text(entry.value),
+                                child: Text(
+                                  entry.value,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             )
                             .toList(),
@@ -294,76 +305,109 @@ class _FacilityConfigurationDialogState
                             contentPadding: EdgeInsets.zero,
                             dense: true,
                             title: const Text(
-                              'Require a requested quantity on the permit',
+                              'Requires an official permit-row mapping',
                             ),
-                            value: _amenities[index].quantityRequired,
+                            subtitle: const Text(
+                              'Off for general comfort amenities (Wi-Fi, '
+                              'parking, aircon, ...) that never appear on the '
+                              'official permit form. On for real event '
+                              'equipment (sound system, projector, tables & '
+                              'chairs, ...).',
+                            ),
+                            value: _amenities[index].requiresPermitMapping,
                             onChanged: (value) => setState(
-                              () => _amenities[index].quantityRequired =
-                                  value ?? false,
+                              () => _amenities[index].requiresPermitMapping =
+                                  value ?? true,
                             ),
                           ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  initialValue: _amenities[index].internalRow,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Internal form row',
-                                  ),
-                                  items:
-                                      const {
-                                            'sound_system': 'Sound System',
-                                            'overhead_projector':
-                                                'Overhead Projector',
-                                            'lcd_accessories':
-                                                'LCD and Accessories',
-                                            'other': 'Others',
-                                          }.entries
-                                          .map(
-                                            (entry) => DropdownMenuItem(
-                                              value: entry.key,
-                                              child: Text(entry.value),
-                                            ),
-                                          )
-                                          .toList(),
-                                  onChanged: (value) =>
-                                      _amenities[index].internalRow = value,
-                                ),
+                          if (_amenities[index].requiresPermitMapping) ...[
+                            CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              title: const Text(
+                                'Require a requested quantity on the permit',
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: DropdownButtonFormField<String>(
-                                  initialValue: _amenities[index].externalRow,
-                                  decoration: const InputDecoration(
-                                    labelText: 'External form row',
-                                  ),
-                                  items:
-                                      const {
-                                            'tables_chairs': 'Tables/chairs',
-                                            'lcd_projector': 'LCD Projector',
-                                            'avr': 'AVR',
-                                            'led_video_wall': 'LED Video Wall',
-                                            'accommodation': 'Accomodation',
-                                            'love_hall': 'Love Hall',
-                                            'other': 'Others',
-                                          }.entries
-                                          .map(
-                                            (entry) => DropdownMenuItem(
-                                              value: entry.key,
-                                              child: Text(entry.value),
-                                            ),
-                                          )
-                                          .toList(),
-                                  onChanged: (value) => setState(() {
-                                    _amenities[index].externalRow = value;
-                                    if (value == 'tables_chairs') {
-                                      _amenities[index].quantityRequired = true;
-                                    }
-                                  }),
-                                ),
+                              value: _amenities[index].quantityRequired,
+                              onChanged: (value) => setState(
+                                () => _amenities[index].quantityRequired =
+                                    value ?? false,
                               ),
-                            ],
-                          ),
+                            ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: _amenities[index].internalRow,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Internal form row',
+                                    ),
+                                    items:
+                                        const {
+                                              'sound_system': 'Sound System',
+                                              'overhead_projector':
+                                                  'Overhead Projector',
+                                              'lcd_accessories':
+                                                  'LCD and Accessories',
+                                              'other': 'Others',
+                                            }.entries
+                                            .map(
+                                              (entry) => DropdownMenuItem(
+                                                value: entry.key,
+                                                child: Text(
+                                                  entry.value,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                    onChanged: (value) =>
+                                        _amenities[index].internalRow = value,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: _amenities[index].externalRow,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'External form row',
+                                    ),
+                                    items:
+                                        const {
+                                              'tables_chairs': 'Tables/chairs',
+                                              'lcd_projector': 'LCD Projector',
+                                              'avr': 'AVR',
+                                              'led_video_wall':
+                                                  'LED Video Wall',
+                                              'accommodation': 'Accomodation',
+                                              'love_hall': 'Love Hall',
+                                              'other': 'Others',
+                                            }.entries
+                                            .map(
+                                              (entry) => DropdownMenuItem(
+                                                value: entry.key,
+                                                child: Text(
+                                                  entry.value,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                    onChanged: (value) => setState(() {
+                                      _amenities[index].externalRow = value;
+                                      if (value == 'tables_chairs') {
+                                        _amenities[index].quantityRequired =
+                                            true;
+                                      }
+                                    }),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -524,7 +568,8 @@ class _FacilityConfigurationDialogState
         setState(() => _error = 'Each amenity needs a name and valid price.');
         return;
       }
-      if (edit.internalRow == null || edit.externalRow == null) {
+      if (edit.requiresPermitMapping &&
+          (edit.internalRow == null || edit.externalRow == null)) {
         setState(
           () => _error =
               'Every amenity needs internal and external permit-row mappings.',
@@ -536,9 +581,14 @@ class _FacilityConfigurationDialogState
           id: 'draft-$index',
           name: edit.name.trim(),
           priceCentavos: (price * 100).round(),
-          internalPermitRowCode: edit.internalRow,
-          externalPermitRowCode: edit.externalRow,
+          internalPermitRowCode: edit.requiresPermitMapping
+              ? edit.internalRow
+              : null,
+          externalPermitRowCode: edit.requiresPermitMapping
+              ? edit.externalRow
+              : null,
           permitQuantityRequired: edit.quantityRequired,
+          requiresPermitMapping: edit.requiresPermitMapping,
         ),
       );
     }

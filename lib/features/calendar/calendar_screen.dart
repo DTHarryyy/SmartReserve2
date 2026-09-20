@@ -80,6 +80,9 @@ class _CalendarFrameState extends State<_CalendarFrame> {
     final data = _CalendarData.fromState(state, widget.surface);
     final compact = MediaQuery.sizeOf(context).width < SR.tabletMin;
     final selected = data.selectedEvent;
+    final canOpenSelectedRequest =
+        widget.surface == _CalendarSurface.admin &&
+        (selected?.canOpenRequest ?? false);
     final calendar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -114,7 +117,7 @@ class _CalendarFrameState extends State<_CalendarFrame> {
               child: _MobileDetails(
                 event: selected,
                 onClose: () => data.onSelectEvent?.call(null),
-                onOpenRequest: selected.canOpenRequest
+                onOpenRequest: canOpenSelectedRequest
                     ? () => state.openRequestFromCalendar(selected)
                     : null,
               ),
@@ -142,7 +145,7 @@ class _CalendarFrameState extends State<_CalendarFrame> {
                 child: _EventDetails(
                   event: selected,
                   onClose: () => data.onSelectEvent?.call(null),
-                  onOpenRequest: selected.canOpenRequest
+                  onOpenRequest: canOpenSelectedRequest
                       ? () => state.openRequestFromCalendar(selected)
                       : null,
                 ),
@@ -198,12 +201,13 @@ class _CalendarData {
         error: state.userCalendarError,
         query: '',
         usesDefaultStatusFilters: true,
+        selectedEvent: state.selectedUserCalendarEvent,
         onViewMode: state.setUserCalendarViewMode,
         onFacilityFilter: state.setUserCalendarFacilityFilter,
         onNavigate: state.navigateUserCalendar,
         onToday: state.goToUserCalendarToday,
         onSelectDate: state.selectUserCalendarDate,
-        onSelectEvent: null,
+        onSelectEvent: state.selectUserCalendarEvent,
         onRefresh: state.refreshUserCalendar,
         resetFilters: () =>
             state.setUserCalendarFacilityFilter('All facilities'),
@@ -456,7 +460,7 @@ class _Toolbar extends StatelessWidget {
                       _compactRangeLabel(data),
                       maxLines: 1,
                       textAlign: TextAlign.center,
-                      style: sans(11.5, w: 500, color: context.srColors.ink2),
+                      style: sans(13.5, w: 500, color: context.srColors.ink2),
                     ),
                   ),
                 ),
@@ -609,7 +613,7 @@ class _ModeTab extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: sans(
-            compact ? 10.5 : 11.5,
+            compact ? 12.5 : 11.5,
             w: 500,
             color: selected ? context.srColors.ink : context.srColors.ink4,
           ),
@@ -1063,7 +1067,7 @@ class _CompactAgenda extends StatelessWidget {
                         child: Text(
                           event.timeLabel,
                           style: mono(
-                            10.5,
+                            12.5,
                             w: 500,
                             color: context.srColors.ink3,
                           ),
@@ -1076,7 +1080,7 @@ class _CompactAgenda extends StatelessWidget {
                           children: [
                             Text(
                               event.facility,
-                              style: sans(12.5, w: 600, height: 1.35),
+                              style: sans(14.5, w: 600, height: 1.35),
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -1084,7 +1088,7 @@ class _CompactAgenda extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: sans(
-                                11,
+                                13,
                                 height: 1.45,
                                 color: context.srColors.ink4,
                               ),
@@ -1129,7 +1133,7 @@ class _MonthView extends StatelessWidget {
               context,
               start,
               events,
-              compact ? 62 : (narrow ? 104 : 118),
+              compact ? 68 : (narrow ? 104 : 118),
             ),
           );
           return narrow
@@ -1185,6 +1189,7 @@ class _MonthView extends StatelessWidget {
                     child: _MonthCell(
                       day: start.add(Duration(days: week * 7 + index)),
                       currentMonth: data.anchor.month,
+                      compact: compact,
                       events: [
                         for (final event in events)
                           if (event.overlapsDay(
@@ -1216,12 +1221,14 @@ class _MonthCell extends StatelessWidget {
     required this.events,
     required this.onSelectDay,
     required this.onSelectEvent,
+    required this.compact,
   });
   final DateTime day;
   final int currentMonth;
   final List<CalendarEvent> events;
   final VoidCallback onSelectDay;
   final ValueChanged<CalendarEvent>? onSelectEvent;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1253,7 +1260,7 @@ class _MonthCell extends StatelessWidget {
                 child: Text(
                   '${day.day}',
                   style: mono(
-                    10,
+                    compact ? 12 : 10,
                     w: 500,
                     color: _isToday(day)
                         ? context.srColors.surface
@@ -1629,7 +1636,11 @@ class _FacilityRow extends StatelessWidget {
                 facility,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sans(11.5, w: 500, color: context.srColors.ink2),
+                style: sans(
+                  SR.isCompact(MediaQuery.sizeOf(context).width) ? 13 : 11.5,
+                  w: 500,
+                  color: context.srColors.ink2,
+                ),
               ),
             ),
           ),
@@ -1703,36 +1714,35 @@ class _EventChip extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: onTap != null,
-    label: '${event.effectiveStatusLabel}: ${event.facility}',
-    child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 4 : 6,
-          vertical: compact ? 2 : 4,
-        ),
-        decoration: BoxDecoration(
-          color: event.state.background,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: event.state.border),
-        ),
-        child: Text(
-          compact
-              ? '${event.startsAt.hour.toString().padLeft(2, '0')}:${event.startsAt.minute.toString().padLeft(2, '0')} ${event.eventChipLabel}'
-              : event.eventChipLabel,
-          maxLines: compact ? 1 : 2,
-          overflow: TextOverflow.ellipsis,
-          style: sans(
-            compact ? 8.7 : 10,
-            w: 600,
-            color: event.state.foreground,
+  Widget build(BuildContext context) {
+    final tone = event.isMine ? SrTone.success : event.state.tone;
+    return Semantics(
+      button: onTap != null,
+      label: '${event.effectiveStatusLabel}: ${event.facility}',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 4 : 6,
+            vertical: compact ? 2 : 4,
+          ),
+          decoration: BoxDecoration(
+            color: tone.tint,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: tone.line),
+          ),
+          child: Text(
+            compact
+                ? '${event.startsAt.hour.toString().padLeft(2, '0')}:${event.startsAt.minute.toString().padLeft(2, '0')} ${event.eventChipLabel}'
+                : event.eventChipLabel,
+            maxLines: compact ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: sans(compact ? 10.5 : 10, w: 600, color: tone.ink),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _EventDetails extends StatelessWidget {
@@ -1763,7 +1773,15 @@ class _EventDetails extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 15),
-      _StatusBadge(event: event),
+      Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _StatusBadge(event: event),
+          if (event.isMine) const _MineBadge(),
+        ],
+      ),
       const SizedBox(height: 12),
       Text(event.facility, style: sans(16, w: 600, tracking: -.015)),
       if (event.building.isNotEmpty || event.room.isNotEmpty) ...[
@@ -1803,6 +1821,12 @@ class _EventDetails extends StatelessWidget {
           kind: SrButtonKind.primary,
           expand: true,
           onPressed: onOpenRequest,
+        )
+      else if (event.privacyMasked)
+        Text(
+          'Only the person who made this reservation can see its full '
+          'details.',
+          style: sans(11, height: 1.5, color: context.srColors.muted),
         )
       else
         Text(
@@ -1850,6 +1874,23 @@ class _MobileDetails extends StatelessWidget {
         ),
       ),
     ],
+  );
+}
+
+class _MineBadge extends StatelessWidget {
+  const _MineBadge();
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: SrTone.success.tint,
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: SrTone.success.line),
+    ),
+    child: Text(
+      'Your reservation',
+      style: sans(10.5, w: 600, color: SrTone.success.ink),
+    ),
   );
 }
 

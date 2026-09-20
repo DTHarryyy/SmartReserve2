@@ -61,45 +61,50 @@ String approvalPerformanceCsv(
 String revenueCsv(
   ReportSnapshot snapshot, {
   required String exportedBy,
+  bool canViewRevenue = true,
   bool stale = false,
 }) => [
   ..._header(snapshot, exportedBy: exportedBy, stale: stale),
   'Section,Revenue',
-  'metric,value_centavos,value_php',
-  [
-    'gross_verified',
-    snapshot.revenue.grossVerifiedCentavos,
-    _money(snapshot.revenue.grossVerifiedCentavos),
-  ].join(','),
-  [
-    'refunds',
-    snapshot.revenue.refundsCentavos,
-    _money(snapshot.revenue.refundsCentavos),
-  ].join(','),
-  [
-    'net_revenue',
-    snapshot.revenue.netRevenueCentavos,
-    _money(snapshot.revenue.netRevenueCentavos),
-  ].join(','),
-  [
-    'outstanding',
-    snapshot.revenue.outstandingCentavos,
-    _money(snapshot.revenue.outstandingCentavos),
-  ].join(','),
-  '',
-  'month,submitted_reservations,confirmed_reservations,completed_occurrences,booked_hours,utilisation_percent,gross_centavos,refunds_centavos,net_centavos',
-  for (final row in snapshot.monthlyStatistics)
+  if (!canViewRevenue)
+    'Revenue is restricted to external administrators.'
+  else ...[
+    'metric,value_centavos,value_php',
     [
-      _cell(_month(row.monthStart)),
-      row.submittedReservations,
-      row.confirmedReservations,
-      row.completedOccurrences,
-      row.bookedHours.toStringAsFixed(2),
-      (row.utilisationFraction * 100).toStringAsFixed(2),
-      row.grossVerifiedCentavos,
-      row.refundsCentavos,
-      row.netRevenueCentavos,
+      'gross_verified',
+      snapshot.revenue.grossVerifiedCentavos,
+      _money(snapshot.revenue.grossVerifiedCentavos),
     ].join(','),
+    [
+      'refunds',
+      snapshot.revenue.refundsCentavos,
+      _money(snapshot.revenue.refundsCentavos),
+    ].join(','),
+    [
+      'net_revenue',
+      snapshot.revenue.netRevenueCentavos,
+      _money(snapshot.revenue.netRevenueCentavos),
+    ].join(','),
+    [
+      'outstanding',
+      snapshot.revenue.outstandingCentavos,
+      _money(snapshot.revenue.outstandingCentavos),
+    ].join(','),
+    '',
+    'month,submitted_reservations,confirmed_reservations,completed_occurrences,booked_hours,utilisation_percent,gross_centavos,refunds_centavos,net_centavos',
+    for (final row in snapshot.monthlyStatistics)
+      [
+        _cell(_month(row.monthStart)),
+        row.submittedReservations,
+        row.confirmedReservations,
+        row.completedOccurrences,
+        row.bookedHours.toStringAsFixed(2),
+        (row.utilisationFraction * 100).toStringAsFixed(2),
+        row.grossVerifiedCentavos,
+        row.refundsCentavos,
+        row.netRevenueCentavos,
+      ].join(','),
+  ],
 ].join('\n');
 
 String dataQualityCsv(List<QualityIssue> issues) => [
@@ -120,6 +125,7 @@ String fullReportCsv({
   required List<QualityIssue> issues,
   required String exportedBy,
   required bool canViewPerAdmin,
+  required bool canViewRevenue,
   bool stale = false,
   String? staleReason,
 }) => [
@@ -132,7 +138,12 @@ String fullReportCsv({
   '',
   utilisationCsv(snapshot, exportedBy: exportedBy, stale: stale),
   '',
-  revenueCsv(snapshot, exportedBy: exportedBy, stale: stale),
+  revenueCsv(
+    snapshot,
+    exportedBy: exportedBy,
+    canViewRevenue: canViewRevenue,
+    stale: stale,
+  ),
   '',
   demandCsv(snapshot, exportedBy: exportedBy, stale: stale),
   '',

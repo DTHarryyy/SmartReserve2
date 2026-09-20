@@ -19,6 +19,7 @@ class AssistantAiReply {
     this.toolsUsed = const [],
     this.slotFill,
     this.proposal,
+    this.facilityIds = const [],
     this.summary,
     this.degraded = false,
     this.failureCode,
@@ -35,6 +36,11 @@ class AssistantAiReply {
 
   /// A booking or cancellation the model proposed. Never executed here.
   final Map<String, dynamic>? proposal;
+
+  /// Facility ids this turn's tool calls surfaced (from recommend_facilities
+  /// or get_available_facilities), so the caller can render them as real,
+  /// tappable cards instead of the model enumerating them in prose.
+  final List<String> facilityIds;
 
   /// A rolling precis of the conversation so far, produced by the model on
   /// the same call that answered. Sent back on the next turn so history can
@@ -163,6 +169,9 @@ AssistantAiReply parseAssistantAiReply(Map<String, dynamic> data) {
     proposal: data['proposal'] is Map
         ? Map<String, dynamic>.from(data['proposal'] as Map)
         : null,
+    facilityIds: [
+      for (final id in data['facility_ids'] as List? ?? const []) '$id',
+    ],
     summary: data['summary'] is String && (data['summary'] as String).trim().isNotEmpty
         ? (data['summary'] as String).trim()
         : null,

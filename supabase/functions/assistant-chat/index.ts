@@ -25,6 +25,7 @@ import {
   cacheKeyFor,
   type ChatTurn,
   checkReply,
+  collectFacilityIds,
   extractChannels,
   estimateMessagesTokens,
   isCacheable,
@@ -63,7 +64,9 @@ const timeoutMs = parsePositiveInt(
 );
 const maxCompletionTokens = parsePositiveInt(
   Deno.env.get("ASSISTANT_MAX_COMPLETION_TOKENS"),
-  300,
+  // 300 was tight enough to truncate a five-item facility list mid-sentence
+  // before tidyReply ever saw it -- raised so a full list of matches fits.
+  500,
   64,
   1024,
 );
@@ -341,6 +344,7 @@ Deno.serve(async (request) => {
   // 6. The bounded tool loop.
   const toolsUsed: string[] = [];
   const toolResultsJson: string[] = [];
+  const facilityIds: string[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
   let reply = "";
@@ -374,6 +378,9 @@ Deno.serve(async (request) => {
         const payload = await dispatch(call, userClient, toolContext);
         if (payload.name) toolsUsed.push(payload.name);
         toolResultsJson.push(payload.json);
+        for (const id of payload.facilityIds) {
+          if (!facilityIds.includes(id)) facilityIds.push(id);
+        }
         messages.push({
           role: "tool",
           tool_call_id: call.id,
@@ -456,7 +463,12 @@ Deno.serve(async (request) => {
 
   // Store only if nothing user-scoped was consulted. `isCacheable` is the
   // guard; getting it wrong would serve one person's balance to another.
-  if (isCacheable(toolsUsed) && !channels.slotFill && !channels.proposal) {
+  // Facility cards are also excluded: the cache stores text only, so a hit
+  // would replay the one-line answer with no cards beneath it.
+  if (
+    isCacheable(toolsUsed) && !channels.slotFill && !channels.proposal &&
+    facilityIds.length === 0
+  ) {
     await writeCache(
       admin,
       cacheKey,
@@ -508,6 +520,9 @@ Deno.serve(async (request) => {
     tools_used: toolsUsed,
     slot_fill: channels.slotFill,
     proposal: channels.proposal,
+    // Facility ids this turn surfaced, so the client can render them as
+    // tappable cards instead of the model enumerating them in prose.
+    facility_ids: facilityIds,
     // Echoed so the client can send it back next turn without a read.
     summary: channels.summary,
     usage: {
@@ -521,7 +536,7 @@ async function dispatch(
   call: ProviderToolCall,
   client: RpcClient,
   context: ToolContext,
-): Promise<{ name: string | null; json: string }> {
+): Promise<{ name: string | null; json: string; facilityIds: string[] }> {
   try {
     const validated = validateToolCall(
       call.function.name,
@@ -545,6 +560,11 @@ async function dispatch(
     return {
       name: validated.name,
       json: JSON.stringify(outcome.result).slice(0, 4000),
+      // Lets the client show the facilities this turn surfaced as real,
+      // tappable cards instead of the model enumerating them in prose.
+      facilityIds: outcome.ok
+        ? collectFacilityIds(validated.name, outcome.result)
+        : [],
     };
   } catch (error) {
     const code = error instanceof AssistantProviderError
@@ -556,6 +576,7 @@ async function dispatch(
         error: code,
         note: "That request was not valid. Ask the user instead of retrying.",
       }),
+      facilityIds: [],
     };
   }
 }

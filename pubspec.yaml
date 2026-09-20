@@ -32,7 +32,7 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.3
 
 flutter_launcher_icons:
-  image_path: "assets/smartreserve logo.png"
+  image_path: "assets/smart reserve logo.png"
   android: true
   ios: true
   windows:
@@ -41,7 +41,7 @@ flutter_launcher_icons:
     generate: true
   web:
     generate: true
-    image_path: "assets/smartreserve logo.png"
+    image_path: "assets/smart reserve logo.png"
     background_color: "#ffffff"
     theme_color: "#6367FF"
 
@@ -50,6 +50,8 @@ flutter:
 
   assets:
     - assets/
+    - assets/smart reserve logo.png
+    - assets/smart reserve logo transpatent.png
 
   fonts:
     - family: Poppins

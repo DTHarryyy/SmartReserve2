@@ -8,6 +8,7 @@ import {
 import {
   AssistantProviderError,
   checkReply,
+  collectFacilityIds,
   compactHistory,
   estimateTokens,
   extractChannels,
@@ -19,6 +20,8 @@ import {
   maxHistoryTurns,
   maxMessageChars,
   maxReplyChars,
+  maxReplyLines,
+  maxReplySentences,
   maxSummaryChars,
   normalizeQuestion,
   permitBlockerMessage,
@@ -322,12 +325,72 @@ Deno.test("an empty reply is rejected", () => {
   assertEquals(checkReply("   ", [toolResult]).code, "empty_reply");
 });
 
-Deno.test("tidyReply collapses whitespace and clips to the sentence budget", () => {
-  const tidied = tidyReply("One.  Two.\n\nThree. Four. Five. Six. Seven.");
-  assertFalse(tidied.includes("\n"));
+Deno.test("tidyReply collapses inline whitespace and clips a single paragraph to the sentence budget", () => {
+  const tidied = tidyReply(
+    "One.  Two. Three. Four. Five. Six. Seven. Eight.",
+  );
   assertFalse(tidied.includes("  "));
-  assertFalse(tidied.includes("Seven"));
+  assertFalse(tidied.includes("Eight"));
   assert(tidied.length <= maxReplyChars);
+});
+
+Deno.test("tidyReply keeps a numbered list intact, one item per line", () => {
+  const list = [
+    "Here are facilities for 20 people:",
+    "1. Volleyball Court - Capacity 30",
+    "2. Basketball Court - Capacity 50",
+    "3. Function Hall - Capacity 60",
+    "4. Audio Visual Room - Capacity 100",
+    "5. Gymnasium - Capacity 200",
+  ].join("\n");
+  const tidied = tidyReply(list);
+  assertEquals(tidied.split("\n").length, 6);
+  assert(tidied.includes("5. Gymnasium"));
+});
+
+Deno.test("tidyReply clips a long list by line, never mid-item", () => {
+  const lines = ["Intro line:"];
+  for (let i = 1; i <= 20; i++) lines.push(`${i}. Facility ${i}`);
+  const tidied = tidyReply(lines.join("\n"));
+  const tidiedLines = tidied.split("\n");
+  assert(tidiedLines.length <= maxReplyLines);
+  assertFalse(tidied.includes("Facility 20"));
+  // Every surviving line is a whole item, never a fragment cut off mid-word.
+  for (const line of tidiedLines) {
+    assertFalse(line.endsWith("Facility"));
+  }
+});
+
+Deno.test("tidyReply strips markdown the bubble cannot render", () => {
+  const tidied = tidyReply(
+    "**Volleyball Court** has *great* parking and __full__ Wi-Fi.",
+  );
+  assertFalse(tidied.includes("*"));
+  assertFalse(tidied.includes("_"));
+  assert(tidied.includes("Volleyball Court"));
+});
+
+Deno.test("tidyReply drops markdown headings", () => {
+  const tidied = tidyReply("# Facilities\nVolleyball Court is free.");
+  assertFalse(tidied.includes("#"));
+});
+
+Deno.test("tidyReply normalises dash and star bullets, leaves numbered lists alone", () => {
+  const tidied = tidyReply(
+    "Options:\n- Volleyball Court\n* Basketball Court\n1. Function Hall",
+  );
+  const lines = tidied.split("\n");
+  assert(lines.includes("• Volleyball Court"));
+  assert(lines.includes("• Basketball Court"));
+  assert(lines.includes("1. Function Hall"));
+});
+
+Deno.test("tidyReply still strips a trailing json fence", () => {
+  const tidied = tidyReply(
+    'The AVR is free at 1pm.\n```json\n{"proposal":{"kind":"booking"}}\n```',
+  );
+  assertFalse(tidied.includes("proposal"));
+  assertFalse(tidied.includes("```"));
 });
 
 // ---------------------------------------------------------------------------
@@ -732,4 +795,116 @@ Deno.test("a summary is only asked for once history outgrows the window", () => 
   };
   assertFalse(buildSystemPrompt(base).includes("summary"));
   assert(buildSystemPrompt({ ...base, wantsSummary: true }).includes("summary"));
+});
+
+// ---------------------------------------------------------------------------
+// Facility ids surfaced for card rendering
+// ---------------------------------------------------------------------------
+
+Deno.test("collectFacilityIds reads ids from a facility-listing tool", () => {
+  const result = { facilities: [{ id: uuidA }, { id: uuidB }] };
+  assertEquals(collectFacilityIds("recommend_facilities", result), [
+    uuidA,
+    uuidB,
+  ]);
+  assertEquals(collectFacilityIds("get_available_facilities", result), [
+    uuidA,
+    uuidB,
+  ]);
+});
+
+Deno.test("collectFacilityIds ignores every other tool", () => {
+  const result = { facilities: [{ id: uuidA }] };
+  assertEquals(collectFacilityIds("get_facility_details", result), []);
+  assertEquals(collectFacilityIds("get_my_reservations", result), []);
+});
+
+Deno.test("collectFacilityIds tolerates a malformed or empty result", () => {
+  assertEquals(collectFacilityIds("recommend_facilities", null), []);
+  assertEquals(collectFacilityIds("recommend_facilities", {}), []);
+  assertEquals(
+    collectFacilityIds("recommend_facilities", { facilities: "not a list" }),
+    [],
+  );
+  assertEquals(
+    collectFacilityIds("recommend_facilities", {
+      facilities: [{ id: "not-a-uuid" }, { name: "no id field" }],
+    }),
+    [],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Prompt/validator drift guard
+//
+// prompt.ts documents the fenced-JSON channel syntax in prose so the model
+// knows the channel exists; contract.ts's validators are the only ground
+// truth for what is actually accepted. This test pulls every example block
+// out of the built system prompt and runs it through the real validators, so
+// the two cannot silently drift apart.
+// ---------------------------------------------------------------------------
+
+Deno.test("every example JSON block in the system prompt validates for real", () => {
+  const prompt = buildSystemPrompt({
+    lane: "internal",
+    pricingAudience: "student",
+    isAdmin: false,
+    todayIso: "2026-09-20",
+    inBookingFlow: true,
+  });
+
+  // The prompt writes <uuid> and YYYY-MM-DD as human-readable placeholders
+  // for the model, not literal values -- swapped for real ones so validation
+  // checks shape and bounds rather than failing on the placeholder itself.
+  const withRealValues = prompt.replace(/<uuid>/g, uuidA).replace(
+    /YYYY-MM-DD/g,
+    "2026-09-20",
+  );
+  const blocks = withRealValues.match(/```json\s*([\s\S]*?)```/g) ?? [];
+  assert(blocks.length >= 3, "expected proposal + slot-fill examples");
+
+  let sawProposal = false;
+  let sawSlotFill = false;
+  for (const block of blocks) {
+    const inner = block.replace(/```json\s*/, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(inner) as Record<string, unknown>;
+    if (parsed.proposal) {
+      validateProposal(parsed.proposal); // throws on the real mismatch
+      sawProposal = true;
+    }
+    if (parsed.fill_booking_slot) {
+      validateSlotFill(parsed.fill_booking_slot);
+      sawSlotFill = true;
+    }
+  }
+  assert(sawProposal, "prompt must show a valid proposal example");
+  assert(sawSlotFill, "prompt must show a valid fill_booking_slot example");
+});
+
+Deno.test("every inline slot-fill example in the booking-flow prompt validates too", () => {
+  const prompt = buildSystemPrompt({
+    lane: "internal",
+    pricingAudience: "student",
+    isAdmin: false,
+    todayIso: "2026-09-20",
+    inBookingFlow: true,
+  });
+
+  // The facility example rides its own fenced block (covered above); date,
+  // time, heads and purpose are shown inline as bare objects. None of these
+  // slot shapes nest an object, so a flat, non-greedy brace match is exact.
+  const withRealValues = prompt.replace(/<uuid>/g, uuidA).replace(
+    /YYYY-MM-DD/g,
+    "2026-09-20",
+  );
+  const inline = withRealValues.match(/\{"slot":"[a-z]+"[^{}]*\}/g) ?? [];
+  const slotsSeen = new Set<string>();
+  for (const raw of inline) {
+    const parsed = validateSlotFill(JSON.parse(raw));
+    slotsSeen.add(parsed.slot);
+  }
+  assertEquals(
+    slotsSeen,
+    new Set(["facility", "date", "time", "heads", "purpose"]),
+  );
 });

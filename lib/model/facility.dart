@@ -82,6 +82,7 @@ class FacilityAmenity {
     this.internalPermitRowCode,
     this.externalPermitRowCode,
     this.permitQuantityRequired = false,
+    this.requiresPermitMapping = true,
   });
 
   final String id;
@@ -93,6 +94,7 @@ class FacilityAmenity {
   final String? internalPermitRowCode;
   final String? externalPermitRowCode;
   final bool permitQuantityRequired;
+  final bool requiresPermitMapping;
 }
 
 class FacilityAudienceRate {

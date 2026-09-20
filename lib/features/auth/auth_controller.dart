@@ -598,6 +598,8 @@ class AuthController extends ChangeNotifier {
           'Check your email to confirm this account, then sign in.',
         AuthFailureKind.emailAlreadyRegistered =>
           'An account already uses that email address. Sign in instead.',
+        AuthFailureKind.emailSendFailed =>
+          'We couldn’t send that email right now. Please try again in a few minutes or contact an Internal Admin.',
         AuthFailureKind.rateLimited =>
           'Too many sign-in attempts. Wait a few minutes and try again.',
         AuthFailureKind.network =>

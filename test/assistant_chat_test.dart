@@ -74,6 +74,32 @@ void main() {
     expect(find.bySemanticsLabel('Message the assistant'), findsOneWidget);
   });
 
+  test('opening the chatbot again starts a fresh session', () async {
+    final state = AppState();
+    final controller = AssistantController();
+
+    await controller.initialize(state, freshVisit: true);
+    await controller.send('Book a room', state);
+    expect(controller.stage, isNot(AssistantStage.idle));
+    expect(
+      controller.messages.any(
+        (message) => message.speaker == AssistantSpeaker.user,
+      ),
+      isTrue,
+    );
+
+    await controller.initialize(state, freshVisit: true);
+
+    expect(controller.stage, AssistantStage.idle);
+    expect(controller.conversationId, isNull);
+    expect(
+      controller.messages.where(
+        (message) => message.speaker == AssistantSpeaker.user,
+      ),
+      isEmpty,
+    );
+  });
+
   testWidgets('a model outage is stated once, not hidden', (tester) async {
     // aiDegraded was set by the controller and read by nothing: an outage was
     // completely invisible, so the user saw a blunter answer with no reason

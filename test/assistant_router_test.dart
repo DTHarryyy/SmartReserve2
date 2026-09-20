@@ -235,6 +235,62 @@ void main() {
     });
   });
 
+  group('an unresolved facility request', () {
+    test(
+        'a booking whose facility could not be resolved escalates when the '
+        'model is available', () {
+      final route = _route(
+        'book a pickleball court',
+        context: const AssistantRouteContext(
+          aiAvailable: true,
+          facilityRequestUnresolved: true,
+        ),
+      );
+      expect(route.kind, AssistantRouteKind.escalate);
+      expect(route.reason, EscalationReason.unresolvedFacilityRequest);
+    });
+
+    test('the same request stays rule-handled with the model unavailable',
+        () {
+      final route = _route(
+        'book a pickleball court',
+        context: const AssistantRouteContext(
+          aiAvailable: false,
+          facilityRequestUnresolved: true,
+        ),
+      );
+      expect(route.kind, AssistantRouteKind.ruleHandled);
+      expect(route.intent, AssistantIntent.book);
+    });
+
+    test('a bare "book a room" never escalates -- nothing was unresolved',
+        () {
+      final route = _route(
+        'book a room',
+        context: const AssistantRouteContext(
+          aiAvailable: true,
+          facilityRequestUnresolved: false,
+        ),
+      );
+      expect(route.kind, AssistantRouteKind.ruleHandled);
+      expect(route.intent, AssistantIntent.book);
+    });
+
+    test('an in-progress booking still escalates as unparsedBookingSlot, '
+        'not this new reason', () {
+      final route = routeMessage(
+        parseMessage('sa makalawa siguro tanghali', nowWall: _now),
+        context: const AssistantRouteContext(
+          inBookingFlow: true,
+          aiAvailable: true,
+          facilityRequestUnresolved: true,
+        ),
+      );
+      expect(route.kind, AssistantRouteKind.escalate);
+      expect(route.reason, EscalationReason.unparsedBookingSlot);
+    });
+  });
+
   group('out of scope', () {
     test('non-reservation subjects are refused without a model call', () {
       for (final text in [

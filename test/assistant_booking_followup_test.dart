@@ -127,6 +127,52 @@ void main() {
       // to be corrected on.
       expect((draft['facility'] as Map)['capacity'], isNotNull);
     });
+
+    test(
+        'a full proposal, not just a single slot value, jumps straight to '
+        'the confirm card', () async {
+      // The user answered the headcount question by restating the whole
+      // booking at once. The model reads that as a proposal rather than a
+      // single slot fill; the controller should not still be asking for
+      // purpose next -- it should land wherever the now-complete draft says,
+      // which for a legal slot is the confirm card.
+      final facility = state.bookableFacilities.first;
+      // Walk forward to a day the facility is actually open -- the fixture
+      // runs Mon-Fri, and a bare "+7 days" lands on a weekend as often as not.
+      var day = campusNow().add(const Duration(days: 7));
+      while (!facility.opensOn(day)) {
+        day = day.add(const Duration(days: 1));
+      }
+      final client = _ScriptedAiClient([
+        AssistantAiReply(
+          text: 'Dito na tayo — 30 katao, org meeting.',
+          proposal: {
+            'kind': 'booking',
+            'facility_id': facility.id,
+            'day': dayKeyFor(day),
+            'start_hour': 8.0,
+            'end_hour': 10.0,
+            'heads': 30,
+            'purpose': 'Org meeting',
+          },
+        ),
+      ]);
+      final controller = bookingAt(AssistantStage.needHeads, client: client);
+
+      await controller.send(
+        'mga tatlumpu siguro kami, org meeting na rin',
+        state,
+      );
+
+      expect(client.calls, hasLength(1));
+      expect(controller.stage, AssistantStage.confirming);
+      expect(controller.draft.heads, 30);
+      expect(controller.draft.purpose, 'Org meeting');
+      expect(
+        controller.messages.any((m) => m.kind == AssistantMessageKind.confirm),
+        isTrue,
+      );
+    });
   });
 
   group('validators overrule the model', () {
@@ -296,3 +342,9 @@ void main() {
     });
   });
 }
+
+/// The `YYYY-MM-DD` form the proposal channel uses.
+String dayKeyFor(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}-'
+    '${day.month.toString().padLeft(2, '0')}-'
+    '${day.day.toString().padLeft(2, '0')}';
