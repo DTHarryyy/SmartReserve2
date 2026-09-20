@@ -252,6 +252,84 @@ Feedback submission remains valid if the worker, provider or schedule is
 disabled. Historical feedback can be queued later through the bounded
 backfill RPC after the new-feedback path has been observed.
 
+### The reservation assistant
+
+The in-app assistant answers reservation, payment, permit, availability,
+equipment and policy questions. Most of it never touches a model: a
+deterministic parser and a rule layer in the Flutter client resolve the common
+questions outright — what you have booked, what you owe, when it is due, why a
+permit is held up, which facility fits 200 people — and a knowledge base in
+Postgres answers policy. That path costs nothing and works offline of any
+provider.
+
+A cloud model is consulted only for a message the parser cannot classify: loose
+Taglish, an ambiguous reference, a phrasing no rule covers.
+
+The model never computes anything it could get wrong. Amounts and timestamps
+are formatted in Postgres and the edge function before it sees them, and
+availability arrives as a list of bookable windows from
+`assistant_facility_free_slots` — never as occupied windows for it to subtract,
+which is a calculation whose plausible answers are indistinguishable from its
+correct ones. Policy text is retrieved from `assistant_knowledge_base` and sent
+with the first request rather than waiting for the model to ask for it, which
+halves the cost of the commonest class of question.
+
+`assistant-chat` deploys with `ASSISTANT_ENABLED=false`; set these secrets
+before enabling it:
+
+```bash
+supabase secrets set ASSISTANT_LLM_PROVIDER=openai
+supabase secrets set OPENAI_API_KEY=...
+supabase secrets set ASSISTANT_MODEL=gpt-4o-mini
+supabase secrets set ASSISTANT_MAX_COMPLETION_TOKENS=300
+supabase secrets set ASSISTANT_MAX_INPUT_TOKENS=3000
+supabase secrets set ASSISTANT_PROVIDER_TIMEOUT_MS=15000
+supabase secrets set ASSISTANT_RATE_LIMIT_PER_HOUR=30
+supabase secrets set ASSISTANT_KB_VERSION=1
+supabase secrets set ASSISTANT_ENABLED=false
+```
+
+`ASSISTANT_KB_VERSION` is part of every cache key. Bump it after editing
+`assistant_knowledge_base` so cached answers that quoted the old wording are
+invalidated rather than served on. Only answers built purely from policy are
+ever cached, and the pricing audience is part of the key — an answer that
+touched any user-scoped tool is never stored.
+
+**What the assistant transmits, and what it does not.** This is a wider data
+class than the sentiment worker above, which sends only feedback text, so it is
+stated separately rather than folded into that commitment. When a question
+escalates, the model may receive: the user's message, the last six chat turns,
+reservation references and facility names, schedule times, peso amounts already
+formatted, lifecycle and payment statuses, permit blocker reasons, and policy
+text from the knowledge base. It never receives: full names, email addresses,
+student or employee numbers, addresses, contact numbers, payment reference
+numbers, proof-of-payment images, signatures, permit PDFs, or any identifier
+belonging to another account.
+
+That boundary is code, not policy. Every tool result passes through
+`redactForProvider` in `supabase/functions/assistant-chat/contract.ts`, and
+`contract_test.ts` asserts that no redacted field can survive a projection.
+Enable OpenAI Zero Data Retention and complete a fresh institutional privacy
+review — covering this wider data class, not the sentiment worker's — before
+setting `ASSISTANT_ENABLED=true`.
+
+Identity comes from the verified JWT and nothing else. Every tool read runs
+through a Supabase client carrying the caller's own token, so row-level
+security decides what comes back; the service-role key is used only for
+telemetry and rate-limit rows and is never passed to a tool handler. The model
+cannot run SQL, cannot reach a table directly, and cannot write anything: it
+may only propose a booking or a cancellation, which the app then applies
+through its existing confirm-card path after an explicit tap.
+
+Spend is visible in `assistant_llm_requests` — tokens, estimated cost, latency
+and outcome per request, with no message text. Cost is priced against the model
+that actually served the turn, so changing `ASSISTANT_MODEL` does not quietly
+keep reporting the old model's bill. Rows with `outcome = 'fallback'` are the
+backlog for new deterministic rules, grouped by `resolved_intent`, which is how
+model usage falls over time rather than grows. The assistant keeps working with
+`ASSISTANT_ENABLED=false`, with the function undeployed, or with the provider
+down; it simply answers from rules alone.
+
 The final bootstrap migration creates `admin@csu.edu.ph` as the initial active
 internal administrator when that Auth email does not already exist. Its
 initial password is `admin123`; change it immediately through the password
