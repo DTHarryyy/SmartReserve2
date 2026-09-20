@@ -70,11 +70,27 @@ class AssistantBubble extends StatelessWidget {
         ),
         border: border == null ? null : Border.all(color: border),
       ),
-      child: Text(
-        message.text,
-        maxLines: 12,
-        overflow: TextOverflow.ellipsis,
-        style: sans(13.5, height: 1.45, color: ink),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            message.text,
+            // Rule-written replies are short by construction; a model answer
+            // can run longer, and clipping one mid-sentence would hide the
+            // qualifier that makes it correct.
+            maxLines: message.assisted ? 24 : 12,
+            overflow: TextOverflow.ellipsis,
+            style: sans(13.5, height: 1.45, color: ink),
+          ),
+          if (message.assisted) ...[
+            const SizedBox(height: 5),
+            Text(
+              'AI-assisted answer · checked against your records',
+              style: mono(9, color: ink.withValues(alpha: .62)),
+            ),
+          ],
+        ],
       ),
     );
 

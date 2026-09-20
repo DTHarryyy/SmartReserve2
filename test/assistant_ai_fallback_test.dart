@@ -1,0 +1,295 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:smartreserve/app/app_state.dart';
+import 'package:smartreserve/features/assistant/assistant_ai_client.dart';
+import 'package:smartreserve/features/assistant/assistant_controller.dart';
+
+/// The governing requirement for this whole feature: SmartReserve must work
+/// exactly as before when the cloud model is unavailable. Because the AI is an
+/// escalation layer over an assistant that already worked, that is structural
+/// rather than aspirational -- and these tests are what keep it that way.
+
+/// Records what was asked, and answers however the test wants.
+class _FakeAiClient implements AssistantAiClient {
+  _FakeAiClient(this._reply);
+
+  final AssistantAiReply Function(AssistantAiRequest request) _reply;
+  final List<AssistantAiRequest> calls = [];
+
+  @override
+  Future<AssistantAiReply> ask(AssistantAiRequest request) async {
+    calls.add(request);
+    return _reply(request);
+  }
+}
+
+class _ThrowingAiClient implements AssistantAiClient {
+  @override
+  Future<AssistantAiReply> ask(AssistantAiRequest request) async {
+    throw StateError('the assistant service is down');
+  }
+}
+
+void main() {
+  late AppState state;
+
+  setUp(() => state = AppState());
+
+  AssistantController controllerWith(AssistantAiClient? client) {
+    final controller = AssistantController(aiClient: client)..messages.clear();
+    return controller;
+  }
+
+  String transcript(AssistantController controller) =>
+      controller.messages.map((message) => message.text).join('\n');
+
+  group('no AI client at all', () {
+    test('every rule-answerable question is unaffected', () async {
+      final controller = controllerWith(null);
+
+      await controller.send('What reservations do I have?', state);
+      expect(transcript(controller), isNotEmpty);
+
+      controller.messages.clear();
+      await controller.send('what are the rules for external renters', state);
+      expect(transcript(controller).toLowerCase(), contains('down payment'));
+    });
+
+    test('an unclassifiable message still gets the deterministic reply', () async {
+      final controller = controllerWith(null);
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      expect(transcript(controller), contains("I didn't catch that"));
+      expect(controller.aiDegraded, isFalse);
+    });
+
+    test('booking still walks its stages', () async {
+      final controller = controllerWith(null);
+      await controller.send('Book a room', state);
+      expect(controller.stage, AssistantStage.needFacility);
+    });
+  });
+
+  group('AI unavailable or failing', () {
+    test('a thrown error never reaches the user or breaks the turn', () async {
+      // The real client swallows its own errors, but the controller must not
+      // depend on that: a chat turn is never allowed to fail because an
+      // optional enhancement did.
+      final controller = controllerWith(_ThrowingAiClient());
+
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      expect(transcript(controller), contains("I didn't catch that"));
+      expect(controller.aiDegraded, isTrue);
+    });
+
+    test('a degraded reply falls back to the deterministic answer', () async {
+      final client = _FakeAiClient((_) => AssistantAiReply.unavailable);
+      final controller = controllerWith(client);
+
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      expect(transcript(controller), contains("I didn't catch that"));
+      expect(
+        transcript(controller),
+        isNot(contains('₱')),
+        reason: 'a failed model turn must not produce amounts',
+      );
+    });
+
+    test('the kill switch is not reported as a degradation', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(degraded: true, failureCode: 'disabled'),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      expect(transcript(controller), contains("I didn't catch that"));
+      expect(
+        controller.aiDegraded,
+        isFalse,
+        reason: 'deliberately off is not the same as broken',
+      );
+    });
+
+    test('a genuine outage is flagged once for the UI', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(
+          degraded: true,
+          failureCode: 'provider_unavailable',
+        ),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+      expect(controller.aiDegraded, isTrue);
+    });
+  });
+
+  group('AI answering', () {
+    test('a model answer is rendered and marked as assisted', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(
+          text: 'Wala ka pang booking ngayon.',
+          toolsUsed: ['get_upcoming_reservations'],
+        ),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      final assisted = controller.messages.where((m) => m.assisted).toList();
+      expect(assisted, hasLength(1));
+      expect(assisted.single.text, 'Wala ka pang booking ngayon.');
+      expect(assisted.single.kind, AssistantMessageKind.aiText);
+      expect(controller.aiDegraded, isFalse);
+    });
+
+    test('an assisted answer still leaves the user a next step', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(text: 'Here is what I found.'),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+      expect(
+        controller.messages.any(
+          (m) => m.kind == AssistantMessageKind.chips && m.chips.isNotEmpty,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('what is sent upward', () {
+    test('a rule-answerable question never reaches the model', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(text: 'should not be called'),
+      );
+      final controller = controllerWith(client);
+
+      for (
+        final question in [
+          'What reservations do I have?',
+          'can you suggest a facility for 200 people',
+          'how much do I still need to pay',
+          'can I cancel my reservation',
+          'what are the rules for external renters',
+          'Is the gym available tomorrow?',
+          'help',
+        ]
+      ) {
+        controller.messages.clear();
+        await controller.send(question, state);
+      }
+
+      expect(
+        client.calls,
+        isEmpty,
+        reason: 'these are the free path; a call here is a cost regression',
+      );
+    });
+
+    test('out-of-scope questions are refused without a model call', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(text: 'should not be called'),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('what is my grade in math', state);
+
+      expect(client.calls, isEmpty);
+      expect(transcript(controller), contains('outside what I do'));
+    });
+
+    test('the request carries ids and history, never records', () async {
+      final client = _FakeAiClient(
+        (_) => const AssistantAiReply(text: 'ok'),
+      );
+      final controller = controllerWith(client);
+
+      await controller.send('What reservations do I have?', state);
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      expect(client.calls, hasLength(1));
+      final payload = client.calls.single.toJson();
+
+      // Whatever travels is ids and short text. No requester name, no email.
+      final encoded = payload.toString();
+      expect(encoded, isNot(contains('@')));
+      expect(encoded, isNot(contains(state.userAccount.email)));
+      expect(payload['message'], contains('yung ano'));
+    });
+
+    test('history sent upward is bounded', () async {
+      final client = _FakeAiClient((_) => const AssistantAiReply(text: 'ok'));
+      final controller = controllerWith(client);
+
+      for (var i = 0; i < 12; i++) {
+        await controller.send('help', state);
+      }
+      await controller.send('yung ano kasi doon sa tabi ng hagdan', state);
+
+      final history = client.calls.single.toJson()['history'] as List;
+      expect(history.length, lessThanOrEqualTo(6));
+    });
+  });
+
+  group('reply parsing', () {
+    test('every failure shape resolves to "use the rules"', () {
+      for (
+        final body in <Map<String, dynamic>>[
+          {'disabled': true, 'reply': null},
+          {'fallback': true, 'code': 'ungrounded_amount'},
+          {'code': 'rate_limited', 'retry_after_seconds': 120},
+          {'reply': ''},
+          {'reply': null},
+          {},
+        ]
+      ) {
+        final reply = parseAssistantAiReply(body);
+        expect(reply.hasText, isFalse, reason: body.toString());
+        expect(reply.degraded, isTrue, reason: body.toString());
+      }
+    });
+
+    test('a rate limit carries its wait hint through', () {
+      final reply = parseAssistantAiReply({
+        'code': 'rate_limited',
+        'retry_after_seconds': 120,
+      });
+      expect(reply.failureCode, 'rate_limited');
+      expect(reply.retryAfterSeconds, 120);
+    });
+
+    test('the assisted marker survives a round trip through storage', () {
+      // ai_text is the wire name; the enum is aiText. A reloaded transcript
+      // has to still show which answers a model wrote.
+      expect(AssistantMessageKind.aiText.wireName, 'ai_text');
+      expect(
+        AssistantMessageKindWire.fromWire('ai_text'),
+        AssistantMessageKind.aiText,
+      );
+      // Every other kind keeps its own name, and an unknown one degrades to
+      // plain text rather than throwing on an older client.
+      expect(AssistantMessageKind.text.wireName, 'text');
+      expect(
+        AssistantMessageKindWire.fromWire('something_newer'),
+        AssistantMessageKind.text,
+      );
+    });
+
+    test('a good answer is parsed with its tools and channels', () {
+      final reply = parseAssistantAiReply({
+        'reply': '  You still owe ₱3500.  ',
+        'tools_used': ['get_payment_balance'],
+        'slot_fill': {'slot': 'heads', 'heads': 30},
+        'proposal': {'kind': 'cancellation', 'reservation_id': 'abc'},
+      });
+      expect(reply.text, 'You still owe ₱3500.');
+      expect(reply.toolsUsed, ['get_payment_balance']);
+      expect(reply.slotFill!['heads'], 30);
+      expect(reply.proposal!['kind'], 'cancellation');
+    });
+  });
+}

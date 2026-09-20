@@ -12,8 +12,13 @@ import '../../model/facility.dart';
 import '../../model/notice.dart';
 import '../../model/reservation.dart';
 import '../../util/campus_calendar.dart';
+import '../../model/payment.dart';
+import 'assistant_ai_client.dart';
 import 'assistant_availability.dart';
 import 'assistant_nlu.dart';
+import 'assistant_recommendation.dart';
+import 'assistant_reference_frame.dart';
+import 'assistant_router.dart';
 
 enum AssistantStage {
   idle,
@@ -35,6 +40,30 @@ enum AssistantMessageKind {
   confirm,
   reservations,
   activity,
+
+  /// An answer the cloud model phrased. Persisted under its own name so a
+  /// transcript distinguishes it from a rule-written reply; the database CHECK
+  /// on assistant_messages.message_type accepts it from
+  /// 20260921150000_assistant_ai_foundation.sql onward.
+  aiText,
+  proposal,
+}
+
+/// The wire name for a message kind. `aiText` is `ai_text` in the database,
+/// which is snake_case like every other value in that CHECK constraint.
+extension AssistantMessageKindWire on AssistantMessageKind {
+  String get wireName => switch (this) {
+    AssistantMessageKind.aiText => 'ai_text',
+    _ => name,
+  };
+
+  static AssistantMessageKind fromWire(String value) => switch (value) {
+    'ai_text' => AssistantMessageKind.aiText,
+    _ => AssistantMessageKind.values.firstWhere(
+      (kind) => kind.name == value,
+      orElse: () => AssistantMessageKind.text,
+    ),
+  };
 }
 
 enum _StageInputResult { accepted, rejected, needsSelection }
@@ -175,6 +204,7 @@ class AssistantMessage {
     this.reservations = const [],
     this.reservationId,
     this.action,
+    this.assisted = false,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -187,6 +217,10 @@ class AssistantMessage {
   final List<ReservationRequest> reservations;
   final String? reservationId;
   final String? action;
+
+  /// True when a cloud model phrased this answer. Stored and rendered so a
+  /// transcript can be audited for what the model actually said.
+  final bool assisted;
   final DateTime createdAt;
 
   factory AssistantMessage.user(String text) => AssistantMessage._(
@@ -200,13 +234,17 @@ class AssistantMessage {
     AdvisoryTone? tone,
     String? reservationId,
     String? action,
+    bool assisted = false,
   }) => AssistantMessage._(
     speaker: AssistantSpeaker.assistant,
-    kind: AssistantMessageKind.text,
+    kind: assisted
+        ? AssistantMessageKind.aiText
+        : AssistantMessageKind.text,
     text: text,
     tone: tone,
     reservationId: reservationId,
     action: action,
+    assisted: assisted,
   );
 
   factory AssistantMessage.chips(
@@ -345,9 +383,27 @@ final _inScopeCueRe = RegExp(
 );
 
 class AssistantController extends ChangeNotifier {
-  AssistantController() {
+  AssistantController({AssistantAiClient? aiClient}) {
+    _aiClient = aiClient;
     _seedGreeting();
   }
+
+  /// Null until an AI client is attached. While it is null the assistant
+  /// behaves exactly as it did before this feature existed, which is also the
+  /// behaviour every test without a client exercises.
+  AssistantAiClient? _aiClient;
+
+  set aiClient(AssistantAiClient? value) => _aiClient = value;
+
+  /// Model-assisted turns spent on the stage the draft is currently waiting
+  /// on. Reset whenever the stage moves, so the cap is per question rather
+  /// than per conversation.
+  int _assistsForStage = 0;
+  AssistantStage? _assistStage;
+
+  /// Set when the last turn fell back to rules because the service was
+  /// unavailable, so the UI can say so once rather than on every message.
+  bool aiDegraded = false;
 
   static const _greeting =
       'Hi! Ask me to find a room, check if a time is free, or book one '
@@ -356,6 +412,11 @@ class AssistantController extends ChangeNotifier {
 
   final List<AssistantMessage> messages = [];
   final List<BackendAssistantConversation> conversations = [];
+
+  /// What "this one" and "the second one" currently point at. Updated whenever
+  /// a list or detail card is rendered, so follow-ups resolve in Dart rather
+  /// than being guessed downstream.
+  final AssistantReferenceFrame frame = AssistantReferenceFrame();
   AssistantStage stage = AssistantStage.idle;
   BookingDraft draft = BookingDraft();
   bool busy = false;
@@ -545,10 +606,7 @@ class AssistantController extends ChangeNotifier {
     BackendAssistantMessage message,
     AppState state,
   ) {
-    final kind = AssistantMessageKind.values.firstWhere(
-      (value) => value.name == message.messageType,
-      orElse: () => AssistantMessageKind.text,
-    );
+    final kind = AssistantMessageKindWire.fromWire(message.messageType);
     final speaker = message.sender == 'user'
         ? AssistantSpeaker.user
         : AssistantSpeaker.assistant;
@@ -590,6 +648,10 @@ class AssistantController extends ChangeNotifier {
       ],
       reservationId: message.reservationId,
       action: message.action,
+      // The stored kind is what makes a reloaded transcript still show which
+      // answers a model wrote. Without this, reopening a conversation would
+      // quietly relabel them as rule-written.
+      assisted: kind == AssistantMessageKind.aiText,
       createdAt: message.createdAt.toLocal(),
     );
   }
@@ -669,7 +731,7 @@ class AssistantController extends ChangeNotifier {
                 sender: message.speaker == AssistantSpeaker.user
                     ? 'user'
                     : 'assistant',
-                messageType: message.kind.name,
+                messageType: message.kind.wireName,
                 text: message.text,
                 payload: _messagePayload(message),
                 reservationId: message.reservationId,
@@ -1161,6 +1223,19 @@ class AssistantController extends ChangeNotifier {
         }
         return;
       }
+      // Mid-booking, the stage machine owns the conversation. The model is
+      // consulted only when neither the slot parser nor the stage's own
+      // fallback can read the reply -- "sa makalawa siguro, tanghali" -- and
+      // even then it only proposes a value, which is validated below exactly
+      // like a typed or tapped one. A bare "30" at the headcount stage is read
+      // deterministically and costs nothing.
+      if (!_fillsCurrentStage(p) &&
+          !_deterministicCanFillStage(p, state) &&
+          _routeFor(p, state).reason ==
+              EscalationReason.unparsedBookingSlot) {
+        if (await _assistCurrentStage(p, state)) return;
+      }
+
       final _StageInputResult result;
       if (_fillsCurrentStage(p)) {
         result = _mergeSlots(p, state);
@@ -1171,6 +1246,14 @@ class AssistantController extends ChangeNotifier {
       if (!await _validateMergedScheduling(state)) return;
       await _advanceDraft(state);
       return;
+    }
+
+    // Outside a booking, anything the parser could not classify is where the
+    // model earns its place. Everything it did classify already has a rule
+    // handler below, and those cost nothing.
+    if (p.intent == AssistantIntent.unknown) {
+      final route = _routeFor(p, state);
+      if (route.isEscalation && await _answerWithAi(p, state)) return;
     }
 
     switch (p.intent) {
@@ -1190,7 +1273,32 @@ class AssistantController extends ChangeNotifier {
         _handleMyReservations(state);
         break;
       case AssistantIntent.cancel:
-        _handleCancelRequest(state);
+        _handleCancelRequest(p, state);
+        break;
+      case AssistantIntent.recommendFacility:
+        _handleRecommendFacility(p, state);
+        break;
+      case AssistantIntent.reservationStatus:
+        _handleReservationStatus(p, state);
+        break;
+      case AssistantIntent.paymentBalance:
+      case AssistantIntent.paymentDeadline:
+        _handlePayment(p, state);
+        break;
+      case AssistantIntent.permitStatus:
+        await _handlePermitStatus(p, state);
+        break;
+      case AssistantIntent.permitRequirements:
+        _handlePermitRequirements();
+        break;
+      case AssistantIntent.equipment:
+        _handleEquipment(p, state);
+        break;
+      case AssistantIntent.announcements:
+        _handleAnnouncements(state);
+        break;
+      case AssistantIntent.policyFaq:
+        await _handlePolicyFaq(p, state);
         break;
       case AssistantIntent.help:
         _say(
@@ -1206,6 +1314,332 @@ class AssistantController extends ChangeNotifier {
         );
         messages.add(AssistantMessage.chips('', _defaultSuggestions()));
         break;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cloud-model escalation.
+  //
+  // Every method here returns false when it could not help, and the caller
+  // then answers the deterministic way. That is the whole contract: the AI
+  // layer can only ever improve a turn, never take one away.
+  // ---------------------------------------------------------------------------
+
+  AssistantRoute _routeFor(ParsedMessage p, AppState state) => routeMessage(
+    p,
+    context: AssistantRouteContext(
+      inBookingFlow:
+          stage != AssistantStage.idle && stage != AssistantStage.submitting,
+      stageAccepted: _fillsCurrentStage(p),
+      assistsUsedForStage: _assistStage == stage ? _assistsForStage : 0,
+      // Having a client is the whole test: one is only attached when a real
+      // backend exists, and the client itself reports unavailability rather
+      // than throwing. Re-checking the backend here would duplicate that
+      // decision in a second place.
+      aiAvailable: _aiClient != null,
+      referenceFrame: frame,
+    ),
+  );
+
+  /// Ask the model, surviving a client that misbehaves.
+  ///
+  /// The supplied client swallows its own failures, but the controller must
+  /// not depend on that: a chat turn is never allowed to fail because an
+  /// optional enhancement did.
+  Future<AssistantAiReply> _askAi(
+    AssistantAiClient client,
+    AssistantAiRequest request,
+  ) async {
+    try {
+      return await client.ask(request);
+    } catch (_) {
+      return AssistantAiReply.unavailable;
+    }
+  }
+
+  AssistantAiRequest _aiRequestFor(ParsedMessage p, AppState state) =>
+      AssistantAiRequest(
+        message: p.raw,
+        conversationId: conversationId,
+        history: [
+          for (final message in messages.reversed.take(6).toList().reversed)
+            if (message.text.trim().isNotEmpty)
+              (
+                role: message.speaker == AssistantSpeaker.user
+                    ? 'user'
+                    : 'assistant',
+                content: message.text,
+              ),
+        ],
+        frame: frame,
+        inBookingFlow:
+            stage != AssistantStage.idle && stage != AssistantStage.submitting,
+        bookingDraft: stage == AssistantStage.idle ? null : _draftStatePayload(),
+      );
+
+  /// What the model is told about the in-progress booking.
+  ///
+  /// The limits travel with it so a follow-up question can be grounded --
+  /// asking for a headcount without knowing the capacity produces a question
+  /// the user then has to be corrected on.
+  Map<String, dynamic> _draftStatePayload() {
+    final facility = draft.facility;
+    return {
+      'stage': stage.name,
+      'missing_slot': draft.firstMissing.name,
+      if (facility != null)
+        'facility': {
+          'id': facility.id,
+          'name': facility.name,
+          'capacity': facility.capacity,
+          'open_hour': facility.openHour,
+          'close_hour': facility.closeHour,
+          'days': facility.days,
+          'max_duration_minutes': facility.maxDurationMinutes,
+          'advance_booking_days': facility.advanceBookingDays,
+        },
+      if (draft.day != null) 'day': dayKey(draft.day!),
+      if (draft.startHour != null) 'start_hour': draft.startHour,
+      if (draft.endHour != null) 'end_hour': draft.endHour,
+      if (draft.heads != null) 'heads': draft.heads,
+      if (draft.purpose != null) 'purpose': draft.purpose,
+    };
+  }
+
+  /// Answer an unclassifiable question with the model. Returns false when the
+  /// caller should use the deterministic reply instead.
+  Future<bool> _answerWithAi(ParsedMessage p, AppState state) async {
+    final client = _aiClient;
+    if (client == null) return false;
+
+    final reply = await _askAi(client, _aiRequestFor(p, state));
+    if (!reply.hasText) {
+      aiDegraded = reply.degraded && reply.failureCode != 'disabled';
+      return false;
+    }
+
+    aiDegraded = false;
+    messages.add(
+      AssistantMessage.assistant(reply.text!, assisted: true),
+    );
+
+    // A proposal is an offer, never an action. It is re-validated here against
+    // the same rules a tapped or typed request would face, and then rendered
+    // as something the user has to confirm.
+    final proposal = reply.proposal;
+    if (proposal != null && await _renderProposal(proposal, state)) {
+      return true;
+    }
+
+    // Always leave a next step, even after a model answer.
+    messages.add(AssistantMessage.chips('', _defaultSuggestions()));
+    return true;
+  }
+
+  /// Turn a model proposal into something the user can accept or ignore.
+  ///
+  /// Nothing is written here. A booking proposal fills the draft and stops at
+  /// the confirm card; a cancellation proposal surfaces the reservation whose
+  /// own Cancel button does the work. Either way the write happens on a tap,
+  /// through the paths that already carry optimistic concurrency and
+  /// server-side pricing.
+  Future<bool> _renderProposal(
+    Map<String, dynamic> proposal,
+    AppState state,
+  ) async {
+    switch (proposal['kind']) {
+      case 'cancellation':
+        final id = '${proposal['reservation_id']}';
+        final target = state.myRequests
+            .where((request) => request.id == id)
+            .firstOrNull;
+        // Ownership and the cancellation rule are checked locally; a proposal
+        // naming somebody else's booking, or one already under way, is simply
+        // not rendered.
+        if (target == null || !state.canCancelReservation(target)) return false;
+        frame.noteReservationFocus(target.id);
+        _say(
+          'Tap Cancel on the card to confirm — nothing is cancelled until you do.',
+          tone: AdvisoryTone.warn,
+        );
+        _showReservations([target]);
+        return true;
+
+      case 'booking':
+        final facility = state.bookableFacilities
+            .where((item) => item.id == '${proposal['facility_id']}')
+            .firstOrNull;
+        final day = DateTime.tryParse('${proposal['day']}');
+        final start = (proposal['start_hour'] as num?)?.toDouble();
+        final end = (proposal['end_hour'] as num?)?.toDouble();
+        final heads = proposal['heads'];
+        final purpose = '${proposal['purpose'] ?? ''}'.trim();
+        if (facility == null ||
+            day == null ||
+            start == null ||
+            end == null ||
+            heads is! num ||
+            heads != heads.roundToDouble() ||
+            purpose.length < 3) {
+          return false;
+        }
+
+        final snapshot = await state.availabilitySnapshotFor(
+          [facility],
+          fromWall: day,
+          toWall: day.add(const Duration(days: 1)),
+          forceRefresh: true,
+        );
+        // Never offer a slot we could not verify. A stale schedule is exactly
+        // the case where a confident-looking suggestion does the most damage.
+        if (!snapshot.isTrusted) return false;
+
+        final verdict = checkSlot(
+          facility: facility,
+          day: day,
+          startHour: start,
+          endHour: end,
+          heads: heads.toInt(),
+          busy: snapshot.windows['${facility.id}|${dayKey(day)}'] ?? const [],
+          nowWall: campusNow(),
+        );
+        if (!verdict.ok) return false;
+
+        draft
+          ..facility = facility
+          ..day = day
+          ..startHour = start
+          ..endHour = end
+          ..heads = heads.toInt()
+          ..purpose = purpose;
+        clearActivePicker();
+        await _advanceDraft(state);
+        return true;
+
+      default:
+        return false;
+    }
+  }
+
+  /// Let the model read a booking reply the parser could not.
+  ///
+  /// It proposes a slot value; the existing validators decide whether that
+  /// value is allowed. A rejected value falls through to the ordinary stage
+  /// question, so a wrong guess costs a turn, never a bad booking.
+  Future<bool> _assistCurrentStage(ParsedMessage p, AppState state) async {
+    final client = _aiClient;
+    if (client == null) return false;
+
+    if (_assistStage != stage) {
+      _assistStage = stage;
+      _assistsForStage = 0;
+    }
+    if (_assistsForStage >= maxAssistsPerStage) return false;
+    _assistsForStage++;
+
+    final reply = await _askAi(client, _aiRequestFor(p, state));
+    final fill = reply.slotFill;
+
+    if (fill != null && await _applySlotFill(fill, state)) {
+      if (reply.hasText) {
+        messages.add(AssistantMessage.assistant(reply.text!, assisted: true));
+      }
+      clearActivePicker();
+      await _advanceDraft(state);
+      return true;
+    }
+
+    // No usable value, but a sensible question: ask it, and keep the picker
+    // open so tapping is still available.
+    if (reply.hasText) {
+      messages.add(AssistantMessage.assistant(reply.text!, assisted: true));
+      await _advanceDraft(state);
+      return true;
+    }
+
+    aiDegraded = reply.degraded && reply.failureCode != 'disabled';
+    return false;
+  }
+
+  /// Test seam over [_applySlotFill]. Exposed so the slot validators can be
+  /// exercised directly, without scripting a whole model turn to reach them.
+  @visibleForTesting
+  Future<bool> debugApplySlotFill(
+    Map<String, dynamic> fill,
+    AppState state,
+  ) => _applySlotFill(fill, state);
+
+  /// Apply a model-proposed slot value through the same validators a typed or
+  /// tapped value goes through. Returns false if anything about it is wrong.
+  Future<bool> _applySlotFill(
+    Map<String, dynamic> fill,
+    AppState state,
+  ) async {
+    switch (fill['slot']) {
+      case 'facility':
+        final facility = state.bookableFacilities
+            .where((item) => item.id == '${fill['facility_id']}')
+            .firstOrNull;
+        if (facility == null) return false;
+        await selectFacility(facility, state);
+        return true;
+      case 'date':
+        final day = DateTime.tryParse('${fill['day']}');
+        if (day == null) return false;
+        return _selectDateCore(day, state, appendUserMessage: false);
+      case 'time':
+        final start = (fill['start_hour'] as num?)?.toDouble();
+        final end = (fill['end_hour'] as num?)?.toDouble();
+        if (start == null || end == null || end <= start) return false;
+        return _selectTimeCore(start, end, state, appendUserMessage: false);
+      case 'heads':
+        final raw = fill['heads'];
+        // Truncating 12.5 to 12 would silently invent a headcount the user
+        // never gave. A non-integer is refused outright, exactly as the typed
+        // path refuses "12.5".
+        if (raw is! num || raw != raw.roundToDouble()) return false;
+        // _acceptHeadcount enforces capacity and whole-number rules and says
+        // why when it refuses -- the model does not get to override it.
+        return _acceptHeadcount(raw.toInt(), state) ==
+            _StageInputResult.accepted;
+      case 'purpose':
+        final purpose = '${fill['purpose'] ?? ''}'.trim();
+        if (purpose.length < 3) return false;
+        draft.purpose = purpose;
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /// Whether [_applyStageScopedFallback] would get something out of this
+  /// message, asked without any of its side effects.
+  ///
+  /// This is what keeps the free path free: the fallback already reads a bare
+  /// "30", a facility name, or any few words of purpose, and a model call for
+  /// those would be pure waste. Escalation is reserved for a stage that
+  /// genuinely has nothing to work with.
+  bool _deterministicCanFillStage(ParsedMessage p, AppState state) {
+    switch (stage) {
+      case AssistantStage.needFacility:
+        if (draft.candidates.isNotEmpty && p.ordinal != null) {
+          final index = p.ordinal! - 1;
+          if (index >= 0 && index < draft.candidates.length) return true;
+        }
+        return resolveFacilityByName(p.raw, state.bookableFacilities).isNotEmpty;
+      case AssistantStage.needHeads:
+        // Any parse at all, valid or not: an out-of-range number still gets
+        // the existing refusal, which is a better answer than a model guess.
+        return _parseHeadcountText(p.raw).value != null;
+      case AssistantStage.needPurpose:
+        // A purpose is free text, so whatever the user typed is the purpose.
+        return p.raw.trim().length >= 3;
+      case AssistantStage.needDate:
+      case AssistantStage.needTime:
+      case AssistantStage.confirming:
+      case AssistantStage.idle:
+      case AssistantStage.submitting:
+        return false;
     }
   }
 
@@ -2460,10 +2894,10 @@ class AssistantController extends ChangeNotifier {
           ? "Here's your reservation:"
           : 'Here are your reservations:',
     );
-    messages.add(AssistantMessage.reservationList('', mine));
+    _showReservations(mine);
   }
 
-  void _handleCancelRequest(AppState state) {
+  void _handleCancelRequest(ParsedMessage p, AppState state) {
     final mine = state.myRequests;
     final cancellable = [
       for (final r in mine)
@@ -2477,11 +2911,569 @@ class AssistantController extends ChangeNotifier {
       );
       return;
     }
+
+    // "Cancel this specific booking", "cancel the second one", "cancel my gym
+    // booking" all narrow to one record here, in Dart. When they don't narrow
+    // to exactly one, the assistant asks -- it never picks for the user.
+    final scoped = _scopeReservations(p, cancellable, state);
+    if (scoped.length == 1) {
+      final target = scoped.first;
+      frame.noteReservationFocus(target.id);
+      _say(
+        'Cancel ${target.facility} on ${target.whenLabel}? '
+        'Tap Cancel on the card to confirm.',
+        tone: AdvisoryTone.warn,
+      );
+      _showReservations([target]);
+      return;
+    }
+
     _say(
-      cancellable.length == 1
-          ? 'Here it is — tap Cancel to confirm:'
+      scoped.isEmpty
+          ? 'I could not tell which one you meant. Tap Cancel on the one you want to drop:'
           : 'Which one? Tap Cancel on the one you want to drop:',
     );
-    messages.add(AssistantMessage.reservationList('', cancellable));
+    _showReservations(scoped.isEmpty ? cancellable : scoped);
   }
+
+  // ---------------------------------------------------------------------------
+  // Informational intents.
+  //
+  // Each of these answers from records the app has already loaded, so they cost
+  // nothing: no model call, and no extra round trip. Every number and date is
+  // read straight off the server-computed reservation row -- nothing here
+  // recalculates money or deadlines.
+  // ---------------------------------------------------------------------------
+
+  void _handleRecommendFacility(ParsedMessage p, AppState state) {
+    final criteria = RecommendationCriteria(
+      minCapacity: p.capacity?.max ?? p.capacity?.min,
+      category: p.category,
+      amenities: p.amenities,
+      query: p.facilityQuery,
+    );
+
+    final ranked = rankFacilities(
+      pool: state.bookableFacilities,
+      criteria: criteria,
+    );
+
+    if (ranked.isEmpty) {
+      final minCapacity = criteria.minCapacity;
+      if (minCapacity != null) {
+        _suggestBiggerFacilities(minCapacity, state);
+      } else {
+        _say('Nothing bookable matches that right now.');
+      }
+      return;
+    }
+
+    final best = ranked.first;
+    final lead = ranked.length == 1
+        ? 'One fits: ${best.facility.name}'
+        : '${best.facility.name} looks like the best fit';
+    final why = best.reasonLine.isEmpty ? '' : ' — ${best.reasonLine}';
+    _say('$lead$why.');
+
+    if (best.isPartialMatch) {
+      _say(
+        'Heads up: it has no ${_joinLabels(best.missingAmenities)}.',
+        tone: AdvisoryTone.warn,
+      );
+    }
+
+    _showFacilities([for (final item in ranked) item.facility]);
+
+    if (p.unknownAmenityWords.isNotEmpty) {
+      _say(
+        "I don't track ${_joinLabels(p.unknownAmenityWords.toList())} as an "
+        'amenity, so I ignored it.',
+      );
+    }
+  }
+
+  void _handleReservationStatus(ParsedMessage p, AppState state) {
+    final target = _singleReservationFor(p, state, action: 'check');
+    if (target == null) return;
+
+    final when = '${target.facility} on ${target.whenLabel}';
+    _say('$when — ${target.lifecycleStatus.label}.');
+
+    final next = _nextStepFor(target, state);
+    if (next != null) _say(next);
+    _showReservations([target]);
+  }
+
+  void _handlePayment(ParsedMessage p, AppState state) {
+    final target = _singleReservationFor(p, state, action: 'check');
+    if (target == null) return;
+
+    frame.noteReservationFocus(target.id);
+
+    if (target.totalAmountCentavos == 0) {
+      _say(
+        target.isPaymentExempt
+            ? '${target.facility} on ${target.whenLabel} has no charge — '
+                  'your account type is exempt.'
+            : '${target.facility} on ${target.whenLabel} has nothing to pay.',
+      );
+      return;
+    }
+
+    final outstanding = target.outstandingAmountCentavos;
+    if (outstanding == 0) {
+      _say(
+        '${target.facility} on ${target.whenLabel} is fully paid — '
+        '${pesoFromCentavos(target.totalAmountCentavos)} verified.',
+      );
+      return;
+    }
+
+    // Both the amount and the deadline land in one answer, so "how much do I
+    // owe and when is it due" needs a single turn rather than two.
+    final parts = <String>[
+      'You still owe ${pesoFromCentavos(outstanding)} on ${target.facility} '
+          '(${target.whenLabel}).',
+    ];
+    final deadline = _paymentDeadlineLine(target);
+    if (deadline != null) parts.add(deadline);
+    _say(parts.join(' '), tone: _paymentTone(target));
+
+    if (target.aggregatePaymentStatus == AggregatePaymentStatus.unpaid &&
+        target.requiredDownPaymentCentavos > 0 &&
+        target.requiredDownPaymentCentavos < target.totalAmountCentavos) {
+      _say(
+        'A ${target.downPaymentPercent}% down payment of '
+        '${pesoFromCentavos(target.requiredDownPaymentCentavos)} holds the '
+        'booking; the rest follows before your schedule.',
+      );
+    }
+    _showReservations([target]);
+  }
+
+  Future<void> _handlePermitStatus(ParsedMessage p, AppState state) async {
+    final target = _singleReservationFor(p, state, action: 'check');
+    if (target == null) return;
+
+    frame.noteReservationFocus(target.id);
+    final permit = target.permit;
+
+    // The storage layer, not the client, decides whether a requester may pull
+    // the PDF: a permit can be fully generated and still undelivered.
+    if (permit != null && permit.isDownloadable) {
+      _say(
+        'Yes — your permit for ${target.facility} (${target.whenLabel}) is '
+        'ready. Open the reservation to download it.',
+      );
+      _showReservations([target]);
+      return;
+    }
+
+    final readiness = await state.permitReadiness(target.id);
+    if (readiness == null) {
+      _say(
+        permit == null
+            ? 'Your permit for ${target.facility} has not been issued yet. '
+                  'It follows approval and payment.'
+            : "Your permit is being prepared and isn't downloadable yet.",
+      );
+      _showReservations([target]);
+      return;
+    }
+
+    if (readiness.ready && permit != null && permit.isGenerated) {
+      _say(
+        'The permit is generated but has not been released to you yet — an '
+        'administrator still has to send it.',
+      );
+      _showReservations([target]);
+      return;
+    }
+
+    final blockers = readiness.blockerCodes;
+    if (blockers.isEmpty) {
+      _say(
+        "Nothing is blocking it — the permit just hasn't been generated yet.",
+      );
+      _showReservations([target]);
+      return;
+    }
+
+    _say(
+      blockers.length == 1
+          ? "Not yet — ${_lowerFirst(readiness.messageFor(blockers.first))}"
+          : 'Not yet. ${blockers.length} things are still outstanding:',
+      tone: AdvisoryTone.warn,
+    );
+    if (blockers.length > 1) {
+      for (final code in blockers.take(4)) {
+        _say('• ${readiness.messageFor(code)}');
+      }
+    }
+    _showReservations([target]);
+  }
+
+  void _handlePermitRequirements() {
+    _say(
+      'A permit is released once the reservation is approved, the required '
+      'payment is verified, the official form items are mapped, and every '
+      'signature slot is filled.',
+    );
+    _say(
+      'Internal permits need your Office/College; external ones also need your '
+      'company, address, contact numbers and admission fee.',
+    );
+  }
+
+  void _handleEquipment(ParsedMessage p, AppState state) {
+    final pool = state.bookableFacilities;
+    Facility? facility;
+
+    if (p.facilityQuery != null && p.facilityQuery!.isNotEmpty) {
+      final matches = _tiedTop(resolveFacilityByName(p.facilityQuery!, pool));
+      if (matches.length == 1) facility = matches.first;
+    }
+    facility ??= draft.facility;
+    if (facility == null && frame.focusFacilityId != null) {
+      facility = pool
+          .where((item) => item.id == frame.focusFacilityId)
+          .firstOrNull;
+    }
+
+    if (facility == null) {
+      _say('Which facility? Equipment is listed per room.');
+      _showFacilities(pool.take(8).toList());
+      return;
+    }
+
+    frame.noteFacilityFocus(facility.id);
+    final catalogue = facility.amenities;
+    final priced = [
+      for (final option in facility.amenityOptions)
+        if (option.enabled) option,
+    ];
+
+    if (catalogue.isEmpty && priced.isEmpty) {
+      _say('${facility.name} has no equipment listed.');
+      return;
+    }
+
+    if (catalogue.isNotEmpty) {
+      _say('${facility.name} includes ${_joinLabels(catalogue)}.');
+    }
+    if (priced.isNotEmpty) {
+      _say(
+        'Bookable add-ons: '
+        '${priced.map((item) => '${item.name} '
+            '(${pesoFromCentavos(item.priceCentavos)})').join(', ')}.',
+      );
+    }
+    _say(
+      'Availability follows the reservation itself — request them when you '
+      'book and an administrator confirms them.',
+    );
+  }
+
+  void _handleAnnouncements(AppState state) {
+    final unread = [
+      for (final item in state.notifications)
+        if (item.unread) item,
+    ];
+    final recent = unread.isNotEmpty ? unread : state.notifications;
+
+    if (recent.isEmpty) {
+      _say('Nothing new for you right now.');
+      return;
+    }
+
+    _say(
+      unread.isNotEmpty
+          ? 'You have ${_formatCount(unread.length)} unread '
+                '${unread.length == 1 ? 'notice' : 'notices'}:'
+          : 'Your most recent notices:',
+    );
+    for (final item in recent.take(5)) {
+      _say('• ${item.title}${item.body.isEmpty ? '' : ' — ${item.body}'}');
+    }
+
+    final maintenance = [
+      for (final facility in state.facilities)
+        if (facility.state == FacilityState.maintenance) facility.name,
+    ];
+    if (maintenance.isNotEmpty) {
+      _say(
+        'Also under maintenance: ${_joinLabels(maintenance.take(3).toList())}.',
+        tone: AdvisoryTone.warn,
+      );
+    }
+  }
+
+  Future<void> _handlePolicyFaq(ParsedMessage p, AppState state) async {
+    // The knowledge base is the authority: its wording is the app's own, and
+    // the database has already filtered it to what this account's lane may
+    // see. Only when it is unreachable -- offline, demo mode, or a failed
+    // lookup -- does the built-in prose below answer instead.
+    final chunks = await state.assistantKnowledge(p.raw, limit: 2);
+    if (chunks.isNotEmpty) {
+      for (final chunk in chunks) {
+        _say(chunk.answer);
+      }
+      return;
+    }
+    _sayBuiltInPolicy(p, state);
+  }
+
+  void _sayBuiltInPolicy(ParsedMessage p, AppState state) {
+    final normalized = p.normalized;
+    final account = state.userAccount;
+
+    if (RegExp(r'\bexternal|guest|renter|outside\b').hasMatch(normalized)) {
+      _say(
+        'External renters pay the guest rate for the facility plus any add-ons, '
+        'settle a down payment to hold the booking, and clear the balance '
+        'before the schedule.',
+      );
+      _say(
+        'An external permit also needs your company or organization, complete '
+        'address, contact numbers and admission fee before it can be released.',
+      );
+      return;
+    }
+
+    if (RegExp(r'\bcancel').hasMatch(normalized)) {
+      _say(
+        'You can cancel any reservation that has not started yet, and there is '
+        'no cancellation fee. Once a schedule has begun it can no longer be '
+        'cancelled from here.',
+      );
+      return;
+    }
+
+    if (RegExp(r'\bpay|payment|down ?payment\b').hasMatch(normalized)) {
+      _say(
+        'Verified students and faculty reserve at no charge. Everyone else '
+        'pays a down payment to hold the booking, then the balance before the '
+        'schedule starts.',
+      );
+      return;
+    }
+
+    _say(
+      'To reserve: pick a facility that accepts your account type, choose a '
+      'date and time inside its opening hours, give the headcount and purpose, '
+      'and accept the reservation terms. An administrator then approves it.',
+    );
+    _say(
+      'Your account reserves as ${account.pricingAudience}, '
+      '${account.isPaymentExempt ? 'which is exempt from facility charges.' : 'so facility charges apply.'}',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shared helpers for the informational handlers.
+  // ---------------------------------------------------------------------------
+
+  /// Narrow the user's reservations to the ones this message could mean.
+  ///
+  /// Honours an ordinal against what was last shown, an explicit facility name,
+  /// and the current focus -- in that order of specificity. Returns everything
+  /// when the message names nothing, so callers can decide whether to ask.
+  List<ReservationRequest> _scopeReservations(
+    ParsedMessage p,
+    List<ReservationRequest> pool,
+    AppState state,
+  ) {
+    if (pool.isEmpty) return const [];
+
+    if (p.ordinal != null) {
+      final resolution = frame.resolveReservation(
+        ordinal: p.ordinal,
+        available: [for (final r in pool) r.id],
+      );
+      if (resolution.isResolved) {
+        return [
+          for (final r in pool)
+            if (r.id == resolution.id) r,
+        ];
+      }
+      if (resolution.outcome == ReferenceOutcome.outOfRange) return const [];
+    }
+
+    final byFacility = _scopeByFacilityName(p, pool, state);
+    if (byFacility != null) return byFacility;
+
+    if (pool.length == 1) return pool;
+
+    final focus = frame.focusReservationId;
+    if (focus != null) {
+      final matched = [
+        for (final r in pool)
+          if (r.id == focus) r,
+      ];
+      if (matched.isNotEmpty) return matched;
+    }
+
+    return pool;
+  }
+
+  /// "my reservation in basketball court" -> the reservations at that facility.
+  /// Returns null when the message named no facility at all, so the caller can
+  /// tell "named nothing" apart from "named something with no matches".
+  List<ReservationRequest>? _scopeByFacilityName(
+    ParsedMessage p,
+    List<ReservationRequest> pool,
+    AppState state,
+  ) {
+    final query = p.facilityQuery;
+    final category = p.category;
+    if ((query == null || query.isEmpty) && category == null) return null;
+
+    final candidates = <Facility>[];
+    if (query != null && query.isNotEmpty) {
+      candidates.addAll(
+        _tiedTop(resolveFacilityByName(query, state.facilities)),
+      );
+    }
+    if (candidates.isEmpty && category != null) {
+      candidates.addAll(
+        state.facilities.where((facility) => facility.category == category),
+      );
+    }
+    if (candidates.isEmpty) {
+      // Fall back to the reservation's own denormalized facility name, which
+      // survives even when the facility row is no longer browsable.
+      final needle = (query ?? category ?? '').toLowerCase();
+      final byName = [
+        for (final r in pool)
+          if (needle.isNotEmpty && r.facility.toLowerCase().contains(needle)) r,
+      ];
+      if (byName.isNotEmpty) return byName;
+
+      // Nothing recognised the token, so the user named no facility at all --
+      // it is leftover wording like "pay" in "how much do I need to pay".
+      // Reporting "no match" here would wrongly discard every candidate.
+      return null;
+    }
+
+    final ids = {for (final facility in candidates) facility.id};
+    final names = {
+      for (final facility in candidates) facility.name.toLowerCase(),
+    };
+    return [
+      for (final r in pool)
+        if (ids.contains(r.facilityId) || names.contains(r.facility.toLowerCase()))
+          r,
+    ];
+  }
+
+  /// Resolve to exactly one reservation, or say why not and return null.
+  ReservationRequest? _singleReservationFor(
+    ParsedMessage p,
+    AppState state, {
+    required String action,
+  }) {
+    final mine = state.myRequests;
+    if (mine.isEmpty) {
+      _say('Nothing booked yet, so there is nothing to $action.');
+      return null;
+    }
+
+    final scoped = _scopeReservations(p, mine, state);
+    if (scoped.length == 1) {
+      frame.noteReservationFocus(scoped.first.id);
+      return scoped.first;
+    }
+
+    if (scoped.isEmpty) {
+      _say("I couldn't match that to any of your reservations. Here they are:");
+      _showReservations(mine);
+      return null;
+    }
+
+    _say('Which one do you mean?');
+    _showReservations(scoped);
+    return null;
+  }
+
+  String? _paymentDeadlineLine(ReservationRequest request) {
+    final now = campusNow();
+    final balanceDue = request.balanceDueAt;
+    final paymentDue = request.paymentDueAt;
+    final verified = request.verifiedAmountCentavos;
+
+    // Before the down payment lands, the deposit window is the live deadline;
+    // after it, the balance date is.
+    final due = verified < request.requiredDownPaymentCentavos
+        ? (paymentDue ?? balanceDue)
+        : (balanceDue ?? paymentDue);
+    if (due == null) return null;
+
+    final local = campusWallTime(due.toUtc());
+    if (local.isBefore(now)) {
+      return 'That was due ${formatStamp(local)} and is now overdue.';
+    }
+    return 'Due ${formatStamp(local)}.';
+  }
+
+  AdvisoryTone? _paymentTone(ReservationRequest request) =>
+      switch (request.aggregatePaymentStatus) {
+        AggregatePaymentStatus.overdue => AdvisoryTone.block,
+        AggregatePaymentStatus.needsCorrection => AdvisoryTone.warn,
+        _ => null,
+      };
+
+  /// One short sentence about what happens next, or null when the status
+  /// already says everything.
+  String? _nextStepFor(ReservationRequest request, AppState state) {
+    switch (request.lifecycleStatus) {
+      case ReservationLifecycleStatus.pendingApproval:
+        return 'An administrator still has to review it.';
+      case ReservationLifecycleStatus.changesRequested:
+        // The administrator's wording lives on the reservation's event trail,
+        // not on the row, so the card is where the reason is read.
+        return 'Changes were requested — open it to read why and resubmit.';
+      case ReservationLifecycleStatus.awaitingPayment:
+        final outstanding = request.outstandingAmountCentavos;
+        if (outstanding == 0) return 'Your payment is being verified.';
+        final deadline = _paymentDeadlineLine(request);
+        return 'Pay ${pesoFromCentavos(outstanding)} to confirm it.'
+            '${deadline == null ? '' : ' $deadline'}';
+      case ReservationLifecycleStatus.confirmed:
+        final permit = request.permit;
+        if (permit != null && permit.isDownloadable) {
+          return 'Your permit is ready to download.';
+        }
+        if (request.signatureRequested) {
+          return 'Your e-signature is still needed for the permit.';
+        }
+        return null;
+      case ReservationLifecycleStatus.declined:
+        return 'Open it to read the administrator\'s reason.';
+      case ReservationLifecycleStatus.cancelled:
+      case ReservationLifecycleStatus.expired:
+      case ReservationLifecycleStatus.completed:
+        return null;
+    }
+  }
+
+  /// Render a reservation list and record it as what ordinals now refer to.
+  void _showReservations(List<ReservationRequest> items) {
+    messages.add(AssistantMessage.reservationList('', items));
+    frame.noteReservations([for (final item in items) item.id]);
+  }
+
+  void _showFacilities(List<Facility> items) {
+    messages.add(AssistantMessage.facilityList('', items));
+    frame.noteFacilities([for (final item in items) item.id]);
+  }
+
+  String _joinLabels(List<String> values) {
+    if (values.isEmpty) return '';
+    if (values.length == 1) return values.first;
+    if (values.length == 2) return '${values.first} and ${values.last}';
+    return '${values.take(values.length - 1).join(', ')} and ${values.last}';
+  }
+
+  String _lowerFirst(String value) =>
+      value.isEmpty ? value : value[0].toLowerCase() + value.substring(1);
 }

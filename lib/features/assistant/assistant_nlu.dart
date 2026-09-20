@@ -12,7 +12,33 @@ enum AssistantIntent {
   cancel,
   help,
   unknown,
+
+  // Informational intents. Each one is answerable from a single server-computed
+  // record, so the assistant resolves them with rules alone and never spends a
+  // model call on them.
+  recommendFacility,
+  reservationStatus,
+  paymentBalance,
+  paymentDeadline,
+  permitStatus,
+  permitRequirements,
+  equipment,
+  announcements,
+  policyFaq,
 }
+
+/// Intents the assistant answers from a single rule-driven lookup.
+const informationalIntents = <AssistantIntent>{
+  AssistantIntent.recommendFacility,
+  AssistantIntent.reservationStatus,
+  AssistantIntent.paymentBalance,
+  AssistantIntent.paymentDeadline,
+  AssistantIntent.permitStatus,
+  AssistantIntent.permitRequirements,
+  AssistantIntent.equipment,
+  AssistantIntent.announcements,
+  AssistantIntent.policyFaq,
+};
 
 class CapacityRange {
   const CapacityRange(this.min, this.max);
@@ -276,6 +302,32 @@ const _stopwords = <String>{
   'around',
   'there',
   'here',
+  'specific',
+  'particular',
+  // Verbs and nouns that belong to the informational intents. Without these,
+  // the leftover-query extractor hands words like "pay" to facility matching.
+  'status',
+  'permit',
+  'permits',
+  'payment',
+  'payments',
+  'pay',
+  'paid',
+  'owe',
+  'balance',
+  'deadline',
+  'due',
+  'download',
+  'recommend',
+  'suggest',
+  'equipment',
+  'announcement',
+  'announcements',
+  'rule',
+  'rules',
+  'policy',
+  'requirement',
+  'requirements',
 };
 
 const _capacityNounWords = <String>{
@@ -1034,6 +1086,73 @@ final _mineReservationRe = RegExp(
   r'\b(my|mine)\b.{0,15}\b(reservation|reservations|booking|bookings|request|requests)\b',
 );
 
+// Filipino puts the possessive after the noun -- "reservation ko", "bayad ko".
+// Treated as equivalent to "my reservation" so Taglish questions resolve on the
+// free path instead of escalating.
+final _taglishMineRe = RegExp(
+  r'\b(reservation|reservations|booking|bookings|request|requests|permit|permiso|'
+  r'bayad|balance|utang|schedule)\s+(ko|namin|amin)\b',
+);
+
+/// True when the message is about the speaker's own records, in either
+/// language.
+bool _isFirstPersonRecord(String normalized) =>
+    _mineReservationRe.hasMatch(normalized) ||
+    _taglishMineRe.hasMatch(normalized) ||
+    RegExp(r'\b(do|did|am|can)\s+i\b').hasMatch(normalized) ||
+    RegExp(r'\bi\s+(owe|still|have|need)\b').hasMatch(normalized);
+
+// "When is it due" must win over "how much", so deadline is tested first.
+final _paymentDeadlineRe = RegExp(
+  r'\b(deadline|due date|overdue)\b|'
+  r'\bwhen\b.{0,25}\b(due|pay|payment|bayad)\b|'
+  r'\bkailan\b.{0,25}\b(bayad|due|deadline)\b',
+);
+
+final _paymentBalanceRe = RegExp(
+  r'\bmagkano\b|\butang\b|'
+  r'\b(outstanding|balance|down ?payment|downpayment)\b|'
+  r'\bhow much\b|'
+  r'\b(still|need to|have to|must)\s+pay\b|'
+  r'\b(i|we)\s+owe\b|'
+  r'\bbayad(an)?\s+(ko|pa|namin)\b',
+);
+
+final _permitRe = RegExp(r'\bpermits?\b|\bpermiso\b');
+
+final _permitRequirementsRe = RegExp(
+  r'\b(requirement|requirements|need|needed|kailangan|before)\b',
+);
+
+final _statusRe = RegExp(
+  r'\b(status|approved|approve|declined|decline|rejected|pending|confirmed|'
+  r'accepted|na-?approve|aprub|kumusta|ano na)\b',
+);
+
+final _equipmentRe = RegExp(
+  r'\b(equipment|equipments|kagamitan|amenity|amenities|gamit)\b',
+);
+
+final _announcementRe = RegExp(
+  r'\b(announcement|announcements|notice|notices|notification|notifications|'
+  r'balita|advisory|advisories)\b',
+);
+
+final _policyRe = RegExp(
+  r'\b(rule|rules|policy|policies|requirement|requirements|guideline|'
+  r'guidelines|patakaran|terms|allowed|entitled)\b',
+);
+
+// Deliberately only explicit recommendation verbs. Softer cues like "best" or
+// "good for" appear constantly in ordinary booking talk ("what's the best time
+// to book the gym") and would steal turns the booking flow should own.
+final _recommendRe = RegExp(
+  r'\b(recommend|recommendation|recommendations|suggest|suggestions|suggested|'
+  r'imungkahi|mungkahi)\b|\bsuggestion\b',
+);
+
+final _mineAnyRe = RegExp(r'\b(my|mine|akin|amin)\b');
+
 bool _isAbort(String normalized) {
   if (_mineReservationRe.hasMatch(normalized) &&
       normalized.contains('cancel')) {
@@ -1080,24 +1199,75 @@ AssistantIntent _detectIntent(
   required String? facilityQuery,
   required String? category,
 }) {
-  final hasCancel = RegExp(r'\bcancel\b').hasMatch(normalized);
+  final hasCancel = RegExp(
+    r'\bcancel\b|\bkansela\b|\bkanselahin\b',
+  ).hasMatch(normalized);
   final hasMine = _mineReservationRe.hasMatch(normalized);
+  final firstPerson = _isFirstPersonRecord(normalized);
   final hasHelp = RegExp(
-    r'\b(help|what can you do|options|commands)\b',
+    r'\b(help|what can you do|options|commands|tulong|ano ang kaya mo)\b',
   ).hasMatch(normalized);
   final hasBookCue = RegExp(
     r'\b(book|reserve|reservation|reserving|schedule)\b',
   ).hasMatch(normalized);
   final hasAvailableCue = RegExp(
-    r'\b(available|availability|free|open|vacant)\b',
+    r'\b(available|availability|free|open|vacant|bakante|libre)\b',
   ).hasMatch(normalized);
   final hasPluralVenueWord = RegExp(
     r'\b(facilities|rooms|venues|spaces)\b',
   ).hasMatch(normalized);
   final hasListCue = RegExp(r'\b(what|which|show|list)\b').hasMatch(normalized);
 
-  if (hasCancel && hasMine) return AssistantIntent.cancel;
-  if (hasMine && !hasBookCue) return AssistantIntent.myReservations;
+  final mentionsMine =
+      hasMine || _mineAnyRe.hasMatch(normalized) || firstPerson;
+  final hasReservationNoun = RegExp(
+    r'\b(reservation|reservations|booking|bookings|request|requests)\b',
+  ).hasMatch(normalized);
+  // English puts the possessive before the noun, but plenty of real questions
+  // drop it entirely -- "what reservations do I have". First person plus a
+  // reservation noun means the same thing.
+  final aboutMyRecords =
+      hasMine || (firstPerson && hasReservationNoun);
+
+  // Any surviving "cancel" is a cancellation request: `_isAbort` has already
+  // claimed the bare "cancel" / "never mind" forms that mean "drop the draft",
+  // so what reaches here names a record -- "cancel this specific booking",
+  // "kanselahin mo yung reservation ko".
+  if (hasCancel) return AssistantIntent.cancel;
+
+  // Money, permits and status are all questions about the same records, so they
+  // are separated before the generic "show my reservations" branch -- otherwise
+  // "how much do I still owe" would answer with a list instead of an amount.
+  if (_paymentDeadlineRe.hasMatch(normalized)) {
+    return AssistantIntent.paymentDeadline;
+  }
+  if (_paymentBalanceRe.hasMatch(normalized)) {
+    return AssistantIntent.paymentBalance;
+  }
+  if (_permitRe.hasMatch(normalized)) {
+    // "Why is my permit not ready" is about one record; "what do I need for a
+    // permit" is about the policy. Ownership language is what separates them.
+    return mentionsMine && !_permitRequirementsRe.hasMatch(normalized)
+        ? AssistantIntent.permitStatus
+        : AssistantIntent.permitRequirements;
+  }
+  if (mentionsMine && _statusRe.hasMatch(normalized)) {
+    return AssistantIntent.reservationStatus;
+  }
+  if (_announcementRe.hasMatch(normalized)) {
+    return AssistantIntent.announcements;
+  }
+  if (_equipmentRe.hasMatch(normalized) && !hasBookCue) {
+    return AssistantIntent.equipment;
+  }
+  if (_recommendRe.hasMatch(normalized)) {
+    return AssistantIntent.recommendFacility;
+  }
+  if (_policyRe.hasMatch(normalized) && !mentionsMine) {
+    return AssistantIntent.policyFaq;
+  }
+
+  if (aboutMyRecords && !hasBookCue) return AssistantIntent.myReservations;
   if (hasHelp &&
       !hasBookCue &&
       capacity == null &&
