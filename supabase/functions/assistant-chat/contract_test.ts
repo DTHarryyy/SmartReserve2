@@ -10,6 +10,7 @@ import {
   checkReply,
   compactHistory,
   estimateTokens,
+  extractChannels,
   isIsoDate,
   cacheKeyFor,
   isCacheable,
@@ -18,6 +19,7 @@ import {
   maxHistoryTurns,
   maxMessageChars,
   maxReplyChars,
+  maxSummaryChars,
   normalizeQuestion,
   permitBlockerMessage,
   redactedFields,
@@ -31,6 +33,8 @@ import {
   validateToolCall,
 } from "./contract.ts";
 import { parseCompletion } from "./openai.ts";
+import { buildSystemPrompt } from "./prompt.ts";
+
 import { pesoFromCentavos } from "./tools.ts";
 
 const uuidA = "11111111-2222-3333-4444-555555555555";
@@ -678,4 +682,54 @@ Deno.test("min_capacity must be whole, since half a person is not a capacity", (
       validateToolCall("recommend_facilities", { min_capacity: 12.5 }),
     AssistantProviderError,
   );
+});
+
+// ---------------------------------------------------------------------------
+// The rolling summary
+// ---------------------------------------------------------------------------
+
+Deno.test("the summary rides the channel block and never the answer", () => {
+  const raw =
+    'Your balance is settled.\n```json\n{"summary":"User is asking about the Gymplex booking on Friday."}\n```';
+  const channels = extractChannels(raw);
+  assertEquals(
+    channels.summary,
+    "User is asking about the Gymplex booking on Friday.",
+  );
+  // Same block the slot-fill channel uses, so it is stripped by the same rule.
+  assertEquals(tidyReply(raw), "Your balance is settled.");
+});
+
+Deno.test("a summary is bounded, because it is sent on every later turn", () => {
+  const long = "x".repeat(maxSummaryChars + 200);
+  const channels = extractChannels(
+    '```json\n' + JSON.stringify({ summary: long }) + '\n```',
+  );
+  assertEquals((channels.summary ?? "").length, maxSummaryChars);
+});
+
+Deno.test("a blank or non-string summary is no summary", () => {
+  assertEquals(extractChannels('```json\n{"summary":"   "}\n```').summary, null);
+  assertEquals(extractChannels('```json\n{"summary":42}\n```').summary, null);
+  assertEquals(extractChannels("no block here").summary, null);
+});
+
+Deno.test("the summary channel coexists with a slot fill", () => {
+  const channels = extractChannels(
+    '```json\n{"fill_booking_slot":{"slot":"heads","heads":30},"summary":"Booking for 30."}\n```',
+  );
+  assertEquals(channels.summary, "Booking for 30.");
+  assertEquals((channels.slotFill as { heads: number }).heads, 30);
+});
+
+Deno.test("a summary is only asked for once history outgrows the window", () => {
+  const base = {
+    lane: "external",
+    pricingAudience: "guest",
+    isAdmin: false,
+    todayIso: "2026-09-20",
+    inBookingFlow: false,
+  };
+  assertFalse(buildSystemPrompt(base).includes("summary"));
+  assert(buildSystemPrompt({ ...base, wantsSummary: true }).includes("summary"));
 });

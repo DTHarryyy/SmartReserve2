@@ -253,6 +253,43 @@ void main() {
       }
     });
 
+    test('a rolling summary survives the round trip', () {
+      // context_summary, turn_count and the client's summary field all existed
+      // with no producer anywhere between them. The model now emits one on the
+      // same call that answers, so it costs no extra request.
+      final reply = parseAssistantAiReply({
+        'reply': 'Your balance is settled.',
+        'summary': '  Discussing the Gymplex booking on Friday.  ',
+      });
+      expect(reply.summary, 'Discussing the Gymplex booking on Friday.');
+
+      expect(parseAssistantAiReply({'reply': 'ok'}).summary, isNull);
+      expect(
+        parseAssistantAiReply({'reply': 'ok', 'summary': '   '}).summary,
+        isNull,
+      );
+      expect(parseAssistantAiReply({'reply': 'ok', 'summary': 7}).summary, isNull);
+    });
+
+    test('the request carries the whole conversation length, not the window', () {
+      // The server decides whether to ask for a summary from this, so sending
+      // the replayed count would mean it is never asked for.
+      final request = AssistantAiRequest(
+        message: 'and the second one?',
+        history: const [(role: 'user', content: 'show my reservations')],
+        summary: 'Earlier: asked about the gym.',
+        turnCount: 14,
+      );
+      final json = request.toJson();
+      expect(json['turn_count'], 14);
+      expect(json['summary'], 'Earlier: asked about the gym.');
+
+      // A fresh conversation sends neither.
+      final fresh = AssistantAiRequest(message: 'hello').toJson();
+      expect(fresh.containsKey('turn_count'), isFalse);
+      expect(fresh.containsKey('summary'), isFalse);
+    });
+
     test('a rate limit carries its wait hint through', () {
       final reply = parseAssistantAiReply({
         'code': 'rate_limited',

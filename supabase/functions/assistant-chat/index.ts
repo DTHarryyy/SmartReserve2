@@ -25,15 +25,16 @@ import {
   cacheKeyFor,
   type ChatTurn,
   checkReply,
+  extractChannels,
   estimateMessagesTokens,
   isCacheable,
+  maxSummaryChars,
   maxToolCallsPerRound,
   maxToolRounds,
   parsePositiveInt,
   sanitizeErrorCode,
+  summaryAfterTurns,
   tidyReply,
-  validateProposal,
-  validateSlotFill,
   validateToolCall,
 } from "./contract.ts";
 import { complete, type ProviderToolCall } from "./openai.ts";
@@ -266,6 +267,10 @@ Deno.serve(async (request) => {
     : [];
 
   const inBookingFlow = body.in_booking_flow === true;
+  const turnCount = typeof body.turn_count === "number" &&
+      Number.isFinite(body.turn_count)
+    ? Math.max(0, Math.floor(body.turn_count))
+    : history.length;
   const bookingDraft =
     body.booking_draft && typeof body.booking_draft === "object" &&
       !Array.isArray(body.booking_draft)
@@ -298,6 +303,11 @@ Deno.serve(async (request) => {
       isAdmin: profile.isAdmin,
       todayIso: manilaToday(),
       inBookingFlow,
+      // Only once the conversation has outgrown the replayed window. The
+      // client sends its running total; falling back to the history length
+      // means a client that never sends one simply never asks for a summary,
+      // which is the safe direction.
+      wantsSummary: turnCount > summaryAfterTurns,
     }),
     summary: typeof body.summary === "string" ? body.summary : null,
     history,
@@ -456,6 +466,20 @@ Deno.serve(async (request) => {
     );
   }
 
+  // Persist the rolling summary, if the model produced one. Ownership is
+  // re-checked in SQL against the verified user id: conversationId arrives in
+  // the request body and is therefore the caller's claim, not a fact.
+  if (channels.summary && typeof body.conversationId === "string") {
+    await storeSummary(
+      admin,
+      user.id,
+      body.conversationId,
+      channels.summary,
+      turnCount,
+      requestId,
+    );
+  }
+
   await logRequest(admin, {
     requestId,
     userId: user.id,
@@ -484,6 +508,8 @@ Deno.serve(async (request) => {
     tools_used: toolsUsed,
     slot_fill: channels.slotFill,
     proposal: channels.proposal,
+    // Echoed so the client can send it back next turn without a read.
+    summary: channels.summary,
     usage: {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
@@ -540,38 +566,6 @@ async function dispatch(
  * Anything malformed is dropped silently: a missing proposal costs the user a
  * tap, whereas a half-validated one would cost correctness.
  */
-function extractChannels(reply: string): {
-  slotFill: unknown;
-  proposal: unknown;
-} {
-  const out: { slotFill: unknown; proposal: unknown } = {
-    slotFill: null,
-    proposal: null,
-  };
-  const blocks = reply.match(/```json\s*([\s\S]*?)```/g) ?? [];
-  for (const block of blocks) {
-    const inner = block.replace(/```json\s*/, "").replace(/```$/, "");
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(inner);
-    } catch (_) {
-      continue;
-    }
-    if (!parsed || typeof parsed !== "object") continue;
-    const record = parsed as Record<string, unknown>;
-    if (record.fill_booking_slot) {
-      try {
-        out.slotFill = validateSlotFill(record.fill_booking_slot);
-      } catch (_) { /* dropped */ }
-    }
-    if (record.proposal) {
-      try {
-        out.proposal = validateProposal(record.proposal);
-      } catch (_) { /* dropped */ }
-    }
-  }
-  return out;
-}
 
 function providerMessage(code: string): string {
   switch (code) {
@@ -657,6 +651,40 @@ async function retrieveKnowledge(
       error_code: sanitizeErrorCode(String(error)),
     });
     return null;
+  }
+}
+
+/**
+ * Save the conversation's rolling summary.
+ *
+ * Best-effort: losing it costs a slightly less contextual next turn, which is
+ * not worth failing an answer the user already has.
+ */
+async function storeSummary(
+  admin: RpcClient,
+  userId: string,
+  conversationId: string,
+  summary: string,
+  turnCount: number,
+  requestId: string,
+): Promise<void> {
+  try {
+    const { error } = await admin.rpc(
+      "assistant_update_conversation_summary",
+      {
+        p_owner_id: userId,
+        p_conversation_id: conversationId,
+        p_summary: summary.slice(0, maxSummaryChars),
+        p_turn_count: turnCount,
+      },
+    );
+    if (error) throw error;
+  } catch (error) {
+    logEvent({
+      request_id: requestId,
+      status: "summary_write_failed",
+      error_code: sanitizeErrorCode(String(error)),
+    });
   }
 }
 

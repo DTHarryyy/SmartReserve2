@@ -401,6 +401,15 @@ class AssistantController extends ChangeNotifier {
   int _assistsForStage = 0;
   AssistantStage? _assistStage;
 
+  /// A rolling precis of the turns that have fallen out of the replayed
+  /// window, produced by the model on the same call that answered and sent
+  /// back on the next one.
+  ///
+  /// Held here rather than re-read from the database each turn: it is the
+  /// server's own output coming straight back, and a read would cost a round
+  /// trip to learn something we were just told.
+  String? _contextSummary;
+
   /// Set when the last turn fell back to rules because the service was
   /// unavailable, so the UI can say so once rather than on every message.
   bool aiDegraded = false;
@@ -465,6 +474,8 @@ class AssistantController extends ChangeNotifier {
     messages.clear();
     conversations.clear();
     conversationId = null;
+    // Belongs to the conversation being left behind, not the one being opened.
+    _contextSummary = null;
     _persistedMessageCount = 0;
     draft = BookingDraft();
     stage = AssistantStage.idle;
@@ -528,6 +539,7 @@ class AssistantController extends ChangeNotifier {
 
   void _startLocalConversation() {
     messages.clear();
+    _contextSummary = null;
     draft = BookingDraft();
     stage = AssistantStage.idle;
     clearActivePicker();
@@ -1380,6 +1392,10 @@ class AssistantController extends ChangeNotifier {
                 content: message.text,
               ),
         ],
+        summary: _contextSummary,
+        // The whole conversation, not the six turns being replayed. The server
+        // only asks the model to keep a summary once this outgrows the window.
+        turnCount: messages.length,
         frame: frame,
         inBookingFlow:
             stage != AssistantStage.idle && stage != AssistantStage.submitting,
@@ -1422,6 +1438,7 @@ class AssistantController extends ChangeNotifier {
     if (client == null) return false;
 
     final reply = await _askAi(client, _aiRequestFor(p, state));
+    _rememberSummary(reply);
     if (!reply.hasText) {
       aiDegraded = reply.degraded && reply.failureCode != 'disabled';
       return false;
@@ -1547,6 +1564,7 @@ class AssistantController extends ChangeNotifier {
     _assistsForStage++;
 
     final reply = await _askAi(client, _aiRequestFor(p, state));
+    _rememberSummary(reply);
     final fill = reply.slotFill;
 
     if (fill != null && await _applySlotFill(fill, state)) {
@@ -1568,6 +1586,19 @@ class AssistantController extends ChangeNotifier {
 
     aiDegraded = reply.degraded && reply.failureCode != 'disabled';
     return false;
+  }
+
+  /// Keep a summary the server produced, so the next turn can send it back.
+  ///
+  /// Only ever replaced by a newer one, never cleared by a turn that did not
+  /// produce one: the model is asked for a summary only past a turn threshold,
+  /// so most replies carry none and dropping the stored one on each of those
+  /// would throw away the context on the very next message.
+  void _rememberSummary(AssistantAiReply reply) {
+    final summary = reply.summary;
+    if (summary != null && summary.trim().isNotEmpty) {
+      _contextSummary = summary.trim();
+    }
   }
 
   /// Test seam over [_applySlotFill]. Exposed so the slot validators can be

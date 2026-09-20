@@ -70,6 +70,24 @@ export const maxToolCallsPerRound = 3;
 export const maxReplySentences = 5;
 export const maxReplyChars = 700;
 
+/**
+ * The rolling summary's budget.
+ *
+ * It is sent on every subsequent turn of the conversation, so it has to be
+ * cheaper than the turns it replaces or it is not an optimisation. The column
+ * that stores it caps at 1000; this is tighter on purpose.
+ */
+export const maxSummaryChars = 400;
+
+/**
+ * Turns of history after which the model is asked to keep a summary.
+ *
+ * Below this the six-turn window holds the whole conversation and a summary
+ * would restate what is already there, at the cost of output tokens every
+ * turn.
+ */
+export const summaryAfterTurns = 6;
+
 // ---------------------------------------------------------------------------
 // Tool registry declaration
 //
@@ -897,4 +915,63 @@ export async function cacheKeyFor(
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// ---------------------------------------------------------------------------
+// Output channel parsing
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse the model's out-of-band channels out of the raw reply.
+ *
+ * Lives here, with the other pure logic, so it can be tested at all. It was
+ * private to index.ts -- a module that reads env and starts a server on
+ * import -- which is most of the reason the fenced block leaked to users for
+ * as long as it did: the one function that knew the block existed could not
+ * be reached without standing up a whole request.
+ */
+export function extractChannels(reply: string): {
+  slotFill: unknown;
+  proposal: unknown;
+  summary: string | null;
+} {
+  const out: {
+    slotFill: unknown;
+    proposal: unknown;
+    summary: string | null;
+  } = {
+    slotFill: null,
+    proposal: null,
+    summary: null,
+  };
+  const blocks = reply.match(/```json\s*([\s\S]*?)```/g) ?? [];
+  for (const block of blocks) {
+    const inner = block.replace(/```json\s*/, "").replace(/```$/, "");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(inner);
+    } catch (_) {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    const record = parsed as Record<string, unknown>;
+    if (record.fill_booking_slot) {
+      try {
+        out.slotFill = validateSlotFill(record.fill_booking_slot);
+      } catch (_) { /* dropped */ }
+    }
+    if (record.proposal) {
+      try {
+        out.proposal = validateProposal(record.proposal);
+      } catch (_) { /* dropped */ }
+    }
+    // The rolling summary rides the channel block rather than a tag of its
+    // own, so it costs no extra model call and needs no second parser or
+    // second thing to remember to strip out of the answer.
+    if (typeof record.summary === "string") {
+      const trimmed = record.summary.trim().slice(0, maxSummaryChars);
+      if (trimmed) out.summary = trimmed;
+    }
+  }
+  return out;
 }

@@ -9,6 +9,7 @@ import {
   type ChatTurn,
   compactHistory,
   maxMessageChars,
+  maxSummaryChars,
   type ToolName,
   toolNames,
   toolSchemas,
@@ -60,6 +61,13 @@ export type PromptContext = {
   isAdmin: boolean;
   todayIso: string;
   inBookingFlow: boolean;
+  /**
+   * True once the conversation is longer than the replayed window, so earlier
+   * turns would otherwise be lost. Off for short chats: asking for a summary
+   * of a conversation the model can still see in full costs output tokens to
+   * restate what was already sent.
+   */
+  wantsSummary?: boolean;
 };
 
 const systemRules = [
@@ -82,6 +90,15 @@ export function buildSystemPrompt(context: PromptContext): string {
   if (context.pricingAudience === "student" ||
     context.pricingAudience === "faculty") {
     lines.push("This user is exempt from facility charges.");
+  }
+  if (context.wantsSummary) {
+    lines.push(
+      "This conversation is longer than what you can see. After your answer, " +
+        'append one line of fenced JSON: ```json {"summary":"..."} ``` -- at ' +
+        `most ${maxSummaryChars} characters, carrying only what a later turn ` +
+        "would need: which reservation or facility is being discussed, and " +
+        "what the user is trying to do. No amounts, no dates, no names.",
+    );
   }
   if (context.inBookingFlow) {
     lines.push(

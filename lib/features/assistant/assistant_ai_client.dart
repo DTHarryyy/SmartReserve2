@@ -19,6 +19,7 @@ class AssistantAiReply {
     this.toolsUsed = const [],
     this.slotFill,
     this.proposal,
+    this.summary,
     this.degraded = false,
     this.failureCode,
     this.retryAfterSeconds,
@@ -34,6 +35,11 @@ class AssistantAiReply {
 
   /// A booking or cancellation the model proposed. Never executed here.
   final Map<String, dynamic>? proposal;
+
+  /// A rolling precis of the conversation so far, produced by the model on
+  /// the same call that answered. Sent back on the next turn so history can
+  /// stay capped without the earlier turns being simply forgotten.
+  final String? summary;
 
   /// True when the service answered but said it could not help this time.
   final bool degraded;
@@ -58,6 +64,7 @@ class AssistantAiRequest {
     this.frame,
     this.inBookingFlow = false,
     this.bookingDraft,
+    this.turnCount = 0,
   });
 
   final String message;
@@ -67,6 +74,10 @@ class AssistantAiRequest {
   /// here simply costs less.
   final List<({String role, String content})> history;
   final String? summary;
+
+  /// Total turns in this conversation, not just the ones being replayed. The
+  /// server asks for a summary only once this outgrows the history window.
+  final int turnCount;
   final AssistantReferenceFrame? frame;
   final bool inBookingFlow;
   final Map<String, dynamic>? bookingDraft;
@@ -79,6 +90,7 @@ class AssistantAiRequest {
         for (final turn in history) {'role': turn.role, 'content': turn.content},
       ],
     if (summary != null && summary!.trim().isNotEmpty) 'summary': summary,
+    if (turnCount > 0) 'turn_count': turnCount,
     if (frame != null && !frame!.isEmpty) 'context': frame!.toContextPayload(),
     if (inBookingFlow) 'in_booking_flow': true,
     if (bookingDraft != null) 'booking_draft': bookingDraft,
@@ -150,6 +162,9 @@ AssistantAiReply parseAssistantAiReply(Map<String, dynamic> data) {
         : null,
     proposal: data['proposal'] is Map
         ? Map<String, dynamic>.from(data['proposal'] as Map)
+        : null,
+    summary: data['summary'] is String && (data['summary'] as String).trim().isNotEmpty
+        ? (data['summary'] as String).trim()
         : null,
   );
 }
