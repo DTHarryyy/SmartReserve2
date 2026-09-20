@@ -405,6 +405,15 @@ class AssistantController extends ChangeNotifier {
   /// unavailable, so the UI can say so once rather than on every message.
   bool aiDegraded = false;
 
+  /// Test seam for the degraded banner. Reaching this state for real needs a
+  /// failing provider behind a whole model turn, which is a lot of scaffolding
+  /// to assert that one notice appears.
+  @visibleForTesting
+  void debugSetAiDegraded(bool value) {
+    aiDegraded = value;
+    notifyListeners();
+  }
+
   static const _greeting =
       'Hi! Ask me to find a room, check if a time is free, or book one '
       'right here — for example "book a room for 50 people next Thursday '
@@ -1764,7 +1773,7 @@ class AssistantController extends ChangeNotifier {
         } else {
           draft.candidates = tied;
           _say('A few rooms match "${p.facilityQuery}" — which one?');
-          messages.add(AssistantMessage.facilityList('', tied));
+          _showFacilities(tied);
         }
         return tied.length == 1
             ? _StageInputResult.accepted
@@ -1809,7 +1818,7 @@ class AssistantController extends ChangeNotifier {
           '(${top.first.capacity} seats), short of $minCapacity. Want to '
           'see it anyway?',
         );
-        messages.add(AssistantMessage.facilityList('', top));
+        _showFacilities(top);
         return _StageInputResult.needsSelection;
       }
       results = biggest.take(3).toList();
@@ -1817,11 +1826,11 @@ class AssistantController extends ChangeNotifier {
 
     if (results.length == 1) {
       draft.facility = results.first;
-      messages.add(AssistantMessage.facilityList('Best match:', results));
+      _showFacilities(results, caption: 'Best match:');
     } else if (results.length > 1) {
       draft.candidates = results;
       _say('A few rooms fit — which one?');
-      messages.add(AssistantMessage.facilityList('', results));
+      _showFacilities(results);
     } else {
       _say(
         "I couldn't find a bookable room matching that. Which facility did you mean?",
@@ -1840,12 +1849,7 @@ class AssistantController extends ChangeNotifier {
             .toList()
           ..sort((a, b) => a.capacity.compareTo(b.capacity));
     if (bigger.isNotEmpty) {
-      messages.add(
-        AssistantMessage.facilityList(
-          'Bigger options:',
-          bigger.take(3).toList(),
-        ),
-      );
+      _showFacilities(bigger.take(3).toList(), caption: 'Bigger options:');
     }
   }
 
@@ -1910,7 +1914,7 @@ class AssistantController extends ChangeNotifier {
           } else {
             draft.candidates = tied;
             _say('A few rooms match that — which one?');
-            messages.add(AssistantMessage.facilityList('', tied));
+            _showFacilities(tied);
           }
           return tied.length == 1
               ? _StageInputResult.accepted
@@ -2656,7 +2660,7 @@ class AssistantController extends ChangeNotifier {
           ? 'One match:'
           : '${results.length} facilities match:',
     );
-    messages.add(AssistantMessage.facilityList('', results.take(8).toList()));
+    _showFacilities(results.take(8).toList());
   }
 
   Future<void> _handleCheckAvailability(ParsedMessage p, AppState state) async {
@@ -2686,9 +2690,7 @@ class AssistantController extends ChangeNotifier {
     }
     if (candidates.length > 1) {
       _say('Which one?');
-      messages.add(
-        AssistantMessage.facilityList('', candidates.take(8).toList()),
-      );
+      _showFacilities(candidates.take(8).toList());
       return;
     }
 
@@ -3462,8 +3464,16 @@ class AssistantController extends ChangeNotifier {
     frame.noteReservations([for (final item in items) item.id]);
   }
 
-  void _showFacilities(List<Facility> items) {
-    messages.add(AssistantMessage.facilityList('', items));
+  /// Render a facility list and record it as what ordinals now refer to.
+  ///
+  /// Every facility list must come through here. Several paths used to add the
+  /// message directly, including the two commonest -- browsing facilities and
+  /// checking a day -- which left the reference frame empty precisely when the
+  /// user was most likely to say "book the second one". The follow-up then had
+  /// nothing to resolve against and the assistant asked which room, having
+  /// just listed them.
+  void _showFacilities(List<Facility> items, {String caption = ''}) {
+    messages.add(AssistantMessage.facilityList(caption, items));
     frame.noteFacilities([for (final item in items) item.id]);
   }
 

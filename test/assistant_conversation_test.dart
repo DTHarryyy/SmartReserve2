@@ -498,4 +498,45 @@ void main() {
     await controller.send('Book a room', state);
     expect(controller.stage, AssistantStage.needFacility);
   });
+
+  group('follow-up references after a facility list', () {
+    // Browsing facilities is the commonest thing a user does before saying
+    // "the second one". Several paths used to render the list without telling
+    // the reference frame, so the follow-up had nothing to resolve against and
+    // the assistant asked which room it had just finished listing.
+
+    test('browsing facilities records what ordinals refer to', () async {
+      await controller.send('what facilities are available?', state);
+
+      final listed = [
+        for (final message in controller.messages)
+          if (message.kind == AssistantMessageKind.facilities) message,
+      ];
+      expect(listed, isNotEmpty, reason: 'the question must answer with a list');
+      expect(
+        controller.frame.facilityIds,
+        isNotEmpty,
+        reason: 'a list the user can point at must be pointable at',
+      );
+      expect(
+        controller.frame.facilityIds.first,
+        listed.last.facilities.first.id,
+        reason: 'display order is the order an ordinal counts in',
+      );
+    });
+
+    test('an ordinal resolves to the facility that was shown', () async {
+      await controller.send('what facilities are available?', state);
+      final shown = [
+        for (final message in controller.messages)
+          if (message.kind == AssistantMessageKind.facilities) message,
+      ].last.facilities;
+      if (shown.length < 2) return;
+
+      expect(
+        controller.frame.resolveFacility(ordinal: 2).id,
+        shown[1].id,
+      );
+    });
+  });
 }

@@ -78,6 +78,7 @@ class _AssistantTabState extends State<AssistantTab> {
       child: Column(
         children: [
           if (state.busyWindowsDegraded) _degradedNotice(),
+          if (controller.aiDegraded) _aiNotice(),
           if (controller.historySaveFailed) _historyNotice(controller),
           Expanded(
             child: controller.historyLoading
@@ -236,6 +237,39 @@ class _AssistantTabState extends State<AssistantTab> {
             "Couldn't reach the live schedule. Booking choices are paused "
             'until availability can be verified.',
             style: sans(11, color: context.srColors.amberInk),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  /// Shown when the cloud model could not be reached this turn.
+  ///
+  /// The answer above it is the deterministic one, which is correct but
+  /// blunter, so this says what changed rather than reporting an error.
+  /// Deliberately not shown for the kill switch: an assistant running on rules
+  /// by configuration is not degraded, it is how the assistant shipped.
+  Widget _aiNotice() => Container(
+    margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+    decoration: BoxDecoration(
+      color: context.srColors.surfaceSubtle,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.srColors.dividerSoft),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.auto_awesome_outlined,
+          size: 14,
+          color: context.srColors.textMuted,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Answering from your records only right now. Everything below is '
+            'still accurate; phrasing may be blunter than usual.',
+            style: sans(11, color: context.srColors.textMuted),
           ),
         ),
       ],
@@ -470,6 +504,9 @@ class _QuickReplyChip extends StatelessWidget {
         button: true,
         enabled: enabled,
         label: 'Suggestion: $label',
+        // Without this the chip's own Text contributes a second label and the
+        // node reads "Suggestion: Show my reservations, Show my reservations".
+        excludeSemantics: true,
         child: Hoverable(
           enabled: enabled,
           builder: (context, hovered) => GestureDetector(

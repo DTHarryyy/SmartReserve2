@@ -10,6 +10,7 @@ Future<void> _pumpAssistant(
   WidgetTester tester, {
   required ThemeData theme,
   required Size size,
+  AssistantController? controller,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -23,11 +24,17 @@ Future<void> _pumpAssistant(
         debugShowCheckedModeBanner: false,
         builder: (context, child) =>
             SrThemeBridge(child: child ?? const SizedBox.shrink()),
-        home: AssistantChatPage(controller: AssistantController()),
+        home: AssistantChatPage(
+          controller: controller ?? AssistantController(),
+        ),
       ),
     ),
   );
-  await tester.pump();
+  // Settle rather than pump once. didChangeDependencies kicks off
+  // initialize(), which clears the transcript and raises historyLoading before
+  // re-seeding the greeting -- so a single pump lands in the loading window,
+  // where the spinner is showing and the suggestion chips do not exist yet.
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -65,6 +72,30 @@ void main() {
 
     expect(find.text('Reservation assistant'), findsOneWidget);
     expect(find.bySemanticsLabel('Message the assistant'), findsOneWidget);
+  });
+
+  testWidgets('a model outage is stated once, not hidden', (tester) async {
+    // aiDegraded was set by the controller and read by nothing: an outage was
+    // completely invisible, so the user saw a blunter answer with no reason
+    // for it. The banner says what changed without calling it an error -- the
+    // answer underneath is the deterministic one, which is correct.
+    final controller = AssistantController();
+    await _pumpAssistant(
+      tester,
+      theme: SrThemeData.light(),
+      size: const Size(430, 760),
+      controller: controller,
+    );
+
+    expect(find.textContaining('Answering from your records only'), findsNothing);
+
+    controller.debugSetAiDegraded(true);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Answering from your records only'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('booking flow opens the facility picker automatically', (
