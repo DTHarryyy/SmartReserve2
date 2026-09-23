@@ -36,7 +36,8 @@ class RulesSection extends StatelessWidget {
     (
       key: 'listing',
       label: 'Show in the public catalogue',
-      hint: 'Students and guests can find this facility when browsing.',
+      hint:
+          'Students and external renters can find this facility when browsing.',
     ),
   ];
 

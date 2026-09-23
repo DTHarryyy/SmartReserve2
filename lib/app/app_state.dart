@@ -1730,7 +1730,7 @@ class AppState extends ChangeNotifier {
           reason: reason.trim(),
         ),
       );
-      showToast(const ToastMessage('Account converted to external guest.'));
+      showToast(const ToastMessage('Account converted to external renter.'));
       return null;
     } catch (error) {
       return _accountActionError(error, 'Account was not converted.');
@@ -2857,8 +2857,7 @@ class AppState extends ChangeNotifier {
     };
     final mineEvents = [
       for (final event in calendarEvents)
-        if (event.isMine && publicFacilityNames.contains(event.facility))
-          event,
+        if (event.isMine && publicFacilityNames.contains(event.facility)) event,
     ];
     final mineOccurrenceIds = {
       for (final event in mineEvents)
@@ -3215,10 +3214,7 @@ class AppState extends ChangeNotifier {
     DateTime anchor,
     CalendarViewMode mode,
   ) => switch (mode) {
-    CalendarViewMode.month => (
-      DateTime(anchor.year, anchor.month),
-      DateTime(anchor.year, anchor.month + 1),
-    ),
+    CalendarViewMode.month => calendarMonthGridRange(anchor),
     CalendarViewMode.week => (
       _weekStartDate(anchor),
       _weekStartDate(anchor).add(const Duration(days: 7)),
@@ -5088,7 +5084,7 @@ class AppState extends ChangeNotifier {
     if (!loyaltyAvailableForCurrentUser) {
       showToast(
         const ToastMessage(
-          'Loyalty rewards are available to guest renters only.',
+          'Loyalty rewards are available to renters on the external rate only.',
           tone: AdvisoryTone.block,
         ),
       );
@@ -5260,7 +5256,7 @@ class AppState extends ChangeNotifier {
     if (!loyaltyAvailableForCurrentUser) {
       showToast(
         const ToastMessage(
-          'Loyalty discounts are available to guest renters only.',
+          'Loyalty discounts are available to renters on the external rate only.',
           tone: AdvisoryTone.block,
         ),
       );

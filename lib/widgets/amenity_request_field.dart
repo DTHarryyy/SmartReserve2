@@ -9,16 +9,22 @@ class AmenityRequestField extends StatelessWidget {
   const AmenityRequestField({
     super.key,
     required this.includedAmenities,
+    required this.selectedIncludedAmenities,
     required this.requestableAmenities,
     required this.selectedRequestedAmenities,
+    required this.onToggleIncluded,
+    required this.onRemoveIncluded,
     required this.onToggle,
     required this.onRemove,
     this.dense = false,
   });
 
   final List<String> includedAmenities;
+  final Set<String> selectedIncludedAmenities;
   final List<String> requestableAmenities;
   final Set<String> selectedRequestedAmenities;
+  final ValueChanged<String> onToggleIncluded;
+  final ValueChanged<String> onRemoveIncluded;
   final ValueChanged<String> onToggle;
   final ValueChanged<String> onRemove;
   final bool dense;
@@ -36,15 +42,17 @@ class AmenityRequestField extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        'Included with this facility',
+        'Included amenities · choose what you need',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: sans(dense ? 11 : 11.5, w: 500, color: context.srColors.ink2),
       ),
       const SizedBox(height: 8),
-      if (includedAmenities.isEmpty)
+      if (selectedIncludedAmenities.isEmpty)
         Text(
-          'No included amenities recorded.',
+          includedAmenities.isEmpty
+              ? 'No included amenities recorded.'
+              : 'No included amenities selected.',
           style: sans(11.5, color: context.srColors.muted),
         )
       else
@@ -53,10 +61,12 @@ class AmenityRequestField extends StatelessWidget {
           runSpacing: 8,
           children: [
             for (final label in includedAmenities)
-              _IncludedAmenityChip(
-                key: ValueKey('included-amenity-chip-$label'),
-                label: label,
-              ),
+              if (selectedIncludedAmenities.contains(label))
+                _IncludedAmenityChip(
+                  key: ValueKey('included-amenity-chip-$label'),
+                  label: label,
+                  onRemove: () => onRemoveIncluded(label),
+                ),
           ],
         ),
       const SizedBox(height: 12),
@@ -83,9 +93,12 @@ class AmenityRequestField extends StatelessWidget {
             padding: const EdgeInsets.only(top: 5),
             child: _AmenityPickerButton(
               key: const ValueKey('amenity-request-trigger'),
+              includedAmenities: includedAmenities,
+              selectedIncluded: selectedIncludedAmenities,
               requestableAmenities: requestableAmenities,
-              selected: selectedRequestedAmenities,
-              onToggle: onToggle,
+              selectedRequested: selectedRequestedAmenities,
+              onToggleIncluded: onToggleIncluded,
+              onToggleRequested: onToggle,
             ),
           ),
         ],
@@ -97,20 +110,27 @@ class AmenityRequestField extends StatelessWidget {
 class _AmenityPickerButton extends StatelessWidget {
   const _AmenityPickerButton({
     super.key,
+    required this.includedAmenities,
+    required this.selectedIncluded,
     required this.requestableAmenities,
-    required this.selected,
-    required this.onToggle,
+    required this.selectedRequested,
+    required this.onToggleIncluded,
+    required this.onToggleRequested,
   });
 
+  final List<String> includedAmenities;
+  final Set<String> selectedIncluded;
   final List<String> requestableAmenities;
-  final Set<String> selected;
-  final ValueChanged<String> onToggle;
+  final Set<String> selectedRequested;
+  final ValueChanged<String> onToggleIncluded;
+  final ValueChanged<String> onToggleRequested;
 
   @override
   Widget build(BuildContext context) {
-    final options = requestableAmenities;
+    final hasSelection =
+        selectedIncluded.isNotEmpty || selectedRequested.isNotEmpty;
     return PopupMenuButton<void>(
-      tooltip: 'Request more amenities',
+      tooltip: 'Choose amenities',
       color: context.srColors.surface,
       position: PopupMenuPosition.under,
       constraints: const BoxConstraints(
@@ -125,35 +145,56 @@ class _AmenityPickerButton extends StatelessWidget {
           child: IconTheme(
             data: const IconThemeData(opacity: 1),
             child: StatefulBuilder(
-              builder: (context, setMenuState) => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (options.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        'All standard amenities are included with this facility.',
-                        style: sans(
-                          11.5,
-                          height: 1.45,
-                          color: context.srColors.ink4,
-                        ),
-                      ),
-                    )
-                  else ...[
-                    const _GroupHeader('STANDARD CATALOG'),
-                    for (final label in options)
-                      _AmenityRow(
-                        key: ValueKey('amenity-row-$label'),
-                        label: label,
-                        selected: selected.contains(label),
-                        onTap: () {
-                          onToggle(label);
-                          setMenuState(() {});
-                        },
-                      ),
-                  ],
-                ],
+              builder: (context, setMenuState) => ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 280),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (includedAmenities.isEmpty &&
+                          requestableAmenities.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            'No amenities are available for this facility.',
+                            style: sans(
+                              11.5,
+                              height: 1.45,
+                              color: context.srColors.ink4,
+                            ),
+                          ),
+                        )
+                      else ...[
+                        if (includedAmenities.isNotEmpty) ...[
+                          const _GroupHeader('INCLUDED WITH FACILITY'),
+                          for (final label in includedAmenities)
+                            _AmenityRow(
+                              key: ValueKey('included-amenity-row-$label'),
+                              label: label,
+                              selected: selectedIncluded.contains(label),
+                              onTap: () {
+                                onToggleIncluded(label);
+                                setMenuState(() {});
+                              },
+                            ),
+                        ],
+                        if (requestableAmenities.isNotEmpty) ...[
+                          const _GroupHeader('ADDITIONAL AMENITIES'),
+                          for (final label in requestableAmenities)
+                            _AmenityRow(
+                              key: ValueKey('amenity-row-$label'),
+                              label: label,
+                              selected: selectedRequested.contains(label),
+                              onTap: () {
+                                onToggleRequested(label);
+                                setMenuState(() {});
+                              },
+                            ),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -161,17 +202,17 @@ class _AmenityPickerButton extends StatelessWidget {
       ],
       child: Semantics(
         button: true,
-        label: 'Request more amenities',
+        label: 'Choose amenities',
         child: Container(
           height: 30,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: selected.isEmpty
+            color: !hasSelection
                 ? context.srColors.surface
                 : context.srColors.primaryTint,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: selected.isEmpty
+              color: !hasSelection
                   ? context.srColors.borderField
                   : context.srColors.primarySoft,
             ),
@@ -182,17 +223,15 @@ class _AmenityPickerButton extends StatelessWidget {
               Icon(
                 Icons.add_rounded,
                 size: 14,
-                color: selected.isEmpty
-                    ? context.srColors.muted
-                    : SR.primaryHover,
+                color: !hasSelection ? context.srColors.muted : SR.primaryHover,
               ),
               const SizedBox(width: 5),
               Text(
-                'Request more amenities',
+                'Choose amenities',
                 style: sans(
                   11,
                   w: 500,
-                  color: selected.isEmpty
+                  color: !hasSelection
                       ? context.srColors.ink3
                       : SR.primaryHover,
                 ),
@@ -353,27 +392,69 @@ class _AmenityChip extends StatelessWidget {
 }
 
 class _IncludedAmenityChip extends StatelessWidget {
-  const _IncludedAmenityChip({super.key, required this.label});
+  const _IncludedAmenityChip({
+    super.key,
+    required this.label,
+    required this.onRemove,
+  });
 
   final String label;
+  final VoidCallback onRemove;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      color: context.srColors.dividerSoft,
-      borderRadius: BorderRadius.circular(7),
-      border: Border.all(color: context.srColors.hairline),
-    ),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 200),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: sans(11.5, w: 500, color: context.srColors.ink3),
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 5, right: 5),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+          decoration: BoxDecoration(
+            color: context.srColors.dividerSoft,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: context.srColors.hairline),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: sans(11.5, w: 500, color: context.srColors.ink3),
+            ),
+          ),
+        ),
       ),
-    ),
+      Positioned(
+        top: 0,
+        right: 0,
+        child: Semantics(
+          button: true,
+          label: 'Remove included $label',
+          child: Hoverable(
+            builder: (context, hovered) => GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: context.srColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: context.srColors.hairline),
+                ),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 11,
+                  color: hovered
+                      ? context.srColors.ink2
+                      : context.srColors.ink4,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
   );
 }
 

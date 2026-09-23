@@ -38,6 +38,7 @@ class BookingPrefill {
     this.heads,
     this.purpose,
     this.amenities = const {},
+    this.excludedIncludedAmenities = const {},
   });
 
   final DateTime? day;
@@ -48,6 +49,7 @@ class BookingPrefill {
   final int? heads;
   final String? purpose;
   final Set<String> amenities;
+  final Set<String> excludedIncludedAmenities;
 
   bool get isEmpty =>
       day == null &&
@@ -55,7 +57,8 @@ class BookingPrefill {
       endHour == null &&
       heads == null &&
       (purpose == null || purpose!.trim().isEmpty) &&
-      amenities.isEmpty;
+      amenities.isEmpty &&
+      excludedIncludedAmenities.isEmpty;
 }
 
 /// What a prefill resolved to once checked against the facility's real
@@ -165,8 +168,11 @@ Future<void> showBookingSheet(
   if (MediaQuery.sizeOf(context).width < SR.tabletMin) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            _MobileFacilityPage(state: state, facility: facility, prefill: prefill),
+        builder: (_) => _MobileFacilityPage(
+          state: state,
+          facility: facility,
+          prefill: prefill,
+        ),
       ),
     );
   }
@@ -262,6 +268,7 @@ class _BookingSheetState extends State<_BookingSheet> {
   int _occurrenceCount = 2;
   final List<ReservationUpload> _attachments = [];
   final Set<String> _amenities = <String>{};
+  final Set<String> _selectedIncludedAmenities = <String>{};
   BackendReservationQuote? _serverQuote;
   String? _quoteError;
   bool _quoteLoading = false;
@@ -288,6 +295,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     final slots = _times;
     _start = slots.first;
     _end = slots.length > 2 ? slots[2] : slots.last;
+    _selectedIncludedAmenities.addAll(includedFacilityAmenities(facility));
     // Carried over from the assistant, if it sent anything. Runs before the
     // headcount listener is attached so the first quote is priced on the real
     // party size instead of the placeholder 20 and then again on the real one.
@@ -359,6 +367,7 @@ class _BookingSheetState extends State<_BookingSheet> {
     // stale amenity from the chat cannot arrive as an unrequestable checkbox.
     final requestable = requestableAmenityLabels(facility).toSet();
     _amenities.addAll(prefill.amenities.where(requestable.contains));
+    _selectedIncludedAmenities.removeAll(prefill.excludedIncludedAmenities);
   }
 
   List<String> get _allSlots => [
@@ -634,6 +643,14 @@ class _BookingSheetState extends State<_BookingSheet> {
     });
   }
 
+  void _toggleIncludedAmenity(String label) {
+    setState(() {
+      if (!_selectedIncludedAmenities.remove(label)) {
+        _selectedIncludedAmenities.add(label);
+      }
+    });
+  }
+
   List<String> get _selectedAmenityIds => [
     for (final amenity in facility.amenityOptions)
       if (_amenities.contains(amenity.name)) amenity.id,
@@ -641,6 +658,10 @@ class _BookingSheetState extends State<_BookingSheet> {
 
   void _removeAmenity(String label) {
     setState(() => _amenities.remove(label));
+  }
+
+  void _removeIncludedAmenity(String label) {
+    setState(() => _selectedIncludedAmenities.remove(label));
   }
 
   Future<void> _submit() async {
@@ -760,6 +781,7 @@ class _BookingSheetState extends State<_BookingSheet> {
                     occurrenceCount: _occurrenceCount,
                     attachments: _attachments,
                     amenities: _amenities,
+                    selectedIncludedAmenities: _selectedIncludedAmenities,
                     submitting: _submitting,
                     onDateChanged: (value) {
                       setState(() {
@@ -801,6 +823,8 @@ class _BookingSheetState extends State<_BookingSheet> {
                         setState(() => _attachments.removeAt(index)),
                     onToggleAmenity: _toggleAmenity,
                     onRemoveAmenity: _removeAmenity,
+                    onToggleIncludedAmenity: _toggleIncludedAmenity,
+                    onRemoveIncludedAmenity: _removeIncludedAmenity,
                     onVoucherChanged: (value) {
                       setState(() {
                         _selectedVoucherId = value == 'none' ? null : value;
@@ -898,6 +922,7 @@ class _BookingForm extends StatelessWidget {
     required this.occurrenceCount,
     required this.attachments,
     required this.amenities,
+    required this.selectedIncludedAmenities,
     required this.submitting,
     required this.onDateChanged,
     required this.onStartChanged,
@@ -911,6 +936,8 @@ class _BookingForm extends StatelessWidget {
     required this.onRemoveAttachment,
     required this.onToggleAmenity,
     required this.onRemoveAmenity,
+    required this.onToggleIncludedAmenity,
+    required this.onRemoveIncludedAmenity,
     required this.onVoucherChanged,
     required this.onTermsAccepted,
     required this.onSubmit,
@@ -950,6 +977,7 @@ class _BookingForm extends StatelessWidget {
   final int occurrenceCount;
   final List<ReservationUpload> attachments;
   final Set<String> amenities;
+  final Set<String> selectedIncludedAmenities;
   final bool submitting;
   final ValueChanged<String> onDateChanged;
   final ValueChanged<String> onStartChanged;
@@ -963,6 +991,8 @@ class _BookingForm extends StatelessWidget {
   final ValueChanged<int> onRemoveAttachment;
   final ValueChanged<String> onToggleAmenity;
   final ValueChanged<String> onRemoveAmenity;
+  final ValueChanged<String> onToggleIncludedAmenity;
+  final ValueChanged<String> onRemoveIncludedAmenity;
   final ValueChanged<String?> onVoucherChanged;
   final ValueChanged<bool> onTermsAccepted;
   final Future<void> Function() onSubmit;
@@ -1175,8 +1205,11 @@ class _BookingForm extends StatelessWidget {
         const SizedBox(height: 12),
         AmenityRequestField(
           includedAmenities: includedFacilityAmenities(facility),
+          selectedIncludedAmenities: selectedIncludedAmenities,
           requestableAmenities: requestableAmenityLabels(facility),
           selectedRequestedAmenities: amenities,
+          onToggleIncluded: onToggleIncludedAmenity,
+          onRemoveIncluded: onRemoveIncludedAmenity,
           onToggle: onToggleAmenity,
           onRemove: onRemoveAmenity,
         ),
@@ -1367,7 +1400,7 @@ class _BookingForm extends StatelessWidget {
                     Text(
                       quoteError ??
                           (quote?.totalAmountCentavos == 0
-                              ? 'No payment is required under this facility’s ${account.pricingAudience} rate. Approval confirms the reservation.'
+                              ? 'No payment is required under this facility’s ${bookingRateLabel(account.pricingAudience).toLowerCase()}. Approval confirms the reservation.'
                               : '${pesoFromCentavos(quote?.requiredDownPaymentCentavos ?? 0)} is required after approval. The slot is held while GCash proof is submitted and reviewed.'),
                       style: sans(
                         10.5,

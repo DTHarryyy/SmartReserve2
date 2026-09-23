@@ -6,7 +6,7 @@ enum VerificationState {
   verified('verified', 'Verified', SrTone.success),
   pending('pending', 'Awaiting review', SrTone.warning),
   rejected('rejected', 'Not verified', SrTone.error),
-  none('none', 'Guest', SrTone.neutral);
+  none('none', 'Not verified', SrTone.neutral);
 
   const VerificationState(this.raw, this.label, this.tone);
 
@@ -44,7 +44,7 @@ enum AccountStatus {
 }
 
 enum AccountRole {
-  user('User'),
+  user('Renter'),
   internalAdmin('Internal admin'),
   externalAdmin('External admin');
 
@@ -63,7 +63,7 @@ enum AccountRole {
       'Manages assigned facilities and verified-user reservations · reviews '
           'campus verification and governs accounts.',
     AccountRole.externalAdmin =>
-      'Manages assigned facilities, payments, schedules, and guest or '
+      'Manages assigned facilities, payments, schedules, and renter or '
           'unverified-user reservations.',
   };
 
@@ -86,7 +86,7 @@ enum AccountAccessType {
     'organization_representative',
     'Organization representative',
   ),
-  externalGuest('external_guest', 'External guest'),
+  externalGuest('external_guest', 'External renter'),
   legacyUnassigned('legacy_unassigned', 'Organization assignment required');
 
   const AccountAccessType(this.raw, this.label);
@@ -99,6 +99,63 @@ enum AccountAccessType {
     orElse: () => AccountAccessType.legacyUnassigned,
   );
 }
+
+/// Product-facing name for a stored booking/pricing audience.
+///
+/// The database value `guest` remains a stable pricing and routing key. It
+/// must not be shown as the identity of an authenticated account.
+String bookingAudienceLabel(String? audience) => switch (audience) {
+  'student' => 'Student',
+  'faculty' => 'Faculty',
+  'staff' => 'University staff',
+  'guest' => 'Renter',
+  _ => 'Renter',
+};
+
+String bookingRateLabel(String? audience) =>
+    '${bookingAudienceLabel(audience)} rate';
+
+/// Maps current and legacy reservation role snapshots to product language.
+String requesterRoleLabel(String? role) {
+  final value = role?.trim() ?? '';
+  final normalized = value.toLowerCase();
+  if (normalized == 'internal_admin' || normalized == 'internal admin') {
+    return 'Internal admin';
+  }
+  if (normalized == 'external_admin' || normalized == 'external admin') {
+    return 'External admin';
+  }
+  if (normalized == 'system') return 'System';
+
+  for (final prefix in ['user', 'guest', 'student', 'faculty', 'staff']) {
+    if (normalized.startsWith('$prefix ·')) {
+      return 'Renter${value.substring(prefix.length)}';
+    }
+  }
+  return 'Renter';
+}
+
+/// The only product state that may be called a guest is a person with no
+/// SmartReserve account. Registered identities are mapped from their role.
+String userTypeLabel({required bool hasAccount, String? role}) =>
+    hasAccount ? requesterRoleLabel(role) : 'Guest';
+
+/// Normalizes generated copy shown to an authenticated user without changing
+/// the raw values exchanged with the API.
+String registeredUserDisplayText(String text) => text.replaceAllMapped(
+  RegExp(r'\bguests?\b', caseSensitive: false),
+  (match) {
+    final source = match.group(0)!;
+    final replacement = source.toLowerCase().endsWith('s')
+        ? 'renters'
+        : 'renter';
+    if (source == source.toUpperCase()) return replacement.toUpperCase();
+    if (source.startsWith(RegExp('[A-Z]'))) {
+      return '${replacement[0].toUpperCase()}${replacement.substring(1)}';
+    }
+    return replacement;
+  },
+);
 
 class OrganizationUnit {
   const OrganizationUnit({

@@ -54,7 +54,7 @@ void main() {
     expect(overview.width, greaterThan(1080));
   });
 
-  testWidgets('guest accounts omit empty campus profile fields', (
+  testWidgets('external renter accounts use renter terminology', (
     tester,
   ) async {
     final state = AppState()..signInAsUser('u5');
@@ -77,6 +77,9 @@ void main() {
     await _pumpStudentAccount(tester, state, size: const Size(430, 900));
 
     expect(find.text('Profile details'), findsNothing);
+    expect(find.text('Renter'), findsWidgets);
+    expect(find.text('Guest'), findsNothing);
+    expect(find.text('Booking as a renter'), findsOneWidget);
     expect(find.text('Account actions'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
   });

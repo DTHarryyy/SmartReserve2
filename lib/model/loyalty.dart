@@ -189,7 +189,7 @@ class LoyaltyDiscountOffer {
 
   String get scopeLabel => facilityName?.trim().isNotEmpty == true
       ? facilityName!
-      : 'All guest bookings';
+      : 'All renter bookings';
 
   String get valueLabel => switch (discountKind) {
     DiscountKind.fixedAmount =>
@@ -264,7 +264,7 @@ class LoyaltyDiscountClaim {
 
   String get scopeLabel => facilityName?.trim().isNotEmpty == true
       ? facilityName!
-      : 'All guest bookings';
+      : 'All renter bookings';
 
   String get valueLabel => switch (discountKind) {
     DiscountKind.fixedAmount =>
@@ -477,7 +477,7 @@ class LoyaltyAdminClaimRow {
 
   String get scopeLabel => facilityName?.trim().isNotEmpty == true
       ? facilityName!
-      : 'All guest bookings';
+      : 'All renter bookings';
 
   String get valueLabel => switch (discountKind) {
     DiscountKind.fixedAmount =>

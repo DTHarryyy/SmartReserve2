@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
+import '../../model/account.dart';
 import '../../model/facility.dart';
 import '../../theme/sr_tokens.dart';
 
@@ -186,7 +187,7 @@ class _FacilityConfigurationDialogState
                             ),
                             decoration: InputDecoration(
                               labelText:
-                                  '${audience[0].toUpperCase()}${audience.substring(1)} / hour',
+                                  '${bookingAudienceLabel(audience)} / hour',
                               prefixText: '₱',
                             ),
                           ),

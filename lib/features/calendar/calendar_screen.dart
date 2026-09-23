@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -76,83 +77,106 @@ class _CalendarFrameState extends State<_CalendarFrame> {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final data = _CalendarData.fromState(state, widget.surface);
-    final compact = MediaQuery.sizeOf(context).width < SR.tabletMin;
-    final selected = data.selectedEvent;
-    final canOpenSelectedRequest =
-        widget.surface == _CalendarSurface.admin &&
-        (selected?.canOpenRequest ?? false);
-    final calendar = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Toolbar(data: data, search: _search, compact: compact),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              compact ? 14 : 20,
-              14,
-              compact ? 14 : 20,
-              24,
-            ),
-            child: _CalendarBody(
-              data: data,
-              compact: compact,
-              onClearFilters: () {
-                _search.clear();
-                data.resetFilters();
-              },
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final state = AppScope.of(context);
+        final data = _CalendarData.fromState(state, widget.surface);
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final compact = availableWidth < SR.tabletMin;
+        final overlayDetails = !SR.fitsSplitView(availableWidth);
+        final bodyHorizontalPadding = compact ? 28.0 : 40.0;
+        final scrollMonth =
+            data.viewMode == CalendarViewMode.month &&
+            availableWidth - bodyHorizontalPadding < 760;
+        final selected = data.selectedEvent;
+        final canOpenSelectedRequest =
+            widget.surface == _CalendarSurface.admin &&
+            (selected?.canOpenRequest ?? false);
+        final body = Padding(
+          padding: EdgeInsets.fromLTRB(
+            compact ? 14 : 20,
+            14,
+            compact ? 14 : 20,
+            24,
           ),
-        ),
-      ],
-    );
+          child: _CalendarBody(
+            data: data,
+            compact: compact,
+            embeddedMonth: scrollMonth,
+            onClearFilters: () {
+              _search.clear();
+              data.resetFilters();
+            },
+          ),
+        );
+        final calendar = scrollMonth
+            ? SingleChildScrollView(
+                key: const Key('calendar-month-scroll'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Toolbar(data: data, search: _search, compact: compact),
+                    body,
+                  ],
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Toolbar(data: data, search: _search, compact: compact),
+                  Expanded(child: body),
+                ],
+              );
 
-    if (compact) {
-      return Stack(
-        children: [
-          calendar,
-          if (selected != null)
-            Positioned.fill(
-              child: _MobileDetails(
-                event: selected,
-                onClose: () => data.onSelectEvent?.call(null),
-                onOpenRequest: canOpenSelectedRequest
-                    ? () => state.openRequestFromCalendar(selected)
-                    : null,
-              ),
-            ),
-        ],
-      );
-    }
+        if (overlayDetails) {
+          return Stack(
+            children: [
+              calendar,
+              if (selected != null)
+                Positioned.fill(
+                  child: _MobileDetails(
+                    event: selected,
+                    onClose: () => data.onSelectEvent?.call(null),
+                    onOpenRequest: canOpenSelectedRequest
+                        ? () => state.openRequestFromCalendar(selected)
+                        : null,
+                  ),
+                ),
+            ],
+          );
+        }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: calendar),
-        if (selected != null)
-          SizedBox(
-            width: 330,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: context.srColors.surface,
-                border: Border(
-                  left: BorderSide(color: context.srColors.border),
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: calendar),
+            if (selected != null)
+              SizedBox(
+                width: 330,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: context.srColors.surface,
+                    border: Border(
+                      left: BorderSide(color: context.srColors.border),
+                    ),
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+                    child: _EventDetails(
+                      event: selected,
+                      onClose: () => data.onSelectEvent?.call(null),
+                      onOpenRequest: canOpenSelectedRequest
+                          ? () => state.openRequestFromCalendar(selected)
+                          : null,
+                    ),
+                  ),
                 ),
               ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-                child: _EventDetails(
-                  event: selected,
-                  onClose: () => data.onSelectEvent?.call(null),
-                  onOpenRequest: canOpenSelectedRequest
-                      ? () => state.openRequestFromCalendar(selected)
-                      : null,
-                ),
-              ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -428,56 +452,66 @@ class _Toolbar extends StatelessWidget {
     ],
   );
 
-  Widget _compactNavigation(BuildContext context) => SizedBox(
+  Widget _compactNavigation(BuildContext context) => Column(
     key: const Key('compact-calendar-navigation'),
-    height: 44,
-    child: Row(
-      children: [
-        Expanded(child: _modeSegment(context, expand: true, compact: true)),
-        const SizedBox(width: 3),
-        _CompactCalendarNavButton(
-          key: const Key('compact-calendar-previous'),
-          icon: Icons.chevron_left_rounded,
-          tooltip: 'Previous ${data.viewMode.label.toLowerCase()}',
-          onPressed: () => data.onNavigate(-1),
-          width: 32,
-        ),
-        const SizedBox(width: 3),
-        SizedBox(
-          key: const Key('compact-calendar-range'),
-          width: MediaQuery.sizeOf(context).width < 360 ? 56 : 64,
-          child: Tooltip(
-            message: 'Go to today',
-            child: Semantics(
-              button: true,
-              label: 'Go to today',
-              child: GestureDetector(
-                onTap: data.onToday,
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      _compactRangeLabel(data),
-                      maxLines: 1,
-                      textAlign: TextAlign.center,
-                      style: sans(13.5, w: 500, color: context.srColors.ink2),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _modeSegment(context, expand: true, compact: true),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          _CompactCalendarNavButton(
+            key: const Key('compact-calendar-previous'),
+            icon: Icons.chevron_left_rounded,
+            tooltip: 'Previous ${data.viewMode.label.toLowerCase()}',
+            onPressed: () => data.onNavigate(-1),
+            width: 44,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: Tooltip(
+                message: 'Go to today',
+                child: Semantics(
+                  button: true,
+                  label: 'Go to today',
+                  child: InkWell(
+                    key: const Key('compact-calendar-range'),
+                    onTap: data.onToday,
+                    borderRadius: BorderRadius.circular(9),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      child: Center(
+                        child: Text(
+                          _compactRangeLabel(data),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: sans(
+                            13.5,
+                            w: 500,
+                            color: context.srColors.ink2,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 3),
-        _CompactCalendarNavButton(
-          key: const Key('compact-calendar-next'),
-          icon: Icons.chevron_right_rounded,
-          tooltip: 'Next ${data.viewMode.label.toLowerCase()}',
-          onPressed: () => data.onNavigate(1),
-          width: 32,
-        ),
-      ],
-    ),
+          const SizedBox(width: 8),
+          _CompactCalendarNavButton(
+            key: const Key('compact-calendar-next'),
+            icon: Icons.chevron_right_rounded,
+            tooltip: 'Next ${data.viewMode.label.toLowerCase()}',
+            onPressed: () => data.onNavigate(1),
+            width: 44,
+          ),
+        ],
+      ),
+    ],
   );
 
   Widget _modeSegment(
@@ -665,10 +699,12 @@ class _CalendarBody extends StatelessWidget {
   const _CalendarBody({
     required this.data,
     required this.compact,
+    required this.embeddedMonth,
     required this.onClearFilters,
   });
   final _CalendarData data;
   final bool compact;
+  final bool embeddedMonth;
   final VoidCallback onClearFilters;
 
   @override
@@ -705,7 +741,7 @@ class _CalendarBody extends StatelessWidget {
 
     final emptyState = _calendarEmptyState(data);
     final calendar = switch (data.viewMode) {
-      CalendarViewMode.month => _MonthView(data: data, compact: compact),
+      CalendarViewMode.month => _MonthView(data: data, embedded: embeddedMonth),
       CalendarViewMode.week when compact => _CompactAgenda(data: data),
       CalendarViewMode.day when compact => _CompactAgenda(data: data),
       CalendarViewMode.week => _WeekView(data: data),
@@ -716,9 +752,28 @@ class _CalendarBody extends StatelessWidget {
     final card = _CalendarEmptyStateCard(
       data: data,
       emptyState: emptyState,
-      compact: !compact && emptyState == _CalendarEmptyState.emptyRange,
+      compact:
+          !embeddedMonth &&
+          (data.viewMode == CalendarViewMode.month ||
+              (!compact && emptyState == _CalendarEmptyState.emptyRange)),
       onClearFilters: onClearFilters,
     );
+    if (data.viewMode == CalendarViewMode.month) {
+      if (embeddedMonth) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [calendar, const SizedBox(height: 12), card],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: calendar),
+          const SizedBox(height: 12),
+          card,
+        ],
+      );
+    }
     if (compact || emptyState != _CalendarEmptyState.emptyRange) {
       return SingleChildScrollView(child: card);
     }
@@ -1111,48 +1166,54 @@ class _CompactAgenda extends StatelessWidget {
 }
 
 class _MonthView extends StatelessWidget {
-  const _MonthView({required this.data, this.compact = false});
+  const _MonthView({required this.data, required this.embedded});
   final _CalendarData data;
-  final bool compact;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
-    final first = DateTime(data.anchor.year, data.anchor.month);
-    final start = first.subtract(Duration(days: first.weekday - 1));
+    final (start, _) = calendarMonthGridRange(data.anchor);
     final events = data.visibleEvents;
-    return SrScrollView(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final availableWidth = constraints.maxWidth.isFinite
-              ? constraints.maxWidth
-              : 760.0;
-          final narrow = !compact && availableWidth < 760;
-          final grid = SizedBox(
-            width: narrow ? 760 : availableWidth,
-            child: _grid(
-              context,
-              start,
-              events,
-              compact ? 68 : (narrow ? 104 : 118),
-            ),
-          );
-          return narrow
-              ? SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: grid,
-                )
-              : grid;
-        },
-      ),
+    final layout = LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final compactCells = availableWidth < 760;
+        final scaler = MediaQuery.textScalerOf(context);
+        final height = compactCells
+            ? math.max(68.0, 24 + scaler.scale(13) + scaler.scale(11))
+            : math.max(
+                118.0,
+                18 +
+                    math.max(23.0, scaler.scale(10) * 1.25 + 4) +
+                    2 * (scaler.scale(10.5) * 1.2 + 9) +
+                    scaler.scale(9.5) * 1.2 +
+                    5,
+              );
+        return SizedBox(
+          width: availableWidth,
+          child: _grid(
+            context,
+            start,
+            events,
+            height,
+            compactCells: compactCells,
+          ),
+        );
+      },
     );
+    return embedded ? layout : SrScrollView(child: layout);
   }
 
   Widget _grid(
     BuildContext context,
     DateTime start,
     List<CalendarEvent> events,
-    double height,
-  ) => Container(
+    double height, {
+    required bool compactCells,
+  }) => Container(
+    key: const Key('calendar-month-grid'),
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
       color: context.srColors.surface,
@@ -1189,7 +1250,7 @@ class _MonthView extends StatelessWidget {
                     child: _MonthCell(
                       day: start.add(Duration(days: week * 7 + index)),
                       currentMonth: data.anchor.month,
-                      compact: compact,
+                      compact: compactCells,
                       events: [
                         for (final event in events)
                           if (event.overlapsDay(
@@ -1197,10 +1258,20 @@ class _MonthView extends StatelessWidget {
                           ))
                             event,
                       ],
-                      onSelectDay: () => data.onSelectDate(
-                        start.add(Duration(days: week * 7 + index)),
-                        mode: CalendarViewMode.day,
-                      ),
+                      onSelectDay: () {
+                        final day = start.add(Duration(days: week * 7 + index));
+                        if (compactCells) {
+                          unawaited(
+                            _showCalendarDaySheet(
+                              context,
+                              surface: data.surface,
+                              day: day,
+                            ),
+                          );
+                          return;
+                        }
+                        data.onSelectDate(day, mode: CalendarViewMode.day);
+                      },
                       onSelectEvent: data.onSelectEvent == null
                           ? null
                           : (event) => data.onSelectEvent!(event.id),
@@ -1233,69 +1304,293 @@ class _MonthCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final outside = day.month != currentMonth;
-    final shown = events.take(2).toList();
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(color: context.srColors.divider),
-          bottom: BorderSide(color: context.srColors.divider),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          GestureDetector(
-            onTap: onSelectDay,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Container(
-                width: 23,
-                height: 23,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _isToday(day) ? SR.primary : Colors.transparent,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '${day.day}',
-                  style: mono(
-                    compact ? 12 : 10,
-                    w: 500,
-                    color: _isToday(day)
-                        ? context.srColors.surface
-                        : (outside
-                              ? context.srColors.mutedLight
-                              : context.srColors.ink3),
+    final shown = compact ? const <CalendarEvent>[] : events.take(2).toList();
+    final scaler = MediaQuery.textScalerOf(context);
+    final dateSize = math.max(23.0, scaler.scale(compact ? 12 : 10) * 1.25 + 4);
+    final dateLabel = formatCampusDate(day);
+    final eventLabel = events.isEmpty
+        ? '$dateLabel, no reservations'
+        : '$dateLabel, ${events.length} ${events.length == 1 ? 'reservation' : 'reservations'}';
+    return Semantics(
+      button: true,
+      label: eventLabel,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey(
+            'calendar-month-cell-${day.year}-${day.month}-${day.day}',
+          ),
+          onTap: onSelectDay,
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(color: context.srColors.divider),
+                bottom: BorderSide(color: context.srColors.divider),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Container(
+                    width: dateSize,
+                    height: dateSize,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _isToday(day) ? SR.primary : Colors.transparent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${day.day}',
+                      maxLines: 1,
+                      style: mono(
+                        compact ? 12 : 10,
+                        w: 500,
+                        color: _isToday(day)
+                            ? context.srColors.surface
+                            : (outside
+                                  ? context.srColors.mutedLight
+                                  : context.srColors.ink3),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                if (compact)
+                  Expanded(
+                    child: events.isEmpty
+                        ? const SizedBox.shrink()
+                        : Center(
+                            child: ExcludeSemantics(
+                              child: Container(
+                                key: ValueKey(
+                                  'calendar-month-count-${day.year}-${day.month}-${day.day}',
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: context.srColors.primaryTint,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: context.srColors.primaryLine,
+                                  ),
+                                ),
+                                child: Text(
+                                  events.length > 99
+                                      ? '99+'
+                                      : '${events.length}',
+                                  maxLines: 1,
+                                  style: sans(
+                                    11,
+                                    w: 600,
+                                    color: SR.primaryHover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                  )
+                else ...[
+                  const SizedBox(height: 3),
+                  for (final event in shown) ...[
+                    _EventChip(
+                      event: event,
+                      compact: true,
+                      onTap: onSelectEvent == null
+                          ? null
+                          : () => onSelectEvent!(event),
+                    ),
+                    const SizedBox(height: 3),
+                  ],
+                  if (events.length > shown.length)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 3, top: 1),
+                      child: Text(
+                        '+${events.length - shown.length} more',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: sans(9.5, w: 500, color: SR.primary),
+                      ),
+                    ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 3),
-          for (final event in shown) ...[
-            _EventChip(
-              event: event,
-              compact: true,
-              onTap: onSelectEvent == null ? null : () => onSelectEvent!(event),
-            ),
-            const SizedBox(height: 3),
-          ],
-          if (events.length > shown.length)
-            GestureDetector(
-              onTap: onSelectDay,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 3, top: 1),
-                child: Text(
-                  '+${events.length - shown.length} more',
-                  style: sans(9.5, w: 500, color: SR.primary),
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
+}
+
+Future<void> _showCalendarDaySheet(
+  BuildContext context, {
+  required _CalendarSurface surface,
+  required DateTime day,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  showDragHandle: true,
+  backgroundColor: context.srColors.surface,
+  constraints: const BoxConstraints(maxWidth: 640),
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  ),
+  builder: (context) => _CalendarDaySheet(surface: surface, day: day),
+);
+
+class _CalendarDaySheet extends StatelessWidget {
+  const _CalendarDaySheet({required this.surface, required this.day});
+
+  final _CalendarSurface surface;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _CalendarData.fromState(AppScope.of(context), surface);
+    final events = [
+      for (final event in data.visibleEvents)
+        if (event.overlapsDay(day)) event,
+    ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    final countLabel = events.isEmpty
+        ? 'No reservations'
+        : '${events.length} ${events.length == 1 ? 'reservation' : 'reservations'}';
+
+    return ConstrainedBox(
+      key: const Key('calendar-day-sheet'),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .85,
+      ),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(formatCampusDate(day), style: sans(17, w: 600)),
+                      const SizedBox(height: 2),
+                      Text(
+                        countLabel,
+                        key: const Key('calendar-day-sheet-count'),
+                        style: sans(12, color: context.srColors.ink4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SrIconButton(
+                  icon: Icons.close_rounded,
+                  tooltip: 'Close day reservations',
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (events.isEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 24,
+                ),
+                decoration: BoxDecoration(
+                  color: context.srColors.dividerSoft,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: context.srColors.border),
+                ),
+                child: Text(
+                  'No reservations for this date.',
+                  textAlign: TextAlign.center,
+                  style: sans(12.5, color: context.srColors.ink4),
+                ),
+              )
+            else
+              for (final event in events) ...[
+                _CalendarDayEventRow(
+                  event: event,
+                  onTap: event.privacyMasked || data.onSelectEvent == null
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          unawaited(
+                            Future<void>(() => data.onSelectEvent!(event.id)),
+                          );
+                        },
+                ),
+                const SizedBox(height: 8),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarDayEventRow extends StatelessWidget {
+  const _CalendarDayEventRow({required this.event, required this.onTap});
+
+  final CalendarEvent event;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: onTap != null,
+    label:
+        '${event.facility}, ${event.timeLabel}, ${event.effectiveStatusLabel}',
+    child: InkWell(
+      key: ValueKey('calendar-day-event-${event.id}'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(11),
+      child: Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: context.srColors.surface,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: context.srColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              event.timeLabel,
+              style: mono(12, w: 500, color: context.srColors.ink3),
+            ),
+            const SizedBox(height: 5),
+            Text(event.facility, style: sans(14, w: 600, height: 1.35)),
+            if (!event.privacyMasked &&
+                (event.building.isNotEmpty || event.room.isNotEmpty)) ...[
+              const SizedBox(height: 2),
+              Text(
+                [
+                  event.building,
+                  event.room,
+                ].where((part) => part.isNotEmpty).join(' · '),
+                style: sans(11.5, color: context.srColors.ink4),
+              ),
+            ],
+            const SizedBox(height: 9),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _StatusBadge(event: event),
+                if (event.isMine) const _MineBadge(),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _WeekView extends StatelessWidget {

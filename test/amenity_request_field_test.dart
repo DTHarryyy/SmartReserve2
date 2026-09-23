@@ -9,8 +9,10 @@ Future<void> _pumpField(
   required List<String> includedAmenities,
   required List<String> requestableAmenities,
   Set<String>? selected,
+  Set<String>? selectedIncluded,
 }) async {
   final selectedValues = selected ?? <String>{};
+  final selectedIncludedValues = selectedIncluded ?? includedAmenities.toSet();
   await tester.pumpWidget(
     MaterialApp(
       theme: SrThemeData.light(),
@@ -21,8 +23,16 @@ Future<void> _pumpField(
         body: StatefulBuilder(
           builder: (context, setState) => AmenityRequestField(
             includedAmenities: includedAmenities,
+            selectedIncludedAmenities: selectedIncludedValues,
             requestableAmenities: requestableAmenities,
             selectedRequestedAmenities: selectedValues,
+            onToggleIncluded: (label) => setState(() {
+              if (!selectedIncludedValues.remove(label)) {
+                selectedIncludedValues.add(label);
+              }
+            }),
+            onRemoveIncluded: (label) =>
+                setState(() => selectedIncludedValues.remove(label)),
             onToggle: (label) => setState(() {
               if (!selectedValues.remove(label)) selectedValues.add(label);
             }),
@@ -58,7 +68,7 @@ void main() {
     },
   );
 
-  testWidgets('included standard amenities are not requestable', (
+  testWidgets('included standard amenities are separate from additional ones', (
     tester,
   ) async {
     await _pumpField(
@@ -80,9 +90,47 @@ void main() {
       find.byKey(const ValueKey('included-amenity-chip-Projector')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('included-amenity-row-Wi-Fi')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('included-amenity-row-Projector')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('amenity-row-Wi-Fi')), findsNothing);
-    expect(find.byKey(const ValueKey('amenity-row-Projector')), findsNothing);
     expect(find.byKey(const ValueKey('amenity-row-Smart TV')), findsOneWidget);
+  });
+
+  testWidgets('included amenities can be removed and selected again', (
+    tester,
+  ) async {
+    await _pumpField(
+      tester,
+      includedAmenities: const ['Wi-Fi', 'Projector'],
+      requestableAmenities: const ['Smart TV'],
+    );
+
+    await tester.tap(find.bySemanticsLabel('Remove included Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('included-amenity-chip-Wi-Fi')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('included-amenity-chip-Projector')),
+      findsOneWidget,
+    );
+
+    await _openPicker(tester);
+    await tester.tap(find.byKey(const ValueKey('included-amenity-row-Wi-Fi')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('included-amenity-chip-Wi-Fi')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('multi-select toggles and chips follow catalog order', (
@@ -95,9 +143,12 @@ void main() {
     );
 
     await _openPicker(tester);
-    await tester.tap(find.byKey(const ValueKey('amenity-row-Generator')));
-    await tester.tap(find.byKey(const ValueKey('amenity-row-Projector')));
-    await tester.tap(find.byKey(const ValueKey('amenity-row-Smart TV')));
+    for (final label in ['Generator', 'Projector', 'Smart TV']) {
+      final row = find.byKey(ValueKey('amenity-row-$label'));
+      await tester.ensureVisible(row);
+      await tester.tap(row);
+    }
+    await tester.tapAt(const Offset(700, 100));
     await tester.pumpAndSettle();
 
     final chips = tester
@@ -149,7 +200,7 @@ void main() {
     expect(find.byKey(const ValueKey('amenity-row-Wi-Fi')), findsOneWidget);
   });
 
-  testWidgets('all-included facilities show an explicit empty state', (
+  testWidgets('all-included facilities remain selectable in the picker', (
     tester,
   ) async {
     await _pumpField(
@@ -160,9 +211,11 @@ void main() {
 
     await _openPicker(tester);
 
-    expect(
-      find.text('All standard amenities are included with this facility.'),
-      findsOneWidget,
-    );
+    for (final label in standardAmenityLabels) {
+      expect(
+        find.byKey(ValueKey('included-amenity-row-$label')),
+        findsOneWidget,
+      );
+    }
   });
 }

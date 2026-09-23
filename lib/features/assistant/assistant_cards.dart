@@ -490,6 +490,14 @@ class AssistantConfirmCard extends StatelessWidget {
       facility,
       draft.amenities,
     );
+    final selectedIncludedAmenities = {
+      for (final label in includedFacilityAmenities(facility))
+        if (!draft.excludedIncludedAmenities.contains(label)) label,
+    };
+    final selectedAmenities = [
+      ...selectedIncludedAmenities,
+      ...requestedAmenities,
+    ];
     final hours = draft.endHour! - draft.startHour!;
     final quoteCentavos =
         (facility.hourlyRateCentavosFor(state.userAccount.pricingAudience) *
@@ -524,9 +532,9 @@ class AssistantConfirmCard extends StatelessWidget {
                 ),
                 SrKeyCell(
                   label: 'AMENITIES',
-                  value: requestedAmenities.isEmpty
+                  value: selectedAmenities.isEmpty
                       ? 'None'
-                      : requestedAmenities.join(' · '),
+                      : selectedAmenities.join(' · '),
                 ),
               ],
             ),
@@ -543,8 +551,11 @@ class AssistantConfirmCard extends StatelessWidget {
             AmenityRequestField(
               dense: true,
               includedAmenities: includedFacilityAmenities(facility),
+              selectedIncludedAmenities: selectedIncludedAmenities,
               requestableAmenities: requestableAmenityLabels(facility),
               selectedRequestedAmenities: requestedAmenities.toSet(),
+              onToggleIncluded: controller.toggleDraftIncludedAmenity,
+              onRemoveIncluded: controller.removeDraftIncludedAmenity,
               onToggle: controller.toggleDraftAmenity,
               onRemove: controller.removeDraftAmenity,
             ),
@@ -552,7 +563,7 @@ class AssistantConfirmCard extends StatelessWidget {
               const SizedBox(height: 10),
               SrPill(
                 label: pending
-                    ? 'Uses the guest/unverified admin lane'
+                    ? 'Uses the external/unverified admin lane'
                     : 'Needs facility administrator approval',
                 background: context.srColors.amberTint,
                 foreground: context.srColors.amberTitle,
@@ -585,6 +596,9 @@ class AssistantConfirmCard extends StatelessWidget {
                               heads: draft.heads,
                               purpose: draft.purpose,
                               amenities: requestedAmenities.toSet(),
+                              excludedIncludedAmenities: draft
+                                  .excludedIncludedAmenities
+                                  .toSet(),
                             ),
                           );
                         },

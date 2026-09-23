@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
+import '../../model/account.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
@@ -106,7 +107,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                         Text(_request.requester, style: SrType.subhead()),
                         const SizedBox(height: SR.space2),
                         Text(
-                          '${_request.role} · ${_request.submitted}',
+                          '${requesterRoleLabel(_request.role)} · ${_request.submitted}',
                           style: SrType.caption(),
                         ),
                       ],
@@ -491,14 +492,14 @@ class _DecisionPanelState extends State<DecisionPanel> {
     final r = _request;
     final requesterType = switch (r.requesterCategory) {
       'organization_representative' =>
-        'Internal organization · ${r.pricingAudience}',
+        'Internal organization · ${bookingAudienceLabel(r.pricingAudience)}',
       'student' => 'Verified student',
       'faculty' => 'Verified faculty',
       'staff' => 'Verified staff',
       _ => switch (r.paymentExemption) {
         'verified_student' => 'Verified student',
         'verified_faculty' => 'Verified faculty',
-        _ => 'External / unverified',
+        _ => 'External renter / unverified',
       },
     };
     return PanelCard(

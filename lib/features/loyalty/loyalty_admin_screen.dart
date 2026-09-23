@@ -84,7 +84,7 @@ class _LoyaltyAdminScreenState extends State<LoyaltyAdminScreen> {
               const SrPageHeader(
                 title: 'Loyalty',
                 description:
-                    'Guest renter points, claimable discounts, and voucher history.',
+                    'External-rate renter points, claimable discounts, and voucher history.',
               ),
               const SizedBox(height: 16),
               SrTabs(
@@ -788,7 +788,7 @@ class _ExternalDiscountCatalog extends StatelessWidget {
                   icon: Icons.local_offer_rounded,
                   title: 'No discounts yet',
                   body:
-                      'Create the first loyalty discount for guest-priced renters.',
+                      'Create the first loyalty discount for external-rate renters.',
                 )
               : SingleChildScrollView(
                   child: RecordTable(
@@ -1234,7 +1234,7 @@ class _DiscountEditorDialogState extends State<_DiscountEditorDialog> {
         ? 'Enter the peso amount to deduct.'
         : 'Enter a value from 1 to 100.';
     String scopeLabel(String id) {
-      if (id == 'all') return 'All guest bookings';
+      if (id == 'all') return 'All renter bookings';
       for (final facility in widget.state.facilities) {
         if (facility.id == id) return facility.name;
       }
@@ -1389,7 +1389,7 @@ class _DiscountEditorDialogState extends State<_DiscountEditorDialog> {
                       label: 'Eligible bookings',
                       required: true,
                       helper:
-                          'Choose a facility to limit this discount to that facility’s guest bookings.',
+                          'Choose a facility to limit this discount to that facility’s renter bookings.',
                       child: SrSelect<String>(
                         value: _scope,
                         items: scopeItems,

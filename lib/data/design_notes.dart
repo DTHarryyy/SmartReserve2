@@ -419,7 +419,7 @@ const designNotes = <DesignNote>[
       'Three roles',
       'Internal admin (registrar / OSA staff): approves campus verifications, '
           'manages assigned facilities, and handles verified-user bookings. '
-          'External admin has the same assigned-facility operations for guest '
+          'External admin has the same assigned-facility operations for renter '
           'and unverified bookings, but never sees campus documents. User: '
           'books facilities through the lane derived at submission.',
     ),
@@ -459,7 +459,7 @@ const designNotes = <DesignNote>[
       'Expiry and change of status',
       'Verification carries an expiry — end of academic year for students, end '
           'of appointment for faculty — with a reminder two weeks out and a '
-          'one-tap re-submit. A lapsed member becomes a guest rather than being '
+          'one-tap re-submit. A lapsed member uses the external renter lane rather than being '
           'locked out, so an expired check never strands someone mid-booking.',
     ),
     NoteItem(
@@ -507,7 +507,7 @@ const designNotes = <DesignNote>[
       'Student and Faculty are not exhaustive. Non-teaching staff, alumni, and '
           'outside organisations booking the gym all exist today. '
           'Recommendation: Student · Faculty · University staff · None of these '
-          '— where staff verify like faculty and "none of these" is the guest '
+          '— where staff verify like faculty and "none of these" is the external renter '
           'path. Without the third option, staff will pick Faculty and pollute '
           'the queue.',
     ),
@@ -547,7 +547,7 @@ const designNotes = <DesignNote>[
           'faculty, staff and outside-user labels belong to the verification '
           'claim, never the authorization role. Internal admins see the full '
           'directory; external admins receive a shared sanitized list of '
-          'active guest or unverified clients with reservation or payment '
+          'active external or unverified renters with reservation or payment '
           'activity.',
     ),
     NoteItem(

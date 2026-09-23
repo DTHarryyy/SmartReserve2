@@ -50,7 +50,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
   static const _roleFilters = [
     'All roles',
-    'User',
+    'Renter',
     'Internal admin',
     'External admin',
   ];
@@ -135,7 +135,7 @@ class _UsersScreenState extends State<UsersScreen> {
           RecordTable(
             columns: columns,
             footerNote: state.isExternalAdmin
-                ? 'This shared directory includes all active guest or unverified clients with reservation or payment activity. Campus records, administrator accounts, and verification documents are excluded.'
+                ? 'This shared directory includes all active external or unverified renters with reservation or payment activity. Campus records, administrator accounts, and verification documents are excluded.'
                 : 'Only internal admins can invite. Invitation links are '
                       'single-use and expire automatically; the last internal '
                       'admin cannot be removed or demoted.',

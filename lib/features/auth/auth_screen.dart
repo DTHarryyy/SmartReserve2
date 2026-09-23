@@ -579,7 +579,7 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('Organization assignment required'),
       _Lede(
-        'This account can sign in, but it cannot reserve facilities until an Internal Admin assigns it to an authorized organization account or converts it to an external guest account.',
+        'This account can sign in, but it cannot reserve facilities until an Internal Admin assigns it to an authorized organization account or converts it to an external renter account.',
       ),
       const SizedBox(height: 14),
       Container(
@@ -610,7 +610,7 @@ class AuthScreen extends StatelessWidget {
     children: [
       _Title('How are you connected to CSU Aparri?'),
       _Lede(
-        'Guest accounts can continue here. Campus reservations are now handled '
+        'Renter accounts can continue here. Campus reservations are now handled '
         'through one authorized representative account per organization or '
         'office; contact your Internal Admin for access.',
       ),
@@ -806,8 +806,8 @@ class AuthScreen extends StatelessWidget {
         quoteBody: true,
         footnote:
             'You may appeal once with a different document. Your account still '
-            'works — new reservations use the guest/unverified lane and the '
-            'facility’s guest rate in the meantime.',
+            'works — new reservations use the external/unverified lane and the '
+            'facility’s renter rate in the meantime.',
         action: Column(
           children: [
             SrButton(
@@ -820,7 +820,7 @@ class AuthScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             SrButton(
-              label: 'Continue as a paying guest',
+              label: 'Continue as a paying renter',
               expand: true,
               minHeight: 44,
               fontSize: 12.5,
@@ -884,7 +884,7 @@ class AuthScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'You see the facility’s guest rate before you request. After an '
+              'You see the facility’s renter rate before you request. After an '
               'assigned administrator approves it, upload the required GCash '
               'proof before the displayed deadline. The slot is confirmed '
               'only after that payment is verified.',

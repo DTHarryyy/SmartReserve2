@@ -199,7 +199,7 @@ class _LoyaltyUnavailableState extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 520),
           child: const _LoyaltyEmptyState(
             icon: Icons.lock_outline_rounded,
-            title: 'Loyalty is available to guest renters',
+            title: 'Loyalty is available to external-rate renters',
             body:
                 'Verified students, faculty, and staff use campus pricing, so loyalty discounts and points are not available on this account.',
           ),

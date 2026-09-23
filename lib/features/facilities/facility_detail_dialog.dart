@@ -361,10 +361,10 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                                       : 'Not available to verified campus users',
                                 ),
                                 SrKeyCell(
-                                  label: 'GUEST BOOKINGS',
+                                  label: 'RENTER BOOKINGS',
                                   value: facility.supportsExternalLane
-                                      ? 'Available to guests and non-verified users'
-                                      : 'Not available to guests and non-verified users',
+                                      ? 'Available to external and non-verified renters'
+                                      : 'Not available to external and non-verified renters',
                                 ),
                               ],
                             ),

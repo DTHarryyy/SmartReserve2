@@ -164,14 +164,14 @@ void main() {
   });
 
   testWidgets(
-    'loyalty entry points are visible only for guest-priced renters',
+    'loyalty entry points are visible only for external-rate renters',
     (tester) async {
       final verified = AppState();
       await verified.refreshLoyalty();
       await _pumpScoped(
         tester,
         verified,
-        const StudentApp(),
+        const Material(child: StudentApp()),
         size: const Size(900, 760),
       );
 
@@ -179,11 +179,11 @@ void main() {
       await _openAccountTab(tester);
       expect(find.byKey(const Key('student-loyalty-entry')), findsNothing);
 
-      final guest = AppState()..signInAsUser('u5');
+      final renter = AppState()..signInAsUser('u5');
       await _pumpScoped(
         tester,
-        guest,
-        const StudentApp(),
+        renter,
+        const Material(child: StudentApp()),
         size: const Size(900, 760),
       );
 
@@ -195,7 +195,7 @@ void main() {
       await _pumpScoped(
         tester,
         pending,
-        const StudentApp(),
+        const Material(child: StudentApp()),
         size: const Size(900, 760),
       );
 
@@ -217,7 +217,7 @@ void main() {
       );
 
       expect(
-        find.text('Loyalty is available to guest renters'),
+        find.text('Loyalty is available to external-rate renters'),
         findsOneWidget,
       );
       expect(find.text('Available balance'), findsNothing);
@@ -491,7 +491,7 @@ void main() {
         await _pumpScoped(
           tester,
           state,
-          const StudentApp(),
+          const Material(child: StudentApp()),
           size: const Size(900, 760),
         );
 
@@ -510,10 +510,15 @@ void main() {
     await _pumpScoped(
       tester,
       state,
-      const StudentApp(),
+      const Material(child: StudentApp()),
       size: const Size(430, 760),
     );
     await _openCalendarTab(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('calendar-month-cell-2026-7-28')),
+    );
+    await tester.pumpAndSettle();
 
     expect(find.text('Reserved'), findsWidgets);
     expect(find.textContaining('Prof. Bautista'), findsNothing);
@@ -537,9 +542,14 @@ void main() {
     await _pumpScoped(
       tester,
       state,
-      const PublicCalendarScreen(),
+      const Material(child: PublicCalendarScreen()),
       size: const Size(430, 760),
     );
+
+    await tester.tap(
+      find.byKey(const ValueKey('calendar-month-cell-2026-7-28')),
+    );
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Computer Laboratory 1'), findsWidgets);
 
@@ -556,7 +566,7 @@ void main() {
     await _pumpScoped(
       tester,
       state,
-      const CalendarScreen(),
+      const Material(child: CalendarScreen()),
       size: const Size(1180, 840),
     );
 
@@ -580,7 +590,7 @@ void main() {
     expect(find.text('Clients'), findsOneWidget);
     expect(
       find.text(
-        'This shared directory includes all active guest or unverified clients with reservation or payment activity. Campus records, administrator accounts, and verification documents are excluded.',
+        'This shared directory includes all active external or unverified renters with reservation or payment activity. Campus records, administrator accounts, and verification documents are excluded.',
       ),
       findsOneWidget,
     );

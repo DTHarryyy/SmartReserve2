@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
+import '../../model/account.dart';
 import '../../model/feedback.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
@@ -1628,7 +1629,7 @@ class _FeedbackDetailDialog extends StatelessWidget {
                       if (entry.pricingAudience.trim().isNotEmpty)
                         _DetailLine(
                           'Renter type',
-                          entry.pricingAudience.replaceAll('_', ' '),
+                          bookingAudienceLabel(entry.pricingAudience),
                         ),
                     ],
                   ),

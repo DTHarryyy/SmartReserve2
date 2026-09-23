@@ -37,7 +37,7 @@ LoyaltySummary seedLoyalty({String userId = 'u5'}) {
     LoyaltyDiscountOffer(
       id: 'offer-php-100',
       name: 'PHP 100 booking discount',
-      description: 'Save PHP 100 on one future guest booking.',
+      description: 'Save PHP 100 on one future renter booking.',
       requiredPoints: 2.0,
       discountKind: DiscountKind.fixedAmount,
       fixedAmountCentavos: 10000,
@@ -50,7 +50,7 @@ LoyaltySummary seedLoyalty({String userId = 'u5'}) {
     LoyaltyDiscountOffer(
       id: 'offer-ten-percent',
       name: '10% facility discount',
-      description: 'Take 10% off one guest booking.',
+      description: 'Take 10% off one renter booking.',
       requiredPoints: 3.5,
       discountKind: DiscountKind.percentage,
       percentage: 10,

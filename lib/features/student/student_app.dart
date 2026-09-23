@@ -365,7 +365,7 @@ class _StudentAppState extends State<StudentApp> {
                     VerificationState.verified => 'VERIFIED',
                     VerificationState.pending => 'IN PROCESS',
                     VerificationState.rejected => 'NOT VERIFIED',
-                    VerificationState.none => 'GUEST',
+                    VerificationState.none => 'RENTER',
                   }, style: mono(8.5, w: 600, color: Colors.white)),
                 ),
               ],
@@ -2033,6 +2033,8 @@ class _StudentAppState extends State<StudentApp> {
               style: SrType.code(color: context.srColors.muted),
             ),
             const SizedBox(height: SR.space4),
+            Text(account.role.label, style: SrType.caption()),
+            const SizedBox(height: SR.space2),
             Text('Joined ${account.joined}', style: SrType.caption()),
           ],
         ),
@@ -2080,8 +2082,8 @@ class _StudentAppState extends State<StudentApp> {
         context.srColors.redLine,
         context.srColors.red,
         'Campus claim not approved',
-        'You can still reserve through the guest/unverified lane at each '
-            'facility’s guest rate. One appeal with a different document is '
+        'You can still reserve through the external/unverified lane at each '
+            'facility’s renter rate. One appeal with a different document is '
             'allowed.',
         'Appeal with another document',
       ),
@@ -2089,7 +2091,7 @@ class _StudentAppState extends State<StudentApp> {
         context.srColors.primaryTint2,
         context.srColors.primaryLine,
         SR.primaryHover,
-        'Booking as a guest',
+        'Booking as a renter',
         'Campus members may have a different facility rate. If that is you, '
             'verification takes about a minute.',
         'I am a campus member',

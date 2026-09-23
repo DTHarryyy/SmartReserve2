@@ -237,9 +237,7 @@ class AssistantMessage {
     bool assisted = false,
   }) => AssistantMessage._(
     speaker: AssistantSpeaker.assistant,
-    kind: assisted
-        ? AssistantMessageKind.aiText
-        : AssistantMessageKind.text,
+    kind: assisted ? AssistantMessageKind.aiText : AssistantMessageKind.text,
     text: text,
     tone: tone,
     reservationId: reservationId,
@@ -305,6 +303,7 @@ class BookingDraft {
   String? purpose;
   List<Facility> candidates = const [];
   final Set<String> amenities = <String>{};
+  final Set<String> excludedIncludedAmenities = <String>{};
 
   bool get hasTime => startHour != null && endHour != null;
 
@@ -696,6 +695,8 @@ class AssistantController extends ChangeNotifier {
     if (draft.heads != null) 'heads': draft.heads,
     if (draft.purpose != null) 'purpose': draft.purpose,
     if (draft.amenities.isNotEmpty) 'amenities': draft.amenities.toList(),
+    if (draft.excludedIncludedAmenities.isNotEmpty)
+      'excluded_included_amenities': draft.excludedIncludedAmenities.toList(),
     if (draft.candidates.isNotEmpty)
       'candidate_ids': [for (final item in draft.candidates) item.id],
   };
@@ -718,6 +719,11 @@ class AssistantController extends ChangeNotifier {
       ];
     restored.amenities.addAll(
       (payload['amenities'] as List? ?? const []).map((value) => '$value'),
+    );
+    restored.excludedIncludedAmenities.addAll(
+      (payload['excluded_included_amenities'] as List? ?? const []).map(
+        (value) => '$value',
+      ),
     );
     draft = restored;
     stage = AssistantStage.values.firstWhere(
@@ -942,6 +948,20 @@ class AssistantController extends ChangeNotifier {
 
   void removeDraftAmenity(String label) {
     draft.amenities.remove(label);
+    unawaited(_queueSync());
+    notifyListeners();
+  }
+
+  void toggleDraftIncludedAmenity(String label) {
+    if (!draft.excludedIncludedAmenities.remove(label)) {
+      draft.excludedIncludedAmenities.add(label);
+    }
+    unawaited(_queueSync());
+    notifyListeners();
+  }
+
+  void removeDraftIncludedAmenity(String label) {
+    draft.excludedIncludedAmenities.add(label);
     unawaited(_queueSync());
     notifyListeners();
   }
@@ -1252,8 +1272,7 @@ class AssistantController extends ChangeNotifier {
       // deterministically and costs nothing.
       if (!_fillsCurrentStage(p) &&
           !_deterministicCanFillStage(p, state) &&
-          _routeFor(p, state).reason ==
-              EscalationReason.unparsedBookingSlot) {
+          _routeFor(p, state).reason == EscalationReason.unparsedBookingSlot) {
         if (await _assistCurrentStage(p, state)) return;
       }
 
@@ -1455,7 +1474,9 @@ class AssistantController extends ChangeNotifier {
         frame: frame,
         inBookingFlow:
             stage != AssistantStage.idle && stage != AssistantStage.submitting,
-        bookingDraft: stage == AssistantStage.idle ? null : _draftStatePayload(),
+        bookingDraft: stage == AssistantStage.idle
+            ? null
+            : _draftStatePayload(),
       );
 
   /// What the model is told about the in-progress booking.
@@ -1502,7 +1523,10 @@ class AssistantController extends ChangeNotifier {
 
     aiDegraded = false;
     messages.add(
-      AssistantMessage.assistant(reply.text!, assisted: true),
+      AssistantMessage.assistant(
+        registeredUserDisplayText(reply.text!),
+        assisted: true,
+      ),
     );
 
     // A proposal is an offer, never an action. It is re-validated here against
@@ -1690,7 +1714,12 @@ class AssistantController extends ChangeNotifier {
     // up front -- every branch below either acts on the reply or falls back
     // to a plain question, and none of them needs to say it again.
     if (reply.hasText) {
-      messages.add(AssistantMessage.assistant(reply.text!, assisted: true));
+      messages.add(
+        AssistantMessage.assistant(
+          registeredUserDisplayText(reply.text!),
+          assisted: true,
+        ),
+      );
     }
 
     final fill = reply.slotFill;
@@ -1732,17 +1761,12 @@ class AssistantController extends ChangeNotifier {
   /// Test seam over [_applySlotFill]. Exposed so the slot validators can be
   /// exercised directly, without scripting a whole model turn to reach them.
   @visibleForTesting
-  Future<bool> debugApplySlotFill(
-    Map<String, dynamic> fill,
-    AppState state,
-  ) => _applySlotFill(fill, state);
+  Future<bool> debugApplySlotFill(Map<String, dynamic> fill, AppState state) =>
+      _applySlotFill(fill, state);
 
   /// Apply a model-proposed slot value through the same validators a typed or
   /// tapped value goes through. Returns false if anything about it is wrong.
-  Future<bool> _applySlotFill(
-    Map<String, dynamic> fill,
-    AppState state,
-  ) async {
+  Future<bool> _applySlotFill(Map<String, dynamic> fill, AppState state) async {
     switch (fill['slot']) {
       case 'facility':
         final facility = state.bookableFacilities
@@ -1794,7 +1818,10 @@ class AssistantController extends ChangeNotifier {
           final index = p.ordinal! - 1;
           if (index >= 0 && index < draft.candidates.length) return true;
         }
-        return resolveFacilityByName(p.raw, state.bookableFacilities).isNotEmpty;
+        return resolveFacilityByName(
+          p.raw,
+          state.bookableFacilities,
+        ).isNotEmpty;
       case AssistantStage.needHeads:
         // Any parse at all, valid or not: an out-of-range number still gets
         // the existing refusal, which is a better answer than a model guess.
@@ -3476,7 +3503,7 @@ class AssistantController extends ChangeNotifier {
 
     if (RegExp(r'\bexternal|guest|renter|outside\b').hasMatch(normalized)) {
       _say(
-        'External renters pay the guest rate for the facility plus any add-ons, '
+        'External renters pay the renter rate for the facility plus any add-ons, '
         'settle a down payment to hold the booking, and clear the balance '
         'before the schedule.',
       );
@@ -3511,7 +3538,7 @@ class AssistantController extends ChangeNotifier {
       'and accept the reservation terms. An administrator then approves it.',
     );
     _say(
-      'Your account reserves as ${account.pricingAudience}, '
+      'Your account reserves at the ${bookingRateLabel(account.pricingAudience).toLowerCase()}, '
       '${account.isPaymentExempt ? 'which is exempt from facility charges.' : 'so facility charges apply.'}',
     );
   }
@@ -3608,7 +3635,8 @@ class AssistantController extends ChangeNotifier {
     };
     return [
       for (final r in pool)
-        if (ids.contains(r.facilityId) || names.contains(r.facility.toLowerCase()))
+        if (ids.contains(r.facilityId) ||
+            names.contains(r.facility.toLowerCase()))
           r,
     ];
   }

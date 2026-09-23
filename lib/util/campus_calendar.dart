@@ -66,6 +66,13 @@ String formatCampusDate(DateTime date) =>
     '${weekdayNames[date.weekday - 1]} ${date.day} '
     '${monthNames[date.month - 1]}';
 
+/// The Monday-first, six-week range rendered by the month calendar.
+(DateTime, DateTime) calendarMonthGridRange(DateTime anchor) {
+  final first = DateTime(anchor.year, anchor.month);
+  final start = first.subtract(Duration(days: first.weekday - 1));
+  return (start, start.add(const Duration(days: 42)));
+}
+
 List<DateTime> workingWeekOf(DateTime date) {
   final monday = date.weekday > DateTime.friday
       ? date.add(Duration(days: 8 - date.weekday))

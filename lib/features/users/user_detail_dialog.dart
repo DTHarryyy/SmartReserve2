@@ -284,7 +284,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           if (_account.isLegacyUnassigned)
             _Note(
               text:
-                  'Organization assignment required. This account cannot reserve until assigned to an authorized organization slot or converted to an external guest account.',
+                  'Organization assignment required. This account cannot reserve until assigned to an authorized organization slot or converted to an external renter account.',
               background: context.srColors.amberTint,
               border: context.srColors.amberLine,
               foreground: context.srColors.amberTitle,
@@ -418,7 +418,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
             const SizedBox(width: 8),
             Expanded(
               child: SrButton(
-                label: 'Convert to guest',
+                label: 'Convert to renter',
                 expand: true,
                 fontSize: 12.5,
                 minHeight: 40,
@@ -740,7 +740,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Convert to external guest',
+          'Convert to external renter',
           style: sans(12, w: 600, color: context.srColors.amberTitle),
         ),
         const SizedBox(height: 3),
