@@ -83,13 +83,7 @@ Future<Uint8List> buildReportPdf({
           if (snapshot.monthlyStatistics.isNotEmpty) ...[
             pw.SizedBox(height: 8),
             _table([
-              [
-                'Month',
-                'Submitted',
-                'Completed',
-                'Utilisation',
-                'Net revenue',
-              ],
+              ['Month', 'Submitted', 'Completed', 'Utilisation', 'Net revenue'],
               for (final row in snapshot.monthlyStatistics)
                 [
                   _month(row.monthStart),
@@ -110,7 +104,11 @@ Future<Uint8List> buildReportPdf({
         pw.Text('Legend: 0 none, low, medium, and peak demand by count.'),
         pw.SizedBox(height: 6),
         _table([
-          ['Day / time', '07', '09', '11', '13', '15', '17', '19'],
+          [
+            'Day / time',
+            for (final hour in const [7, 9, 11, 13, 15, 17, 19])
+              formatHour12(hour),
+          ],
           for (var day = 1; day <= 7; day++)
             [
               _weekday(day),

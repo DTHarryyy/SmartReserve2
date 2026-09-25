@@ -2,8 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
 import '../util/campus_calendar.dart';
+import 'feedback.dart';
 import 'payment.dart';
 import 'permit.dart';
+
+/// Check-in opens this long before an occurrence starts.
+const kCheckInOpensBefore = Duration(minutes: 30);
+
+/// Check-in stays open this long after the start; anything past the start time
+/// is still accepted but recorded as a late arrival.
+const kCheckInClosesAfter = Duration(minutes: 30);
+
+/// Admins may only mark a no-show once self check-in has closed.
+const kNoShowGrace = kCheckInClosesAfter;
 
 enum BookingStage {
   booked('Approved', 'Approved — the room is held and the requester notified.'),
@@ -165,6 +176,8 @@ class ReservationOccurrence {
     this.attendanceMarkedAt,
     this.attendanceMarkedBy,
     this.attendanceReason,
+    this.checkedInAt,
+    this.checkInLateMinutes,
     this.cancelledAt,
     this.cancelledBy,
     this.cancellationReason,
@@ -181,6 +194,8 @@ class ReservationOccurrence {
   final DateTime? attendanceMarkedAt;
   final String? attendanceMarkedBy;
   final String? attendanceReason;
+  final DateTime? checkedInAt;
+  final int? checkInLateMinutes;
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String? cancellationReason;
@@ -188,6 +203,28 @@ class ReservationOccurrence {
   bool get isBooked => bookingState == 'booked';
   bool get needsNewTime =>
       bookingState == 'changes_requested' || bookingState == 'bumped';
+
+  /// Completion is only valid after a requester has checked in and the
+  /// reserved time has fully elapsed.
+  bool canCompleteAt(DateTime now) =>
+      stage == BookingStage.checkedIn && !now.isBefore(endsAt);
+
+  DateTime get checkInOpensAt => startsAt.subtract(kCheckInOpensBefore);
+  DateTime get checkInClosesAt => startsAt.add(kCheckInClosesAfter);
+
+  bool canCheckInAt(DateTime now) =>
+      !now.isBefore(checkInOpensAt) && !now.isAfter(checkInClosesAt);
+
+  /// Minutes past [startsAt], rounded up so any overrun counts as a minute.
+  /// Mirrors the `ceil()` the SQL side uses so both agree on the number.
+  int lateMinutesAt(DateTime now) => now.isAfter(startsAt)
+      ? (now.difference(startsAt).inSeconds / 60).ceil()
+      : 0;
+
+  bool get checkedInLate => (checkInLateMinutes ?? 0) > 0;
+
+  /// No-show is only available once the check-in window has fully closed.
+  bool canMarkNoShowAt(DateTime now) => now.isAfter(checkInClosesAt);
 }
 
 class ReservationFile {
@@ -225,6 +262,7 @@ class ReservationRequest {
     required this.urgent,
     required this.attachments,
     required this.noShows,
+    this.lateCheckIns = 0,
     required this.status,
     this.recurring,
     this.decidedBy,
@@ -262,6 +300,7 @@ class ReservationRequest {
     this.feedbackRating,
     this.feedbackComment = '',
     this.feedbackAt,
+    this.feedbackReply,
     this.permit,
     this.signatureRequestId,
     this.signatureRequestStatus,
@@ -294,9 +333,9 @@ class ReservationRequest {
   final String org;
   final String purpose;
 
-  final String date;
+  String date;
 
-  final DateTime? slotDay;
+  DateTime? slotDay;
 
   String start;
   String end;
@@ -309,6 +348,7 @@ class ReservationRequest {
   final String? recurring;
 
   int noShows;
+  int lateCheckIns;
 
   RequestStatus status;
   String? decidedBy;
@@ -366,6 +406,12 @@ class ReservationRequest {
   String feedbackComment;
   DateTime? feedbackAt;
 
+  /// Null until an admin replies to the feedback above -- arrives with the
+  /// same reservation_feedback embed, nested one level further into
+  /// reservation_feedback_replies. See
+  /// 20260924090000_feedback_admin_replies.sql.
+  FeedbackReply? feedbackReply;
+
   int get verifiedAmountCentavos => paymentTransactions
       .where((payment) => payment.status == PaymentDecisionStatus.verified)
       .fold(0, (total, payment) => total + payment.amountCentavos);
@@ -420,7 +466,7 @@ class ReservationRequest {
       .map((w) => w[0].toUpperCase())
       .join();
 
-  String get whenLabel => '$date · $start–$end';
+  String get whenLabel => '$date · ${formatClockRange(start, end)}';
 
   int get startHour => int.tryParse(start.split(':').first) ?? 0;
   int get endHour => int.tryParse(end.split(':').first) ?? 0;

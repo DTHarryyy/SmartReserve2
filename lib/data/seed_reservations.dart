@@ -149,7 +149,7 @@ List<ReservationRequest> seedRequests() => [
     noShows: 0,
     status: RequestStatus.approved,
     decidedBy: 'You',
-    decidedAt: 'Yesterday 16:20',
+    decidedAt: 'Yesterday 4:20 PM',
   ),
   ReservationRequest(
     id: 'r8',

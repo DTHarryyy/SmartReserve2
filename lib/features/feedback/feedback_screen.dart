@@ -13,6 +13,7 @@ import '../../widgets/rating_display.dart';
 import '../../widgets/record_table.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_components.dart';
+import '../../widgets/sr_controls.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -795,7 +796,23 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         ),
         Align(
           alignment: Alignment.centerLeft,
-          child: _SentimentBadge(analysis: feedback.sentimentAnalysis),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SentimentBadge(analysis: feedback.sentimentAnalysis),
+              if (feedback.reply != null) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Replied',
+                  child: Icon(
+                    Icons.reply_rounded,
+                    size: 14,
+                    color: context.srColors.textMuted,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
         Text(
           entry.reviewerName,
@@ -1610,6 +1627,11 @@ class _FeedbackDetailDialog extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 _DetailSection(
+                  title: 'Reply to the renter',
+                  child: _ReplyComposer(entry: entry),
+                ),
+                const SizedBox(height: 14),
+                _DetailSection(
                   title: 'Reservation context',
                   child: Column(
                     children: [
@@ -1691,6 +1713,149 @@ class _FeedbackDetailDialog extends StatelessWidget {
 
   Widget _optionalRating(String label, int? value) =>
       _DetailLine(label, value == null ? 'Not rated' : '$value of 5');
+}
+
+/// The reply composer for one review. Self-sufficient: it reads AppState
+/// and the reservation's admin lane itself rather than threading a bag of
+/// callbacks through _FeedbackDetailDialog, since the only thing the parent
+/// dialog needs to do afterward is close (see the pop-then-act send below,
+/// matching the sentiment-retry wiring in _showFeedbackDetails).
+class _ReplyComposer extends StatefulWidget {
+  const _ReplyComposer({required this.entry});
+
+  final FeedbackEntry entry;
+
+  @override
+  State<_ReplyComposer> createState() => _ReplyComposerState();
+}
+
+class _ReplyComposerState extends State<_ReplyComposer> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.entry.feedback.reply?.message ?? '',
+  );
+  bool _editing = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final c = context.srColors;
+    final feedback = widget.entry.feedback;
+    final lane = widget.entry.reservationAdminLane;
+    final canReply =
+        (lane == 'internal' && state.isInternalAdmin) ||
+        (lane == 'external' && state.isExternalAdmin);
+    final reply = feedback.reply;
+
+    if (!canReply) {
+      if (reply != null) return _replyView(reply, c);
+      return Text(
+        lane == null
+            ? 'This reservation has no administrator lane on record.'
+            : 'Managed by the $lane lane.',
+        style: sans(12, color: c.textMuted),
+      );
+    }
+
+    if (reply != null && !_editing) {
+      return _replyView(
+        reply,
+        c,
+        trailing: TextButton(
+          onPressed: () => setState(() => _editing = true),
+          child: const Text('Edit reply'),
+        ),
+      );
+    }
+
+    final saving = state.feedbackReplySaving.contains(feedback.id);
+    final length = _controller.text.trim().length;
+    final tooShort = length < FeedbackLimits.replyMin;
+    final tooLong = length > FeedbackLimits.replyMax;
+    final canSend = !tooShort && !tooLong && !saving;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SrTextField(
+          controller: _controller,
+          placeholder: 'Write a reply the renter will see...',
+          minLines: 3,
+          maxLines: 4,
+          hasError: tooLong,
+          onChanged: (_) => setState(() {}),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '$length/${FeedbackLimits.replyMax}',
+              style: sans(
+                11,
+                w: 500,
+                color: tooLong ? c.error : c.textMuted,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (reply != null)
+              OutlinedButton(
+                onPressed: () => setState(() => _editing = false),
+                child: const Text('Cancel'),
+              ),
+            FilledButton(
+              onPressed: canSend
+                  ? () {
+                      final message = _controller.text.trim();
+                      Navigator.of(context).maybePop();
+                      state.replyToFeedback(feedback.id, message);
+                    }
+                  : null,
+              child: Text(reply == null ? 'Send reply' : 'Save reply'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _replyView(FeedbackReply reply, SrColors c, {Widget? trailing}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${reply.adminName} · '
+                '${_MobileFeedbackCard.formatDate(reply.updatedAt)}',
+                style: sans(11, w: 600, color: c.textMuted),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                reply.message,
+                style: sans(13, height: 1.5, color: c.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
 }
 
 class _AnalysisDetails extends StatelessWidget {
@@ -1888,6 +2053,24 @@ class _MobileFeedbackCard extends StatelessWidget {
                   _RatingBadge(rating: feedback.rating),
                   const SizedBox(height: 6),
                   _SentimentBadge(analysis: feedback.sentimentAnalysis),
+                  if (feedback.reply != null) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.reply_rounded,
+                          size: 13,
+                          color: c.textMuted,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Replied',
+                          style: sans(10.5, w: 600, color: c.textMuted),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ],

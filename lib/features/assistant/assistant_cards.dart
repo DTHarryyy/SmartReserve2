@@ -120,7 +120,9 @@ class AssistantBubble extends StatelessWidget {
                 bubble,
                 const SizedBox(height: 3),
                 Text(
-                  '${message.createdAt.hour.toString().padLeft(2, '0')}:${message.createdAt.minute.toString().padLeft(2, '0')}',
+                  formatClock12(
+                    message.createdAt.hour + message.createdAt.minute / 60,
+                  ),
                   style: mono(9.5, color: context.srColors.textMuted),
                 ),
               ],
@@ -242,7 +244,7 @@ class AssistantFacilityCard extends StatelessWidget {
                 foreground: context.srColors.ink3,
               ),
               SrPill(
-                label: facility.hours,
+                label: facility.hoursLabel,
                 background: context.srColors.dividerSoft,
                 foreground: context.srColors.ink3,
                 monospace: true,
@@ -579,13 +581,13 @@ class AssistantConfirmCard extends StatelessWidget {
                   kind: SrButtonKind.primary,
                   onPressed: controller.submitting
                       ? null
-                      : () {
+                      : () async {
                           // Everything the conversation established travels with
                           // the tap. The sheet re-validates each value against
                           // the facility, so this is a head start, not a
                           // bypass -- the terms still have to be read and
                           // ticked before anything is sent.
-                          showBookingSheet(
+                          final result = await showBookingSheet(
                             context,
                             state: state,
                             facility: facility,
@@ -600,6 +602,15 @@ class AssistantConfirmCard extends StatelessWidget {
                                   .excludedIncludedAmenities
                                   .toSet(),
                             ),
+                          );
+                          if (result == null) return;
+                          controller.noteBookingSubmitted(
+                            facility: result.facility,
+                            date: result.date,
+                            start: result.start,
+                            end: result.end,
+                            adminLane: result.adminLane,
+                            reservationId: result.reservationId,
                           );
                         },
                 ),

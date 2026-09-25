@@ -328,7 +328,7 @@ class _FacilityDetailDialogState extends State<_FacilityDetailDialog> {
                                 ),
                                 SrKeyCell(
                                   label: 'HOURS',
-                                  value: facility.hours,
+                                  value: facility.hoursLabel,
                                   valueMono: true,
                                 ),
                                 SrKeyCell(label: 'DAYS', value: facility.days),

@@ -91,7 +91,7 @@ List<VerificationSubmission> seedVerifications() => [
     alreadyClaimed: false,
     legible: true,
     decision: VerificationDecision.approved,
-    decidedAt: 'Yesterday 09:40',
+    decidedAt: 'Yesterday 9:40 AM',
   ),
   VerificationSubmission(
     id: 'v7',
@@ -184,6 +184,7 @@ List<Account> seedAccounts() => [
     lastActive: '3 days ago',
     joined: 'Mar 2026',
     noShows: 0,
+    accountAccessType: AccountAccessType.externalGuest,
   ),
   Account(
     id: 'u6',

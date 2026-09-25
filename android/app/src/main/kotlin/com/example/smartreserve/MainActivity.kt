@@ -1,4 +1,4 @@
-package com.example.smartreserve
+package com.example.SmartReserve
 
 import io.flutter.embedding.android.FlutterActivity
 

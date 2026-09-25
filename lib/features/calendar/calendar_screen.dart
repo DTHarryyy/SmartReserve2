@@ -1859,7 +1859,7 @@ class _TimeLabels extends StatelessWidget {
             right: 7,
             top: (hour - range.$1) * _hourHeight - 5,
             child: Text(
-              '${hour.toString().padLeft(2, '0')}:00',
+              formatHour12(hour),
               style: mono(9, color: context.srColors.mutedLight),
             ),
           ),
@@ -1883,7 +1883,7 @@ class _HorizontalTimeLabels extends StatelessWidget {
                 constraints.maxWidth,
             top: 10,
             child: Text(
-              '${hour.toString().padLeft(2, '0')}:00',
+              formatHour12(hour),
               style: mono(9, color: context.srColors.mutedLight),
             ),
           ),
@@ -2028,7 +2028,7 @@ class _EventChip extends StatelessWidget {
           ),
           child: Text(
             compact
-                ? '${event.startsAt.hour.toString().padLeft(2, '0')}:${event.startsAt.minute.toString().padLeft(2, '0')} ${event.eventChipLabel}'
+                ? '${formatClock12(event.startsAt.hour + event.startsAt.minute / 60)} ${event.eventChipLabel}'
                 : event.eventChipLabel,
             maxLines: compact ? 1 : 2,
             overflow: TextOverflow.ellipsis,

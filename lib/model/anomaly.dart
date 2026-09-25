@@ -261,6 +261,7 @@ class RenterRiskSummary {
     required this.reservations30d,
     required this.successfulOccurrences30d,
     required this.noShowOccurrences30d,
+    this.lateCheckIns30d = 0,
     required this.cancelledOccurrences30d,
     required this.lateCancellations30d,
     required this.paymentExpirations30d,
@@ -286,6 +287,7 @@ class RenterRiskSummary {
         reservations30d: _int(json['reservations_30d']),
         successfulOccurrences30d: _int(json['successful_occurrences_30d']),
         noShowOccurrences30d: _int(json['no_show_occurrences_30d']),
+        lateCheckIns30d: _int(json['late_check_ins_30d']),
         cancelledOccurrences30d: _int(json['cancelled_occurrences_30d']),
         lateCancellations30d: _int(json['late_cancellations_30d']),
         paymentExpirations30d: _int(json['payment_expirations_30d']),
@@ -311,6 +313,7 @@ class RenterRiskSummary {
   final int reservations30d;
   final int successfulOccurrences30d;
   final int noShowOccurrences30d;
+  final int lateCheckIns30d;
   final int cancelledOccurrences30d;
   final int lateCancellations30d;
   final int paymentExpirations30d;

@@ -143,6 +143,20 @@ class PermitMappingUpdate {
   };
 }
 
+enum PermitRequesterSignatureState {
+  current,
+  requested,
+  stale,
+  missing;
+
+  static PermitRequesterSignatureState fromRaw(String? raw) => switch (raw) {
+    'current' => current,
+    'requested' => requested,
+    'stale' => stale,
+    _ => missing,
+  };
+}
+
 class PermitReadiness {
   const PermitReadiness({
     required this.ready,
@@ -150,12 +164,14 @@ class PermitReadiness {
     required this.blockerCodes,
     this.configurationReady = true,
     this.missingMappings = const [],
+    this.requesterSignatureState = PermitRequesterSignatureState.missing,
   });
   final bool ready;
   final PermitTemplateKind templateKind;
   final List<String> blockerCodes;
   final bool configurationReady;
   final List<PermitMappingRequirement> missingMappings;
+  final PermitRequesterSignatureState requesterSignatureState;
   factory PermitReadiness.fromJson(Map<String, dynamic> json) =>
       PermitReadiness(
         ready: json['ready'] == true,
@@ -182,6 +198,15 @@ class PermitReadiness {
                 Map<String, dynamic>.from(item),
               ),
         ],
+        requesterSignatureState:
+            json['requester_signature_state'] == null &&
+                !(json['blockers'] as List? ?? const []).contains(
+                  'requester_signature_required',
+                )
+            ? PermitRequesterSignatureState.current
+            : PermitRequesterSignatureState.fromRaw(
+                json['requester_signature_state'] as String?,
+              ),
       );
   String messageFor(String code) => switch (code) {
     'not_confirmed' => 'Reservation approval is required.',

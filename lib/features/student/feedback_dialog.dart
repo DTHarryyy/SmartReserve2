@@ -172,7 +172,7 @@ class _FeedbackFormState extends State<_FeedbackForm> {
                 Text(request.facility, style: SrType.heading(color: c.text)),
                 const SizedBox(height: 2),
                 Text(
-                  '${request.date} · ${request.start}–${request.end}',
+                  request.whenLabel,
                   style: SrType.bodySm(color: c.textMuted),
                 ),
                 const SizedBox(height: 20),

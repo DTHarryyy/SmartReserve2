@@ -818,7 +818,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         SizedBox(
                           width: 44,
                           child: Text(
-                            hour,
+                            formatHour12(int.parse(hour)),
                             textAlign: TextAlign.center,
                             style: mono(9, color: context.srColors.muted),
                           ),
@@ -851,8 +851,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 _demandSelection?.hour ==
                                     int.parse(heatmap.hours[block]),
                             label:
-                                '${_weekday(day + 1)}, ${heatmap.hours[block]}:00-'
-                                '${int.parse(heatmap.hours[block]) + 2}:00, '
+                                '${_weekday(day + 1)}, '
+                                '${formatHour12(int.parse(heatmap.hours[block]))}-'
+                                '${formatHour12(int.parse(heatmap.hours[block]) + 2)}, '
                                 '${heatmap.cells[day][block]} booked requests',
                             onTap: () => setState(() {
                               final next = _DemandSelection(
@@ -880,7 +881,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   child: Text(
                     _demandSelection == null
                         ? 'Supporting booked-occurrence list'
-                        : '${_weekday(_demandSelection!.day)} ${_demandSelection!.hour}:00-${_demandSelection!.hour + 2}:00',
+                        : '${_weekday(_demandSelection!.day)} '
+                              '${formatHour12(_demandSelection!.hour)}-'
+                              '${formatHour12(_demandSelection!.hour + 2)}',
                     style: sans(12, w: 600),
                   ),
                 ),
@@ -1506,7 +1509,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   String _clock(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+      formatClock12(value.hour + value.minute / 60);
 
   String _durationLabel(double value) => value < 24
       ? '${value.round()} h'

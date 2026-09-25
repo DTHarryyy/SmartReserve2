@@ -84,8 +84,10 @@ class _FacilityConfigurationDialogState
           ),
         ),
     };
+    // Only the GCash destination is administrator-editable; the walk-in
+    // cashier row is system-managed and must never be overwritten from here.
     final method = facility.paymentMethods
-        .where((item) => item.enabled)
+        .where((item) => item.enabled && !item.isWalkIn)
         .firstOrNull;
     _accountName = TextEditingController(text: method?.accountName ?? '');
     _accountNumber = TextEditingController(text: method?.accountNumber ?? '');
@@ -427,7 +429,8 @@ class _FacilityConfigurationDialogState
                   const SizedBox(height: 18),
                   _heading(
                     'GCash destination',
-                    'Shown to approved requesters.',
+                    'Shown to approved requesters. Walk-in payment at the campus '
+                        'cashier is always offered alongside it.',
                   ),
                   TextField(
                     controller: _accountName,

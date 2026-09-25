@@ -147,7 +147,11 @@ class _AppShellState extends State<AppShell> {
       return true;
     }
     final selected = state.selectedRequest;
-    if (selected == null || !selected.isPending) return false;
+    if (selected == null ||
+        !selected.isPending ||
+        !state.canDecideRequest(selected)) {
+      return false;
+    }
     if (event.logicalKey == LogicalKeyboardKey.keyA) {
       state.decideRequest(selected.id, RequestStatus.approved);
       return true;

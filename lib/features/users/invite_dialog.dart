@@ -84,7 +84,8 @@ class _InviteDialogState extends State<_InviteDialog> {
       );
       if (!result.ok) throw Exception(result.error);
       _notice =
-          'Credentials file saved to ${result.path}. Keep it in a secure location.';
+          'Credentials file saved${result.path == null ? '' : ' to ${result.path}'}. '
+          'Keep it in a secure location.';
     },
     toast: 'Credentials file wasn’t saved.',
     detail:
@@ -185,10 +186,7 @@ class _InviteDialogState extends State<_InviteDialog> {
           }),
         ),
       const SizedBox(height: SR.space12),
-      SrLabel(
-        'Admin note',
-        meta: Text('optional', style: SrType.caption()),
-      ),
+      SrLabel('Admin note', meta: Text('optional', style: SrType.caption())),
       SrTextField(
         controller: _note,
         placeholder:

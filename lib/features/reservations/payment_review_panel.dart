@@ -54,6 +54,7 @@ class PaymentReviewPanel extends StatelessWidget {
               _PaymentRow(
                 state: state,
                 payment: payment,
+                methodLabel: _methodLabel(payment),
                 canDecide: submitted.contains(payment),
               ),
           ],
@@ -61,17 +62,35 @@ class PaymentReviewPanel extends StatelessWidget {
       ),
     );
   }
+
+  /// Which destination this transaction was paid to — GCash or the campus
+  /// cashier. A reservation can mix the two across its payments, so the label
+  /// comes from the transaction's own method, not the pinned one.
+  String? _methodLabel(PaymentTransaction payment) {
+    final methodId = payment.paymentMethodId;
+    if (methodId == null) return null;
+    for (final facility in state.facilities) {
+      if (facility.id != request.facilityId) continue;
+      for (final method in facility.paymentMethods) {
+        if (method.id == methodId) return method.label;
+      }
+    }
+    final pinned = request.paymentMethod;
+    return pinned != null && pinned.id == methodId ? pinned.label : null;
+  }
 }
 
 class _PaymentRow extends StatelessWidget {
   const _PaymentRow({
     required this.state,
     required this.payment,
+    required this.methodLabel,
     required this.canDecide,
   });
 
   final AppState state;
   final PaymentTransaction payment;
+  final String? methodLabel;
   final bool canDecide;
 
   @override
@@ -110,7 +129,9 @@ class _PaymentRow extends StatelessWidget {
                 dense: true,
               ),
               Text(
-                '${payment.purpose.label} · Ref ${payment.referenceNumber}',
+                '${payment.purpose.label} · '
+                '${methodLabel == null ? '' : '$methodLabel · '}'
+                'Ref ${payment.referenceNumber}',
                 style: SrType.caption(),
               ),
             ],

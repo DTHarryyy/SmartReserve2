@@ -12,7 +12,6 @@ const adminSections = <AppView>[
   AppView.facilities,
   AppView.reservations,
   AppView.calendar,
-  AppView.verifications,
   AppView.feedback,
   AppView.anomalies,
   AppView.users,
@@ -31,7 +30,6 @@ const _internalGroups = <NavGroup>[
       AppView.facilities,
       AppView.reservations,
       AppView.calendar,
-      AppView.verifications,
       AppView.feedback,
       AppView.anomalies,
     ],
@@ -93,7 +91,6 @@ class _SideNavState extends State<SideNav> {
 
   int _pendingFor(AppView section) => switch (section) {
     AppView.reservations => widget.state.pendingRequests,
-    AppView.verifications => widget.state.pendingVerifications,
     AppView.anomalies => widget.state.anomalyActiveHighCriticalCount,
     _ => 0,
   };

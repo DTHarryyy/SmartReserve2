@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/campus_data.dart';
 import '../../../theme/sr_tokens.dart';
+import '../../../util/campus_calendar.dart';
 import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
 import '../facility_form_controller.dart';
@@ -103,10 +104,11 @@ class RulesSection extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final compact = constraints.maxWidth < 420;
-                final dayWidth = (compact
-                        ? (constraints.maxWidth - 15) / 4
-                        : (constraints.maxWidth - 30) / 7)
-                    .clamp(0.0, double.infinity);
+                final dayWidth =
+                    (compact
+                            ? (constraints.maxWidth - 15) / 4
+                            : (constraints.maxWidth - 30) / 7)
+                        .clamp(0.0, double.infinity);
                 return Wrap(
                   spacing: 5,
                   runSpacing: 5,
@@ -290,7 +292,7 @@ class _TimeField extends StatelessWidget {
       initialTime: initial,
       helpText: label.toUpperCase(),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
         child: child!,
       ),
     );
@@ -304,7 +306,7 @@ class _TimeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: '$label, currently $value',
+    label: '$label, currently ${formatClockLabel(value)}',
     child: Hoverable(
       builder: (context, hovered) => GestureDetector(
         onTap: () => _pick(context),
@@ -320,7 +322,7 @@ class _TimeField extends StatelessWidget {
               color: hovered ? SR.primary : context.srColors.borderField,
             ),
           ),
-          child: Text(value, style: mono(12.5)),
+          child: Text(formatClockLabel(value), style: mono(12.5)),
         ),
       ),
     ),

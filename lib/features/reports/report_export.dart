@@ -189,8 +189,7 @@ String _weekday(int value) => const [
 ][value - 1];
 
 String _block(int hour) {
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(hour)}:00-${two(hour + 2)}:00';
+  return '${formatClock12(hour.toDouble())}-${formatClock12((hour + 2).toDouble())}';
 }
 
 String _money(int centavos) => (centavos / 100).toStringAsFixed(2);

@@ -37,7 +37,9 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
   late final _cameraNotifier = ValueNotifier<_Camera>((
     center:
         widget.controller.draft.pin ??
-        buildingNamed(widget.controller.draft.building)?.coords ??
+        widget.controller
+            .buildingNamed(widget.controller.draft.building)
+            ?.coords ??
         campus.center,
     zoom: widget.controller.draft.pin == null ? 17.0 : 19.0,
   ));
@@ -107,8 +109,11 @@ class _MobilePinSheetState extends State<MobilePinSheet> {
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                         ),
-                        onPositionChanged: (camera, _) => _cameraNotifier
-                            .value = (center: camera.center, zoom: camera.zoom),
+                        onPositionChanged: (camera, _) =>
+                            _cameraNotifier.value = (
+                              center: camera.center,
+                              zoom: camera.zoom,
+                            ),
                       ),
                       children: [
                         srTileLayer(

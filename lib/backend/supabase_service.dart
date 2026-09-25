@@ -908,6 +908,7 @@ class PaymentSubmissionDraft {
     required this.amountCentavos,
     required this.referenceNumber,
     required this.proof,
+    this.paymentMethodId,
   });
 
   final String requestId;
@@ -915,6 +916,10 @@ class PaymentSubmissionDraft {
   final int amountCentavos;
   final String referenceNumber;
   final ReservationUpload proof;
+
+  /// The facility payment method the renter actually used (GCash or walk-in).
+  /// Null falls back to the destination pinned on the reservation.
+  final String? paymentMethodId;
 }
 
 class FacilityConfigurationDraft {
@@ -960,6 +965,8 @@ class BackendReservationOccurrence {
     this.attendanceMarkedAt,
     this.attendanceMarkedBy,
     this.attendanceReason,
+    this.checkedInAt,
+    this.checkInLateMinutes,
     this.cancelledAt,
     this.cancelledBy,
     this.cancellationReason,
@@ -976,6 +983,8 @@ class BackendReservationOccurrence {
   final DateTime? attendanceMarkedAt;
   final String? attendanceMarkedBy;
   final String? attendanceReason;
+  final DateTime? checkedInAt;
+  final int? checkInLateMinutes;
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String? cancellationReason;
@@ -993,6 +1002,8 @@ class BackendReservationOccurrence {
         attendanceMarkedAt: _date(json['attendance_marked_at']),
         attendanceMarkedBy: json['attendance_marked_by'] as String?,
         attendanceReason: json['attendance_reason'] as String?,
+        checkedInAt: _date(json['checked_in_at']),
+        checkInLateMinutes: (json['check_in_late_minutes'] as num?)?.toInt(),
         cancelledAt: _date(json['cancelled_at']),
         cancelledBy: json['cancelled_by'] as String?,
         cancellationReason: json['cancellation_reason'] as String?,
@@ -1760,6 +1771,61 @@ class BackendFeedbackSentimentAnalysis {
   );
 }
 
+/// An admin's reply to a review. Read from either shape the wire sends it
+/// in: the flat reply_* columns on feedback_admin_list()'s rows, or the
+/// embedded reservation_feedback_replies(*) list on the reservation select.
+/// See 20260924090000_feedback_admin_replies.sql.
+class BackendFeedbackReply {
+  const BackendFeedbackReply({
+    required this.id,
+    required this.adminName,
+    required this.message,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String adminName;
+  final String message;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory BackendFeedbackReply.fromJson(Map<String, dynamic> json) =>
+      BackendFeedbackReply(
+        id: '${json['id'] ?? ''}',
+        adminName: '${json['admin_name'] ?? ''}',
+        message: '${json['message'] ?? ''}',
+        createdAt: DateTime.parse(json['created_at'] as String),
+        updatedAt: DateTime.parse(json['updated_at'] as String),
+      );
+
+  /// The admin-list RPC only ever projects the flat reply_* columns (no
+  /// reply id or created_at), so this fallback path synthesizes what the
+  /// UI needs without pretending to have fields the RPC never sent.
+  static BackendFeedbackReply? maybeFromRow(Map<String, dynamic> json) {
+    final embedded = _embeddedOne(json['reservation_feedback_replies']);
+    if (embedded != null) return BackendFeedbackReply.fromJson(embedded);
+    final message = json['reply_message'] as String?;
+    if (message == null) return null;
+    final updatedAt = _date(json['reply_updated_at']) ?? DateTime.now();
+    return BackendFeedbackReply(
+      id: '${json['id']}',
+      adminName: '${json['reply_admin_name'] ?? ''}',
+      message: message,
+      createdAt: updatedAt,
+      updatedAt: updatedAt,
+    );
+  }
+
+  FeedbackReply toModel() => FeedbackReply(
+    id: id,
+    adminName: adminName,
+    message: message,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
 class BackendFeedback {
   const BackendFeedback({
     required this.id,
@@ -1778,6 +1844,8 @@ class BackendFeedback {
     this.reservationStartsAt,
     this.pricingAudience = '',
     this.sentimentAnalysis,
+    this.reservationAdminLane,
+    this.reply,
   });
 
   final String id;
@@ -1797,6 +1865,8 @@ class BackendFeedback {
   final DateTime? reservationStartsAt;
   final String pricingAudience;
   final BackendFeedbackSentimentAnalysis? sentimentAnalysis;
+  final String? reservationAdminLane;
+  final BackendFeedbackReply? reply;
 
   factory BackendFeedback.fromJson(Map<String, dynamic> json) =>
       BackendFeedback(
@@ -1818,6 +1888,8 @@ class BackendFeedback {
         sentimentAnalysis: BackendFeedbackSentimentAnalysis.maybeFromJson(
           json['sentiment_analysis'],
         ),
+        reservationAdminLane: json['reservation_admin_lane'] as String?,
+        reply: BackendFeedbackReply.maybeFromRow(json),
       );
 
   ReservationFeedback toModel() => ReservationFeedback(
@@ -1834,6 +1906,7 @@ class BackendFeedback {
     createdAt: createdAt,
     updatedAt: updatedAt,
     sentimentAnalysis: sentimentAnalysis?.toModel(),
+    reply: reply?.toModel(),
   );
 }
 
@@ -3029,6 +3102,12 @@ abstract interface class SmartReserveBackend {
   });
   Future<Map<String, bool>> notificationPreferences();
   Future<void> saveNotificationPreferences(Map<String, bool> preferences);
+  Future<void> registerPushToken({
+    required String token,
+    required String platform,
+    String? deviceLabel,
+  });
+  Future<void> disablePushToken(String token);
   Future<void> inviteAdmin({
     required String email,
     required String role,
@@ -3153,6 +3232,7 @@ abstract interface class SmartReserveCoreBackend {
     required int amountCentavos,
     required String referenceNumber,
     required ReservationUpload proof,
+    String? paymentMethodId,
   });
   Future<PaymentTransaction> decidePayment({
     required String paymentId,
@@ -3201,6 +3281,10 @@ abstract interface class SmartReserveCoreBackend {
     String feedbackId,
   );
   Stream<void> feedbackSentimentAnalysisStream();
+  Future<BackendFeedbackReply> replyToFeedback(
+    String feedbackId,
+    String message,
+  );
   Future<BackendLoyaltySummary> loyaltySummary();
   Stream<List<BackendLoyaltyTransaction>> loyaltyTransactionStream();
   Future<BackendLoyaltyRedemption> redeemLoyaltyReward(String rewardId);
@@ -4011,7 +4095,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'reservation_price_lines(*),'
       'reservation_terms_acceptances(accepted_at,content_hash,terms_versions(id,title,version,content)),'
       'payment_method:facility_payment_methods!reservation_requests_payment_method_id_fkey(*),'
-      'reservation_feedback(*),reservation_permits(*),'
+      'reservation_feedback(*,reservation_feedback_replies(*)),reservation_permits(*),'
       'reservation_signature_requests(id,status,requested_at,signed_at),'
       'reservation_use_assessments(*,reservation_use_assessment_files(*))';
 
@@ -4364,6 +4448,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         proofPath: '${json['proof_path'] ?? ''}',
         status: PaymentDecisionStatus.fromRaw('${json['status']}'),
         submittedAt: DateTime.parse('${json['submitted_at']}'),
+        paymentMethodId: json['payment_method_id'] as String?,
         verifiedBy: json['verified_by'] as String?,
         verifiedAt: _date(json['verified_at']),
         rejectionReason: json['rejection_reason'] as String?,
@@ -4443,6 +4528,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
               'p_reference_number': draft.referenceNumber,
               'p_proof_path': path,
               'p_idempotency_key': _uuid(),
+              'p_payment_method_id': draft.paymentMethodId,
             },
           )
           .timeout(const Duration(seconds: 30));
@@ -4944,6 +5030,20 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       .map<void>((_) {});
 
   @override
+  Future<BackendFeedbackReply> replyToFeedback(
+    String feedbackId,
+    String message,
+  ) async {
+    final data = await _client.rpc(
+      'reply_to_feedback',
+      params: {'p_feedback_id': feedbackId, 'p_message': message},
+    );
+    return BackendFeedbackReply.fromJson(
+      Map<String, dynamic>.from(data as Map),
+    );
+  }
+
+  @override
   Future<BackendLoyaltySummary> loyaltySummary() async {
     final data = await _client.rpc('loyalty_my_summary');
     return BackendLoyaltySummary.fromJson(
@@ -4983,6 +5083,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     required int amountCentavos,
     required String referenceNumber,
     required ReservationUpload proof,
+    String? paymentMethodId,
   }) async {
     final currentUser = user;
     if (currentUser == null) throw const AuthException('Please sign in again.');
@@ -5010,6 +5111,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
               'p_reference_number': referenceNumber,
               'p_proof_path': path,
               'p_idempotency_key': _uuid(),
+              'p_payment_method_id': paymentMethodId,
             },
           )
           .timeout(const Duration(seconds: 30));
@@ -5229,6 +5331,22 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         undoUntil: _date(data['undo_until']),
       );
     }
+    if (command.action == 'request_reschedule') {
+      final response = await _client.rpc(
+        'request_reservation_reschedule',
+        params: {
+          'p_request_id': command.requestId,
+          'p_occurrence_id': command.payload['occurrence_id'],
+          'p_starts_at': command.payload['starts_at'],
+          'p_ends_at': command.payload['ends_at'],
+          'p_reason': command.reason,
+          'p_expected_version': command.expectedVersion,
+          'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+        },
+      );
+      final data = Map<String, dynamic>.from(response as Map);
+      return ReservationActionResult(actionId: data['action_id'] as String?);
+    }
     final response = await _client.rpc(
       'reservation_action',
       params: {
@@ -5445,6 +5563,35 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'new_facilities': preferences['New facilities on campus'] ?? false,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
+  }
+
+  @override
+  Future<void> registerPushToken({
+    required String token,
+    required String platform,
+    String? deviceLabel,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    await _client.from('user_push_tokens').upsert(
+      {
+        'user_id': currentUser.id,
+        'token': token,
+        'platform': platform,
+        'device_label': deviceLabel,
+        'enabled': true,
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'token',
+    );
+  }
+
+  @override
+  Future<void> disablePushToken(String token) async {
+    await _client
+        .from('user_push_tokens')
+        .update({'enabled': false})
+        .eq('token', token);
   }
 
   String facilityPhotoUrl(String path) =>

@@ -92,4 +92,33 @@ void main() {
 
     expect(normalized, ['Security Cameras', 'Generator']);
   });
+
+  test('booking sheet success is acknowledged in the chatbot', () {
+    controller.draft.heads = 20;
+    controller.draft.purpose = 'Department planning';
+
+    controller.noteBookingSubmitted(
+      facility: 'Conference Room',
+      date: 'Sep 30, 2026',
+      start: '09:00',
+      end: '11:00',
+      adminLane: 'internal',
+      reservationId: 'reservation-123',
+    );
+
+    expect(
+      controller.messages.any(
+        (message) =>
+            message.text.contains(
+              'Thank you for reserving with SmartReserve',
+            ) &&
+            message.text.contains('submitted successfully'),
+      ),
+      isTrue,
+    );
+    expect(controller.messages.last.kind, AssistantMessageKind.activity);
+    expect(controller.messages.last.reservationId, 'reservation-123');
+    expect(controller.stage, AssistantStage.idle);
+    expect(controller.draft.facility, isNull);
+  });
 }

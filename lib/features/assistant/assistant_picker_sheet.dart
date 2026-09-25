@@ -554,7 +554,7 @@ class _FacilityOption extends StatelessWidget {
                 foreground: context.srColors.ink3,
               ),
               SrPill(
-                label: facility.hours,
+                label: facility.hoursLabel,
                 background: context.srColors.dividerSoft,
                 foreground: context.srColors.ink3,
                 monospace: true,

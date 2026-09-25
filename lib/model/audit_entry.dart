@@ -194,7 +194,7 @@ class AuditEntry {
         ? changes.map(_csvChangeLine).join(' | ')
         : diff.join(' | ');
     return [
-      cell(createdAt?.toUtc().toIso8601String() ?? absolute),
+      cell(createdAt == null ? absolute : formatStamp(createdAt!.toLocal())),
       cell(actor),
       cell(actorEmail),
       cell(actorRole),

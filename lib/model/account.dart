@@ -44,7 +44,7 @@ enum AccountStatus {
 }
 
 enum AccountRole {
-  user('Renter'),
+  user('Internal user'),
   internalAdmin('Internal admin'),
   externalAdmin('External admin');
 
@@ -116,7 +116,7 @@ String bookingRateLabel(String? audience) =>
     '${bookingAudienceLabel(audience)} rate';
 
 /// Maps current and legacy reservation role snapshots to product language.
-String requesterRoleLabel(String? role) {
+String requesterRoleLabel(String? role, {bool external = false}) {
   final value = role?.trim() ?? '';
   final normalized = value.toLowerCase();
   if (normalized == 'internal_admin' || normalized == 'internal admin') {
@@ -126,19 +126,40 @@ String requesterRoleLabel(String? role) {
     return 'External admin';
   }
   if (normalized == 'system') return 'System';
+  if (external) {
+    final detail = value.indexOf(' ·');
+    return detail < 0 ? 'Renter' : 'Renter${value.substring(detail)}';
+  }
 
-  for (final prefix in ['user', 'guest', 'student', 'faculty', 'staff']) {
+  for (final prefix in ['guest', 'renter', 'external renter']) {
     if (normalized.startsWith('$prefix ·')) {
       return 'Renter${value.substring(prefix.length)}';
     }
   }
-  return 'Renter';
+  if (const {'guest', 'renter', 'external renter'}.contains(normalized)) {
+    return 'Renter';
+  }
+  for (final prefix in [
+    'user',
+    'internal user',
+    'student',
+    'faculty',
+    'staff',
+  ]) {
+    if (normalized.startsWith('$prefix ·')) {
+      return 'Internal user${value.substring(prefix.length)}';
+    }
+  }
+  return 'Internal user';
 }
 
 /// The only product state that may be called a guest is a person with no
 /// SmartReserve account. Registered identities are mapped from their role.
-String userTypeLabel({required bool hasAccount, String? role}) =>
-    hasAccount ? requesterRoleLabel(role) : 'Guest';
+String userTypeLabel({
+  required bool hasAccount,
+  String? role,
+  bool external = false,
+}) => hasAccount ? requesterRoleLabel(role, external: external) : 'Guest';
 
 /// Normalizes generated copy shown to an authenticated user without changing
 /// the raw values exchanged with the API.
@@ -301,6 +322,11 @@ class Account {
       role == AccountRole.user;
   bool get isExternalGuest =>
       accountAccessType == AccountAccessType.externalGuest;
+
+  String get roleLabel {
+    if (role != AccountRole.user) return role.label;
+    return isExternalGuest ? 'Renter' : AccountRole.user.label;
+  }
 
   String get organizationLabel {
     final name = organizationUnitName;

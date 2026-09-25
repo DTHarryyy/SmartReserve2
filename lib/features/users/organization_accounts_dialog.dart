@@ -418,7 +418,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
           contents: credentials.exportText,
         );
         if (!result.ok) throw Exception(result.error);
-        _notice = 'Credentials file saved to ${result.path}.';
+        _notice =
+            'Credentials file saved${result.path == null ? '' : ' to ${result.path}'}.';
       },
       toast: 'Credentials file was not saved.',
       detail: 'Credentials could not be saved. Check download permissions.',

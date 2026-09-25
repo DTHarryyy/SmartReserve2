@@ -27,7 +27,7 @@ class LocationSection extends StatelessWidget {
     animation: Listenable.merge([controller.form, controller.map, controller]),
     builder: (context, _) {
       final draft = controller.draft;
-      final selected = buildingNamed(draft.building);
+      final selected = controller.map.buildingNamed(draft.building);
 
       return SectionCard(
         anchorKey: controller.sectionKeys[RequiredItem.building],
@@ -77,14 +77,18 @@ class LocationSection extends StatelessWidget {
                     ),
                     SrSelect<String>(
                       value: draft.building.isEmpty ? null : draft.building,
-                      items: [for (final b in buildings) b.name],
+                      items: [
+                        for (final b in controller.map.editableBuildings)
+                          b.name,
+                      ],
                       placeholder: 'Choose a building',
                       semanticLabel: 'Building',
                       hasError: controller.errors.containsKey(
                         RequiredItem.building,
                       ),
                       labelOf: (b) => b,
-                      subtitleOf: (b) => buildingNamed(b)?.mapped == false
+                      subtitleOf: (b) =>
+                          controller.map.buildingNamed(b)?.mapped == false
                           ? 'NOT MAPPED'
                           : null,
                       onChanged: (v) {

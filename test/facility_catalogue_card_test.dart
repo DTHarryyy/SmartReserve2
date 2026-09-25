@@ -146,6 +146,25 @@ void main() {
     expect(find.text('+1'), findsOneWidget);
   });
 
+  testWidgets('rate can be hidden for verified campus users', (tester) async {
+    await _pump(
+      tester,
+      SizedBox(
+        width: 300,
+        height: 526,
+        child: FacilityCatalogueCard(
+          data: _cardData(),
+          reserveEnabled: true,
+          showRate: false,
+          onReserve: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('PHP1000 / 2 h'), findsNothing);
+    expect(find.text('Approval required'), findsOneWidget);
+  });
+
   testWidgets('SrButton icons inherit enabled and disabled foreground colors', (
     tester,
   ) async {

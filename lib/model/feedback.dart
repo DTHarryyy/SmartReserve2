@@ -7,6 +7,12 @@ import '../theme/sr_tokens.dart';
 /// 20260823090000_reservation_feedback_and_loyalty.sql.
 abstract final class FeedbackLimits {
   static const commentMax = 500;
+
+  /// Mirrors the CHECK constraint on
+  /// `public.reservation_feedback_replies.message` in
+  /// 20260924090000_feedback_admin_replies.sql (3-1000 chars).
+  static const replyMin = 3;
+  static const replyMax = 1000;
 }
 
 enum FeedbackRating {
@@ -166,6 +172,25 @@ class FeedbackSentimentAnalysis {
           (rating <= 2 && sentiment == SentimentLabel.positive));
 }
 
+/// An admin's reply to a renter's review. One per review -- editing posts a
+/// new revision over the same row rather than starting a thread; see
+/// 20260924090000_feedback_admin_replies.sql.
+class FeedbackReply {
+  const FeedbackReply({
+    required this.id,
+    required this.adminName,
+    required this.message,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String adminName;
+  final String message;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+}
+
 /// A user's review of a completed reservation. Mutable UI model, no
 /// fromJson -- parsing lives on the wire DTO in supabase_service.dart,
 /// matching the rest of lib/model/*.
@@ -184,6 +209,7 @@ class ReservationFeedback {
     required this.createdAt,
     required this.updatedAt,
     this.sentimentAnalysis,
+    this.reply,
   });
 
   final String id;
@@ -199,6 +225,7 @@ class ReservationFeedback {
   final DateTime createdAt;
   DateTime updatedAt;
   FeedbackSentimentAnalysis? sentimentAnalysis;
+  FeedbackReply? reply;
 
   FeedbackRating? get ratingTier => FeedbackRating.fromValue(rating);
 
@@ -220,12 +247,18 @@ class FeedbackEntry {
     required this.reviewerName,
     this.reservationStartsAt,
     this.pricingAudience = '',
+    this.reservationAdminLane,
   });
 
   final ReservationFeedback feedback;
   final String reviewerName;
   final DateTime? reservationStartsAt;
   final String pricingAudience;
+
+  /// 'internal' or 'external' -- the reservation's admin lane, used to gate
+  /// whether the current admin may reply. See can_manage_reservation() in
+  /// 20260830120000_global_admin_authorization.sql.
+  final String? reservationAdminLane;
 }
 
 class FacilityRatingStat {

@@ -8,6 +8,7 @@ import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
+import '../../model/notice.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
@@ -74,7 +75,15 @@ class StudentApp extends StatefulWidget {
 class _StudentAppState extends State<StudentApp> {
   StudentTab _tab = StudentTab.browse;
 
+  /// Set from a `feedback_reply` notification tap so `_mine()` can draw
+  /// attention to the reservation the reply landed on. Left set for the
+  /// rest of this session rather than cleared on tap -- the cards here
+  /// hold their own buttons, and wrapping the whole card in a tap handler
+  /// would fight the gesture arena with those.
+  String? _highlightedReservationId;
+
   String? _editingField;
+  bool _pushBusy = false;
   final _editController = TextEditingController();
   final _browseSearch = TextEditingController();
   String _browseQuery = '';
@@ -114,14 +123,31 @@ class _StudentAppState extends State<StudentApp> {
     // Attached once a real backend exists. Without one the assistant keeps
     // answering from rules alone, which is the whole fallback guarantee.
     final backend = state.backend;
-    _assistant.aiClient =
-        backend == null ? null : SupabaseAssistantAiClient(backend);
+    _assistant.aiClient = backend == null
+        ? null
+        : SupabaseAssistantAiClient(backend);
     if (state.pendingLoyaltyOpen) {
       state.pendingLoyaltyOpen = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(state.refreshLoyalty());
         _openLoyalty(context);
+      });
+    }
+    if (state.pendingReservationFocusId case final focusId?) {
+      state.pendingReservationFocusId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        // The reply itself rides on the reservation embed, which is only
+        // fetched once by refreshReservations() -- unlike app_notifications,
+        // it is not realtime-subscribed. Without this refresh a renter
+        // sitting in the app sees the notification but a stale card.
+        await state.refreshReservations();
+        if (!mounted) return;
+        setState(() {
+          _tab = StudentTab.mine;
+          _highlightedReservationId = focusId;
+        });
       });
     }
   }
@@ -602,6 +628,8 @@ class _StudentAppState extends State<StudentApp> {
                         facility,
                         account.pricingAudience,
                       ),
+                      showRate:
+                          account.verification != VerificationState.verified,
                       reserveEnabled: reserveEnabled,
                       reserveTooltip: reserveEnabled
                           ? 'Reserve now for ${facility.name}'
@@ -930,9 +958,15 @@ class _StudentAppState extends State<StudentApp> {
             margin: const EdgeInsets.only(bottom: 9),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
             decoration: BoxDecoration(
-              color: context.srColors.surface,
+              color: request.id == _highlightedReservationId
+                  ? context.srColors.primaryTint
+                  : context.srColors.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: context.srColors.border),
+              border: Border.all(
+                color: request.id == _highlightedReservationId
+                    ? context.srColors.primaryLine
+                    : context.srColors.border,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1203,7 +1237,7 @@ class _StudentAppState extends State<StudentApp> {
                                   'payment:${request.id}',
                                 )
                                 ? 'Submitting…'
-                                : 'Submit GCash proof',
+                                : 'Submit payment proof',
                             kind: SrButtonKind.primary,
                             dense: true,
                             onPressed:
@@ -1278,6 +1312,27 @@ class _StudentAppState extends State<StudentApp> {
                                         color: context.srColors.muted,
                                       ),
                                     ),
+                                    if (state.canRequestOccurrenceReschedule(
+                                      request,
+                                      occurrence,
+                                    ))
+                                      SrButton(
+                                        label: state.reservationActionsPending
+                                                .contains(request.id)
+                                            ? 'Sending…'
+                                            : 'Move date',
+                                        dense: true,
+                                        fontSize: 10,
+                                        onPressed: state
+                                                .reservationActionsPending
+                                                .contains(request.id)
+                                            ? null
+                                            : () => _requestReschedule(
+                                                state,
+                                                request,
+                                                occurrence,
+                                              ),
+                                      ),
                                     if (state.canCancelOccurrence(
                                       request,
                                       occurrence,
@@ -1331,6 +1386,28 @@ class _StudentAppState extends State<StudentApp> {
                                     color: context.srColors.muted,
                                   ),
                                 ),
+                                if (state.canRequestOccurrenceReschedule(
+                                  request,
+                                  occurrence,
+                                )) ...[
+                                  const SizedBox(width: 6),
+                                  SrButton(
+                                    label: state.reservationActionsPending
+                                            .contains(request.id)
+                                        ? 'Sending…'
+                                        : 'Move date',
+                                    dense: true,
+                                    fontSize: 10,
+                                    onPressed: state.reservationActionsPending
+                                            .contains(request.id)
+                                        ? null
+                                        : () => _requestReschedule(
+                                            state,
+                                            request,
+                                            occurrence,
+                                          ),
+                                  ),
+                                ],
                                 if (state.canCancelOccurrence(
                                   request,
                                   occurrence,
@@ -1385,22 +1462,56 @@ class _StudentAppState extends State<StudentApp> {
                     ],
                   ),
                 ],
-                if (state.canCancelReservation(request)) ...[
+                if ((request.occurrences.length == 1 &&
+                        state.canRequestReservationReschedule(request)) ||
+                    state.canCancelReservation(request)) ...[
                   const SizedBox(height: 9),
-                  SrButton(
-                    label: state.reservationActionsPending.contains(request.id)
-                        ? 'Cancelling…'
-                        : request.occurrences.length > 1
-                        ? 'Cancel all future dates'
-                        : 'Cancel reservation',
-                    kind: SrButtonKind.danger,
-                    dense: true,
-                    onPressed:
-                        state.reservationActionsPending.contains(request.id)
-                        ? null
-                        : () async {
-                            await state.cancelReservation(request);
-                          },
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      if (request.occurrences.length == 1 &&
+                          state.canRequestOccurrenceReschedule(
+                            request,
+                            request.occurrences.first,
+                          ))
+                        SrButton(
+                          label: state.reservationActionsPending.contains(
+                            request.id,
+                          )
+                              ? 'Sending…'
+                              : 'Request reschedule',
+                          dense: true,
+                          onPressed: state.reservationActionsPending.contains(
+                            request.id,
+                          )
+                              ? null
+                              : () => _requestReschedule(
+                                  state,
+                                  request,
+                                  request.occurrences.first,
+                                ),
+                        ),
+                      if (state.canCancelReservation(request))
+                        SrButton(
+                          label: state.reservationActionsPending.contains(
+                            request.id,
+                          )
+                              ? 'Cancelling…'
+                              : request.occurrences.length > 1
+                              ? 'Cancel all future dates'
+                              : 'Cancel reservation',
+                          kind: SrButtonKind.danger,
+                          dense: true,
+                          onPressed: state.reservationActionsPending.contains(
+                            request.id,
+                          )
+                              ? null
+                              : () async {
+                                  await state.cancelReservation(request);
+                                },
+                        ),
+                    ],
                   ),
                 ],
                 _feedbackSection(state, request),
@@ -1470,11 +1581,15 @@ class _StudentAppState extends State<StudentApp> {
 
   Widget _feedbackSection(AppState state, ReservationRequest request) {
     final c = context.srColors;
+    // Built as a list of independent blocks, not a chain of early returns:
+    // a facility-use assessment and the renter's own review are unrelated
+    // facts about the same reservation and can both be present.
+    final blocks = <Widget>[];
+
     if (request.useAssessments.isNotEmpty) {
       final assessment = request.useAssessments.last;
-      return Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Container(
+      blocks.add(
+        Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: c.surfaceSunken,
@@ -1510,10 +1625,10 @@ class _StudentAppState extends State<StudentApp> {
         ),
       );
     }
+
     if (request.feedbackRating != null) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Container(
+      blocks.add(
+        Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: c.surfaceSunken,
@@ -1539,11 +1654,36 @@ class _StudentAppState extends State<StudentApp> {
           ),
         ),
       );
-    }
-    if (state.canLeaveFeedback(request)) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 9),
-        child: SrButton(
+      if (request.feedbackReply case final reply?) {
+        blocks.add(
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: c.surfaceSunken,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Reply from administrator', style: SrType.label()),
+                const SizedBox(height: 5),
+                Text(
+                  '${reply.adminName} · ${_shortDate(reply.updatedAt)}',
+                  style: sans(11, w: 600, color: c.textMuted),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  reply.message,
+                  style: sans(12, height: 1.4, color: c.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    } else if (state.canLeaveFeedback(request)) {
+      blocks.add(
+        SrButton(
           label: 'Rate your visit',
           kind: SrButtonKind.primary,
           dense: true,
@@ -1551,18 +1691,33 @@ class _StudentAppState extends State<StudentApp> {
               showFeedbackDialog(context, state: state, request: request),
         ),
       );
-    }
-    if (request.lifecycleStatus == ReservationLifecycleStatus.confirmed) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
+    } else if (request.lifecycleStatus ==
+        ReservationLifecycleStatus.confirmed) {
+      blocks.add(
+        Text(
           'Feedback becomes available after your reservation is completed.',
           style: sans(11, color: c.textMuted),
         ),
       );
     }
-    return const SizedBox.shrink();
+
+    if (blocks.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < blocks.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            blocks[i],
+          ],
+        ],
+      ),
+    );
   }
+
+  static String _shortDate(DateTime value) =>
+      '${value.month}/${value.day}/${value.year}';
 
   List<Widget> _selfCheckInRows(AppState state, ReservationRequest request) {
     if (request.lifecycleStatus != ReservationLifecycleStatus.confirmed) {
@@ -1573,10 +1728,9 @@ class _StudentAppState extends State<StudentApp> {
       (item) => item.isBooked,
     )) {
       final now = campusNow();
-      final opensAt = occurrence.startsAt.subtract(const Duration(minutes: 30));
-      final closesAt = occurrence.startsAt.add(const Duration(minutes: 15));
       final checkedIn = occurrence.stage.index >= BookingStage.checkedIn.index;
-      final inWindow = !now.isBefore(opensAt) && !now.isAfter(closesAt);
+      final inWindow = occurrence.canCheckInAt(now);
+      final lateNow = occurrence.lateMinutesAt(now);
       final busy = state.reservationActionsPending.contains(
         'checkin:${occurrence.id}',
       );
@@ -1601,12 +1755,18 @@ class _StudentAppState extends State<StudentApp> {
                 ),
                 if (checkedIn)
                   SrPill(
-                    label: 'Checked in',
-                    background: context.srColors.greenTint,
-                    foreground: context.srColors.greenDark,
+                    label: occurrence.checkedInLate
+                        ? 'Checked in · ${occurrence.checkInLateMinutes} min late'
+                        : 'Checked in',
+                    background: occurrence.checkedInLate
+                        ? context.srColors.amberTint
+                        : context.srColors.greenTint,
+                    foreground: occurrence.checkedInLate
+                        ? context.srColors.amberTitle
+                        : context.srColors.greenDark,
                     fontSize: 10.5,
                   )
-                else if (inWindow)
+                else if (inWindow) ...[
                   SrButton(
                     label: busy ? 'Checking in...' : 'Check in',
                     kind: SrButtonKind.primary,
@@ -1615,12 +1775,18 @@ class _StudentAppState extends State<StudentApp> {
                         ? null
                         : () =>
                               state.selfCheckInOccurrence(request, occurrence),
-                  )
-                else
+                  ),
+                  if (lateNow > 0)
+                    Text(
+                      'You are $lateNow ${lateNow == 1 ? 'minute' : 'minutes'} '
+                      'late. This will be recorded.',
+                      style: sans(11, color: context.srColors.amberTitle),
+                    ),
+                ] else
                   Text(
-                    now.isBefore(opensAt)
+                    now.isBefore(occurrence.checkInOpensAt)
                         ? 'Check-in opens 30 minutes before start.'
-                        : 'Check-in closed 15 minutes after start.',
+                        : 'Check-in closed 30 minutes after start.',
                     style: sans(11, color: context.srColors.muted),
                   ),
               ],
@@ -1704,12 +1870,20 @@ class _StudentAppState extends State<StudentApp> {
               final picked = await showTimePicker(
                 context: context,
                 initialTime: startTime,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(alwaysUse24HourFormat: false),
+                  child: child!,
+                ),
               );
               if (picked != null) {
                 setDialogState(() => startTime = picked);
               }
             },
-            child: Text('From ${startTime.format(context)}'),
+            child: Text(
+              'From ${formatClock12(startTime.hour + startTime.minute / 60)}',
+            ),
           );
           final toButton = OutlinedButton(
             style: buttonStyle,
@@ -1717,10 +1891,18 @@ class _StudentAppState extends State<StudentApp> {
               final picked = await showTimePicker(
                 context: context,
                 initialTime: endTime,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(alwaysUse24HourFormat: false),
+                  child: child!,
+                ),
               );
               if (picked != null) setDialogState(() => endTime = picked);
             },
-            child: Text('To ${endTime.format(context)}'),
+            child: Text(
+              'To ${formatClock12(endTime.hour + endTime.minute / 60)}',
+            ),
           );
           return SrAdaptiveDialog(
             maxWidth: 540,
@@ -1886,9 +2068,328 @@ class _StudentAppState extends State<StudentApp> {
     heads.dispose();
   }
 
+  Future<void> _requestReschedule(
+    AppState state,
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+  ) async {
+    final reason = TextEditingController();
+    final now = campusNow();
+    final today = DateTime(now.year, now.month, now.day);
+    final facility = state.facilityNamed(request.facility);
+    final lastDate = today.add(
+      Duration(days: facility?.advanceBookingDays ?? 365),
+    );
+    var date = DateTime(
+      occurrence.startsAt.year,
+      occurrence.startsAt.month,
+      occurrence.startsAt.day,
+    );
+    if (date.isBefore(today)) date = today;
+    if (date.isAfter(lastDate)) date = lastDate;
+    var startTime = TimeOfDay.fromDateTime(occurrence.startsAt);
+    var endTime = TimeOfDay.fromDateTime(occurrence.endsAt);
+    final duration = occurrence.endsAt.difference(occurrence.startsAt);
+    final maxDurationMinutes = facility?.maxDurationMinutes ?? 24 * 60;
+    final maxDurationLabel = maxDurationMinutes % 60 == 0
+        ? '${maxDurationMinutes ~/ 60} '
+              '${maxDurationMinutes == 60 ? 'hour' : 'hours'}'
+        : '$maxDurationMinutes minutes';
+    String? error;
+
+    DateTime selectedStart() => DateTime.utc(
+      date.year,
+      date.month,
+      date.day,
+      startTime.hour,
+      startTime.minute,
+    );
+
+    DateTime selectedEnd() => DateTime.utc(
+      date.year,
+      date.month,
+      date.day,
+      endTime.hour,
+      endTime.minute,
+    );
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final compact = SR.isCompact(MediaQuery.sizeOf(context).width);
+          final startsAt = selectedStart();
+          final endsAt = selectedEnd();
+          final selectedDuration = endsAt.difference(startsAt);
+          final buttonStyle = OutlinedButton.styleFrom(
+            minimumSize: const Size(44, 44),
+          );
+          return SrAdaptiveDialog(
+            maxWidth: 500,
+            maxHeight: 570,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 16 : 22,
+                    compact ? 8 : 16,
+                    compact ? 6 : 10,
+                    compact ? 8 : 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Request reschedule',
+                          style: sans(compact ? 18 : 19, w: 600),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close',
+                        constraints: const BoxConstraints.tightFor(
+                          width: 44,
+                          height: 44,
+                        ),
+                        onPressed: () => Navigator.pop(context, false),
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: context.srColors.border),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(compact ? 16 : 22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'The original slot is released after this request is '
+                          'sent. The new schedule returns to admin approval.',
+                          style: sans(
+                            11.5,
+                            height: 1.5,
+                            color: context.srColors.ink4,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        OutlinedButton(
+                          style: buttonStyle,
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: date,
+                              firstDate: today,
+                              lastDate: lastDate,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                date = picked;
+                                error = null;
+                              });
+                            }
+                          },
+                          child: Text(_reservationDate(date)),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                style: buttonStyle,
+                                onPressed: () async {
+                                  final picked = await showTimePicker(
+                                    context: context,
+                                    initialTime: startTime,
+                                    builder: (context, child) => MediaQuery(
+                                      data: MediaQuery.of(context).copyWith(
+                                        alwaysUse24HourFormat: false,
+                                      ),
+                                      child: child!,
+                                    ),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() {
+                                      startTime = picked;
+                                      error = null;
+                                    });
+                                  }
+                                },
+                                child: Text(
+                                  'Starts ${formatClock12(startTime.hour + startTime.minute / 60)}',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                style: buttonStyle,
+                                onPressed: () async {
+                                  final picked = await showTimePicker(
+                                    context: context,
+                                    initialTime: endTime,
+                                    builder: (context, child) => MediaQuery(
+                                      data: MediaQuery.of(context).copyWith(
+                                        alwaysUse24HourFormat: false,
+                                      ),
+                                      child: child!,
+                                    ),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() {
+                                      endTime = picked;
+                                      error = null;
+                                    });
+                                  }
+                                },
+                                child: Text(
+                                  'Ends ${formatClock12(endTime.hour + endTime.minute / 60)}',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          request.totalAmountCentavos > 0
+                              ? 'Maximum $maxDurationLabel. '
+                                    'Paid reservations keep the original '
+                                    '${duration.inMinutes}-minute duration.'
+                              : 'Maximum duration: $maxDurationLabel.',
+                          style: sans(10.5, color: context.srColors.muted),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: context.srColors.surfaceSubtle,
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                              color: context.srColors.hairline,
+                            ),
+                          ),
+                          child: Text(
+                            'New schedule · ${_reservationDate(startsAt)} · '
+                            '${_reservationClock(startsAt)}–'
+                            '${_reservationClock(endsAt)} '
+                            '(${selectedDuration.inMinutes} minutes)',
+                            style: mono(10.5, color: context.srColors.ink3),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: reason,
+                          minLines: 2,
+                          maxLines: 4,
+                          maxLength: 300,
+                          decoration: const InputDecoration(
+                            labelText: 'Reason for moving',
+                            hintText: 'Briefly explain why you need a new time.',
+                          ),
+                        ),
+                        if (error != null)
+                          Text(
+                            error!,
+                            style: sans(11.5, color: context.srColors.red),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: context.srColors.border),
+                Padding(
+                  padding: EdgeInsets.all(compact ? 16 : 18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () {
+                          final candidateStart = selectedStart();
+                          final candidateEnd = selectedEnd();
+                          final unchanged =
+                              candidateStart == occurrence.startsAt &&
+                              candidateEnd == occurrence.endsAt;
+                          final crossesDay =
+                              candidateEnd.year != candidateStart.year ||
+                              candidateEnd.month != candidateStart.month ||
+                              candidateEnd.day != candidateStart.day;
+                          if (!candidateStart.isAfter(campusNow())) {
+                            setDialogState(
+                              () => error = 'Choose a future start time.',
+                            );
+                          } else if (!candidateEnd.isAfter(candidateStart)) {
+                            setDialogState(
+                              () => error =
+                                  'Choose an end time later than the start time.',
+                            );
+                          } else if (unchanged) {
+                            setDialogState(
+                              () => error = 'Choose a different schedule.',
+                            );
+                          } else if (crossesDay) {
+                            setDialogState(
+                              () => error =
+                                  'The reservation must end on the same day.',
+                            );
+                          } else if (candidateEnd.difference(candidateStart) !=
+                                  duration &&
+                              request.totalAmountCentavos > 0) {
+                            setDialogState(
+                              () => error =
+                                  'Paid reservations must keep the original '
+                                  '${duration.inMinutes}-minute duration.',
+                            );
+                          } else if (candidateEnd
+                                  .difference(candidateStart)
+                                  .inMinutes >
+                              maxDurationMinutes) {
+                            setDialogState(
+                              () => error =
+                                  'The maximum reservation time for this '
+                                  'facility is $maxDurationLabel.',
+                            );
+                          } else if (reason.text.trim().length < 3) {
+                            setDialogState(
+                              () => error =
+                                  'Add a short reason for the administrator.',
+                            );
+                          } else {
+                            Navigator.pop(context, true);
+                          }
+                        },
+                        child: const Text('Send request'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    if (accepted == true) {
+      final startsAt = selectedStart();
+      await state.requestReservationReschedule(
+        request,
+        occurrence,
+        startsAt: startsAt,
+        endsAt: selectedEnd(),
+        reason: reason.text,
+      );
+    }
+    reason.dispose();
+  }
+
   static String _reservationClock(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:'
-      '${value.minute.toString().padLeft(2, '0')}';
+      formatClock12(value.hour + value.minute / 60);
 
   static String _reservationDate(DateTime value) {
     const months = [
@@ -2033,7 +2534,7 @@ class _StudentAppState extends State<StudentApp> {
               style: SrType.code(color: context.srColors.muted),
             ),
             const SizedBox(height: SR.space4),
-            Text(account.role.label, style: SrType.caption()),
+            Text(account.roleLabel, style: SrType.caption()),
             const SizedBox(height: SR.space2),
             Text('Joined ${account.joined}', style: SrType.caption()),
           ],
@@ -2321,9 +2822,9 @@ class _StudentAppState extends State<StudentApp> {
                     ),
                   ),
                 ),
-                if (index != state.notificationPreferences.entries.length - 1)
-                  Divider(height: 1, color: context.srColors.border),
+                Divider(height: 1, color: context.srColors.border),
               ],
+              _pushRow(state),
             ],
           ),
         ),
@@ -2345,6 +2846,46 @@ class _StudentAppState extends State<StudentApp> {
       ],
     ),
   );
+
+  Widget _pushRow(AppState state) {
+    final push = state.pushService;
+    if (push == null || !push.isSupported) {
+      return const SrListRow(
+        label: 'Enable push on this device',
+        value: 'Not supported here',
+      );
+    }
+    if (push.isRegistered) {
+      return const SrListRow(
+        label: 'Push notifications',
+        value: 'Active on this device',
+      );
+    }
+    return SrListRow(
+      label: 'Enable push on this device',
+      trailing: SrButton(
+        label: _pushBusy ? 'Requesting…' : 'Enable',
+        dense: true,
+        fontSize: 11,
+        onPressed: _pushBusy
+            ? null
+            : () async {
+                setState(() => _pushBusy = true);
+                final granted = await state.enablePushNotifications();
+                if (!mounted) return;
+                setState(() => _pushBusy = false);
+                if (!granted) {
+                  state.showToast(
+                    const ToastMessage(
+                      'Push notifications were not enabled. Check your browser or device permission settings.',
+                      tone: AdvisoryTone.block,
+                    ),
+                  );
+                }
+              },
+      ),
+    );
+  }
 
   Widget _accountActions(AppState state) => SrCard(
     child: LayoutBuilder(
@@ -2925,7 +3466,7 @@ FacilityCatalogueCardData _cardDataFromFacility(
     description: facility.description,
     includedAmenities: List.unmodifiable(facility.amenities),
     capacityLabel: '${facility.capacity} seats',
-    hoursLabel: '${facility.hours} · ${facility.days}',
+    hoursLabel: '${facility.hoursLabel} · ${facility.days}',
     approvalLabel: facility.approvalRequired ? 'Required' : 'Instant',
     availabilityLabel: _facilityAvailabilityLabelFor(facility),
     availabilityTone: _facilityAvailabilityToneFor(facility),

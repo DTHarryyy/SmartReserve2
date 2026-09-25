@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
+import '../../model/account.dart';
 import '../../model/amenity_request.dart';
 import '../../model/facility.dart';
 import '../../model/facility_photo.dart';
@@ -204,6 +205,9 @@ class _FacilityPreviewContentState extends State<_FacilityPreviewContent> {
                 StudentFacilityOverview(
                   facility: widget.facility,
                   audience: widget.state.userAccount.pricingAudience,
+                  showRate:
+                      widget.state.userAccount.verification !=
+                      VerificationState.verified,
                 ),
                 const SizedBox(height: 18),
                 Semantics(
@@ -393,10 +397,12 @@ class StudentFacilityOverview extends StatelessWidget {
     super.key,
     required this.facility,
     this.audience,
+    this.showRate = true,
   });
 
   final Facility facility;
   final String? audience;
+  final bool showRate;
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +459,7 @@ class StudentFacilityOverview extends StatelessWidget {
         _DetailGrid(
           items: [
             _DetailItem('CAPACITY', '${facility.capacity} seats'),
-            _DetailItem('OPEN HOURS', facility.hours),
+            _DetailItem('OPEN HOURS', facility.hoursLabel),
             _DetailItem('OPEN DAYS', facility.days),
             _DetailItem(
               'APPROVAL',
@@ -462,14 +468,15 @@ class StudentFacilityOverview extends StatelessWidget {
             _DetailItem('MAX DURATION', facility.maxDuration),
             _DetailItem('BOOK AHEAD', facility.advance),
             _DetailItem('BOOKING BUFFER', facility.buffer),
-            _DetailItem(
-              'RATE',
-              rate == null
-                  ? 'Not specified'
-                  : rate == 0
-                  ? 'Included rate'
-                  : '${pesoFromCentavos(rate)} / hour',
-            ),
+            if (showRate)
+              _DetailItem(
+                'RATE',
+                rate == null
+                    ? 'Not specified'
+                    : rate == 0
+                    ? 'Included rate'
+                    : '${pesoFromCentavos(rate)} / hour',
+              ),
             _DetailItem('RATING', facility.ratingLabel),
           ],
         ),

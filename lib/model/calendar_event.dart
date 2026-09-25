@@ -85,7 +85,7 @@ class CalendarEvent {
   bool get canOpenRequest => requestId != null;
 
   String get timeLabel =>
-      '${formatClock(startsAt.hour + startsAt.minute / 60)}–${formatClock(endsAt.hour + endsAt.minute / 60)}';
+      '${formatClock12(startsAt.hour + startsAt.minute / 60)}–${formatClock12(endsAt.hour + endsAt.minute / 60)}';
 
   String get effectiveStatusLabel => statusLabel ?? state.label;
 

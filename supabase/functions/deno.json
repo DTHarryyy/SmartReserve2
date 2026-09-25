@@ -3,7 +3,7 @@
   "tasks": {
     "//test": "generate-permit's tests render real PDFs from the template files on disk, so the suite needs read access; nothing here needs the network.",
     "test": "deno test --allow-read",
-    "check": "deno check assistant-chat/index.ts generate-permit/index.ts feedback-sentiment/index.ts permit-signatures/index.ts complete-initial-password/index.ts"
+    "check": "deno check assistant-chat/index.ts generate-permit/index.ts feedback-sentiment/index.ts permit-signatures/index.ts complete-initial-password/index.ts send-push/index.ts"
   },
   "fmt": {
     "lineWidth": 80,

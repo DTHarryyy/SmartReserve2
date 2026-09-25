@@ -1128,7 +1128,7 @@ class AssistantController extends ChangeNotifier {
     }
     if (!_isHalfHour(startHour) || !_isHalfHour(endHour)) {
       _say(
-        'Choose times on the 30-minute grid, like 09:00-11:00 or 09:30-11:30.',
+        'Choose times on the 30-minute grid, like 9:00 AM–11:00 AM or 9:30 AM–11:30 AM.',
         tone: AdvisoryTone.block,
       );
       return false;
@@ -1246,7 +1246,7 @@ class AssistantController extends ChangeNotifier {
       if (stage == AssistantStage.needTime && p.time != null) {
         final start = p.time!.startHour;
         if (start == null) {
-          _say('I need a start time, like 09:00 or 09:30.');
+          _say('I need a start time, like 9:00 AM or 9:30 AM.');
           return;
         }
         final end = p.time!.endHour ?? start + 2;
@@ -2526,7 +2526,7 @@ class AssistantController extends ChangeNotifier {
         break;
       case SlotIssue.outsideHours:
         _say(
-          '${facility.name} runs ${facility.hours}. Choose a time inside those hours.',
+          '${facility.name} runs ${facility.hoursLabel}. Choose a time inside those hours.',
           tone: AdvisoryTone.block,
         );
         draft.startHour = null;
@@ -3085,6 +3085,33 @@ class AssistantController extends ChangeNotifier {
         action: 'cancelled',
       ),
     );
+    unawaited(_queueSync());
+    notifyListeners();
+  }
+
+  void noteBookingSubmitted({
+    required String facility,
+    required String date,
+    required String start,
+    required String end,
+    required String adminLane,
+    String? reservationId,
+  }) {
+    _say(
+      'Thank you for reserving with SmartReserve! Your reservation request '
+      'was submitted successfully for $facility on $date, '
+      '${formatClockRange(start, end)}. The assigned $adminLane administrator '
+      'will review it. Check My reservations for updates.',
+    );
+    messages.add(
+      AssistantMessage.activity(
+        'Reservation request submitted successfully · $facility · '
+        '$date ${formatClockRange(start, end)}',
+        reservationId: reservationId,
+        action: 'submitted',
+      ),
+    );
+    _resetDraft();
     unawaited(_queueSync());
     notifyListeners();
   }

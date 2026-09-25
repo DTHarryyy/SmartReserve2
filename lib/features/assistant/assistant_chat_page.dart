@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/campus_calendar.dart';
 import '../../widgets/sr_assistant_logo.dart';
 import 'assistant_picker_sheet.dart';
 import 'assistant_controller.dart';
@@ -281,7 +282,7 @@ class _AssistantChatPageState extends State<AssistantChatPage> {
   static String _historyDate(DateTime value) {
     final local = value.toLocal();
     return '${local.month}/${local.day}/${local.year} · '
-        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+        '${formatClock12(local.hour + local.minute / 60)}';
   }
 
   @override

@@ -410,7 +410,7 @@ const designNotes = <DesignNote>[
     NoteItem(
       'Tone',
       'Plain institutional past tense, no jargon: "R. Aguinaldo moved the pin '
-          'for Computer Laboratory 2 by 22 m · 14 Jul 2026, 09:12 · reason: '
+          'for Computer Laboratory 2 by 22 m · 14 Jul 2026, 9:12 AM · reason: '
           'corrected to the doorway."',
     ),
   ]),
@@ -472,7 +472,8 @@ const designNotes = <DesignNote>[
     NoteItem(
       'Payment rules',
       'Any positive authoritative quote uses the payment flow. Approval creates '
-          'a temporary hold; the requester submits a GCash reference and proof; '
+          'a temporary hold; the requester pays by GCash or walk-in at the campus '
+          'cashier and submits the reference or receipt number with proof; '
           'an assigned matching-lane administrator verifies it. Verified funds '
           'confirm the slot, while a zero total confirms without payment.',
     ),

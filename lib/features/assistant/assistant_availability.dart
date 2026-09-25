@@ -3,6 +3,7 @@ library;
 import 'dart:math' as math;
 
 import '../../model/facility.dart';
+import '../../util/campus_calendar.dart';
 
 class BusyWindow {
   const BusyWindow(this.startHour, this.endHour);
@@ -60,9 +61,7 @@ String dayKey(DateTime day) =>
     '${day.day.toString().padLeft(2, '0')}';
 
 String formatClockHour(double hours) {
-  final h = hours.floor();
-  final m = ((hours - h) * 60).round();
-  return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  return formatClock12(hours);
 }
 
 bool _isSameDay(DateTime a, DateTime b) =>

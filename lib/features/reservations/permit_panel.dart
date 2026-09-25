@@ -41,6 +41,14 @@ class _PermitPanelState extends State<PermitPanel> {
       widget.state.hasSession &&
       widget.state.sessionProfile?.id == request.requesterId;
 
+  PermitRequesterSignatureState _signatureState(ReservationRequest request) =>
+      _readiness?.requesterSignatureState ??
+      (request.signatureRequested
+          ? PermitRequesterSignatureState.requested
+          : request.signatureSubmitted
+          ? PermitRequesterSignatureState.current
+          : PermitRequesterSignatureState.missing);
+
   @override
   void initState() {
     super.initState();
@@ -134,6 +142,7 @@ class _PermitPanelState extends State<PermitPanel> {
   List<Widget> _body(BuildContext context) {
     final request = widget.request;
     final permit = request.permit;
+    final signatureState = _signatureState(request);
     if (permit?.status == PermitStatus.void_ ||
         permit?.status == PermitStatus.superseded) {
       return [
@@ -236,7 +245,9 @@ class _PermitPanelState extends State<PermitPanel> {
       ];
     }
     final widgets = <Widget>[];
-    if (request.signatureRequested && _isSignedInRequester(request)) {
+    if (signatureState == PermitRequesterSignatureState.requested &&
+        request.signatureRequested &&
+        _isSignedInRequester(request)) {
       widgets.addAll([
         Text(
           'Your approved reservation needs your signature. Draw it here to '
@@ -251,10 +262,20 @@ class _PermitPanelState extends State<PermitPanel> {
           onPressed: _busy ? null : () => _signReservation(request),
         ),
       ]);
-    } else if (request.signatureRequested && _admin) {
+    } else if (signatureState == PermitRequesterSignatureState.requested &&
+        _admin) {
       widgets.add(
         Text(
           'An e-signature request is active. The requester must sign from My reservations before an official permit can be generated or sent.',
+          style: SrType.bodySm(),
+        ),
+      );
+    } else if (signatureState == PermitRequesterSignatureState.stale) {
+      widgets.add(
+        Text(
+          _admin
+              ? 'The recorded e-signature no longer matches the current reservation details. Request an updated signature before generating the permit.'
+              : 'Your reservation details changed after you signed. The assigned administrator must send an updated signature request.',
           style: SrType.bodySm(),
         ),
       );
@@ -268,7 +289,8 @@ class _PermitPanelState extends State<PermitPanel> {
           style: SrType.bodySm(),
         ),
       );
-    } else if (!_admin && request.signatureSubmitted) {
+    } else if (!_admin &&
+        signatureState == PermitRequesterSignatureState.current) {
       // A requester has completed the only step they control. A previous
       // generation attempt can fail while official signatures or mappings are
       // being configured; showing that as the requester's failure is both
@@ -300,7 +322,7 @@ class _PermitPanelState extends State<PermitPanel> {
     } else {
       widgets.add(
         Text(
-          request.signatureSubmitted
+          signatureState == PermitRequesterSignatureState.current
               ? 'Your e-signature is recorded. The system is waiting for the remaining official permit requirements.'
               : 'Waiting for the remaining permit requirements.',
           style: SrType.bodySm(),
@@ -329,7 +351,7 @@ class _PermitPanelState extends State<PermitPanel> {
           const SizedBox(height: SR.space4),
           for (final code in _readiness!.blockerCodes)
             Text(
-              '• ${_readiness!.messageFor(code)}',
+              '• ${code == 'requester_signature_required' && signatureState == PermitRequesterSignatureState.stale ? 'The requester must sign the updated reservation details.' : _readiness!.messageFor(code)}',
               style: SrType.bodySm(color: context.srColors.muted),
             ),
         ]);
@@ -341,14 +363,16 @@ class _PermitPanelState extends State<PermitPanel> {
           runSpacing: SR.space8,
           children: [
             if (_readiness?.configurationReady == true &&
-                !request.signatureRequested &&
-                !request.signatureSubmitted)
+                (signatureState == PermitRequesterSignatureState.missing ||
+                    signatureState == PermitRequesterSignatureState.stale))
               SrButton(
-                label: 'Request signature',
+                label: signatureState == PermitRequesterSignatureState.stale
+                    ? 'Request updated signature'
+                    : 'Request signature',
                 dense: true,
                 onPressed: _busy ? null : _requestSignature,
               ),
-            if (request.signatureRequested)
+            if (signatureState == PermitRequesterSignatureState.requested)
               SrButton(
                 label: 'Resend e-signature request',
                 dense: true,
@@ -468,7 +492,9 @@ class _PermitPanelState extends State<PermitPanel> {
     widget.state.showToast(
       ToastMessage(
         result.ok
-            ? 'Permit downloaded. Print it before you arrive.'
+            ? (result.shared
+                  ? 'Permit ready. Save or print it before you arrive.'
+                  : 'Permit downloaded. Print it before you arrive.')
             : 'The permit could not be saved: ${result.error}',
         tone: result.ok ? AdvisoryTone.info : AdvisoryTone.block,
       ),

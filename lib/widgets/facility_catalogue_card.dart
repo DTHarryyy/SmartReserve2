@@ -62,6 +62,7 @@ class FacilityCatalogueCard extends StatelessWidget {
     this.onReserve,
     this.reserveTooltip,
     this.previewMode = false,
+    this.showRate = true,
   });
 
   final FacilityCatalogueCardData data;
@@ -70,6 +71,7 @@ class FacilityCatalogueCard extends StatelessWidget {
   final bool reserveEnabled;
   final String? reserveTooltip;
   final bool previewMode;
+  final bool showRate;
 
   static const double radius = 14;
 
@@ -101,6 +103,7 @@ class FacilityCatalogueCard extends StatelessWidget {
                     onReserve: onReserve,
                     reserveTooltip: reserveTooltip,
                     previewMode: previewMode,
+                    showRate: showRate,
                     bounded: true,
                   ),
                 )
@@ -111,6 +114,7 @@ class FacilityCatalogueCard extends StatelessWidget {
                   onReserve: onReserve,
                   reserveTooltip: reserveTooltip,
                   previewMode: previewMode,
+                  showRate: showRate,
                   bounded: false,
                 ),
             ],
@@ -182,6 +186,7 @@ class _CardBody extends StatelessWidget {
     required this.onReserve,
     required this.reserveTooltip,
     required this.previewMode,
+    required this.showRate,
     required this.bounded,
   });
 
@@ -190,6 +195,7 @@ class _CardBody extends StatelessWidget {
   final VoidCallback? onReserve;
   final String? reserveTooltip;
   final bool previewMode;
+  final bool showRate;
   final bool bounded;
 
   @override
@@ -298,20 +304,22 @@ class _CardBody extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: SR.space8),
-            Flexible(
-              child: Text(
-                data.rateLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: SrType.subhead(
-                  color: data.rateLabel == 'Included rate'
-                      ? context.srColors.greenDark
-                      : context.srColors.ink,
+            if (showRate) ...[
+              const SizedBox(width: SR.space8),
+              Flexible(
+                child: Text(
+                  data.rateLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: SrType.subhead(
+                    color: data.rateLabel == 'Included rate'
+                        ? context.srColors.greenDark
+                        : context.srColors.ink,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
         const SizedBox(height: SR.space8),

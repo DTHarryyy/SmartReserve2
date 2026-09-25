@@ -27,26 +27,41 @@ Future<bool> showPaymentProofSheet(
       break;
     }
   }
-  FacilityPaymentMethod? method = request.paymentMethod;
-  if (method == null) {
-    for (final item
-        in facility?.paymentMethods ?? const <FacilityPaymentMethod>[]) {
-      if (item.enabled) {
-        method = item;
-        break;
-      }
-    }
+
+  // Every destination the renter may pay to: the facility's published methods
+  // plus whatever is pinned on the reservation (kept even if later disabled,
+  // so an in-flight correction can still be filed against it).
+  final methods = <String, FacilityPaymentMethod>{};
+  for (final item
+      in facility?.paymentMethods ?? const <FacilityPaymentMethod>[]) {
+    if (item.enabled) methods[item.id] = item;
   }
-  if (method == null) {
+  final pinned = request.paymentMethod;
+  if (pinned != null) methods.putIfAbsent(pinned.id, () => pinned);
+  if (methods.isEmpty) {
     state.showToast(
       const ToastMessage(
-        'This facility has not published a GCash account yet. Contact the administrator before sending payment.',
+        'This facility has not published a payment destination yet. Contact the administrator before sending payment.',
         tone: AdvisoryTone.block,
       ),
     );
     return false;
   }
-  final selectedMethod = method;
+  // GCash first, walk-in second: the wallet transfer is the default path.
+  final ordered = methods.values.toList()
+    ..sort((a, b) {
+      if (a.isWalkIn != b.isWalkIn) return a.isWalkIn ? 1 : -1;
+      return a.accountName.compareTo(b.accountName);
+    });
+
+  FacilityPaymentMethod selected = ordered.first;
+  final preferredId = correctingPayment?.paymentMethodId ?? pinned?.id;
+  for (final item in ordered) {
+    if (item.id == preferredId) {
+      selected = item;
+      break;
+    }
+  }
 
   final fullPaymentDue =
       request.balanceDueAt != null &&
@@ -70,7 +85,8 @@ Future<bool> showPaymentProofSheet(
         builder: (context) => _PaymentProofDialog(
           state: state,
           request: request,
-          method: selectedMethod,
+          methods: ordered,
+          initialMethod: selected,
           mode: mode,
           correctingPayment: correctingPayment,
           initialAmountCentavos: initialAmount,
@@ -83,7 +99,8 @@ class _PaymentProofDialog extends StatefulWidget {
   const _PaymentProofDialog({
     required this.state,
     required this.request,
-    required this.method,
+    required this.methods,
+    required this.initialMethod,
     required this.mode,
     required this.initialAmountCentavos,
     this.correctingPayment,
@@ -91,7 +108,8 @@ class _PaymentProofDialog extends StatefulWidget {
 
   final AppState state;
   final ReservationRequest request;
-  final FacilityPaymentMethod method;
+  final List<FacilityPaymentMethod> methods;
+  final FacilityPaymentMethod initialMethod;
   final PaymentProofMode mode;
   final int initialAmountCentavos;
   final PaymentTransaction? correctingPayment;
@@ -107,6 +125,7 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
   late final TextEditingController _reference = TextEditingController(
     text: widget.correctingPayment?.referenceNumber ?? '',
   );
+  late FacilityPaymentMethod _method = widget.initialMethod;
   ReservationUpload? _proof;
   String? _error;
   bool _submitting = false;
@@ -123,7 +142,7 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
     final correction = widget.mode == PaymentProofMode.correctionSubmission;
     final payment = widget.correctingPayment;
     return AlertDialog(
-      title: Text(correction ? 'Fix payment proof' : 'Submit GCash proof'),
+      title: Text(correction ? 'Fix payment proof' : 'Submit payment proof'),
       content: SizedBox(
         width: 430,
         child: SingleChildScrollView(
@@ -131,13 +150,46 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.methods.length > 1) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _method.id,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'How did you pay?',
+                  ),
+                  items: [
+                    for (final option in widget.methods)
+                      DropdownMenuItem(
+                        value: option.id,
+                        child: Text(
+                          option.isWalkIn
+                              ? '${option.label} — ${option.accountName}'
+                              : '${option.label} — ${option.accountNumber}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: _submitting
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _method = widget.methods.firstWhere(
+                              (item) => item.id == value,
+                            );
+                            _error = null;
+                          });
+                        },
+                ),
+                const SizedBox(height: SR.space12),
+              ],
               Text(
-                '${widget.method.accountName} · ${widget.method.accountNumber}',
+                '${_method.accountName} · ${_method.accountNumber}',
                 style: SrType.body(w: 600),
               ),
-              if (widget.method.instructions.isNotEmpty)
+              if (_method.instructions.isNotEmpty)
                 Text(
-                  widget.method.instructions,
+                  _method.instructions,
                   style: SrType.bodySm(color: context.srColors.muted),
                 ),
               if (correction && payment != null) ...[
@@ -166,15 +218,18 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
               const SizedBox(height: SR.space8),
               TextField(
                 controller: _reference,
-                decoration: const InputDecoration(
-                  labelText: 'GCash reference number',
+                decoration: InputDecoration(
+                  labelText: _method.referenceLabel,
+                  helperText: _method.isWalkIn
+                      ? 'Copy the number printed on the cashier or registrar receipt.'
+                      : null,
                 ),
               ),
               const SizedBox(height: SR.space12),
               OutlinedButton.icon(
                 onPressed: _submitting ? null : _pickProof,
                 icon: const Icon(Icons.attach_file_rounded),
-                label: Text(_proof?.name ?? 'Choose receipt or screenshot'),
+                label: Text(_proof?.name ?? _method.proofLabel),
               ),
               if (_error != null) ...[
                 const SizedBox(height: SR.space8),
@@ -237,8 +292,11 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
     if (pesos == null ||
         pesos <= 0 ||
         _proof == null ||
-        _reference.text.trim().length < 6) {
-      setState(() => _error = 'Enter a valid amount, reference, and proof.');
+        _reference.text.trim().length < _method.referenceMinLength) {
+      setState(
+        () => _error =
+            'Enter a valid amount, ${_method.referenceLabel.toLowerCase()}, and proof.',
+      );
       return;
     }
     setState(() => _submitting = true);
@@ -251,6 +309,7 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
             amountCentavos: centavos,
             referenceNumber: _reference.text,
             proof: _proof!,
+            paymentMethodId: _method.id,
           )
         : await widget.state.submitReservationPayment(
             request: widget.request,
@@ -262,6 +321,7 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
             amountCentavos: centavos,
             referenceNumber: _reference.text,
             proof: _proof!,
+            paymentMethodId: _method.id,
           );
     if (!mounted) return;
     setState(() => _submitting = false);

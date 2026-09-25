@@ -258,6 +258,51 @@ Feedback submission remains valid if the worker, provider or schedule is
 disabled. Historical feedback can be queued later through the bounded
 backfill RPC after the new-feedback path has been observed.
 
+### Push notifications
+
+Every row written to `app_notifications` fans out to a device push via
+Firebase Cloud Messaging, honoring the same three notification preferences
+already used by the in-app feed. Deploy `send-push` with `PUSH_ENABLED=false`,
+then set these secrets before enabling it:
+
+```bash
+supabase secrets set FCM_PROJECT_ID=...
+supabase secrets set FCM_SERVICE_ACCOUNT_JSON=...
+supabase secrets set PUSH_WORKER_KEY=...
+supabase secrets set PUSH_ENABLED=false
+```
+
+Store `smartreserve_function_url` and `smartreserve_push_worker_key` in
+Supabase Vault for the trigger nudge and Cron sweep, the same way the
+feedback sentiment worker does. `FCM_SERVICE_ACCOUNT_JSON` is the full JSON
+key for a Firebase service account with the Firebase Cloud Messaging API
+enabled; never commit it.
+
+The Firebase project (`smartreserve-48784`) exists, with both the Android
+app (`com.example.SmartReserve`, matching `android/app/build.gradle.kts`)
+and the Web app registered. `lib/main.dart` hardcodes their `apiKey`/`appId`/
+`projectId`/`messagingSenderId`/`authDomain` as `--dart-define` defaults
+(overridable for a different Firebase project without editing source), the
+same way `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` already are.
+`web/firebase-messaging-sw.js` carries the same Web config as plain JS,
+since a service worker can't read `--dart-define` values — update both
+together if the project ever changes.
+
+Still needed before this goes live, none of which the app can do for itself:
+
+- Generate a Web Push (VAPID) key pair (Project Settings → Cloud Messaging →
+  Web configuration → "Generate key pair") and pass it as
+  `--dart-define=FCM_VAPID_KEY=...`; without it, web push registration
+  no-ops. Unlike the values above, a VAPID key is one half of a keypair
+  rather than a stable per-project identifier, so it isn't hardcoded as a
+  default.
+- Generate a Firebase service account key (Project Settings → Service
+  accounts → "Generate new private key") for `FCM_SERVICE_ACCOUNT_JSON`
+  above — this one is a real secret and must only ever reach Supabase
+  secrets, never the client or source control.
+- Set the Supabase secrets and Vault entries above, then
+  `supabase db push && supabase functions deploy send-push`.
+
 ### The reservation assistant
 
 The in-app assistant answers reservation, payment, permit, availability,

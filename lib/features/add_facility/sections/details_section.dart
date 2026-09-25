@@ -87,7 +87,7 @@ class DetailsSection extends StatelessWidget {
                       controller: controller.form.capacityField,
                       placeholder: '0',
                       mono: true,
-                      semanticLabel: 'Capacity in seats',
+                      semanticLabel: 'Capacity in people',
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
@@ -105,7 +105,7 @@ class DetailsSection extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          'seats',
+                          'people',
                           style: sans(11, color: context.srColors.muted),
                         ),
                       ),

@@ -8,9 +8,19 @@ class FileExportResult {
   const FileExportResult.success(
     String this.path, {
     this.revealSupported = false,
+    this.shared = false,
   }) : error = null;
   const FileExportResult.failure(String this.error)
     : path = null,
+      revealSupported = false,
+      shared = false;
+
+  /// The bytes reached the user, but at a location the app cannot name — a
+  /// share target consumed the file and the user chose where it went. [path]
+  /// stays null so callers do not read the staging path out to them.
+  const FileExportResult.handedOff({this.shared = false})
+    : path = null,
+      error = null,
       revealSupported = false;
 
   /// Where the file landed. Null when the export failed, and also null on
@@ -23,6 +33,11 @@ class FileExportResult {
   /// and only when the file was written to a real folder rather than handed
   /// to a share sheet or a browser download.
   final bool revealSupported;
+
+  /// Whether the file went to the system share sheet rather than into a
+  /// folder the app can name. True on mobile, where the user picks the
+  /// destination — messaging should then say "shared", not "downloaded".
+  final bool shared;
 
   bool get ok => error == null;
 }

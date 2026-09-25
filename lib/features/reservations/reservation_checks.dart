@@ -1,6 +1,7 @@
 import '../../model/decision_check.dart';
 import '../../model/facility.dart';
 import '../../model/reservation.dart';
+import '../../util/campus_calendar.dart';
 import 'conflict_engine.dart';
 
 typedef Conflict = Hold;
@@ -69,7 +70,7 @@ class ReservationAssessment {
         return 'Overlaps $count other confirmed $plural — needs attention.';
       }
       return _holdsTheSlot
-          ? 'Holds ${request.start}–${request.end} — confirmed.'
+          ? 'Holds ${formatClockRange(request.start, request.end)} — confirmed.'
           : 'No hold on this slot.';
     }
     return count > 0
@@ -115,12 +116,22 @@ class ReservationAssessment {
         outcome: request.noShows == 0 ? CheckOutcome.pass : CheckOutcome.warn,
       ),
       DecisionCheck(
+        label: 'Punctuality',
+        value: request.lateCheckIns == 0
+            ? 'No late check-ins on this account.'
+            : '${request.lateCheckIns} late check-in'
+                  '${request.lateCheckIns == 1 ? '' : 's'} in the last 30 days.',
+        outcome: request.lateCheckIns == 0
+            ? CheckOutcome.pass
+            : CheckOutcome.warn,
+      ),
+      DecisionCheck(
         label: 'Hours & days',
         value: !withinOperatingHours
-            ? 'Outside operating hours (${f?.hours ?? '—'}).'
+            ? 'Outside operating hours (${f?.hoursLabel ?? '—'}).'
             : (!withinAvailableDays
                   ? '$weekday is not an available day (${f?.days ?? '—'}).'
-                  : 'Inside ${f?.hours ?? '—'} on ${f?.days ?? '—'}.'),
+                  : 'Inside ${f?.hoursLabel ?? '—'} on ${f?.days ?? '—'}.'),
         outcome: withinOperatingHours && withinAvailableDays
             ? CheckOutcome.pass
             : CheckOutcome.warn,
@@ -170,8 +181,6 @@ class ReservationAssessment {
   }
 
   static String _hhmm(double hours) {
-    final h = hours.floor();
-    final m = ((hours - h) * 60).round();
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    return formatClock(hours);
   }
 }

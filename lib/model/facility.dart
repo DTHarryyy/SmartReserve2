@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../theme/sr_tokens.dart';
+import '../util/campus_calendar.dart';
 import 'facility_photo.dart';
 import 'payment.dart';
 
@@ -320,6 +321,8 @@ class Facility {
 
   int get closeHour =>
       int.tryParse(hours.split('–').last.split(':').first) ?? 19;
+
+  String get hoursLabel => formatStoredClockRange(hours);
 
   int get operatingHoursPerDay => (closeHour - openHour).clamp(0, 24);
 

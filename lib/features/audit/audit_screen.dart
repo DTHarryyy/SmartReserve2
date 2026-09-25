@@ -10,6 +10,7 @@ import '../../model/audit_entry.dart';
 import '../../model/notice.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/file_export.dart';
+import '../../util/campus_calendar.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
 import '../../widgets/sr_components.dart';
@@ -515,7 +516,8 @@ class _AuditScreenState extends State<AuditScreen> {
     if (!mounted) return;
     state.showToast(
       ToastMessage(
-        '${exportedRows.length} entries saved as CSV to ${result.path}, '
+        '${exportedRows.length} entries saved as CSV'
+        '${result.path == null ? '' : ' to ${result.path}'}, '
         'signed with your name. The export is itself logged.',
         tone: AdvisoryTone.info,
         action: result.revealSupported
@@ -632,8 +634,7 @@ Widget _personCell(BuildContext context, AuditEntry entry) {
 }
 
 String _clockOnly(DateTime value) {
-  String two(int v) => v.toString().padLeft(2, '0');
-  return '${two(value.hour)}:${two(value.minute)}';
+  return formatClock12(value.hour + value.minute / 60);
 }
 
 class _AuditRow extends StatefulWidget {

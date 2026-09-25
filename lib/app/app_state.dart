@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../backend/push_service.dart';
 import '../backend/supabase_service.dart';
 import '../data/campus_data.dart';
 import '../data/seed_accounts.dart';
@@ -521,6 +522,7 @@ class AppState extends ChangeNotifier {
   String? feedbackError;
   String? feedbackAnalyticsError;
   final Set<String> feedbackSentimentRetrying = {};
+  final Set<String> feedbackReplySaving = {};
   int _feedbackRequestId = 0;
 
   // Loyalty
@@ -543,6 +545,7 @@ class AppState extends ChangeNotifier {
   bool loyaltyAdminClaimsLoading = false;
   String? loyaltyAdminClaimsError;
   bool pendingLoyaltyOpen = false;
+  String? pendingReservationFocusId;
 
   // Anomalies
   AnomalyFilters anomalyFilters = const AnomalyFilters();
@@ -811,7 +814,10 @@ class AppState extends ChangeNotifier {
       final summary = await fetch(service);
       _riskSummaryByRequest[requestId] = summary;
       final request = requestById(requestId);
-      if (request != null) request.noShows = summary.noShowOccurrences30d;
+      if (request != null) {
+        request.noShows = summary.noShowOccurrences30d;
+        request.lateCheckIns = summary.lateCheckIns30d;
+      }
       if (summary.evaluationPending) {
         _scheduleRiskSummaryPoll(requestId);
       } else {
@@ -900,6 +906,26 @@ class AppState extends ChangeNotifier {
   bool get isInternalAdmin => sessionProfile?.isInternalAdmin ?? false;
   bool get isExternalAdmin => sessionProfile?.isExternalAdmin ?? false;
   bool get isAdmin => sessionProfile?.isAdmin ?? false;
+
+  /// The decision lane this admin may act in, mirroring `public.admin_lane()`.
+  /// Null when there is no admin session (demo data, or a requester account),
+  /// in which case no lane filtering applies.
+  String? get currentAdminLane {
+    if (isInternalAdmin) return 'internal';
+    if (isExternalAdmin) return 'external';
+    return null;
+  }
+
+  /// The backend gates every decision on `admin_lane(caller) = request lane`
+  /// (`lock_reservation_admin_scope`), while the read policy lets any admin see
+  /// every request so conflicts stay visible. Acting out of lane therefore
+  /// fails with 'Reservation access denied', so the queue only offers the rows
+  /// this admin can actually decide.
+  bool canDecideRequest(ReservationRequest request) {
+    final lane = currentAdminLane;
+    return lane == null || lane == request.adminLane;
+  }
+
   bool get _currentUserIsGuestPriced =>
       !isAdmin &&
       userAccount.role == AccountRole.user &&
@@ -931,6 +957,25 @@ class AppState extends ChangeNotifier {
 
   void configureBackend(SmartReserveBackend service) {
     backend = service;
+  }
+
+  PushService? pushService;
+
+  void configurePush(PushService service) {
+    pushService = service;
+  }
+
+  Future<bool> enablePushNotifications() async {
+    final push = pushService;
+    if (push == null) return false;
+    final granted = await push.requestPermissionAndRegister();
+    notifyListeners();
+    return granted;
+  }
+
+  void handlePushNotificationOpened(String kind, String? requestId) {
+    notificationsOpen = true;
+    notifyListeners();
   }
 
   bool get assistantHistoryAvailable =>
@@ -1039,6 +1084,7 @@ class AppState extends ChangeNotifier {
           ? [...seedBookings(), ...seriesDemoBookings()]
           : [];
       notifications = [];
+      unawaited(pushService?.unregister() ?? Future.value());
       _backendReservations.clear();
       userCalendarSlots = [];
       userCalendarError = null;
@@ -1102,6 +1148,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
+    unawaited(pushService?.registerIfAlreadyGranted() ?? Future.value());
     if (profile.isInternalAdmin) {
       _clearAdminLoyaltyState();
       _syncFeedbackSentimentSubscription();
@@ -1876,7 +1923,7 @@ class AppState extends ChangeNotifier {
         document: row.documentPath == null
             ? 'Deleted after final decision'
             : row.documentName,
-        submitted: row.submittedAt.toLocal().toString().substring(0, 16),
+        submitted: formatStamp(row.submittedAt.toLocal()),
         registryMatch: true,
         nameMatch: true,
         alreadyClaimed: false,
@@ -1887,7 +1934,9 @@ class AppState extends ChangeNotifier {
           'rejected' => VerificationDecision.rejected,
           _ => VerificationDecision.pending,
         },
-        decidedAt: row.decidedAt?.toLocal().toString().substring(0, 16),
+        decidedAt: row.decidedAt == null
+            ? null
+            : formatStamp(row.decidedAt!.toLocal()),
         reason: row.reason,
         fromOnboarding: row.userId == sessionProfile?.id,
         userId: row.userId,
@@ -2193,6 +2242,10 @@ class AppState extends ChangeNotifier {
           attendanceMarkedAt: occurrence.attendanceMarkedAt,
           attendanceMarkedBy: occurrence.attendanceMarkedBy,
           attendanceReason: occurrence.attendanceReason,
+          checkedInAt: occurrence.checkedInAt == null
+              ? null
+              : campusWallTime(occurrence.checkedInAt!),
+          checkInLateMinutes: occurrence.checkInLateMinutes,
           cancelledAt: occurrence.cancelledAt,
           cancelledBy: occurrence.cancelledBy,
           cancellationReason: occurrence.cancellationReason,
@@ -2291,6 +2344,7 @@ class AppState extends ChangeNotifier {
       feedbackRating: row.feedback?.rating,
       feedbackComment: row.feedback?.comment ?? '',
       feedbackAt: row.feedback?.createdAt,
+      feedbackReply: row.feedback?.reply?.toModel(),
       useAssessments: [
         for (final assessment in row.useAssessments)
           ReservationUseAssessment(
@@ -2325,8 +2379,7 @@ class AppState extends ChangeNotifier {
   }
 
   static String _clock(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:'
-      '${value.minute.toString().padLeft(2, '0')}';
+      formatClock(value.hour + value.minute / 60);
 
   static String _relative(DateTime value) {
     final difference = DateTime.now().difference(value.toLocal());
@@ -2393,6 +2446,12 @@ class AppState extends ChangeNotifier {
     }
     if (notification.kind.startsWith('loyalty_') && !isAdmin) {
       pendingLoyaltyOpen = true;
+      goTo(AppView.userApp);
+      notifyListeners();
+      return;
+    }
+    if (notification.kind == 'feedback_reply' && !isAdmin) {
+      pendingReservationFocusId = notification.requestId;
       goTo(AppView.userApp);
       notifyListeners();
       return;
@@ -3261,8 +3320,9 @@ class AppState extends ChangeNotifier {
     };
   }
 
-  List<ReservationRequest> get visibleRequests =>
-      requests.where((r) => r.status == requestTab).toList();
+  List<ReservationRequest> get visibleRequests => requests
+      .where((r) => r.status == requestTab && canDecideRequest(r))
+      .toList();
 
   ReservationRequest? get selectedRequest {
     for (final r in requests) {
@@ -3377,7 +3437,7 @@ class AppState extends ChangeNotifier {
       kind: AuditKind.reservation,
       diff: [
         '${before.label}  →  ${outcome.label}',
-        '${request.date} · ${request.start}–${request.end} · '
+        '${request.whenLabel} · '
             '${request.facility}',
       ],
       reason: reason,
@@ -3490,7 +3550,8 @@ class AppState extends ChangeNotifier {
       kind: AuditKind.reservation,
       diff: [
         for (final b in bumped)
-          '${b.label} (${b.requester}) · ${b.start}–${b.end} · removed',
+          '${b.label} (${b.requester}) · '
+              '${formatClockRange(b.start, b.end)} · removed',
         'Both parties notified',
       ],
       reason: reason,
@@ -3537,7 +3598,7 @@ class AppState extends ChangeNotifier {
       );
       return;
     }
-    final was = '${request.start}–${request.end}';
+    final was = formatClockRange(request.start, request.end);
     request
       ..start = start
       ..end = end;
@@ -3729,6 +3790,7 @@ class AppState extends ChangeNotifier {
     'complete' => 'Completion',
     'no_show' => 'No-show',
     'cancel' => 'Cancellation',
+    'request_reschedule' => 'Reschedule request',
     'resubmit' => 'Resubmission',
     _ => 'Reservation update',
   };
@@ -3871,7 +3933,8 @@ class AppState extends ChangeNotifier {
       target: request.facility,
       kind: AuditKind.reservation,
       diff: [
-        '${dates.length} dates booked · ${request.start}–${request.end}',
+        '${dates.length} dates booked · '
+            '${formatClockRange(request.start, request.end)}',
         '${dates.first}  →  ${dates.last}',
       ],
       revertable: true,
@@ -3986,11 +4049,31 @@ class AppState extends ChangeNotifier {
   void advanceStage(String id, BookingStage stage) {
     final request = requestById(id);
     if (request == null) return;
+    final occurrence = request.occurrences.isEmpty
+        ? null
+        : request.occurrences.firstWhere(
+            (item) => item.isBooked && item.stage != BookingStage.completed,
+            orElse: () => request.occurrences.first,
+          );
+    if (stage == BookingStage.completed) {
+      final canComplete = occurrence == null
+          ? request.stage == BookingStage.checkedIn &&
+                request.endsAtWall != null &&
+                !campusNow().isBefore(request.endsAtWall!)
+          : occurrence.canCompleteAt(campusNow());
+      if (!canComplete) {
+        showToast(
+          const ToastMessage(
+            'Completion becomes available after check-in and the reservation '
+            'end time.',
+            tone: AdvisoryTone.block,
+          ),
+        );
+        return;
+      }
+    }
     if (!_useDemoData && backend != null && hasSession) {
-      final occurrence = request.occurrences.firstWhere(
-        (item) => item.isBooked && item.stage != BookingStage.completed,
-        orElse: () => request.occurrences.first,
-      );
+      if (occurrence == null) return;
       final action = switch (stage) {
         BookingStage.checkedIn => 'check_in',
         BookingStage.completed => 'complete',
@@ -4034,6 +4117,17 @@ class AppState extends ChangeNotifier {
     ReservationOccurrence occurrence,
     BookingStage stage,
   ) {
+    if (stage == BookingStage.completed &&
+        !occurrence.canCompleteAt(campusNow())) {
+      showToast(
+        const ToastMessage(
+          'Completion becomes available after check-in and the reservation '
+          'end time.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return;
+    }
     if (_useDemoData || backend == null) {
       advanceStage(request.id, stage);
       return;
@@ -5043,6 +5137,31 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> replyToFeedback(String feedbackId, String message) async {
+    final service = _coreBackend;
+    if (_useDemoData || service == null || !isAdmin) return false;
+    if (feedbackReplySaving.contains(feedbackId)) return false;
+    feedbackReplySaving.add(feedbackId);
+    notifyListeners();
+    try {
+      await service.replyToFeedback(feedbackId, message);
+      await refreshFeedback();
+      toasts.show(const ToastMessage.success('Reply sent.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    } finally {
+      feedbackReplySaving.remove(feedbackId);
+      notifyListeners();
+    }
+  }
+
   Future<void> refreshLoyalty() async {
     if (!_currentUserIsGuestPriced) {
       _loyaltySubscription?.cancel();
@@ -5695,6 +5814,7 @@ class AppState extends ChangeNotifier {
     required int amountCentavos,
     required String referenceNumber,
     required ReservationUpload proof,
+    String? paymentMethodId,
   }) async {
     final service = _coreBackend;
     if (service == null || !hasSession || _useDemoData) {
@@ -5718,6 +5838,7 @@ class AppState extends ChangeNotifier {
           amountCentavos: amountCentavos,
           referenceNumber: referenceNumber.trim(),
           proof: proof,
+          paymentMethodId: paymentMethodId,
         ),
       );
       await refreshReservations();
@@ -5739,6 +5860,7 @@ class AppState extends ChangeNotifier {
     required int amountCentavos,
     required String referenceNumber,
     required ReservationUpload proof,
+    String? paymentMethodId,
   }) async {
     final service = _coreBackend;
     if (service == null || !hasSession || _useDemoData) {
@@ -5760,6 +5882,7 @@ class AppState extends ChangeNotifier {
         amountCentavos: amountCentavos,
         referenceNumber: referenceNumber.trim(),
         proof: proof,
+        paymentMethodId: paymentMethodId,
       );
       await refreshReservations();
       showToast(const ToastMessage('Payment submitted for review'));
@@ -6365,6 +6488,40 @@ class AppState extends ChangeNotifier {
   bool canCancelReservation(ReservationRequest request, {DateTime? now}) =>
       cancellableOccurrences(request, now: now).isNotEmpty;
 
+  static const _reschedulableBookingStates = {'requested', 'held', 'booked'};
+
+  bool canRequestOccurrenceReschedule(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    DateTime? now,
+  }) {
+    if (request.status != RequestStatus.pending &&
+        request.status != RequestStatus.approved) {
+      return false;
+    }
+    if (request.lifecycleStatus !=
+            ReservationLifecycleStatus.pendingApproval &&
+        request.lifecycleStatus !=
+            ReservationLifecycleStatus.awaitingPayment &&
+        request.lifecycleStatus != ReservationLifecycleStatus.confirmed) {
+      return false;
+    }
+    return occurrence.startsAt.isAfter(now ?? campusNow()) &&
+        occurrence.stage == BookingStage.booked &&
+        _reschedulableBookingStates.contains(occurrence.bookingState);
+  }
+
+  bool canRequestReservationReschedule(
+    ReservationRequest request, {
+    DateTime? now,
+  }) => request.occurrences.any(
+    (occurrence) => canRequestOccurrenceReschedule(
+      request,
+      occurrence,
+      now: now,
+    ),
+  );
+
   bool _hasFutureActiveOccurrence(ReservationRequest request, {DateTime? now}) {
     final current = now ?? campusNow();
     return request.occurrences.any(
@@ -6432,6 +6589,83 @@ class AppState extends ChangeNotifier {
       'cancel',
       reason: reason,
       payload: payload,
+    );
+  }
+
+  Future<bool> requestReservationReschedule(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required String reason,
+  }) async {
+    final trimmedReason = reason.trim();
+    final originalDuration = occurrence.endsAt.difference(
+      occurrence.startsAt,
+    );
+    final requestedDuration = endsAt.difference(startsAt);
+    final maxDurationMinutes = facilityNamed(
+      request.facility,
+    )?.maxDurationMinutes;
+    if (!canRequestOccurrenceReschedule(request, occurrence) ||
+        !startsAt.isAfter(campusNow()) ||
+        !endsAt.isAfter(startsAt) ||
+        (request.totalAmountCentavos > 0 &&
+            requestedDuration != originalDuration) ||
+        (maxDurationMinutes != null &&
+            requestedDuration.inMinutes > maxDurationMinutes) ||
+        (startsAt == occurrence.startsAt && endsAt == occurrence.endsAt) ||
+        trimmedReason.length < 3) {
+      showToast(
+        const ToastMessage(
+          'Choose a different future schedule and briefly explain the move.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+
+    if (_useDemoData || backend == null) {
+      final index = request.occurrences.indexWhere(
+        (item) => item.id == occurrence.id,
+      );
+      if (index < 0) return false;
+      request.occurrences[index] = ReservationOccurrence(
+        id: occurrence.id,
+        startsAt: startsAt,
+        endsAt: endsAt,
+        bookingState: 'requested',
+        stage: BookingStage.booked,
+        reason: 'Reschedule requested: $trimmedReason',
+      );
+      if (request.occurrences.length == 1) {
+        request
+          ..date = formatCampusDate(startsAt)
+          ..slotDay = dayOnly(startsAt)
+          ..start = formatClock(startsAt.hour + startsAt.minute / 60)
+          ..end = formatClock(endsAt.hour + endsAt.minute / 60);
+      }
+      request
+        ..status = RequestStatus.pending
+        ..lifecycleStatus = ReservationLifecycleStatus.pendingApproval
+        ..reason = 'Requester asked to reschedule: $trimmedReason'
+        ..decidedBy = null
+        ..decidedAt = null;
+      notifyListeners();
+      showToast(const ToastMessage.success('Reschedule request sent.'));
+      return true;
+    }
+
+    return _runReservationActionWithResult(
+      request,
+      'request_reschedule',
+      reason: trimmedReason,
+      payload: {
+        'occurrence_id': occurrence.id,
+        'starts_at': campusInstant(startsAt).toIso8601String(),
+        'ends_at': campusInstant(endsAt).toIso8601String(),
+      },
+      reversible: false,
     );
   }
 
@@ -6531,7 +6765,7 @@ class AppState extends ChangeNotifier {
       room: facility.room,
       capacity: facility.capacity,
       requester: account.name,
-      role: '${account.role.label} · ${account.unit}',
+      role: '${account.roleLabel} · ${account.unit}',
       org: account.unit,
       purpose: purpose,
       date: date,

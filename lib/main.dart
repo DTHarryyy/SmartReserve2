@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:ui';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app/app_scope.dart';
 import 'app/app_shell.dart';
 import 'app/app_state.dart';
+import 'backend/push_service.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
 import 'theme/sr_theme.dart';
@@ -47,7 +51,73 @@ Future<void> main() async {
   );
   await Supabase.initialize(url: url, publishableKey: key);
   state.configureBackend(SupabaseService(Supabase.instance.client));
+  await _configurePush(state);
   runApp(SmartReserveApp(state: state));
+}
+
+// apiKey and appId are registered per-platform in Firebase (Project
+// settings > Your apps); projectId and the sender id are shared across
+// every app in the project. --dart-define overrides these for a different
+// Firebase project without editing source.
+const _firebaseApiKey = String.fromEnvironment(
+  'FIREBASE_API_KEY',
+  defaultValue: kIsWeb
+      ? 'AIzaSyDTH-IQXefaw1hV6CFVTHMBbdjMXCKyzN4'
+      : 'AIzaSyDedQ8K7CEHRPyQlDDMVpKZoHbyBVttHXQ',
+);
+const _firebaseAppId = String.fromEnvironment(
+  'FIREBASE_APP_ID',
+  defaultValue: kIsWeb
+      ? '1:428216422364:web:d827a9e738cd91f01d8919'
+      : '1:428216422364:android:c8ed36004b06cb7c1d8919',
+);
+const _firebaseMessagingSenderId = String.fromEnvironment(
+  'FIREBASE_MESSAGING_SENDER_ID',
+  defaultValue: '428216422364',
+);
+const _firebaseProjectId = String.fromEnvironment(
+  'FIREBASE_PROJECT_ID',
+  defaultValue: 'smartreserve-48784',
+);
+const _firebaseAuthDomain = String.fromEnvironment(
+  'FIREBASE_AUTH_DOMAIN',
+  defaultValue: 'smartreserve-48784.firebaseapp.com',
+);
+
+Future<void> _configurePush(AppState state) async {
+  if (_firebaseApiKey.isEmpty ||
+      _firebaseAppId.isEmpty ||
+      _firebaseMessagingSenderId.isEmpty ||
+      _firebaseProjectId.isEmpty) {
+    return;
+  }
+  try {
+    await Firebase.initializeApp(
+      options: FirebaseOptions(
+        apiKey: _firebaseApiKey,
+        appId: _firebaseAppId,
+        messagingSenderId: _firebaseMessagingSenderId,
+        projectId: _firebaseProjectId,
+        authDomain: _firebaseAuthDomain,
+      ),
+    );
+    final push = PushService(
+      registerToken: ({required token, required platform, deviceLabel}) =>
+          state.backend!.registerPushToken(
+            token: token,
+            platform: platform,
+            deviceLabel: deviceLabel,
+          ),
+      disableToken: (token) => state.backend!.disablePushToken(token),
+      onForegroundNotification: () =>
+          unawaited(state.refreshNotifications()),
+      onNotificationOpened: state.handlePushNotificationOpened,
+    );
+    state.configurePush(push);
+    unawaited(push.handleInitialMessage());
+  } catch (error) {
+    debugPrint('Firebase could not initialize; push notifications are disabled: $error');
+  }
 }
 
 class SmartReserveApp extends StatefulWidget {
@@ -90,8 +160,11 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
           darkTheme: _darkTheme,
           themeMode: widget.state.themePreference.themeMode,
           themeAnimationDuration: Duration.zero,
-          builder: (context, child) => SrThemeBridge(
-            child: AppToastHost(child: child ?? const SizedBox.shrink()),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: SrThemeBridge(
+              child: AppToastHost(child: child ?? const SizedBox.shrink()),
+            ),
           ),
           home: switch (snapshot.connectionState) {
             ConnectionState.waiting => const _BootSplash(),

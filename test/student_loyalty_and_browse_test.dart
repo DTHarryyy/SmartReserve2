@@ -429,6 +429,31 @@ void main() {
       find.bySemanticsLabel('Reserve now for ${facility.name}'),
       findsWidgets,
     );
+    expect(find.text('RATE'), findsNothing);
+    expect(find.text('Included rate'), findsNothing);
+  });
+
+  testWidgets('external users still see facility rates while browsing', (
+    tester,
+  ) async {
+    final state = AppState()..signInAsUser('u5');
+    final facility = state.bookableFacilities.first;
+
+    await _pumpScoped(
+      tester,
+      state,
+      const StudentApp(),
+      size: const Size(1180, 840),
+    );
+
+    expect(find.text('Included rate'), findsWidgets);
+    await tester.tap(
+      find.bySemanticsLabel('View details for ${facility.name}'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('RATE'), findsOneWidget);
+    expect(find.text('Included rate'), findsWidgets);
   });
 
   testWidgets('browse card reserve CTA opens the booking form directly', (

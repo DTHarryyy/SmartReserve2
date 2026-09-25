@@ -680,7 +680,7 @@ class _Footer extends StatelessWidget {
 
 LatLng defaultMapCenter(MapEditorController controller) =>
     controller.draft.pin ??
-    buildingNamed(controller.draft.building)?.coords ??
+    controller.buildingNamed(controller.draft.building)?.coords ??
     campus.center;
 
 String crosshairLabel(LatLng at) => formatCoords(at);

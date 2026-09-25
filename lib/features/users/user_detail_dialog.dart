@@ -137,14 +137,16 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
     if (_operationError != null) _operationError = null;
   }
 
-  List<OrganizationAccountSlot> get _vacantSlots => [
-    for (final slot in widget.state.organizationSlots)
-      if (slot.active && !slot.assigned && (slot.unit?.active ?? true)) slot,
-  ]..sort((a, b) {
-    final aLabel = a.unit?.label ?? a.label;
-    final bLabel = b.unit?.label ?? b.label;
-    return aLabel.toLowerCase().compareTo(bLabel.toLowerCase());
-  });
+  List<OrganizationAccountSlot> get _vacantSlots =>
+      [
+        for (final slot in widget.state.organizationSlots)
+          if (slot.active && !slot.assigned && (slot.unit?.active ?? true))
+            slot,
+      ]..sort((a, b) {
+        final aLabel = a.unit?.label ?? a.label;
+        final bLabel = b.unit?.label ?? b.label;
+        return aLabel.toLowerCase().compareTo(bLabel.toLowerCase());
+      });
 
   Future<void> _pickUntil() async {
     final now = DateTime.now();
@@ -294,7 +296,7 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
           SrCellGrid(
             columns: 2,
             children: [
-              SrKeyCell(label: 'ROLE', value: _account.role.label),
+              SrKeyCell(label: 'ROLE', value: _account.roleLabel),
               SrKeyCell(
                 label: 'ID NUMBER',
                 value: _account.idNumber,
@@ -422,7 +424,9 @@ class _UserDetailDialogState extends State<_UserDetailDialog> {
                 expand: true,
                 fontSize: 12.5,
                 minHeight: 40,
-                onPressed: _busy ? null : () => _openAction(_Action.convertGuest),
+                onPressed: _busy
+                    ? null
+                    : () => _openAction(_Action.convertGuest),
               ),
             ),
           ],

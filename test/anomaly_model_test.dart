@@ -126,6 +126,7 @@ void main() {
         'reservations_30d': 5,
         'successful_occurrences_30d': 3,
         'no_show_occurrences_30d': 2,
+        'late_check_ins_30d': 4,
         'cancelled_occurrences_30d': 0,
         'late_cancellations_30d': 0,
         'payment_expirations_30d': 0,
@@ -143,6 +144,7 @@ void main() {
       expect(summary.riskScore, 55);
       expect(summary.riskLevel, RiskLevel.high);
       expect(summary.noShowOccurrences30d, 2);
+      expect(summary.lateCheckIns30d, 4);
       expect(summary.topReasons, hasLength(1));
       expect(summary.topReasons.first['rule_key'], 'repeated_no_show');
       expect(summary.evaluationPending, isTrue);
@@ -157,6 +159,7 @@ void main() {
       expect(summary.evaluationPending, isFalse);
       expect(summary.topReasons, isEmpty);
       expect(summary.riskLevel, RiskLevel.normal);
+      expect(summary.lateCheckIns30d, 0);
     });
   });
 

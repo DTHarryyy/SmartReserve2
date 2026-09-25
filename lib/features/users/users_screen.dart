@@ -51,6 +51,7 @@ class _UsersScreenState extends State<UsersScreen> {
   static const _roleFilters = [
     'All roles',
     'Renter',
+    'Internal user',
     'Internal admin',
     'External admin',
   ];
@@ -66,7 +67,7 @@ class _UsersScreenState extends State<UsersScreen> {
     final q = _query.trim().toLowerCase();
     return [
       for (final a in state.accounts)
-        if ((_role == 'All roles' || a.role.label == _role) &&
+        if ((_role == 'All roles' || a.roleLabel == _role) &&
             (_status == 'All statuses' || a.status.label == _status) &&
             (q.isEmpty ||
                 a.name.toLowerCase().contains(q) ||
@@ -419,7 +420,7 @@ class _UsersScreenState extends State<UsersScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            account.role.label,
+            account.roleLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: sans(12, color: context.srColors.ink3),
@@ -524,7 +525,7 @@ class _UserCompactCard extends StatelessWidget {
         spacing: SR.space8,
         runSpacing: SR.space8,
         children: [
-          SrFactChip(label: 'Role', value: account.role.label),
+          SrFactChip(label: 'Role', value: account.roleLabel),
           SrFactChip(
             label: 'Access',
             value: external ? 'Paying client' : account.accountAccessType.label,

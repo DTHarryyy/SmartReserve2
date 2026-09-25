@@ -38,9 +38,8 @@ const monthNames = [
 ];
 
 String formatStamp(DateTime value) {
-  String two(int v) => v.toString().padLeft(2, '0');
   return '${value.day} ${monthNames[value.month - 1]} ${value.year}, '
-      '${two(value.hour)}:${two(value.minute)}';
+      '${formatClock12(value.hour + value.minute / 60)}';
 }
 
 String formatDay(DateTime value) =>
@@ -90,6 +89,40 @@ String formatClock(double hours) {
   final h = hours.floor();
   final m = ((hours - h) * 60).round();
   return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+}
+
+/// Formats a wall-clock value for display using a 12-hour clock.
+String formatClock12(double hours) {
+  final totalMinutes = (hours * 60).round();
+  final normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  final hour24 = normalized ~/ 60;
+  final minute = normalized % 60;
+  final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+  final suffix = hour24 < 12 ? 'AM' : 'PM';
+  return '$hour12:${minute.toString().padLeft(2, '0')} $suffix';
+}
+
+/// Compact 12-hour label for whole-hour chart and timeline axes.
+String formatHour12(int hour) {
+  final hour24 = ((hour % 24) + 24) % 24;
+  final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+  return '$hour12 ${hour24 < 12 ? 'AM' : 'PM'}';
+}
+
+/// Converts an internal `HH:mm` clock value to its user-facing label.
+String formatClockLabel(String clock) => formatClock12(parseClock(clock));
+
+String formatClockRange(String start, String end) =>
+    '${formatClockLabel(start)}–${formatClockLabel(end)}';
+
+/// Converts a stored range such as `07:00–19:00` for display.
+String formatStoredClockRange(String range) {
+  final clocks = range.split(RegExp(r'\s*[–-]\s*'));
+  if (clocks.length != 2 ||
+      !clocks.every((clock) => RegExp(r'^\d{1,2}:\d{2}$').hasMatch(clock))) {
+    return range;
+  }
+  return formatClockRange(clocks.first, clocks.last);
 }
 
 /// The subset of [allSlots] still bookable on [date], given the campus wall

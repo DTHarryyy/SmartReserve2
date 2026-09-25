@@ -159,15 +159,33 @@ BookingPrefillResolution resolveBookingPrefill({
   );
 }
 
-Future<void> showBookingSheet(
+class BookingSubmissionResult {
+  const BookingSubmissionResult({
+    required this.facility,
+    required this.date,
+    required this.start,
+    required this.end,
+    required this.adminLane,
+    this.reservationId,
+  });
+
+  final String facility;
+  final String date;
+  final String start;
+  final String end;
+  final String adminLane;
+  final String? reservationId;
+}
+
+Future<BookingSubmissionResult?> showBookingSheet(
   BuildContext context, {
   required AppState state,
   required Facility facility,
   BookingPrefill? prefill,
 }) {
   if (MediaQuery.sizeOf(context).width < SR.tabletMin) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
+    return Navigator.of(context).push<BookingSubmissionResult>(
+      MaterialPageRoute<BookingSubmissionResult>(
         builder: (_) => _MobileFacilityPage(
           state: state,
           facility: facility,
@@ -177,7 +195,7 @@ Future<void> showBookingSheet(
     );
   }
 
-  return showDialog<void>(
+  return showDialog<BookingSubmissionResult>(
     context: context,
     barrierColor: const Color(0x7010141A),
     builder: (_) =>
@@ -669,6 +687,9 @@ class _BookingSheetState extends State<_BookingSheet> {
     if (_error != null) return;
     setState(() => _submitting = true);
     final count = _weekly ? _occurrenceCount : 1;
+    final existingRequestIds = {
+      for (final request in widget.state.myRequests) request.id,
+    };
     final success = await widget.state.submitReservationRequest(
       facility: facility,
       startsAt: [for (var i = 0; i < count; i++) _at(_start, i)],
@@ -711,7 +732,26 @@ class _BookingSheetState extends State<_BookingSheet> {
     );
     if (!mounted) return;
     setState(() => _submitting = false);
-    if (success) Navigator.of(context).pop();
+    if (success) {
+      ReservationRequest? submitted;
+      for (final request in widget.state.myRequests) {
+        if (!existingRequestIds.contains(request.id)) {
+          submitted = request;
+          break;
+        }
+      }
+      Navigator.of(context).pop(
+        BookingSubmissionResult(
+          facility: submitted?.facility ?? facility.name,
+          date: submitted?.date ?? _date,
+          start: submitted?.start ?? _start,
+          end: submitted?.end ?? _end,
+          adminLane:
+              submitted?.adminLane ?? _serverQuote?.adminLane ?? 'facility',
+          reservationId: submitted?.id,
+        ),
+      );
+    }
   }
 
   @override
@@ -1061,7 +1101,7 @@ class _BookingForm extends StatelessWidget {
               items: times,
               semanticLabel: 'Start time',
               fontSize: 12.5,
-              labelOf: (value) => value,
+              labelOf: formatClockLabel,
               onChanged: (value) {
                 if (value != null) onStartChanged(value);
               },
@@ -1074,7 +1114,7 @@ class _BookingForm extends StatelessWidget {
               items: times,
               semanticLabel: 'End time',
               fontSize: 12.5,
-              labelOf: (value) => value,
+              labelOf: formatClockLabel,
               onChanged: (value) {
                 if (value != null) onEndChanged(value);
               },
@@ -1300,7 +1340,8 @@ class _BookingForm extends StatelessWidget {
             foreground: context.srColors.amberTitle,
             text:
                 'Someone already has this room from '
-                '${clashes.first.start} to ${clashes.first.end}. You can still '
+                '${formatClockLabel(clashes.first.start)} to '
+                '${formatClockLabel(clashes.first.end)}. You can still '
                 'ask — the assigned administrator decides, and will offer the next free '
                 'slot if it cannot be moved.',
           ),
@@ -1401,7 +1442,7 @@ class _BookingForm extends StatelessWidget {
                       quoteError ??
                           (quote?.totalAmountCentavos == 0
                               ? 'No payment is required under this facility’s ${bookingRateLabel(account.pricingAudience).toLowerCase()}. Approval confirms the reservation.'
-                              : '${pesoFromCentavos(quote?.requiredDownPaymentCentavos ?? 0)} is required after approval. The slot is held while GCash proof is submitted and reviewed.'),
+                              : '${pesoFromCentavos(quote?.requiredDownPaymentCentavos ?? 0)} is required after approval. The slot is held while payment proof is submitted and reviewed.'),
                       style: sans(
                         10.5,
                         height: 1.6,

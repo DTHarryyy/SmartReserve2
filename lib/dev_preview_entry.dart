@@ -53,8 +53,11 @@ class _PreviewApp extends StatelessWidget {
         darkTheme: _darkTheme,
         themeMode: state.themePreference.themeMode,
         themeAnimationDuration: Duration.zero,
-        builder: (context, child) => SrThemeBridge(
-          child: AppToastHost(child: child ?? const SizedBox.shrink()),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+          child: SrThemeBridge(
+            child: AppToastHost(child: child ?? const SizedBox.shrink()),
+          ),
         ),
         home: const AppShell(),
       ),

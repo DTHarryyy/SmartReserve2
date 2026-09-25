@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/campus_calendar.dart';
 import 'conflict_engine.dart';
 import 'reservation_checks.dart';
 
@@ -98,7 +99,7 @@ class DayTimeline extends StatelessWidget {
                       left: fraction(tick.toDouble()) * width + 3,
                       top: 4,
                       child: Text(
-                        '${tick.toString().padLeft(2, '0')}:00',
+                        formatHour12(tick),
                         style: mono(8.5, color: context.srColors.mutedLight),
                       ),
                     ),
@@ -118,8 +119,7 @@ class DayTimeline extends StatelessWidget {
                     from: assessment.request.startAt,
                     to: assessment.request.endAt,
                     label:
-                        '${assessment.request.start}–'
-                        '${assessment.request.end} · this request',
+                        '${formatClockRange(assessment.request.start, assessment.request.end)} · this request',
                     background: assessment.hasConflict
                         ? context.srColors.red
                         : SR.primary,

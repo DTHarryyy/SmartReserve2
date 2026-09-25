@@ -52,6 +52,13 @@ class _DecisionPanelState extends State<DecisionPanel> {
   _Prompt _prompt = _Prompt.none;
   _Tab _tab = _Tab.review;
   String? _correctingOccurrenceId;
+  Timer? _completionGateTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleCompletionGateRefresh();
+  }
 
   @override
   void didUpdateWidget(DecisionPanel old) {
@@ -62,6 +69,38 @@ class _DecisionPanelState extends State<DecisionPanel> {
       _tab = _Tab.review;
       _correctingOccurrenceId = null;
     }
+    _scheduleCompletionGateRefresh();
+  }
+
+  @override
+  void dispose() {
+    _completionGateTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleCompletionGateRefresh() {
+    _completionGateTimer?.cancel();
+    final now = campusNow();
+    final fallbackEnd = _request.endsAtWall;
+    final upcomingEnds = <DateTime>[
+      for (final occurrence in _request.occurrences)
+        if (occurrence.stage == BookingStage.checkedIn &&
+            occurrence.endsAt.isAfter(now))
+          occurrence.endsAt,
+      if (_request.occurrences.isEmpty &&
+          _request.stage == BookingStage.checkedIn &&
+          fallbackEnd != null &&
+          fallbackEnd.isAfter(now))
+        fallbackEnd,
+    ]..sort();
+    if (upcomingEnds.isEmpty) return;
+
+    _completionGateTimer = Timer(
+      upcomingEnds.first.difference(now) + const Duration(milliseconds: 100),
+      () {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   ReservationRequest get _request => widget.assessment.request;
@@ -107,7 +146,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
                         Text(_request.requester, style: SrType.subhead()),
                         const SizedBox(height: SR.space2),
                         Text(
-                          '${requesterRoleLabel(_request.role)} · ${_request.submitted}',
+                          '${requesterRoleLabel(_request.role, external: _request.requesterCategory == 'external_renter')} · ${_request.submitted}',
                           style: SrType.caption(),
                         ),
                       ],
@@ -350,6 +389,29 @@ class _DecisionPanelState extends State<DecisionPanel> {
           const SizedBox(height: SR.space8),
           Text(_request.feedbackComment, style: SrType.body()),
         ],
+        // Read-only here -- replying is done from the Feedback screen,
+        // which is where the lane check (can this admin manage this
+        // reservation?) is surfaced to the admin before they start typing.
+        if (_request.feedbackReply case final reply?) ...[
+          const SizedBox(height: SR.space12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: context.srColors.surfaceSunken,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Admin reply', style: SrType.label()),
+                const SizedBox(height: 5),
+                Text(reply.adminName, style: SrType.caption()),
+                const SizedBox(height: 4),
+                Text(reply.message, style: SrType.body()),
+              ],
+            ),
+          ),
+        ],
       ],
     ),
   );
@@ -546,8 +608,8 @@ class _DecisionPanelState extends State<DecisionPanel> {
                   ),
               ],
               SrFactChip(
-                label: 'Permit eligibility',
-                value: r.permitEligible ? 'Eligible' : 'Not yet',
+                label: 'Basic requirements',
+                value: r.permitEligible ? 'Met' : 'Not yet',
               ),
               SrFactChip(
                 label: 'Permit status',
@@ -563,6 +625,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
   }
 
   Widget _lifecycleCard() {
+    final now = campusNow();
     if (_request.occurrences.length > 1) {
       return PanelCard(
         child: Column(
@@ -594,6 +657,14 @@ class _DecisionPanelState extends State<DecisionPanel> {
                                 occurrence.stage.summary,
                                 style: SrType.caption(),
                               ),
+                              if (occurrence.checkedInLate)
+                                Text(
+                                  'Checked in ${occurrence.checkInLateMinutes} min late'
+                                  '${occurrence.checkedInAt == null ? '' : ' · ${_clock(occurrence.checkedInAt!)}'}',
+                                  style: SrType.caption(
+                                    color: context.srColors.amberTitle,
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -603,30 +674,30 @@ class _DecisionPanelState extends State<DecisionPanel> {
                             label: 'No-show',
                             dense: true,
                             kind: SrButtonKind.danger,
-                            onPressed:
-                                campusNow().isBefore(
-                                  occurrence.startsAt.add(
-                                    const Duration(minutes: 15),
-                                  ),
-                                )
-                                ? null
-                                : () => widget.state.advanceOccurrenceStage(
+                            onPressed: occurrence.canMarkNoShowAt(campusNow())
+                                ? () => widget.state.advanceOccurrenceStage(
                                     _request,
                                     occurrence,
                                     BookingStage.noShow,
-                                  ),
+                                  )
+                                : null,
                           ),
                         ] else if (occurrence.stage == BookingStage.checkedIn)
                           SrButton(
                             label: 'Complete',
                             dense: true,
                             kind: SrButtonKind.success,
-                            onPressed: () =>
-                                widget.state.advanceOccurrenceStage(
-                                  _request,
-                                  occurrence,
-                                  BookingStage.completed,
-                                ),
+                            tooltip: occurrence.canCompleteAt(now)
+                                ? 'Mark this occurrence completed'
+                                : 'Available after the reservation ends at '
+                                      '${_clock(occurrence.endsAt)}',
+                            onPressed: occurrence.canCompleteAt(now)
+                                ? () => widget.state.advanceOccurrenceStage(
+                                    _request,
+                                    occurrence,
+                                    BookingStage.completed,
+                                  )
+                                : null,
                           )
                         else if (occurrence.stage == BookingStage.completed ||
                             occurrence.stage == BookingStage.noShow)
@@ -698,19 +769,21 @@ class _DecisionPanelState extends State<DecisionPanel> {
                 kind: SrButtonKind.success,
                 fontSize: 12,
                 minHeight: 40,
-                onPressed: () => widget.state.advanceStage(
-                  _request.id,
-                  BookingStage.completed,
-                ),
+                tooltip: _singleOccurrenceCanCompleteAt(now)
+                    ? 'Mark this reservation completed'
+                    : 'Available after the reservation ends at '
+                          '${_clock(_singleOccurrenceEnd)}',
+                onPressed: _singleOccurrenceCanCompleteAt(now)
+                    ? () => widget.state.advanceStage(
+                        _request.id,
+                        BookingStage.completed,
+                      )
+                    : null,
               ),
             ),
           ] else if (stage == BookingStage.booked &&
               _request.occurrences.isNotEmpty &&
-              campusNow().isAfter(
-                _request.occurrences.first.startsAt.add(
-                  const Duration(minutes: 15),
-                ),
-              )) ...[
+              _request.occurrences.first.canMarkNoShowAt(campusNow())) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
@@ -793,8 +866,17 @@ class _DecisionPanelState extends State<DecisionPanel> {
   }
 
   static String _clock(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:'
-      '${value.minute.toString().padLeft(2, '0')}';
+      formatClock12(value.hour + value.minute / 60);
+
+  DateTime get _singleOccurrenceEnd => _request.occurrences.isEmpty
+      ? _request.endsAtWall ?? campusNow()
+      : _request.occurrences.first.endsAt;
+
+  bool _singleOccurrenceCanCompleteAt(DateTime now) =>
+      _request.occurrences.isEmpty
+      ? _request.stage == BookingStage.checkedIn &&
+            !now.isBefore(_singleOccurrenceEnd)
+      : _request.occurrences.first.canCompleteAt(now);
 
   ReservationUseAssessment? _assessmentFor(String occurrenceId) {
     for (final assessment in _request.useAssessments) {
@@ -875,7 +957,8 @@ class _DecisionPanelState extends State<DecisionPanel> {
             children: [
               if (next != null)
                 SrButton(
-                  label: 'Offer ${next.start}–${next.end} instead',
+                  label:
+                      'Offer ${formatClockRange(next.start, next.end)} instead',
                   kind: SrButtonKind.dangerSolid,
                   dense: true,
                   fontSize: 11,
@@ -972,6 +1055,31 @@ class _DecisionPanelState extends State<DecisionPanel> {
             ),
           ],
         ],
+      );
+    }
+
+    // The backend decides on lane, not on role alone, so a request belonging to
+    // the other lane can be opened from the calendar or a notification but must
+    // never offer actions that will come back 'Reservation access denied'.
+    if (!widget.state.canDecideRequest(_request)) {
+      return Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: SR.space12,
+          vertical: SR.space8 + 3,
+        ),
+        decoration: BoxDecoration(
+          color: context.srColors.surfaceSubtle,
+          borderRadius: BorderRadius.circular(SR.rSm),
+          border: Border.all(color: context.srColors.hairline),
+        ),
+        child: Text(
+          _request.adminLane == 'internal'
+              ? 'An internal administrator decides this request. You have '
+                    'view access so conflicts stay visible.'
+              : 'An external administrator decides this request. You have '
+                    'view access so conflicts stay visible.',
+          style: SrType.bodySm(color: context.srColors.ink4),
+        ),
       );
     }
 
@@ -1089,7 +1197,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
             tone: ReasonTone.neutral,
             title: 'What needs to change',
             placeholder:
-                'e.g. Move to 13:00 and the room is free, or attach the '
+                'e.g. Move to 1:00 PM and the room is free, or attach the '
                 'adviser\'s endorsement.',
             confirmLabel: 'Send change request',
             onCancel: () => setState(() => _prompt = _Prompt.none),

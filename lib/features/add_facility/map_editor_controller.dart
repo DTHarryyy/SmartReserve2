@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/sr_toast_controller.dart';
 import '../../data/campus_data.dart';
@@ -18,6 +20,7 @@ import 'safe_change_notifier.dart';
 /// out browser map from loading a large number of tiles at once.
 const campusMinimumZoom = 14.0;
 const campusMaximumZoom = 19.0;
+const campusBuildingOverridesKey = 'smartreserve.campus_buildings.v1';
 
 enum MapTab { map, preview }
 
@@ -118,10 +121,13 @@ class SearchHit {
 class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   MapEditorController({
     required this.draft,
-    required SrToastController toasts,
+    required this._toasts,
     required this.onBuildingResolvedFromMap,
+    required this.onFacilityNameEdited,
     required this.onFieldEdited,
-  }) : _toasts = toasts;
+  }) {
+    unawaited(_loadBuildingOverrides());
+  }
 
   final FacilityDraft draft;
   final SrToastController _toasts;
@@ -129,6 +135,10 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   /// Bridge: user picked a building from map search and the form's
   /// building field was empty.
   final ValueChanged<String> onBuildingResolvedFromMap;
+
+  /// Bridge: the inline label editor on the map updates the canonical form
+  /// field, which in turn keeps validation and autosave behavior unchanged.
+  final ValueChanged<String> onFacilityNameEdited;
 
   /// Bridge: notify the coordinator that a field changed, so it can
   /// revalidate and schedule an autosave.
@@ -171,11 +181,14 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   int tileGeneration = 0;
 
   List<Facility> availableFacilities = const [];
+  final List<CampusBuilding> editableBuildings = List.of(buildings);
+  int? editingBuildingIndex;
 
   /// Mirror of [FacilityDraft.building], kept in sync by every path that
   /// can change it, so the map's building-chip highlight never needs to
   /// listen to the form slice just for this one string.
   String selectedBuildingLabel = '';
+  String facilityLabel = '';
 
   @override
   void dispose() {
@@ -196,6 +209,153 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   void setSelectedBuildingLabel(String value) {
     selectedBuildingLabel = value;
     notifyListeners();
+  }
+
+  CampusBuilding? buildingNamed(String name) {
+    for (var index = 0; index < editableBuildings.length; index++) {
+      final building = editableBuildings[index];
+      if (building.name == name ||
+          (index < buildings.length && buildings[index].name == name)) {
+        return building;
+      }
+    }
+    return null;
+  }
+
+  String canonicalBuildingName(String name) =>
+      buildingNamed(name)?.name ?? name;
+
+  bool isEditingBuilding(int index) => editingBuildingIndex == index;
+
+  String? buildingNameError(int index, String value) {
+    final clean = value.trim();
+    if (clean.isEmpty) return 'Enter a building name.';
+    if (clean.length > 80) return 'Use 80 characters or fewer.';
+    final duplicate = editableBuildings.indexed.any(
+      (entry) =>
+          entry.$1 != index &&
+          entry.$2.name.toLowerCase() == clean.toLowerCase(),
+    );
+    return duplicate ? 'That building name is already in use.' : null;
+  }
+
+  void editBuilding(int index, String name) {
+    final error = buildingNameError(index, name);
+    if (error != null || index < 0 || index >= editableBuildings.length) {
+      return;
+    }
+    final previous = editableBuildings[index];
+    final clean = name.trim();
+    editableBuildings[index] = CampusBuilding(
+      clean,
+      previous.coords,
+      mapped: previous.mapped,
+    );
+    editingBuildingIndex = index;
+    if (draft.building == previous.name) {
+      onBuildingResolvedFromMap(clean);
+      selectedBuildingLabel = clean;
+    }
+    notifyListeners();
+    unawaited(_saveBuildingOverrides());
+    showToast(
+      ToastMessage('Editing $clean. Drag its label to move the building pin.'),
+    );
+  }
+
+  void dragBuildingTo(int index, LatLng to) {
+    if (editingBuildingIndex != index ||
+        index < 0 ||
+        index >= editableBuildings.length) {
+      return;
+    }
+    final building = editableBuildings[index];
+    editableBuildings[index] = CampusBuilding(building.name, to, mapped: true);
+    notifyListeners();
+  }
+
+  void endBuildingDrag(int index) {
+    if (editingBuildingIndex != index ||
+        index < 0 ||
+        index >= editableBuildings.length) {
+      return;
+    }
+    unawaited(_saveBuildingOverrides());
+    final building = editableBuildings[index];
+    showToast(
+      ToastMessage(
+        '${building.name} moved to ${formatCoords(building.coords)}.',
+      ),
+    );
+  }
+
+  void finishBuildingEdit() {
+    if (editingBuildingIndex == null) return;
+    editingBuildingIndex = null;
+    notifyListeners();
+  }
+
+  Future<void> _loadBuildingOverrides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(campusBuildingOverridesKey);
+      if (raw == null) return;
+      final rows = jsonDecode(raw) as List<dynamic>;
+      for (
+        var index = 0;
+        index < rows.length && index < editableBuildings.length;
+        index++
+      ) {
+        final row = Map<String, dynamic>.from(rows[index] as Map);
+        final name = '${row['name'] ?? ''}'.trim();
+        final latitude = (row['latitude'] as num?)?.toDouble();
+        final longitude = (row['longitude'] as num?)?.toDouble();
+        if (name.isEmpty || latitude == null || longitude == null) continue;
+        editableBuildings[index] = CampusBuilding(
+          name,
+          LatLng(latitude, longitude),
+          mapped: row['mapped'] as bool? ?? true,
+        );
+      }
+      final canonical = canonicalBuildingName(draft.building);
+      if (canonical.isNotEmpty && canonical != draft.building) {
+        onBuildingResolvedFromMap(canonical);
+        selectedBuildingLabel = canonical;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Corrupt local overrides should never prevent the editor from opening.
+    }
+  }
+
+  Future<void> _saveBuildingOverrides() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        campusBuildingOverridesKey,
+        jsonEncode([
+          for (final building in editableBuildings)
+            {
+              'name': building.name,
+              'latitude': building.coords.latitude,
+              'longitude': building.coords.longitude,
+              'mapped': building.mapped,
+            },
+        ]),
+      );
+    } catch (_) {}
+  }
+
+  void setFacilityLabel(String value) {
+    if (facilityLabel == value) return;
+    facilityLabel = value;
+    notifyListeners();
+  }
+
+  void renameFacilityFromMap(String value) {
+    final clean = value.trim();
+    if (clean.isEmpty || clean == draft.name) return;
+    onFacilityNameEdited(clean);
   }
 
   void setQualityReason(FacilityEditorReason? reason) {
@@ -236,10 +396,7 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   }
 
   void zoomBy(double delta) {
-    pendingZoomTo = (zoom + delta).clamp(
-      campusMinimumZoom,
-      campusMaximumZoom,
-    );
+    pendingZoomTo = (zoom + delta).clamp(campusMinimumZoom, campusMaximumZoom);
     notifyListeners();
   }
 
@@ -420,6 +577,10 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
     notifyListeners();
     _geoTimer = Timer(const Duration(milliseconds: 650), () {
       final address = reverseGeocode(at).toMap();
+      final nearest = _nearestEditableBuilding(at);
+      if (nearest != null && nearest.metres <= buildingProximityLimit) {
+        address['geoBuilding'] = nearest.building.name;
+      }
       address.forEach((key, value) {
         if (draft.geoEdited.contains(key)) return;
         geoFields[key]!.text = value;
@@ -444,6 +605,22 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
       notifyListeners();
       onFieldEdited();
     });
+  }
+
+  ({CampusBuilding building, double metres})? _nearestEditableBuilding(
+    LatLng at,
+  ) {
+    CampusBuilding? nearest;
+    var distance = double.infinity;
+    for (final building in editableBuildings) {
+      if (!building.mapped) continue;
+      final candidate = haversine(at, building.coords);
+      if (candidate < distance) {
+        nearest = building;
+        distance = candidate;
+      }
+    }
+    return nearest == null ? null : (building: nearest, metres: distance);
   }
 
   bool get hasPin => draft.pin != null;
@@ -491,8 +668,10 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
       : 'Click anywhere on the map to drop the pin.';
 
   String get footerHint => hasPin
-      ? 'The pin marks the entrance, not the centre of the room.'
-      : 'No map? Search a building, paste coordinates, or capture GPS.';
+      ? 'The pin marks the entrance. Right-click a building label to rename '
+            'or move its reference pin.'
+      : 'Search or drop a facility pin. Right-click a building label to '
+            'rename or move its reference pin.';
 
   List<({String key, String value, Color color})> liveStats(
     BuildContext context,
@@ -647,7 +826,7 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
     }
     if (q.isEmpty) {
       return [
-        for (final b in buildings.take(5))
+        for (final b in editableBuildings.take(5))
           SearchHit(
             icon: Icons.apartment_rounded,
             title: b.name,
@@ -660,7 +839,7 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
     }
 
     final hits = <SearchHit>[];
-    for (final b in buildings) {
+    for (final b in editableBuildings) {
       if (b.name.toLowerCase().contains(q)) {
         hits.add(
           SearchHit(
@@ -792,7 +971,10 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   /// Hydrates map-owned UI state after [FacilityDraft] fields were loaded
   /// from an existing [Facility] (see coordinator's `loadForEditing`).
   void hydrateForEditing() {
-    selectedBuildingLabel = draft.building;
+    final canonical = canonicalBuildingName(draft.building);
+    if (canonical != draft.building) onBuildingResolvedFromMap(canonical);
+    selectedBuildingLabel = canonical;
+    facilityLabel = draft.name;
     geoFields['geoBuilding']!.text = draft.geoBuilding;
     geoFields['street']!.text = draft.street;
     geoFields['barangay']!.text = draft.barangay;
@@ -819,7 +1001,10 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   /// (geo text fields are already populated from the stored draft, so this
   /// never re-triggers a geocode).
   void hydrateFromRestoredDraft() {
-    selectedBuildingLabel = draft.building;
+    final canonical = canonicalBuildingName(draft.building);
+    if (canonical != draft.building) onBuildingResolvedFromMap(canonical);
+    selectedBuildingLabel = canonical;
+    facilityLabel = draft.name;
     geoFields['geoBuilding']!.text = draft.geoBuilding;
     geoFields['street']!.text = draft.street;
     geoFields['barangay']!.text = draft.barangay;
@@ -835,6 +1020,7 @@ class MapEditorController extends ChangeNotifier with SafeChangeNotifier {
   /// Resets map-owned UI state when starting a new/blank record.
   void resetForNewRecord({required String keptBuildingLabel}) {
     selectedBuildingLabel = keptBuildingLabel;
+    facilityLabel = draft.name;
     for (final c in geoFields.values) {
       c.clear();
     }

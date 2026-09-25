@@ -50,6 +50,42 @@ void main() {
     );
   });
 
+  test('readiness parses the authoritative requester signature state', () {
+    final stale = PermitReadiness.fromJson({
+      'ready': false,
+      'template_kind': 'internal',
+      'blockers': ['requester_signature_required'],
+      'requester_signature_state': 'stale',
+    });
+    final compatibleCurrent = PermitReadiness.fromJson({
+      'ready': true,
+      'template_kind': 'internal',
+      'blockers': <String>[],
+    });
+
+    expect(stale.requesterSignatureState, PermitRequesterSignatureState.stale);
+    expect(
+      compatibleCurrent.requesterSignatureState,
+      PermitRequesterSignatureState.current,
+    );
+    for (final entry in {
+      'current': PermitRequesterSignatureState.current,
+      'requested': PermitRequesterSignatureState.requested,
+      'stale': PermitRequesterSignatureState.stale,
+      'missing': PermitRequesterSignatureState.missing,
+    }.entries) {
+      final parsed = PermitReadiness.fromJson({
+        'ready': entry.key == 'current',
+        'template_kind': 'internal',
+        'blockers': entry.key == 'current'
+            ? <String>[]
+            : ['requester_signature_required'],
+        'requester_signature_state': entry.key,
+      });
+      expect(parsed.requesterSignatureState, entry.value);
+    }
+  });
+
   test('readiness retains real mapping requirements from the server', () {
     final readiness = PermitReadiness.fromJson({
       'ready': false,

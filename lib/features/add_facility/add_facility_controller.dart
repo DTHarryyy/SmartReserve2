@@ -28,7 +28,8 @@ export 'map_editor_controller.dart'
         MapEditorController,
         MapLayer,
         MapTab,
-        SearchHit;
+        SearchHit,
+        campusBuildingOverridesKey;
 export 'photos_controller.dart' show PhotosController;
 
 /// Coordinates the Add Facility editor: owns the shared [FacilityDraft],
@@ -45,6 +46,7 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
       draft: draft,
       toasts: toastController,
       onBuildingResolvedFromMap: (v) => form.setBuildingFromMap(v),
+      onFacilityNameEdited: (v) => form.setNameFromMap(v),
       onFieldEdited: _onFieldEdited,
     );
     form = FacilityFormController(
@@ -52,11 +54,12 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
       onFieldEdited: _onFieldEdited,
       onBuildingSelected: (v) {
         map.setSelectedBuildingLabel(v);
-        final b = buildingNamed(v);
+        final b = map.buildingNamed(v);
         if (b != null && b.mapped && draft.pin == null) {
           map.centerOn(b.coords, zoom: 18);
         }
       },
+      onFacilityNameChanged: map.setFacilityLabel,
     );
     photos = PhotosController(
       draft: draft,

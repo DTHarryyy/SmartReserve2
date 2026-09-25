@@ -85,7 +85,11 @@ class ReservationsScreen extends StatelessWidget {
               for (final tab in _tabs)
                 SrTabItem(
                   label: tab.label,
-                  count: state.requests.where((r) => r.status == tab).length,
+                  count: state.requests
+                      .where(
+                        (r) => r.status == tab && state.canDecideRequest(r),
+                      )
+                      .length,
                 ),
             ],
             selectedIndex: _tabs.indexOf(state.requestTab),
@@ -174,6 +178,9 @@ class _QueueRow extends StatelessWidget {
     if (!assessment.withinOperatingHours) return 'Outside operating hours';
     if (!assessment.withinAvailableDays) return 'Not an available day';
     if (request.noShows > 0) return '${request.noShows} prior no-shows';
+    if (request.lateCheckIns > 0) {
+      return '${request.lateCheckIns} late check-ins';
+    }
     return null;
   }
 

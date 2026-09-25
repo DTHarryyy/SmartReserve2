@@ -12,6 +12,7 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
     required this.draft,
     required this.onFieldEdited,
     required this.onBuildingSelected,
+    required this.onFacilityNameChanged,
   }) {
     nameField.addListener(_syncName);
     capacityField.addListener(_syncCapacity);
@@ -28,6 +29,10 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
   /// Bridge: user picked a building from the Location dropdown — the
   /// coordinator mirrors it onto the map slice and may auto-center.
   final ValueChanged<String> onBuildingSelected;
+
+  /// Keeps the label attached to the draggable map pin in sync with the
+  /// facility-name field without making the whole map listen to this form.
+  final ValueChanged<String> onFacilityNameChanged;
 
   final nameField = TextEditingController();
   final capacityField = TextEditingController();
@@ -49,7 +54,11 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
     onFieldEdited();
   }
 
-  void _syncName() => _edit(() => draft.name = nameField.text);
+  void _syncName() {
+    _edit(() => draft.name = nameField.text);
+    onFacilityNameChanged(draft.name);
+  }
+
   void _syncCapacity() => _edit(() => draft.capacity = capacityField.text);
   void _syncDescription() =>
       _edit(() => draft.description = descriptionField.text);
@@ -74,8 +83,13 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
   /// Set from the map side (search hit / picked facility) — the map
   /// already knows the building and already centers the camera itself,
   /// so this intentionally skips [onBuildingSelected].
-  void setBuildingFromMap(String value) =>
-      _edit(() => draft.building = value);
+  void setBuildingFromMap(String value) => _edit(() => draft.building = value);
+
+  void setNameFromMap(String value) {
+    if (nameField.text == value) return;
+    nameField.text = value;
+    nameField.selection = TextSelection.collapsed(offset: value.length);
+  }
 
   void setRule(String key, bool value) => _edit(() {
     switch (key) {

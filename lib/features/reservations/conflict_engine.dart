@@ -24,8 +24,8 @@ class Hold {
   double get startAt => startsAt.hour + startsAt.minute / 60;
   double get endAt => endsAt.hour + endsAt.minute / 60;
 
-  String get start => formatClock(startAt);
-  String get end => formatClock(endAt);
+  String get start => formatClock12(startAt);
+  String get end => formatClock12(endAt);
 
   String get note => '$label holds $start–$end.';
 }

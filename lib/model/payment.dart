@@ -52,6 +52,9 @@ enum AggregatePaymentStatus {
   );
 }
 
+/// A published destination a renter can pay to. `gcash` is the wallet transfer;
+/// `walk_in` is paying cash at the campus cashier and uploading the registrar
+/// receipt instead of a GCash screenshot.
 class FacilityPaymentMethod {
   const FacilityPaymentMethod({
     required this.id,
@@ -70,6 +73,22 @@ class FacilityPaymentMethod {
   final String accountNumber;
   final String instructions;
   final bool enabled;
+
+  bool get isWalkIn => methodType == 'walk_in';
+
+  /// Short label for pickers and review rows.
+  String get label => isWalkIn ? 'Walk-in (cashier)' : 'GCash';
+
+  /// What the renter types into the reference field for this method.
+  String get referenceLabel =>
+      isWalkIn ? 'Receipt / OR number' : 'GCash reference number';
+
+  /// Minimum length the backend enforces on [referenceLabel].
+  int get referenceMinLength => isWalkIn ? 3 : 6;
+
+  String get proofLabel => isWalkIn
+      ? 'Choose registrar receipt photo'
+      : 'Choose receipt or screenshot';
 }
 
 class PaymentTransaction {
@@ -83,6 +102,7 @@ class PaymentTransaction {
     required this.proofPath,
     required this.status,
     required this.submittedAt,
+    this.paymentMethodId,
     this.verifiedBy,
     this.verifiedAt,
     this.rejectionReason,
@@ -100,6 +120,7 @@ class PaymentTransaction {
   final String proofPath;
   final PaymentDecisionStatus status;
   final DateTime submittedAt;
+  final String? paymentMethodId;
   final String? verifiedBy;
   final DateTime? verifiedAt;
   final String? rejectionReason;

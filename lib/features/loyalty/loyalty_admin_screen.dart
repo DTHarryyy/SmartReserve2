@@ -5,6 +5,7 @@ import '../../app/app_state.dart';
 import '../../model/loyalty.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
+import '../../util/campus_calendar.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/record_table.dart';
 import '../../widgets/responsive_dialog.dart';
@@ -18,9 +19,8 @@ String _shortDate(DateTime value) =>
 
 String _shortDateTime(DateTime value) {
   final local = value.toLocal();
-  final hour = local.hour.toString().padLeft(2, '0');
-  final minute = local.minute.toString().padLeft(2, '0');
-  return '${_shortDate(local)} $hour:$minute';
+  return '${_shortDate(local)} '
+      '${formatClock12(local.hour + local.minute / 60)}';
 }
 
 class LoyaltyAdminScreen extends StatefulWidget {

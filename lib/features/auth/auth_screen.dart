@@ -885,9 +885,10 @@ class AuthScreen extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'You see the facility’s renter rate before you request. After an '
-              'assigned administrator approves it, upload the required GCash '
-              'proof before the displayed deadline. The slot is confirmed '
-              'only after that payment is verified.',
+              'assigned administrator approves it, pay by GCash or in cash at '
+              'the campus cashier, then upload the reference number and proof '
+              'before the displayed deadline. The slot is confirmed only after '
+              'that payment is verified.',
               style: sans(
                 11.5,
                 height: 1.7,
@@ -1890,10 +1891,7 @@ class _Outcome extends StatelessWidget {
 }
 
 class _InlineLink extends StatelessWidget {
-  const _InlineLink({
-    required this.label,
-    required this.onTap,
-  });
+  const _InlineLink({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
