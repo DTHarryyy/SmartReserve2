@@ -28,8 +28,13 @@ enum SrThemePreference {
 class SrColors extends ThemeExtension<SrColors> {
   const SrColors({
     required this.brand,
+    required this.brandHover,
+    required this.brandPressed,
+    required this.onBrand,
     required this.secondary,
     required this.accent,
+    required this.onAccent,
+    required this.brandContainer,
     required this.canvas,
     required this.surface,
     required this.surfaceElevated,
@@ -50,12 +55,21 @@ class SrColors extends ThemeExtension<SrColors> {
     required this.errorContainer,
     required this.info,
     required this.infoContainer,
+    required this.infoLine,
     required this.primarySoft,
     required this.primaryLine,
     required this.primaryTint2,
     required this.mapBg,
+    required this.navBg,
+    required this.navForeground,
+    required this.navMuted,
+    required this.navHover,
+    required this.navSelectedBg,
+    required this.navSelectedForeground,
     required this.navAvatar,
     required this.navBorder,
+    required this.heroStart,
+    required this.heroEnd,
     required this.borderField,
     required this.hairline,
     required this.divider,
@@ -88,76 +102,90 @@ class SrColors extends ThemeExtension<SrColors> {
   });
 
   static const light = SrColors(
-    brand: Color(0xFF1A73E8),
-    secondary: Color(0xFF00B4FF),
-    accent: Color(0xFF00E0C7),
-    canvas: Color(0xFFF5F7FA),
-    surface: Color(0xFFFFFFFF),
+    brand: Color(0xFF800020),
+    brandHover: Color(0xFF6B001B),
+    brandPressed: Color(0xFF520015),
+    onBrand: Color(0xFFFFFFFF),
+    secondary: Color(0xFFFFC857),
+    accent: Color(0xFFFFC857),
+    onAccent: Color(0xFF3A2100),
+    brandContainer: Color(0xFFF7E7EB),
+    canvas: Color(0xFFF3EFF5),
+    surface: Color(0xFFFFFBFC),
     surfaceElevated: Color(0xFFFFFFFF),
-    surfaceSubtle: Color(0xFFFAFCFF),
-    surfaceSunken: Color(0xFFEDF2F7),
-    text: Color(0xFF0B1B33),
-    textSecondary: Color(0xFF40556C),
-    textMuted: Color(0xFF60748A),
-    border: Color(0xFFE2EAF2),
-    borderStrong: Color(0xFFB8C6D5),
-    focus: Color(0xFF1A73E8),
-    overlay: Color(0x700B1B33),
-    success: Color(0xFF0F7A4D),
-    successContainer: Color(0xFFECFDF3),
-    warning: Color(0xFF9A4A08),
-    warningContainer: Color(0xFFFFFBF2),
-    error: Color(0xFFB42318),
-    errorContainer: Color(0xFFFEF3F2),
-    info: Color(0xFF155DB8),
-    infoContainer: Color(0xFFEAF3FF),
-    primarySoft: Color(0xFF78AFF1),
-    primaryLine: Color(0xFFBDD9FA),
-    primaryTint2: Color(0xFFF4F9FF),
-    mapBg: Color(0xFFE8EEF5),
-    navAvatar: Color(0xFFEAF3FF),
-    navBorder: Color(0xFFE4EBF3),
-    borderField: Color(0xFFD8E2EC),
-    hairline: Color(0xFFEDF2F7),
-    divider: Color(0xFFEAF0F6),
-    dividerSoft: Color(0xFFF0F4F8),
-    dashed: Color(0xFFC5D1DD),
-    ink2: Color(0xFF263A52),
-    muted: Color(0xFF8798AA),
-    mutedLight: Color(0xFFB6C2CE),
-    scrimSoft: Color(0x5C0B1B33),
-    glass: Color(0xF7FFFFFF),
-    glassLine: Color(0x140B1B33),
-    glassLine2: Color(0x1F0B1B33),
-    greenDeep: Color(0xFF0A5C3A),
-    greenTint2: Color(0xFFF2FDF7),
-    greenLine: Color(0xFFB7E9CD),
-    amber: Color(0xFFB45309),
-    amberLine: Color(0xFFF0D9A8),
-    amberLine2: Color(0xFFE6D5B4),
-    amberIcon: Color(0xFFFDF0D5),
-    amberInk: Color(0xFF8A6535),
-    amberTitle: Color(0xFF7A4A09),
-    redLine: Color(0xFFF2C4C0),
-    redInk: Color(0xFF912018),
-    redInk2: Color(0xFFA4413A),
+    surfaceSubtle: Color(0xFFF8F3F6),
+    surfaceSunken: Color(0xFFE9E0E5),
+    text: Color(0xFF2B151D),
+    textSecondary: Color(0xFF5F4650),
+    textMuted: Color(0xFF7C626D),
+    border: Color(0xFFDECED5),
+    borderStrong: Color(0xFFBFA7B1),
+    focus: Color(0xFF800020),
+    overlay: Color(0x802B151D),
+    success: Color(0xFF246B3D),
+    successContainer: Color(0xFFEDF7F0),
+    warning: Color(0xFF754B00),
+    warningContainer: Color(0xFFFFF4D6),
+    error: Color(0xFFA61B35),
+    errorContainer: Color(0xFFFDECEF),
+    info: Color(0xFF4D5F91),
+    infoContainer: Color(0xFFEEF1FA),
+    infoLine: Color(0xFFC8CEE7),
+    primarySoft: Color(0xFFE7A8B8),
+    primaryLine: Color(0xFFD8AAB6),
+    primaryTint2: Color(0xFFFCF6F8),
+    mapBg: Color(0xFFEBE2E7),
+    navBg: Color(0xFFFFFFFF),
+    navForeground: Color(0xFF2B151D),
+    navMuted: Color(0xFF7C626D),
+    navHover: Color(0xFFF7E7EB),
+    navSelectedBg: Color(0xFFFFC857),
+    navSelectedForeground: Color(0xFF3A2100),
+    navAvatar: Color(0xFFFFC857),
+    navBorder: Color(0xFFDECED5),
+    heroStart: Color(0xFF800020),
+    heroEnd: Color(0xFF5A0017),
+    borderField: Color(0xFFD4C1CA),
+    hairline: Color(0xFFEDE4E8),
+    divider: Color(0xFFE8DBE1),
+    dividerSoft: Color(0xFFF0E8EC),
+    dashed: Color(0xFFC9B4BD),
+    ink2: Color(0xFF442B35),
+    muted: Color(0xFF927783),
+    mutedLight: Color(0xFFB9A3AC),
+    scrimSoft: Color(0x662B151D),
+    glass: Color(0xF7FFFBFC),
+    glassLine: Color(0x18800020),
+    glassLine2: Color(0x28800020),
+    greenDeep: Color(0xFF1D5A33),
+    greenTint2: Color(0xFFF4FBF6),
+    greenLine: Color(0xFFB8DEC5),
+    amber: Color(0xFF754B00),
+    amberLine: Color(0xFFE6C46C),
+    amberLine2: Color(0xFFD6AF4D),
+    amberIcon: Color(0xFFFFE8A8),
+    amberInk: Color(0xFF754B00),
+    amberTitle: Color(0xFF754B00),
+    redLine: Color(0xFFEBB5C0),
+    redInk: Color(0xFF8B142B),
+    redInk2: Color(0xFF96182F),
     isDark: false,
     cardShadow: [
-      BoxShadow(color: Color(0x100B1B33), blurRadius: 8, offset: Offset(0, 2)),
+      BoxShadow(color: Color(0x142B151D), blurRadius: 8, offset: Offset(0, 2)),
     ],
     floatShadow: [
-      BoxShadow(color: Color(0x1A0B1B33), blurRadius: 18, offset: Offset(0, 5)),
+      BoxShadow(color: Color(0x242B151D), blurRadius: 18, offset: Offset(0, 5)),
     ],
     popoverShadow: [
       BoxShadow(
-        color: Color(0x290B1B33),
+        color: Color(0x382B151D),
         blurRadius: 34,
         offset: Offset(0, 16),
       ),
     ],
     dialogShadow: [
       BoxShadow(
-        color: Color(0x520B1B33),
+        color: Color(0x662B151D),
         blurRadius: 70,
         offset: Offset(0, 30),
       ),
@@ -165,59 +193,73 @@ class SrColors extends ThemeExtension<SrColors> {
   );
 
   static const dark = SrColors(
-    brand: Color(0xFF68AEFA),
-    secondary: Color(0xFF43C5FF),
-    accent: Color(0xFF42E8D4),
-    canvas: Color(0xFF071321),
-    surface: Color(0xFF0B1B33),
-    surfaceElevated: Color(0xFF10243D),
-    surfaceSubtle: Color(0xFF10243D),
-    surfaceSunken: Color(0xFF06101D),
-    text: Color(0xFFF7FAFE),
-    textSecondary: Color(0xFFBED0E3),
-    textMuted: Color(0xFF91A9C0),
-    border: Color(0xFF203A57),
-    borderStrong: Color(0xFF3C6489),
-    focus: Color(0xFF68AEFA),
-    overlay: Color(0xB8050D17),
-    success: Color(0xFF5FE2A6),
-    successContainer: Color(0xFF0C3529),
-    warning: Color(0xFFFFC65C),
-    warningContainer: Color(0xFF3A2A10),
-    error: Color(0xFFFF8078),
-    errorContainer: Color(0xFF3D1C20),
-    info: Color(0xFF8BC4FF),
-    infoContainer: Color(0xFF102F54),
-    primarySoft: Color(0xFF4A85BE),
-    primaryLine: Color(0xFF24588E),
-    primaryTint2: Color(0xFF0E2846),
-    mapBg: Color(0xFF0A1728),
-    navAvatar: Color(0xFF15345A),
-    navBorder: Color(0xFF1D3653),
-    borderField: Color(0xFF294866),
-    hairline: Color(0xFF172F49),
-    divider: Color(0xFF17304A),
-    dividerSoft: Color(0xFF132A42),
-    dashed: Color(0xFF3A5875),
-    ink2: Color(0xFFDDE8F5),
-    muted: Color(0xFF7690A9),
-    mutedLight: Color(0xFF526D88),
-    scrimSoft: Color(0x99050D17),
-    glass: Color(0xF20B1B33),
-    glassLine: Color(0x264C6D8E),
-    glassLine2: Color(0x3D5E7E9D),
-    greenDeep: Color(0xFF8AEABD),
-    greenTint2: Color(0xFF0A2B22),
-    greenLine: Color(0xFF176348),
-    amber: Color(0xFFFFC65C),
-    amberLine: Color(0xFF6A4B17),
-    amberLine2: Color(0xFF725825),
-    amberIcon: Color(0xFF513812),
-    amberInk: Color(0xFFF3CC83),
-    amberTitle: Color(0xFFFFD483),
-    redLine: Color(0xFF753039),
-    redInk: Color(0xFFFFA29C),
-    redInk2: Color(0xFFFFB3AE),
+    brand: Color(0xFFFFC857),
+    brandHover: Color(0xFFFFD77F),
+    brandPressed: Color(0xFFE8AF37),
+    onBrand: Color(0xFF3A2100),
+    secondary: Color(0xFFFFADC0),
+    accent: Color(0xFFFFC857),
+    onAccent: Color(0xFF3A2100),
+    brandContainer: Color(0xFF3B2A08),
+    canvas: Color(0xFF160B10),
+    surface: Color(0xFF241219),
+    surfaceElevated: Color(0xFF301820),
+    surfaceSubtle: Color(0xFF2A151D),
+    surfaceSunken: Color(0xFF10070B),
+    text: Color(0xFFF8EEF2),
+    textSecondary: Color(0xFFDFC8D1),
+    textMuted: Color(0xFFB2929F),
+    border: Color(0xFF4B2A36),
+    borderStrong: Color(0xFF785160),
+    focus: Color(0xFFFFC857),
+    overlay: Color(0xC0080305),
+    success: Color(0xFF79D99A),
+    successContainer: Color(0xFF183222),
+    warning: Color(0xFFFFC857),
+    warningContainer: Color(0xFF3B2A08),
+    error: Color(0xFFFF95A8),
+    errorContainer: Color(0xFF481722),
+    info: Color(0xFFAEB8E8),
+    infoContainer: Color(0xFF252A49),
+    infoLine: Color(0xFF505982),
+    primarySoft: Color(0xFFFFE39C),
+    primaryLine: Color(0xFF76591D),
+    primaryTint2: Color(0xFF302207),
+    mapBg: Color(0xFF1E1015),
+    navBg: Color(0xFF241219),
+    navForeground: Color(0xFFF8EEF2),
+    navMuted: Color(0xFFB2929F),
+    navHover: Color(0xFF2A151D),
+    navSelectedBg: Color(0xFFFFC857),
+    navSelectedForeground: Color(0xFF3A2100),
+    navAvatar: Color(0xFFFFC857),
+    navBorder: Color(0xFF4B2A36),
+    heroStart: Color(0xFF800020),
+    heroEnd: Color(0xFF3B000F),
+    borderField: Color(0xFF593542),
+    hairline: Color(0xFF351E27),
+    divider: Color(0xFF3D222C),
+    dividerSoft: Color(0xFF321A23),
+    dashed: Color(0xFF6D4855),
+    ink2: Color(0xFFEDDCE3),
+    muted: Color(0xFF9B7A87),
+    mutedLight: Color(0xFF765461),
+    scrimSoft: Color(0xA6080305),
+    glass: Color(0xF2241219),
+    glassLine: Color(0x3DFFE0E8),
+    glassLine2: Color(0x52FFE0E8),
+    greenDeep: Color(0xFFA4E9BA),
+    greenTint2: Color(0xFF12291C),
+    greenLine: Color(0xFF356847),
+    amber: Color(0xFFFFC857),
+    amberLine: Color(0xFF76591D),
+    amberLine2: Color(0xFF8A6A25),
+    amberIcon: Color(0xFF503908),
+    amberInk: Color(0xFFFFE39C),
+    amberTitle: Color(0xFFFFE39C),
+    redLine: Color(0xFF783144),
+    redInk: Color(0xFFFFC0CC),
+    redInk2: Color(0xFFFFAFC0),
     isDark: true,
     cardShadow: [],
     floatShadow: [
@@ -240,8 +282,13 @@ class SrColors extends ThemeExtension<SrColors> {
   );
 
   final Color brand;
+  final Color brandHover;
+  final Color brandPressed;
+  final Color onBrand;
   final Color secondary;
   final Color accent;
+  final Color onAccent;
+  final Color brandContainer;
   final Color canvas;
   final Color surface;
   final Color surfaceElevated;
@@ -262,12 +309,21 @@ class SrColors extends ThemeExtension<SrColors> {
   final Color errorContainer;
   final Color info;
   final Color infoContainer;
+  final Color infoLine;
   final Color primarySoft;
   final Color primaryLine;
   final Color primaryTint2;
   final Color mapBg;
+  final Color navBg;
+  final Color navForeground;
+  final Color navMuted;
+  final Color navHover;
+  final Color navSelectedBg;
+  final Color navSelectedForeground;
   final Color navAvatar;
   final Color navBorder;
+  final Color heroStart;
+  final Color heroEnd;
   final Color borderField;
   final Color hairline;
   final Color divider;
@@ -303,8 +359,7 @@ class SrColors extends ThemeExtension<SrColors> {
   // the legacy SR.* getter used, so Stage 4 call-site rewrites can pick
   // whichever reads best without introducing a second source of truth.
   Color get bg => canvas;
-  Color get navBg => surface;
-  Color get navAvatarFg => info;
+  Color get navAvatarFg => navSelectedForeground;
   Color get ink => text;
   Color get ink3 => textSecondary;
   Color get ink4 => textMuted;
@@ -314,16 +369,21 @@ class SrColors extends ThemeExtension<SrColors> {
   Color get amberTint => warningContainer;
   Color get red => error;
   Color get redTint => errorContainer;
-  Color get primaryDeep => info;
-  Color get primaryTint => infoContainer;
+  Color get primaryDeep => brand;
+  Color get primaryTint => brandContainer;
   Color get borderHover => borderStrong;
   List<BoxShadow> get toastShadow => popoverShadow;
 
   @override
   SrColors copyWith({
     Color? brand,
+    Color? brandHover,
+    Color? brandPressed,
+    Color? onBrand,
     Color? secondary,
     Color? accent,
+    Color? onAccent,
+    Color? brandContainer,
     Color? canvas,
     Color? surface,
     Color? surfaceElevated,
@@ -344,12 +404,21 @@ class SrColors extends ThemeExtension<SrColors> {
     Color? errorContainer,
     Color? info,
     Color? infoContainer,
+    Color? infoLine,
     Color? primarySoft,
     Color? primaryLine,
     Color? primaryTint2,
     Color? mapBg,
+    Color? navBg,
+    Color? navForeground,
+    Color? navMuted,
+    Color? navHover,
+    Color? navSelectedBg,
+    Color? navSelectedForeground,
     Color? navAvatar,
     Color? navBorder,
+    Color? heroStart,
+    Color? heroEnd,
     Color? borderField,
     Color? hairline,
     Color? divider,
@@ -381,8 +450,13 @@ class SrColors extends ThemeExtension<SrColors> {
     List<BoxShadow>? dialogShadow,
   }) => SrColors(
     brand: brand ?? this.brand,
+    brandHover: brandHover ?? this.brandHover,
+    brandPressed: brandPressed ?? this.brandPressed,
+    onBrand: onBrand ?? this.onBrand,
     secondary: secondary ?? this.secondary,
     accent: accent ?? this.accent,
+    onAccent: onAccent ?? this.onAccent,
+    brandContainer: brandContainer ?? this.brandContainer,
     canvas: canvas ?? this.canvas,
     surface: surface ?? this.surface,
     surfaceElevated: surfaceElevated ?? this.surfaceElevated,
@@ -403,12 +477,21 @@ class SrColors extends ThemeExtension<SrColors> {
     errorContainer: errorContainer ?? this.errorContainer,
     info: info ?? this.info,
     infoContainer: infoContainer ?? this.infoContainer,
+    infoLine: infoLine ?? this.infoLine,
     primarySoft: primarySoft ?? this.primarySoft,
     primaryLine: primaryLine ?? this.primaryLine,
     primaryTint2: primaryTint2 ?? this.primaryTint2,
     mapBg: mapBg ?? this.mapBg,
+    navBg: navBg ?? this.navBg,
+    navForeground: navForeground ?? this.navForeground,
+    navMuted: navMuted ?? this.navMuted,
+    navHover: navHover ?? this.navHover,
+    navSelectedBg: navSelectedBg ?? this.navSelectedBg,
+    navSelectedForeground: navSelectedForeground ?? this.navSelectedForeground,
     navAvatar: navAvatar ?? this.navAvatar,
     navBorder: navBorder ?? this.navBorder,
+    heroStart: heroStart ?? this.heroStart,
+    heroEnd: heroEnd ?? this.heroEnd,
     borderField: borderField ?? this.borderField,
     hairline: hairline ?? this.hairline,
     divider: divider ?? this.divider,
@@ -446,8 +529,13 @@ class SrColors extends ThemeExtension<SrColors> {
     Color blend(Color a, Color b) => Color.lerp(a, b, t)!;
     return SrColors(
       brand: blend(brand, other.brand),
+      brandHover: blend(brandHover, other.brandHover),
+      brandPressed: blend(brandPressed, other.brandPressed),
+      onBrand: blend(onBrand, other.onBrand),
       secondary: blend(secondary, other.secondary),
       accent: blend(accent, other.accent),
+      onAccent: blend(onAccent, other.onAccent),
+      brandContainer: blend(brandContainer, other.brandContainer),
       canvas: blend(canvas, other.canvas),
       surface: blend(surface, other.surface),
       surfaceElevated: blend(surfaceElevated, other.surfaceElevated),
@@ -468,12 +556,24 @@ class SrColors extends ThemeExtension<SrColors> {
       errorContainer: blend(errorContainer, other.errorContainer),
       info: blend(info, other.info),
       infoContainer: blend(infoContainer, other.infoContainer),
+      infoLine: blend(infoLine, other.infoLine),
       primarySoft: blend(primarySoft, other.primarySoft),
       primaryLine: blend(primaryLine, other.primaryLine),
       primaryTint2: blend(primaryTint2, other.primaryTint2),
       mapBg: blend(mapBg, other.mapBg),
+      navBg: blend(navBg, other.navBg),
+      navForeground: blend(navForeground, other.navForeground),
+      navMuted: blend(navMuted, other.navMuted),
+      navHover: blend(navHover, other.navHover),
+      navSelectedBg: blend(navSelectedBg, other.navSelectedBg),
+      navSelectedForeground: blend(
+        navSelectedForeground,
+        other.navSelectedForeground,
+      ),
       navAvatar: blend(navAvatar, other.navAvatar),
       navBorder: blend(navBorder, other.navBorder),
+      heroStart: blend(heroStart, other.heroStart),
+      heroEnd: blend(heroEnd, other.heroEnd),
       borderField: blend(borderField, other.borderField),
       hairline: blend(hairline, other.hairline),
       divider: blend(divider, other.divider),
@@ -524,14 +624,36 @@ abstract final class SrThemeData {
 
   static ThemeData _build(Brightness brightness, SrColors colors) {
     final dark = brightness == Brightness.dark;
-    final scheme = ColorScheme.fromSeed(
+    final generatedScheme = ColorScheme.fromSeed(
       brightness: brightness,
-      seedColor: const Color(0xFF1A73E8),
-      primary: dark ? const Color(0xFF68AEFA) : const Color(0xFF1A73E8),
-      secondary: dark ? const Color(0xFF43C5FF) : const Color(0xFF00B4FF),
-      tertiary: dark ? const Color(0xFF42E8D4) : const Color(0xFF00AFA0),
+      seedColor: colors.brand,
+      primary: colors.brand,
+      secondary: colors.accent,
+      tertiary: colors.secondary,
       error: colors.error,
       surface: colors.surface,
+    );
+    final scheme = generatedScheme.copyWith(
+      primary: colors.brand,
+      onPrimary: colors.onBrand,
+      primaryContainer: colors.brandContainer,
+      onPrimaryContainer: colors.primaryDeep,
+      secondary: colors.accent,
+      onSecondary: colors.onAccent,
+      secondaryContainer: colors.warningContainer,
+      onSecondaryContainer: colors.warning,
+      tertiary: colors.secondary,
+      onTertiary: dark ? colors.surfaceSunken : colors.onAccent,
+      error: colors.error,
+      onError: dark ? colors.surfaceSunken : colors.surface,
+      errorContainer: colors.errorContainer,
+      onErrorContainer: colors.redInk,
+      surface: colors.surface,
+      onSurface: colors.text,
+      outline: colors.borderStrong,
+      outlineVariant: colors.border,
+      shadow: colors.overlay,
+      scrim: colors.overlay,
     );
     final base = ThemeData(
       useMaterial3: true,
@@ -557,11 +679,11 @@ abstract final class SrThemeData {
       tooltipTheme: TooltipThemeData(
         waitDuration: const Duration(milliseconds: 400),
         decoration: BoxDecoration(
-          color: dark ? const Color(0xFFEAF3FF) : const Color(0xFF0B1B33),
+          color: dark ? colors.accent : colors.text,
           borderRadius: BorderRadius.circular(SR.rSm),
         ),
         textStyle: SrType.caption(
-          color: dark ? const Color(0xFF0B1B33) : Colors.white,
+          color: dark ? colors.onAccent : colors.surface,
         ),
       ),
       scrollbarTheme: ScrollbarThemeData(
@@ -594,13 +716,13 @@ abstract final class SrThemeData {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFF1A73E8),
-          foregroundColor: Colors.white,
+          backgroundColor: colors.brand,
+          foregroundColor: colors.onBrand,
           disabledBackgroundColor: colors.surfaceSunken,
           disabledForegroundColor: colors.textMuted,
           elevation: 0,
           minimumSize: const Size(64, SR.controlLg),
-          textStyle: SrType.button(color: Colors.white),
+          textStyle: SrType.button(color: colors.onBrand),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(SR.rSm),
           ),
@@ -620,22 +742,22 @@ abstract final class SrThemeData {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: colors.info,
+          foregroundColor: colors.brand,
           disabledForegroundColor: colors.textMuted,
           minimumSize: const Size(48, SR.controlMd),
-          textStyle: SrType.button(color: colors.info),
+          textStyle: SrType.button(color: colors.brand),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(SR.rSm),
           ),
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: const Color(0xFF1A73E8),
-        foregroundColor: Colors.white,
+        backgroundColor: colors.brand,
+        foregroundColor: colors.onBrand,
         elevation: 2,
         focusElevation: 2,
         hoverElevation: 3,
-        extendedTextStyle: SrType.button(color: Colors.white),
+        extendedTextStyle: SrType.button(color: colors.onBrand),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SR.rLg),
         ),
@@ -675,14 +797,14 @@ abstract final class SrThemeData {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: colors.surface,
-        indicatorColor: colors.infoContainer,
+        indicatorColor: colors.brandContainer,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => SrType.caption(
             w: 600,
             color: states.contains(WidgetState.selected)
-                ? colors.info
+                ? colors.brand
                 : colors.textMuted,
           ),
         ),
@@ -695,7 +817,7 @@ abstract final class SrThemeData {
         ),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: const Color(0xFF00B4FF),
+        color: colors.brand,
         linearTrackColor: colors.surfaceSunken,
         circularTrackColor: colors.surfaceSunken,
       ),

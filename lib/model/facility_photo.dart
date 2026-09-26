@@ -203,16 +203,29 @@ class FacilityPhotoImage extends StatelessWidget {
       return Image.memory(photo.bytes!, fit: BoxFit.cover);
     }
     if (photo.publicUrl != null) {
-      return Image.network(
-        photo.publicUrl!,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) =>
-            const PlaceholderStripes(hue: 210, caption: 'image unavailable'),
+      return LayoutBuilder(
+        builder: (context, constraints) => Image.network(
+          photo.publicUrl!,
+          fit: BoxFit.cover,
+          // Decode near display size rather than at the full upload
+          // resolution. Bucketed so card and detail sizes share cache entries.
+          cacheWidth: _decodeWidth(context, constraints),
+          errorBuilder: (_, _, _) =>
+              const PlaceholderStripes(hue: 210, caption: 'image unavailable'),
+        ),
       );
     }
     if (photo.path != null && !kIsWeb) {
       return Image.file(File(photo.path!), fit: BoxFit.cover);
     }
     return const PlaceholderStripes(hue: 210, caption: 'image unavailable');
+  }
+
+  static int? _decodeWidth(BuildContext context, BoxConstraints constraints) {
+    if (!constraints.hasBoundedWidth) return null;
+    final pixels =
+        constraints.maxWidth * MediaQuery.devicePixelRatioOf(context);
+    const bucket = 320;
+    return ((pixels / bucket).ceil() * bucket).clamp(bucket, 2560);
   }
 }

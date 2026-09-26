@@ -251,9 +251,7 @@ class _StudentAppState extends State<StudentApp> {
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: context.srColors.isDark
-              ? const [Color(0xFF0C2742), Color(0xFF123551)]
-              : const [Color(0xFF1A73E8), Color(0xFF1479B8)],
+          colors: [context.srColors.heroStart, context.srColors.heroEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -371,7 +369,11 @@ class _StudentAppState extends State<StudentApp> {
                           ),
                           child: Text(
                             '${state.unreadNotifications}',
-                            style: mono(8.5, w: 600, color: Colors.white),
+                            style: mono(
+                              8.5,
+                              w: 600,
+                              color: Theme.of(context).colorScheme.onError,
+                            ),
                           ),
                         ),
                       ),
@@ -402,20 +404,14 @@ class _StudentAppState extends State<StudentApp> {
               Container(
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.srColors.surfaceElevated,
                   borderRadius: BorderRadius.circular(14),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x220B1B33),
-                      blurRadius: 18,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
+                  boxShadow: context.srColors.floatShadow,
                 ),
                 child: TextField(
                   controller: _browseSearch,
                   onChanged: (value) => setState(() => _browseQuery = value),
-                  style: sans(13, color: SR.neutralDark),
+                  style: sans(13, color: context.srColors.text),
                   cursorColor: SR.primary,
                   decoration: InputDecoration(
                     filled: false,
@@ -423,11 +419,8 @@ class _StudentAppState extends State<StudentApp> {
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     hintText: 'Search facilities, buildings, or amenities',
-                    hintStyle: sans(12, color: const Color(0xFF7B8CA1)),
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      color: SR.primary,
-                    ),
+                    hintStyle: sans(12, color: context.srColors.textMuted),
+                    prefixIcon: Icon(Icons.search_rounded, color: SR.primary),
                     suffixIcon: _browseQuery.isEmpty
                         ? null
                         : IconButton(
@@ -436,9 +429,9 @@ class _StudentAppState extends State<StudentApp> {
                               _browseSearch.clear();
                               setState(() => _browseQuery = '');
                             },
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.close_rounded,
-                              color: Color(0xFF60748A),
+                              color: context.srColors.textMuted,
                             ),
                           ),
                     contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -1318,14 +1311,15 @@ class _StudentAppState extends State<StudentApp> {
                                       occurrence,
                                     ))
                                       SrButton(
-                                        label: state.reservationActionsPending
+                                        label:
+                                            state.reservationActionsPending
                                                 .contains(request.id)
                                             ? 'Sending…'
                                             : 'Move date',
                                         dense: true,
                                         fontSize: 10,
-                                        onPressed: state
-                                                .reservationActionsPending
+                                        onPressed:
+                                            state.reservationActionsPending
                                                 .contains(request.id)
                                             ? null
                                             : () => _requestReschedule(
@@ -1393,13 +1387,15 @@ class _StudentAppState extends State<StudentApp> {
                                 )) ...[
                                   const SizedBox(width: 6),
                                   SrButton(
-                                    label: state.reservationActionsPending
+                                    label:
+                                        state.reservationActionsPending
                                             .contains(request.id)
                                         ? 'Sending…'
                                         : 'Move date',
                                     dense: true,
                                     fontSize: 10,
-                                    onPressed: state.reservationActionsPending
+                                    onPressed:
+                                        state.reservationActionsPending
                                             .contains(request.id)
                                         ? null
                                         : () => _requestReschedule(
@@ -1477,15 +1473,17 @@ class _StudentAppState extends State<StudentApp> {
                             request.occurrences.first,
                           ))
                         SrButton(
-                          label: state.reservationActionsPending.contains(
-                            request.id,
-                          )
+                          label:
+                              state.reservationActionsPending.contains(
+                                request.id,
+                              )
                               ? 'Sending…'
                               : 'Request reschedule',
                           dense: true,
-                          onPressed: state.reservationActionsPending.contains(
-                            request.id,
-                          )
+                          onPressed:
+                              state.reservationActionsPending.contains(
+                                request.id,
+                              )
                               ? null
                               : () => _requestReschedule(
                                   state,
@@ -1495,18 +1493,20 @@ class _StudentAppState extends State<StudentApp> {
                         ),
                       if (state.canCancelReservation(request))
                         SrButton(
-                          label: state.reservationActionsPending.contains(
-                            request.id,
-                          )
+                          label:
+                              state.reservationActionsPending.contains(
+                                request.id,
+                              )
                               ? 'Cancelling…'
                               : request.occurrences.length > 1
                               ? 'Cancel all future dates'
                               : 'Cancel reservation',
                           kind: SrButtonKind.danger,
                           dense: true,
-                          onPressed: state.reservationActionsPending.contains(
-                            request.id,
-                          )
+                          onPressed:
+                              state.reservationActionsPending.contains(
+                                request.id,
+                              )
                               ? null
                               : () async {
                                   await state.cancelReservation(request);
@@ -2211,9 +2211,9 @@ class _StudentAppState extends State<StudentApp> {
                                     context: context,
                                     initialTime: startTime,
                                     builder: (context, child) => MediaQuery(
-                                      data: MediaQuery.of(context).copyWith(
-                                        alwaysUse24HourFormat: false,
-                                      ),
+                                      data: MediaQuery.of(
+                                        context,
+                                      ).copyWith(alwaysUse24HourFormat: false),
                                       child: child!,
                                     ),
                                   );
@@ -2238,9 +2238,9 @@ class _StudentAppState extends State<StudentApp> {
                                     context: context,
                                     initialTime: endTime,
                                     builder: (context, child) => MediaQuery(
-                                      data: MediaQuery.of(context).copyWith(
-                                        alwaysUse24HourFormat: false,
-                                      ),
+                                      data: MediaQuery.of(
+                                        context,
+                                      ).copyWith(alwaysUse24HourFormat: false),
                                       child: child!,
                                     ),
                                   );
@@ -2293,7 +2293,8 @@ class _StudentAppState extends State<StudentApp> {
                           maxLength: 300,
                           decoration: const InputDecoration(
                             labelText: 'Reason for moving',
-                            hintText: 'Briefly explain why you need a new time.',
+                            hintText:
+                                'Briefly explain why you need a new time.',
                           ),
                         ),
                         if (error != null)
@@ -3188,7 +3189,9 @@ class _CategoryShortcut extends StatelessWidget {
                 child: Icon(
                   icon,
                   size: 19,
-                  color: selected ? Colors.white : SR.primary,
+                  color: selected
+                      ? context.srColors.onBrand
+                      : context.srColors.brand,
                 ),
               ),
               const SizedBox(height: 7),

@@ -295,9 +295,7 @@ class _AssistantChatPageState extends State<AssistantChatPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: colors.isDark
-                ? [const Color(0xFF0C2039), colors.canvas, colors.canvas]
-                : [const Color(0xFFEAF6FF), colors.canvas, colors.canvas],
+            colors: [colors.brandContainer, colors.canvas, colors.canvas],
           ),
         ),
         child: SafeArea(

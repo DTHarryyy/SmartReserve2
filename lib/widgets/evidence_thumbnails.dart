@@ -108,6 +108,9 @@ class _EvidenceThumbnailState extends State<_EvidenceThumbnail> {
                 return Image.network(
                   url,
                   fit: BoxFit.cover,
+                  cacheWidth:
+                      (widget.size * MediaQuery.devicePixelRatioOf(context))
+                          .ceil(),
                   loadingBuilder: (context, child, progress) =>
                       progress == null ? child : const _ThumbSpinner(),
                   errorBuilder: (_, _, _) => _ThumbError(onRetry: _retry),

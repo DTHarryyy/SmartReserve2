@@ -37,7 +37,7 @@ class ErrorBar extends StatelessWidget {
           Container(
             width: 7,
             height: 7,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: SR.redBright,
               shape: BoxShape.circle,
             ),
@@ -237,14 +237,14 @@ class LightBarButton extends StatelessWidget {
 
 Color toneDot(BuildContext context, AdvisoryTone tone) => switch (tone) {
   AdvisoryTone.good => SR.green,
-  AdvisoryTone.info => SR.primary,
+  AdvisoryTone.info => context.srColors.info,
   AdvisoryTone.warn => SR.orange,
   AdvisoryTone.block => context.srColors.red,
 };
 
 Color toneTint(BuildContext context, AdvisoryTone tone) => switch (tone) {
   AdvisoryTone.good => context.srColors.greenTint,
-  AdvisoryTone.info => context.srColors.primaryTint,
+  AdvisoryTone.info => context.srColors.infoContainer,
   AdvisoryTone.warn => context.srColors.amberTint,
   AdvisoryTone.block => context.srColors.redTint,
 };

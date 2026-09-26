@@ -640,7 +640,9 @@ class _SendButton extends StatelessWidget {
             child: Icon(
               Icons.arrow_upward_rounded,
               size: 20,
-              color: enabled ? SR.onDark : context.srColors.mutedLight,
+              color: enabled
+                  ? context.srColors.onBrand
+                  : context.srColors.mutedLight,
             ),
           ),
         ),

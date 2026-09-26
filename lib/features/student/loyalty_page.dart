@@ -323,7 +323,11 @@ class _HeroIcon extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
-      child: Icon(Icons.stars_rounded, color: Colors.white, size: size * 0.52),
+      child: Icon(
+        Icons.stars_rounded,
+        color: context.srColors.onBrand,
+        size: size * 0.52,
+      ),
     );
   }
 }

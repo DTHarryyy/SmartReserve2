@@ -397,13 +397,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       AdvisoryTone.block => colors.redTint,
       AdvisoryTone.warn => colors.amberTint,
       AdvisoryTone.good => colors.greenTint,
-      AdvisoryTone.info => colors.primaryTint,
+      AdvisoryTone.info => colors.infoContainer,
     };
     final foreground = switch (tone) {
       AdvisoryTone.block => colors.red,
       AdvisoryTone.warn => colors.amber,
       AdvisoryTone.good => colors.greenDark,
-      AdvisoryTone.info => colors.primaryDeep,
+      AdvisoryTone.info => colors.info,
     };
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -926,8 +926,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   color: i == 0
                       ? context.srColors.divider
                       : Color.lerp(
-                          context.srColors.primaryTint,
-                          SR.primary,
+                          context.srColors.warningContainer,
+                          context.srColors.heroStart,
                           i / 3,
                         ),
                   borderRadius: BorderRadius.circular(3),
@@ -1684,10 +1684,10 @@ class _UtilisationRow extends StatelessWidget {
           child: Container(
             height: 9,
             color: row.fraction < .25
-                ? SR.orange
+                ? context.srColors.accent
                 : row.fraction < .6
-                ? SR.primaryBright
-                : SR.primary,
+                ? context.srColors.info
+                : context.srColors.heroStart,
           ),
         ),
       ],
@@ -1715,7 +1715,11 @@ class _HeatCell extends StatelessWidget {
     final intensity = peak == 0 ? 0.0 : count / peak;
     final color = count == 0
         ? context.srColors.divider
-        : Color.lerp(context.srColors.primaryTint, SR.primary, intensity);
+        : Color.lerp(
+            context.srColors.warningContainer,
+            context.srColors.heroStart,
+            intensity,
+          );
     return Semantics(
       button: true,
       label: label,
@@ -1754,9 +1758,7 @@ class _HeatCell extends StatelessWidget {
                 style: mono(
                   9.5,
                   w: 600,
-                  color: intensity > .55
-                      ? context.srColors.surface
-                      : SR.primaryHover,
+                  color: intensity > .55 ? SR.onDark : context.srColors.warning,
                 ),
               ),
             ),

@@ -489,16 +489,18 @@ class _EditableBuildingMarkerState extends State<_EditableBuildingMarker> {
                     style: sans(
                       9,
                       w: 500,
-                      color: active ? SR.onDark : context.srColors.ink3,
+                      color: active
+                          ? context.srColors.onBrand
+                          : context.srColors.ink3,
                     ),
                   ),
                 ),
                 if (widget.editing) ...[
                   const SizedBox(width: 4),
-                  const Icon(
+                  Icon(
                     Icons.open_with_rounded,
                     size: 11,
-                    color: SR.onDark,
+                    color: context.srColors.onBrand,
                   ),
                 ],
               ],
@@ -551,7 +553,7 @@ class _FacilityPinLabel extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 5),
-              const Icon(Icons.edit_rounded, size: 12, color: SR.primary),
+              Icon(Icons.edit_rounded, size: 12, color: SR.primary),
             ],
           ),
         ),

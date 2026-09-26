@@ -112,14 +112,13 @@ class _UsersScreenState extends State<UsersScreen> {
                     icon: const Icon(
                       Icons.account_tree_rounded,
                       size: SR.iconMd,
-                      color: SR.onDark,
                     ),
                     onPressed: () => state.goTo(AppView.organizations),
                   ),
                 if (state.isInternalAdmin)
                   SrButton(
                     label: 'Create administrator',
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.person_add_alt_1_rounded,
                       size: SR.iconMd,
                       color: SR.primary,

@@ -197,7 +197,7 @@ Future<BookingSubmissionResult?> showBookingSheet(
 
   return showDialog<BookingSubmissionResult>(
     context: context,
-    barrierColor: const Color(0x7010141A),
+    barrierColor: context.srColors.overlay,
     builder: (_) =>
         _BookingSheet(state: state, facility: facility, prefill: prefill),
   );

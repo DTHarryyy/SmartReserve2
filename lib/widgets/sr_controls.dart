@@ -89,9 +89,9 @@ class _SrButtonState extends State<SrButton> {
     Widget content(bool hovered) {
       final (Color bg, Color fg, Color? bd) = switch (widget.kind) {
         SrButtonKind.primary => (
-          hovered ? SR.primaryHover : SR.primary,
-          SR.onDark,
-          SR.primaryHover,
+          _pressed ? c.brandPressed : (hovered ? c.brandHover : c.brand),
+          c.onBrand,
+          c.brandHover,
         ),
         SrButtonKind.secondary => (
           hovered ? c.surfaceSubtle : c.surface,
@@ -108,10 +108,14 @@ class _SrButtonState extends State<SrButton> {
           c.red,
           c.redLine,
         ),
-        SrButtonKind.dangerSolid => (c.red, SR.onDark, c.red),
+        SrButtonKind.dangerSolid => (
+          c.red,
+          c.isDark ? c.surfaceSunken : SR.onDark,
+          c.red,
+        ),
         SrButtonKind.success => (
           hovered ? c.greenDeep : c.greenDark,
-          SR.onDark,
+          c.isDark ? c.surfaceSunken : SR.onDark,
           c.greenDeep,
         ),
         SrButtonKind.caution => (
@@ -214,7 +218,7 @@ class SrIconButton extends StatelessWidget {
     this.fontSize = 12,
     this.background,
     this.foreground,
-    this.hoverForeground = SR.primary,
+    this.hoverForeground,
     this.border,
     this.radius = 9,
     this.shadow,
@@ -228,7 +232,7 @@ class SrIconButton extends StatelessWidget {
   final double fontSize;
   final Color? background;
   final Color? foreground;
-  final Color hoverForeground;
+  final Color? hoverForeground;
   final Color? border;
   final double radius;
   final List<BoxShadow>? shadow;
@@ -262,7 +266,9 @@ class SrIconButton extends StatelessWidget {
                 builder: (context) {
                   final tint = onPressed == null
                       ? c.mutedLight
-                      : (hovered ? hoverForeground : (foreground ?? c.ink2));
+                      : (hovered
+                            ? (hoverForeground ?? c.brand)
+                            : (foreground ?? c.ink2));
                   return icon != null
                       ? Icon(icon, size: fontSize + 3, color: tint)
                       : Text(glyph ?? '', style: sans(fontSize, color: tint));

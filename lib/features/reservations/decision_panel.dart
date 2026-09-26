@@ -1095,11 +1095,7 @@ class _DecisionPanelState extends State<DecisionPanel> {
               label: saving ? 'Saving…' : 'Approve request',
               icon: saving
                   ? null
-                  : const Icon(
-                      Icons.check_rounded,
-                      size: SR.iconSm,
-                      color: SR.onDark,
-                    ),
+                  : const Icon(Icons.check_rounded, size: SR.iconSm),
               kind: SrButtonKind.primary,
               fontSize: 12.5,
               minHeight: 42,
@@ -1513,7 +1509,11 @@ class _PendingEvidence extends StatelessWidget {
                 message: 'Remove ${upload.name}',
                 child: const Padding(
                   padding: EdgeInsets.all(3),
-                  child: Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),

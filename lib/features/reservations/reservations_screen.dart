@@ -20,6 +20,7 @@ class ReservationsScreen extends StatelessWidget {
   static const _tabs = [
     RequestStatus.pending,
     RequestStatus.approved,
+    RequestStatus.completed,
     RequestStatus.changesRequested,
     RequestStatus.declined,
     RequestStatus.cancelled,
@@ -64,7 +65,7 @@ class ReservationsScreen extends StatelessWidget {
         .toList();
 
     return QueueShell(
-      stacked: stacked,
+      stacked: stacked || selected == null,
       panelOpen: selected != null,
       onClosePanel: () => state.selectRequest(null),
       panel: selected == null
@@ -79,21 +80,17 @@ class ReservationsScreen extends StatelessWidget {
       list: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SrTabs(
-            scrollable: true,
-            items: [
-              for (final tab in _tabs)
-                SrTabItem(
-                  label: tab.label,
-                  count: state.requests
-                      .where(
-                        (r) => r.status == tab && state.canDecideRequest(r),
-                      )
-                      .length,
-                ),
-            ],
-            selectedIndex: _tabs.indexOf(state.requestTab),
-            onSelect: (i) => state.setRequestTab(_tabs[i]),
+          _ReservationFilterChips(
+            tabs: _tabs,
+            selected: state.requestTab,
+            countFor: (tab) => state.requests
+                .where(
+                  (request) =>
+                      state.requestMatchesTab(request, tab) &&
+                      state.canDecideRequest(request),
+                )
+                .length,
+            onSelect: state.setRequestTab,
           ),
           const SizedBox(height: SR.space12),
 
@@ -150,6 +147,88 @@ class ReservationsScreen extends StatelessWidget {
               'oldest first.'
         : 'Requests appear here once they reach this state.',
   );
+}
+
+class _ReservationFilterChips extends StatelessWidget {
+  const _ReservationFilterChips({
+    required this.tabs,
+    required this.selected,
+    required this.countFor,
+    required this.onSelect,
+  });
+
+  final List<RequestStatus> tabs;
+  final RequestStatus selected;
+  final int Function(RequestStatus tab) countFor;
+  final ValueChanged<RequestStatus> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    return SingleChildScrollView(
+      key: const Key('reservation-filter-scroll'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var index = 0; index < tabs.length; index++) ...[
+            if (index > 0) const SizedBox(width: SR.space8),
+            ChoiceChip(
+              key: ValueKey('reservation-filter-${tabs[index].raw}'),
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(tabs[index].label),
+                  const SizedBox(width: SR.space6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SR.space6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected == tabs[index]
+                          ? colors.primaryTint
+                          : colors.divider,
+                      borderRadius: BorderRadius.circular(SR.rFull),
+                    ),
+                    child: Text(
+                      '${countFor(tabs[index])}',
+                      style: mono(
+                        10,
+                        w: 600,
+                        color: selected == tabs[index]
+                            ? colors.primaryDeep
+                            : colors.ink4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              selected: selected == tabs[index],
+              onSelected: (_) => onSelect(tabs[index]),
+              showCheckmark: false,
+              selectedColor: colors.primaryTint2,
+              backgroundColor: colors.surface,
+              side: BorderSide(
+                color: selected == tabs[index]
+                    ? colors.primarySoft
+                    : colors.border,
+              ),
+              shape: const StadiumBorder(),
+              labelStyle: sans(
+                12.5,
+                w: selected == tabs[index] ? 600 : 500,
+                color: selected == tabs[index]
+                    ? colors.primaryDeep
+                    : colors.ink3,
+              ),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _QueueRow extends StatelessWidget {

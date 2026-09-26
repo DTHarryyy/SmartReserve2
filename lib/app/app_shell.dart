@@ -352,7 +352,7 @@ class _AppShellState extends State<AppShell> {
                   style: mono(
                     10,
                     w: 500,
-                    color: context.srColors.surface.withValues(alpha: .6),
+                    color: context.srColors.onBrand.withValues(alpha: .72),
                   ),
                 )
               : null,
@@ -361,11 +361,7 @@ class _AppShellState extends State<AppShell> {
       AppView.facilities when !layout.isMobile && state.isAdmin => [
         SrButton(
           label: 'New facility',
-          icon: const Icon(
-            Icons.add_rounded,
-            size: SR.iconMd,
-            color: SR.onDark,
-          ),
+          icon: const Icon(Icons.add_rounded, size: SR.iconMd),
           kind: SrButtonKind.primary,
           onPressed: () => _openEditor(state, null),
         ),
@@ -378,8 +374,8 @@ class _AppShellState extends State<AppShell> {
     AppView.facilities when state.isAdmin => FloatingActionButton.extended(
       key: const Key('add-facility-fab'),
       tooltip: 'Add facility',
-      backgroundColor: SR.primary,
-      foregroundColor: context.srColors.surface,
+      backgroundColor: context.srColors.brand,
+      foregroundColor: context.srColors.onBrand,
       onPressed: () => _openEditor(state, null),
       icon: const Icon(Icons.add_rounded),
       label: const Text('Facility'),
@@ -387,8 +383,8 @@ class _AppShellState extends State<AppShell> {
     AppView.users when state.isInternalAdmin => FloatingActionButton.extended(
       key: const Key('organization-accounts-fab'),
       tooltip: 'Organizations',
-      backgroundColor: SR.primary,
-      foregroundColor: SR.onDark,
+      backgroundColor: context.srColors.brand,
+      foregroundColor: context.srColors.onBrand,
       onPressed: () => state.goTo(AppView.organizations),
       icon: const Icon(Icons.account_tree_rounded),
       label: const Text('Organizations'),

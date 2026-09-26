@@ -13,6 +13,7 @@ import 'backend/push_service.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
 import 'theme/sr_theme.dart';
+import 'model/notice.dart';
 import 'widgets/sr_logo.dart';
 import 'widgets/toast_host.dart';
 
@@ -51,8 +52,10 @@ Future<void> main() async {
   );
   await Supabase.initialize(url: url, publishableKey: key);
   state.configureBackend(SupabaseService(Supabase.instance.client));
-  await _configurePush(state);
   runApp(SmartReserveApp(state: state));
+  // Push is only needed once a session exists, so Firebase starts after the
+  // first frame instead of delaying it.
+  unawaited(_configurePush(state));
 }
 
 // apiKey and appId are registered per-platform in Firebase (Project
@@ -109,14 +112,26 @@ Future<void> _configurePush(AppState state) async {
             deviceLabel: deviceLabel,
           ),
       disableToken: (token) => state.backend!.disablePushToken(token),
-      onForegroundNotification: () =>
-          unawaited(state.refreshNotifications()),
+      // The realtime channel already updates the bell; just surface it.
+      onForegroundNotification: (title, body) {
+        final text = [
+          ?title,
+          ?body,
+        ].where((part) => part.trim().isNotEmpty).join(' — ');
+        if (text.isNotEmpty) {
+          state.showToast(ToastMessage(text, tone: AdvisoryTone.info));
+        }
+      },
       onNotificationOpened: state.handlePushNotificationOpened,
     );
     state.configurePush(push);
     unawaited(push.handleInitialMessage());
+    // A restored session may have finished loading before Firebase was ready.
+    if (state.hasSession) unawaited(push.registerIfAlreadyGranted());
   } catch (error) {
-    debugPrint('Firebase could not initialize; push notifications are disabled: $error');
+    debugPrint(
+      'Firebase could not initialize; push notifications are disabled: $error',
+    );
   }
 }
 
@@ -134,11 +149,40 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
   static final _darkTheme = SrThemeData.dark();
 
   late Future<void> _bootstrap;
+  late ThemeMode _themeMode;
 
   @override
   void initState() {
     super.initState();
+    _themeMode = widget.state.themePreference.themeMode;
+    widget.state.addListener(_syncThemeMode);
     _bootstrap = _boot();
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_syncThemeMode);
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    precacheImage(
+      SrLogo.imageFor(
+        _BootSplash.logoSize,
+        MediaQuery.devicePixelRatioOf(context),
+      ),
+      context,
+    );
+  }
+
+  // MaterialApp only rebuilds when the theme mode changes. Screens below
+  // listen to AppState through AppScope, so rebuilding the whole app on every
+  // state change is unnecessary.
+  void _syncThemeMode() {
+    final next = widget.state.themePreference.themeMode;
+    if (next != _themeMode) setState(() => _themeMode = next);
   }
 
   Future<void> _boot() =>
@@ -147,34 +191,31 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
   void _retryBoot() => setState(() => _bootstrap = _boot());
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: widget.state,
-    builder: (context, _) => FutureBuilder<void>(
-      future: _bootstrap,
-      builder: (context, snapshot) => AppScope(
-        state: widget.state,
-        child: MaterialApp(
-          title: 'SmartReserve · CSU Aparri',
-          debugShowCheckedModeBanner: false,
-          theme: _lightTheme,
-          darkTheme: _darkTheme,
-          themeMode: widget.state.themePreference.themeMode,
-          themeAnimationDuration: Duration.zero,
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
-            child: SrThemeBridge(
-              child: AppToastHost(child: child ?? const SizedBox.shrink()),
-            ),
-          ),
-          home: switch (snapshot.connectionState) {
-            ConnectionState.waiting => const _BootSplash(),
-            _ when snapshot.hasError => _BootError(
-              error: snapshot.error!,
-              onRetry: _retryBoot,
-            ),
-            _ => const AppShell(),
-          },
+  Widget build(BuildContext context) => AppScope(
+    state: widget.state,
+    child: MaterialApp(
+      title: 'SmartReserve · CSU Aparri',
+      debugShowCheckedModeBanner: false,
+      theme: _lightTheme,
+      darkTheme: _darkTheme,
+      themeMode: _themeMode,
+      themeAnimationDuration: Duration.zero,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+        child: SrThemeBridge(
+          child: AppToastHost(child: child ?? const SizedBox.shrink()),
         ),
+      ),
+      home: FutureBuilder<void>(
+        future: _bootstrap,
+        builder: (context, snapshot) => switch (snapshot.connectionState) {
+          ConnectionState.waiting => const _BootSplash(),
+          _ when snapshot.hasError => _BootError(
+            error: snapshot.error!,
+            onRetry: _retryBoot,
+          ),
+          _ => const AppShell(),
+        },
       ),
     ),
   );
@@ -183,6 +224,8 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
 class _BootSplash extends StatelessWidget {
   const _BootSplash();
 
+  static const double logoSize = 80;
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.srColors.canvas,
@@ -190,7 +233,7 @@ class _BootSplash extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SrLogo(size: 80, radius: SR.rLg),
+          const SrLogo(size: logoSize, radius: SR.rLg),
           const SizedBox(height: SR.space20),
           Text(
             'SmartReserve',

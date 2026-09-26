@@ -38,7 +38,7 @@ Future<void> showFacilityPreview(
 
   return showDialog<void>(
     context: context,
-    barrierColor: const Color(0x7010141A),
+    barrierColor: context.srColors.overlay,
     builder: (_) => _FacilityPreviewDialog(
       rootContext: context,
       state: state,

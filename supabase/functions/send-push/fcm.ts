@@ -11,6 +11,8 @@ type ServiceAccount = {
 type CachedToken = { accessToken: string; expiresAt: number };
 
 let cachedToken: CachedToken | null = null;
+// Shared by concurrent sends so a cold start mints one token, not one per send.
+let pendingToken: Promise<CachedToken> | null = null;
 
 function parseServiceAccount(json: string): ServiceAccount {
   const parsed = JSON.parse(json);
@@ -92,7 +94,10 @@ async function getAccessToken(serviceAccountJson: string): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) {
     return cachedToken.accessToken;
   }
-  cachedToken = await mintAccessToken(serviceAccountJson);
+  pendingToken ??= mintAccessToken(serviceAccountJson).finally(() => {
+    pendingToken = null;
+  });
+  cachedToken = await pendingToken;
   return cachedToken.accessToken;
 }
 

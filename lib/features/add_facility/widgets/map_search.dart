@@ -152,7 +152,7 @@ class _LayerSwitch extends StatelessWidget {
                         11,
                         w: 500,
                         color: controller.layer == layer
-                            ? SR.onDark
+                            ? context.srColors.onBrand
                             : context.srColors.ink2,
                       ),
                     ),

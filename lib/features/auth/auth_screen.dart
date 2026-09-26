@@ -1036,9 +1036,7 @@ class _HeroBanner extends StatelessWidget {
       color: context.srColors.navBg,
       borderRadius: BorderRadius.circular(18),
       gradient: LinearGradient(
-        colors: context.srColors.isDark
-            ? const [Color(0xFF102D4B), Color(0xFF163A58)]
-            : const [Color(0xFF1A73E8), Color(0xFF1479B8)],
+        colors: [context.srColors.heroStart, context.srColors.heroEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -1146,9 +1144,7 @@ class _Pitch extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: context.srColors.isDark
-            ? const [Color(0xFF071A2F), Color(0xFF102E49)]
-            : const [Color(0xFF1A73E8), Color(0xFF1479B8)],
+        colors: [context.srColors.heroStart, context.srColors.heroEnd],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),

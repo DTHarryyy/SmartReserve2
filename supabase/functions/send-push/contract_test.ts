@@ -29,6 +29,17 @@ Deno.test("builds an FCM message with the deep-link data payload", () => {
   });
 });
 
+Deno.test("sends with high priority on the heads-up Android channel", () => {
+  const { message } = buildFcmMessage(job, "tok-a");
+  assertEquals(message.android, {
+    priority: "HIGH",
+    ttl: "3600s",
+    notification: { channel_id: "smartreserve_alerts" },
+  });
+  assertEquals(message.webpush.headers, { Urgency: "high", TTL: "3600" });
+  assertEquals(message.apns.headers, { "apns-priority": "10" });
+});
+
 Deno.test("omits request_id from the data payload when the notification has none", () => {
   const { message } = buildFcmMessage({ ...job, request_id: null }, "tok-a");
   assertEquals(message.data, { kind: "reservation_submitted", notification_id: "n1" });

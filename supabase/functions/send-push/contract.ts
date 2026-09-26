@@ -16,11 +16,22 @@ export type PushDeliveryJob = {
   tokens: string[];
 };
 
+// Android channel created by the app (MainActivity) with IMPORTANCE_HIGH so
+// pushes show as heads-up alerts instead of landing silently in the tray.
+export const androidChannelId = "smartreserve_alerts";
+
 export type FcmMessage = {
   message: {
     token: string;
     notification: { title: string; body: string };
     data: Record<string, string>;
+    android: {
+      priority: "HIGH";
+      ttl: string;
+      notification: { channel_id: string };
+    };
+    webpush: { headers: Record<string, string> };
+    apns: { headers: Record<string, string> };
   };
 };
 
@@ -39,6 +50,15 @@ export function buildFcmMessage(job: PushDeliveryJob, token: string): FcmMessage
         body: job.body,
       },
       data,
+      // High priority delivers immediately even in Doze / battery saver; the
+      // default "normal" priority lets the OS batch and delay the message.
+      android: {
+        priority: "HIGH",
+        ttl: "3600s",
+        notification: { channel_id: androidChannelId },
+      },
+      webpush: { headers: { Urgency: "high", TTL: "3600" } },
+      apns: { headers: { "apns-priority": "10" } },
     },
   };
 }

@@ -90,6 +90,7 @@ class ReservationUseAssessmentFile {
 enum RequestStatus {
   pending('pending', 'Needs decision', SrTone.warning),
   approved('approved', 'Approved', SrTone.success),
+  completed('completed', 'Complete', SrTone.success),
   declined('declined', 'Declined', SrTone.error),
   changesRequested('changes', 'Changes requested', SrTone.info),
   cancelled('cancelled', 'Cancelled', SrTone.neutral),

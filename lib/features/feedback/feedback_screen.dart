@@ -974,7 +974,7 @@ class _SummaryCard extends StatelessWidget {
 
     return switch (tone) {
       _SummaryTone.primary => scheme.primary,
-      _SummaryTone.success => const Color(0xFF2E7D32),
+      _SummaryTone.success => context.srColors.success,
       _SummaryTone.error => scheme.error,
       _SummaryTone.neutral => scheme.onSurfaceVariant,
     };
@@ -1796,11 +1796,7 @@ class _ReplyComposerState extends State<_ReplyComposer> {
             alignment: Alignment.centerRight,
             child: Text(
               '$length/${FeedbackLimits.replyMax}',
-              style: sans(
-                11,
-                w: 500,
-                color: tooLong ? c.error : c.textMuted,
-              ),
+              style: sans(11, w: 500, color: tooLong ? c.error : c.textMuted),
             ),
           ),
         ),
@@ -2058,11 +2054,7 @@ class _MobileFeedbackCard extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.reply_rounded,
-                          size: 13,
-                          color: c.textMuted,
-                        ),
+                        Icon(Icons.reply_rounded, size: 13, color: c.textMuted),
                         const SizedBox(width: 3),
                         Text(
                           'Replied',
@@ -2169,7 +2161,7 @@ class _RatingBadge extends StatelessWidget {
     final Color foreground;
 
     if (rating >= 4) {
-      foreground = const Color(0xFF2E7D32);
+      foreground = context.srColors.success;
     } else if (rating <= 2) {
       foreground = scheme.error;
     } else {

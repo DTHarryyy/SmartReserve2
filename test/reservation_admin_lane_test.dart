@@ -19,30 +19,35 @@ SessionProfile _admin(String role) => SessionProfile(
   createdAt: DateTime.utc(2026),
 );
 
-ReservationRequest _request({required String id, required String lane}) =>
-    ReservationRequest(
-      id: id,
-      requesterId: 'u1',
-      facility: 'Gymplex',
-      building: 'Main campus',
-      room: 'Gymplex',
-      capacity: 100,
-      requester: 'harry',
-      role: 'user',
-      org: '',
-      purpose: 'Event',
-      date: '24 September 2026',
-      start: '17:30',
-      end: '19:00',
-      heads: 20,
-      submitted: '4 days ago',
-      urgent: true,
-      attachments: 0,
-      noShows: 0,
-      status: RequestStatus.pending,
-      lifecycleStatus: ReservationLifecycleStatus.pendingApproval,
-      adminLane: lane,
-    );
+ReservationRequest _request({
+  required String id,
+  required String lane,
+  RequestStatus status = RequestStatus.pending,
+  ReservationLifecycleStatus lifecycleStatus =
+      ReservationLifecycleStatus.pendingApproval,
+}) => ReservationRequest(
+  id: id,
+  requesterId: 'u1',
+  facility: 'Gymplex',
+  building: 'Main campus',
+  room: 'Gymplex',
+  capacity: 100,
+  requester: 'harry',
+  role: 'user',
+  org: '',
+  purpose: 'Event',
+  date: '24 September 2026',
+  start: '17:30',
+  end: '19:00',
+  heads: 20,
+  submitted: '4 days ago',
+  urgent: true,
+  attachments: 0,
+  noShows: 0,
+  status: status,
+  lifecycleStatus: lifecycleStatus,
+  adminLane: lane,
+);
 
 void main() {
   group('reservation admin lane', () {
@@ -115,6 +120,65 @@ void main() {
 
       expect(state.currentAdminLane, isNull);
       expect(state.visibleRequests, hasLength(2));
+    });
+
+    test('the complete filter uses the reservation lifecycle', () {
+      final state = AppState()
+        ..requests = [
+          _request(
+            id: 'active-approved',
+            lane: 'internal',
+            status: RequestStatus.approved,
+            lifecycleStatus: ReservationLifecycleStatus.confirmed,
+          ),
+          _request(
+            id: 'completed-approved',
+            lane: 'internal',
+            status: RequestStatus.approved,
+            lifecycleStatus: ReservationLifecycleStatus.completed,
+          ),
+        ];
+
+      state.setRequestTab(RequestStatus.completed);
+
+      expect(state.visibleRequests.map((request) => request.id), [
+        'completed-approved',
+      ]);
+    });
+
+    test('completed reservations are not duplicated under approved', () {
+      final state = AppState()
+        ..requests = [
+          _request(
+            id: 'active-approved',
+            lane: 'internal',
+            status: RequestStatus.approved,
+            lifecycleStatus: ReservationLifecycleStatus.confirmed,
+          ),
+          _request(
+            id: 'completed-approved',
+            lane: 'internal',
+            status: RequestStatus.approved,
+            lifecycleStatus: ReservationLifecycleStatus.completed,
+          ),
+        ];
+
+      state.setRequestTab(RequestStatus.approved);
+
+      expect(state.visibleRequests.map((request) => request.id), [
+        'active-approved',
+      ]);
+    });
+
+    test('switching filters leaves the reservation detail closed', () {
+      final state = AppState()
+        ..requests = [_request(id: 'pending-one', lane: 'internal')]
+        ..selectedRequestId = 'pending-one';
+
+      state.setRequestTab(RequestStatus.pending);
+
+      expect(state.selectedRequestId, isNull);
+      expect(state.selectedRequest, isNull);
     });
   });
 }

@@ -42,7 +42,7 @@ class AssistantBubble extends StatelessWidget {
     if (isUser) {
       bg = context.srColors.brand;
       border = null;
-      ink = SR.onDark;
+      ink = context.srColors.onBrand;
     } else if (message.tone == AdvisoryTone.block) {
       bg = context.srColors.redTint;
       border = context.srColors.redLine;

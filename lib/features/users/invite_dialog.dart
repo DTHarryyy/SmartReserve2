@@ -216,11 +216,7 @@ class _InviteDialogState extends State<_InviteDialog> {
               label: _busy ? 'Creating…' : 'Create administrator',
               icon: _busy
                   ? null
-                  : const Icon(
-                      Icons.person_add_alt_1_rounded,
-                      size: SR.iconSm,
-                      color: SR.onDark,
-                    ),
+                  : const Icon(Icons.person_add_alt_1_rounded, size: SR.iconSm),
               kind: SrButtonKind.primary,
               fontSize: 12.5,
               minHeight: 40,
@@ -292,11 +288,7 @@ class _InviteDialogState extends State<_InviteDialog> {
               label: _busy ? 'Saving…' : 'Save credentials file',
               icon: _busy
                   ? null
-                  : const Icon(
-                      Icons.download_rounded,
-                      size: SR.iconSm,
-                      color: SR.onDark,
-                    ),
+                  : const Icon(Icons.download_rounded, size: SR.iconSm),
               kind: SrButtonKind.primary,
               fontSize: 12.5,
               minHeight: 40,

@@ -9,6 +9,8 @@ import 'package:flutter/rendering.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'realtime_changes.dart';
+
 import '../data/campus_data.dart';
 import '../model/facility.dart';
 import '../model/facility_draft.dart';
@@ -1544,6 +1546,17 @@ class BackendNotification {
 
   bool get unread => readAt == null;
 
+  BackendNotification markedRead(DateTime at) => BackendNotification(
+    id: id,
+    kind: kind,
+    title: title,
+    body: body,
+    createdAt: createdAt,
+    requestId: requestId,
+    anomalyId: anomalyId,
+    readAt: at,
+  );
+
   factory BackendNotification.fromJson(Map<String, dynamic> json) =>
       BackendNotification(
         id: json['id'] as String,
@@ -3023,7 +3036,7 @@ abstract interface class SmartReserveBackend {
   });
   Future<BackendVerification?> currentVerification();
   Future<List<BackendVerification>> verifications();
-  Stream<List<BackendVerification>> verificationStream();
+  Stream<void> verificationChanges();
   Future<Uint8List> downloadDocument(String path);
   Future<void> decideVerification({
     required String submissionId,
@@ -3031,7 +3044,7 @@ abstract interface class SmartReserveBackend {
     String? reason,
   });
   Future<List<BackendReservation>> reservations();
-  Stream<List<BackendReservation>> reservationStream();
+  Stream<RowDelta<BackendReservation>> reservationChanges();
   Future<List<BackendBusyWindow>> facilityBusyWindows({
     required List<String> facilityIds,
     required DateTime from,
@@ -3074,7 +3087,8 @@ abstract interface class SmartReserveBackend {
   Future<void> undoReservationAction(String actionId);
   Future<String> reservationAttachmentUrl(String path);
   Future<List<BackendNotification>> notifications();
-  Stream<List<BackendNotification>> notificationStream();
+  Future<void> generateReservationReminders();
+  Stream<RowDelta<BackendNotification>> notificationChanges();
   Future<void> markNotificationRead(String notificationId);
   Future<AnomalyPage> anomalyCenter({
     required AnomalyFilters filters,
@@ -3287,7 +3301,7 @@ abstract interface class SmartReserveCoreBackend {
     String message,
   );
   Future<BackendLoyaltySummary> loyaltySummary();
-  Stream<List<BackendLoyaltyTransaction>> loyaltyTransactionStream();
+  Stream<void> loyaltyTransactionChanges();
   Future<BackendLoyaltyRedemption> redeemLoyaltyReward(String rewardId);
   Future<BackendLoyaltyDiscountClaim> claimLoyaltyDiscount(String offerId);
   Future<List<BackendLoyaltyBalanceRow>> loyaltyBalances({
@@ -3746,6 +3760,66 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   final SupabaseClient _client;
 
   User? get user => _client.auth.currentUser;
+
+  /// Row changes on a public table over a dedicated realtime channel. Unlike
+  /// `.stream()`, subscribing does not re-download the table; callers load the
+  /// initial snapshot themselves. A resync marker is emitted whenever the
+  /// channel rejoins after a drop so callers can catch up on missed changes.
+  Stream<TableChange> _tableChanges(
+    String table, {
+    PostgresChangeFilter? filter,
+  }) {
+    late final StreamController<TableChange> controller;
+    RealtimeChannel? channel;
+    controller = StreamController<TableChange>(
+      onListen: () {
+        var joined = false;
+        channel = _client
+            .channel('sr-$table-${_uuid()}')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: table,
+              filter: filter,
+              callback: (payload) {
+                if (controller.isClosed) return;
+                final deleted = payload.eventType == PostgresChangeEvent.delete;
+                final record = deleted ? payload.oldRecord : payload.newRecord;
+                final id = record['id'];
+                controller.add(
+                  id == null
+                      ? const TableChange.resync()
+                      : TableChange.row(
+                          id: '$id',
+                          deleted: deleted,
+                          record: Map<String, dynamic>.from(record),
+                        ),
+                );
+              },
+            )
+            .subscribe((status, error) {
+              if (controller.isClosed) return;
+              switch (status) {
+                case RealtimeSubscribeStatus.subscribed:
+                  if (joined) controller.add(const TableChange.resync());
+                  joined = true;
+                case RealtimeSubscribeStatus.channelError:
+                  debugPrint('Realtime $table channel error: $error');
+                case RealtimeSubscribeStatus.timedOut:
+                case RealtimeSubscribeStatus.closed:
+                  break;
+              }
+            });
+      },
+      onCancel: () async {
+        final active = channel;
+        channel = null;
+        if (active != null) await _client.removeChannel(active);
+      },
+    );
+    return controller.stream;
+  }
+
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
 
   Future<void> signIn(String email, String password) =>
@@ -4053,11 +4127,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         .toList();
   }
 
-  Stream<List<BackendVerification>> verificationStream() => _client
-      .from('verification_submissions')
-      .stream(primaryKey: ['id'])
-      .order('submitted_at', ascending: false)
-      .asyncMap((_) => verifications());
+  Stream<void> verificationChanges() =>
+      coalesceChanges(_tableChanges('verification_submissions'), (_) async {});
 
   Future<Uint8List> downloadDocument(String path) =>
       _client.storage.from('verification-documents').download(path);
@@ -4115,11 +4186,35 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         .toList();
   }
 
+  Future<List<BackendReservation>> _reservationsById(Set<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final rows = await _client
+        .from('reservation_requests')
+        .select(_reservationSelect)
+        .inFilter('id', ids.toList());
+    return (rows as List)
+        .map(
+          (row) => BackendReservation.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
+  }
+
+  /// Live reservation updates. Each batch of changed rows is re-read by id
+  /// (the list embeds related tables the change payload does not carry); a
+  /// row that can no longer be read was deleted or left the caller's scope.
   @override
-  Stream<List<BackendReservation>> reservationStream() => _client
-      .from('reservation_requests')
-      .stream(primaryKey: ['id'])
-      .asyncMap((_) => reservations());
+  Stream<RowDelta<BackendReservation>> reservationChanges() =>
+      coalesceChanges(_tableChanges('reservation_requests'), (batch) async {
+        if (batch.any((change) => change.isResync)) {
+          return RowDelta.replace(await reservations());
+        }
+        final ids = {for (final change in batch) change.id!};
+        final rows = await _reservationsById(ids);
+        final found = {for (final row in rows) row.id};
+        return RowDelta.patch(upserts: rows, removedIds: ids.difference(found));
+      });
 
   @override
   Future<List<BackendAssistantConversation>> assistantConversations() async {
@@ -5030,10 +5125,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Stream<void> feedbackSentimentAnalysisStream() => _client
-      .from('feedback_sentiment_analyses')
-      .stream(primaryKey: ['id'])
-      .map<void>((_) {});
+  Stream<void> feedbackSentimentAnalysisStream() => coalesceChanges(
+    _tableChanges('feedback_sentiment_analyses'),
+    (_) async {},
+    debounce: const Duration(milliseconds: 500),
+  );
 
   @override
   Future<BackendFeedbackReply> replyToFeedback(
@@ -5058,18 +5154,21 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Stream<List<BackendLoyaltyTransaction>> loyaltyTransactionStream() {
+  Stream<void> loyaltyTransactionChanges() {
     final userId = user?.id;
-    var stream = _client
-        .from('loyalty_transactions')
-        .stream(primaryKey: ['id']);
-    if (userId != null) {
-      stream = stream.eq('user_id', userId);
-    }
-    return stream.asyncMap((rows) async {
-      final summary = await loyaltySummary();
-      return summary.transactions;
-    });
+    return coalesceChanges(
+      _tableChanges(
+        'loyalty_transactions',
+        filter: userId == null
+            ? null
+            : PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'user_id',
+                value: userId,
+              ),
+      ),
+      (_) async {},
+    );
   }
 
   @override
@@ -5403,8 +5502,12 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       .createSignedUrl(path, 60 * 10);
 
   @override
-  Future<List<BackendNotification>> notifications() async {
+  Future<void> generateReservationReminders() async {
     await _client.rpc('generate_my_reservation_reminders');
+  }
+
+  @override
+  Future<List<BackendNotification>> notifications() async {
     final rows = await _client
         .from('app_notifications')
         .select()
@@ -5419,12 +5522,47 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         .toList();
   }
 
+  /// Live notification updates applied straight from the change payload, so a
+  /// new notification costs no extra round trip.
   @override
-  Stream<List<BackendNotification>> notificationStream() => _client
-      .from('app_notifications')
-      .stream(primaryKey: ['id'])
-      .order('created_at', ascending: false)
-      .asyncMap((_) => notifications());
+  Stream<RowDelta<BackendNotification>> notificationChanges() {
+    final userId = user?.id;
+    return coalesceChanges(
+      _tableChanges(
+        'app_notifications',
+        filter: userId == null
+            ? null
+            : PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'recipient_id',
+                value: userId,
+              ),
+      ),
+      (batch) async {
+        if (batch.any((change) => change.isResync)) {
+          return RowDelta.replace(await notifications());
+        }
+        final upserts = <String, BackendNotification>{};
+        final removed = <String>{};
+        for (final change in batch) {
+          final id = change.id!;
+          if (change.deleted) {
+            upserts.remove(id);
+            removed.add(id);
+          } else {
+            removed.remove(id);
+            upserts[id] = BackendNotification.fromJson(change.record);
+          }
+        }
+        // Newest first, matching the list order.
+        return RowDelta.patch(
+          upserts: upserts.values.toList().reversed.toList(),
+          removedIds: removed,
+        );
+      },
+      debounce: const Duration(milliseconds: 50),
+    );
+  }
 
   @override
   Future<void> markNotificationRead(String notificationId) async {
@@ -5579,17 +5717,14 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }) async {
     final currentUser = user;
     if (currentUser == null) throw const AuthException('Please sign in again.');
-    await _client.from('user_push_tokens').upsert(
-      {
-        'user_id': currentUser.id,
-        'token': token,
-        'platform': platform,
-        'device_label': deviceLabel,
-        'enabled': true,
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      onConflict: 'token',
-    );
+    await _client.from('user_push_tokens').upsert({
+      'user_id': currentUser.id,
+      'token': token,
+      'platform': platform,
+      'device_label': deviceLabel,
+      'enabled': true,
+      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'token');
   }
 
   @override
@@ -5627,10 +5762,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Stream<List<BackendFacility>> facilityStream() => _client
-      .from('facilities')
-      .stream(primaryKey: ['id'])
-      .asyncMap((_) => facilities());
+  Stream<List<BackendFacility>> facilityStream() =>
+      coalesceChanges(_tableChanges('facilities'), (_) => facilities());
 
   @override
   Future<BackendFacility> saveFacility(
@@ -6026,10 +6159,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Stream<List<BackendAccount>> accountStream() => _client
-      .from('profiles')
-      .stream(primaryKey: ['id'])
-      .asyncMap((_) => accounts());
+  Stream<List<BackendAccount>> accountStream() => coalesceChanges(
+    _tableChanges('profiles'),
+    (_) => accounts(),
+    debounce: const Duration(milliseconds: 500),
+  );
 
   @override
   Future<BackendAccount> inviteAccountAdmin({

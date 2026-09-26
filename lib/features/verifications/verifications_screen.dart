@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -488,20 +490,40 @@ class _VerificationPanelState extends State<_VerificationPanel> {
   );
 }
 
-class _DocumentViewer extends StatelessWidget {
+class _DocumentViewer extends StatefulWidget {
   const _DocumentViewer({required this.state, required this.submission});
 
   final AppState state;
   final VerificationSubmission submission;
 
   @override
+  State<_DocumentViewer> createState() => _DocumentViewerState();
+}
+
+class _DocumentViewerState extends State<_DocumentViewer> {
+  // Held across rebuilds: creating the future in build() re-downloaded the
+  // private document on every app state change.
+  Future<Uint8List>? _download;
+  String? _downloadPath;
+
+  VerificationSubmission get submission => widget.submission;
+
+  Future<Uint8List>? _downloadFor(String path) {
+    if (_downloadPath != path) {
+      _downloadPath = path;
+      _download = widget.state.backend!.downloadDocument(path);
+    }
+    return _download;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final path = submission.documentPath;
-    if (path == null || state.backend == null) {
+    if (path == null || widget.state.backend == null) {
       return _message(context, 'No document is available.');
     }
     return FutureBuilder(
-      future: state.backend!.downloadDocument(path),
+      future: _downloadFor(path),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return _message(context, 'Loading private document…');

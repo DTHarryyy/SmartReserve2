@@ -183,21 +183,15 @@ class _BrandMark extends StatelessWidget {
       SR.space16,
     ),
     child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const SrLogo(size: SR.controlSm, radius: SR.rSm),
         const SizedBox(width: SR.space12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'SmartReserve',
-                style: sans(15, w: 600, height: 1.1, tracking: -.015),
-              ),
-              const SizedBox(height: SR.space2),
-              Text('CSU APARRI', style: SrType.overline()),
-            ],
-          ),
+        Image.asset(
+          'assets/csu_logo_transparent.png',
+          width: SR.controlSm,
+          height: SR.controlSm,
+          fit: BoxFit.contain,
         ),
       ],
     ),
@@ -217,7 +211,10 @@ class _GroupLabel extends StatelessWidget {
       SR.space12,
       SR.space6,
     ),
-    child: Text(label.toUpperCase(), style: SrType.overline()),
+    child: Text(
+      label.toUpperCase(),
+      style: SrType.overline(color: context.srColors.navMuted),
+    ),
   );
 }
 
@@ -272,9 +269,9 @@ class _NavButton extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: current
-                      ? context.srColors.primaryTint
+                      ? context.srColors.navSelectedBg
                       : (hovered
-                            ? context.srColors.surfaceSubtle
+                            ? context.srColors.navHover
                             : Colors.transparent),
                   borderRadius: BorderRadius.circular(SR.rSm),
                 ),
@@ -284,10 +281,10 @@ class _NavButton extends StatelessWidget {
                       icon,
                       size: SR.iconMd,
                       color: current
-                          ? SR.primary
+                          ? context.srColors.navSelectedForeground
                           : (hovered
-                                ? context.srColors.ink3
-                                : context.srColors.ink4),
+                                ? context.srColors.navForeground
+                                : context.srColors.navMuted),
                     ),
                     const SizedBox(width: SR.space12),
                     Expanded(
@@ -299,10 +296,8 @@ class _NavButton extends StatelessWidget {
                           13,
                           w: current ? 600 : 500,
                           color: current
-                              ? context.srColors.primaryDeep
-                              : (hovered
-                                    ? context.srColors.ink
-                                    : context.srColors.ink2),
+                              ? context.srColors.navSelectedForeground
+                              : context.srColors.navForeground,
                         ),
                       ),
                     ),
@@ -314,7 +309,7 @@ class _NavButton extends StatelessWidget {
                         style: mono(
                           10,
                           w: 500,
-                          color: context.srColors.mutedLight,
+                          color: context.srColors.navMuted,
                         ),
                       ),
                   ],
@@ -329,7 +324,9 @@ class _NavButton extends StatelessWidget {
                   curve: SR.easing,
                   width: 3,
                   decoration: BoxDecoration(
-                    color: current ? SR.primary : Colors.transparent,
+                    color: current
+                        ? context.srColors.navSelectedForeground
+                        : Colors.transparent,
                     borderRadius: const BorderRadius.horizontal(
                       right: Radius.circular(3),
                     ),
@@ -356,16 +353,18 @@ class _PendingBadge extends StatelessWidget {
     constraints: const BoxConstraints(minWidth: 20),
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: current ? SR.primary : context.srColors.primaryTint,
+      color: current ? context.srColors.navBg : context.srColors.navSelectedBg,
       borderRadius: BorderRadius.circular(SR.rFull),
-      border: current ? null : Border.all(color: context.srColors.primaryLine),
+      border: Border.all(color: context.srColors.navBorder),
     ),
     child: Text(
       '$count',
       style: mono(
         10,
         w: 600,
-        color: current ? SR.onDark : context.srColors.primaryDeep,
+        color: current
+            ? context.srColors.navForeground
+            : context.srColors.navSelectedForeground,
       ),
     ),
   );
@@ -385,22 +384,16 @@ class _MappedStat extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(SR.space12, 0, SR.space12, SR.space12),
       padding: const EdgeInsets.all(SR.space12),
       decoration: BoxDecoration(
-        color: complete
-            ? context.srColors.greenTint
-            : context.srColors.surfaceSubtle,
+        color: context.srColors.navHover,
         borderRadius: BorderRadius.circular(SR.rMd),
-        border: Border.all(
-          color: complete
-              ? context.srColors.greenLine
-              : context.srColors.border,
-        ),
+        border: Border.all(color: context.srColors.navBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Mapped facilities',
-            style: SrType.caption(w: 500, color: context.srColors.ink3),
+            style: SrType.caption(w: 500, color: context.srColors.navMuted),
           ),
           const SizedBox(height: SR.space4),
           Row(
@@ -413,13 +406,14 @@ class _MappedStat extends StatelessWidget {
                   20,
                   w: 600,
                   tracking: -.02,
-                  color: complete
-                      ? context.srColors.greenDark
-                      : context.srColors.ink,
+                  color: context.srColors.navForeground,
                 ),
               ),
               const SizedBox(width: SR.space6),
-              Text('/ $total', style: mono(11, color: context.srColors.muted)),
+              Text(
+                '/ $total',
+                style: mono(11, color: context.srColors.navMuted),
+              ),
             ],
           ),
           const SizedBox(height: SR.space8),
@@ -427,12 +421,7 @@ class _MappedStat extends StatelessWidget {
             borderRadius: BorderRadius.circular(SR.rXs),
             child: Stack(
               children: [
-                Container(
-                  height: 5,
-                  color: complete
-                      ? context.srColors.greenLine
-                      : context.srColors.surfaceSunken,
-                ),
+                Container(height: 5, color: context.srColors.navBorder),
                 AnimatedFractionallySizedBox(
                   duration: SR.progressSweep,
                   curve: SR.easing,
@@ -441,7 +430,7 @@ class _MappedStat extends StatelessWidget {
                       : (mapped / total).clamp(0.0, 1.0),
                   child: Container(
                     height: 5,
-                    color: complete ? SR.green : SR.primary,
+                    color: context.srColors.navSelectedBg,
                   ),
                 ),
               ],
@@ -454,11 +443,7 @@ class _MappedStat extends StatelessWidget {
                 : '$outstanding ${outstanding == 1 ? 'facility' : 'facilities'} '
                       'still ${outstanding == 1 ? 'needs' : 'need'} a verified '
                       'pin.',
-            style: SrType.caption(
-              color: complete
-                  ? context.srColors.greenDark
-                  : context.srColors.ink4,
-            ),
+            style: SrType.caption(color: context.srColors.navMuted),
           ),
         ],
       ),
@@ -490,9 +475,7 @@ class _AdminFooter extends StatelessWidget {
               duration: SR.stateChange,
               padding: const EdgeInsets.all(SR.space8),
               decoration: BoxDecoration(
-                color: hovered
-                    ? context.srColors.surfaceSubtle
-                    : Colors.transparent,
+                color: hovered ? context.srColors.navHover : Colors.transparent,
                 borderRadius: BorderRadius.circular(SR.rSm),
               ),
               child: Row(
@@ -523,13 +506,19 @@ class _AdminFooter extends StatelessWidget {
                           admin.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: sans(12, w: 600, color: context.srColors.ink),
+                          style: sans(
+                            12,
+                            w: 600,
+                            color: context.srColors.navForeground,
+                          ),
                         ),
                         Text(
                           'Administrator · ${admin.role.label}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: SrType.caption(),
+                          style: SrType.caption(
+                            color: context.srColors.navMuted,
+                          ),
                         ),
                       ],
                     ),
@@ -538,8 +527,8 @@ class _AdminFooter extends StatelessWidget {
                     Icons.chevron_right_rounded,
                     size: SR.iconMd,
                     color: hovered
-                        ? context.srColors.ink3
-                        : context.srColors.mutedLight,
+                        ? context.srColors.navForeground
+                        : context.srColors.navMuted,
                   ),
                 ],
               ),

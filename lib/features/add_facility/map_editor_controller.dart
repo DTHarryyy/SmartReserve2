@@ -54,28 +54,28 @@ class MapAdvisory {
 
   Color background(BuildContext context) => switch (tone) {
     AdvisoryTone.good => context.srColors.greenTint,
-    AdvisoryTone.info => context.srColors.primaryTint,
+    AdvisoryTone.info => context.srColors.infoContainer,
     AdvisoryTone.warn => context.srColors.amberTint,
     AdvisoryTone.block => context.srColors.redTint,
   };
 
   Color borderColor(BuildContext context) => switch (tone) {
     AdvisoryTone.good => context.srColors.greenLine,
-    AdvisoryTone.info => context.srColors.primaryLine,
+    AdvisoryTone.info => context.srColors.infoLine,
     AdvisoryTone.warn => context.srColors.amberLine,
     AdvisoryTone.block => context.srColors.redLine,
   };
 
   Color foreground(BuildContext context) => switch (tone) {
     AdvisoryTone.good => context.srColors.greenDark,
-    AdvisoryTone.info => context.srColors.primaryDeep,
+    AdvisoryTone.info => context.srColors.info,
     AdvisoryTone.warn => context.srColors.amber,
     AdvisoryTone.block => context.srColors.red,
   };
 
   Color iconBackground(BuildContext context) => switch (tone) {
     AdvisoryTone.good => context.srColors.greenTint,
-    AdvisoryTone.info => context.srColors.primaryTint,
+    AdvisoryTone.info => context.srColors.infoContainer,
     AdvisoryTone.warn => context.srColors.amberIcon,
     AdvisoryTone.block => context.srColors.redTint,
   };

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../backend/realtime_changes.dart';
 import '../backend/push_service.dart';
 import '../backend/supabase_service.dart';
 import '../data/campus_data.dart';
@@ -674,6 +675,11 @@ class AppState extends ChangeNotifier {
   }
 
   void setAnomalyFilters(AnomalyFilters filters) {
+    anomalyFilters = filters;
+    selectedAnomalyId = null;
+    selectedAnomalyDetail = null;
+    anomalyDetailError = null;
+    notifyListeners();
     unawaited(refreshAnomalyCenter(filters: filters));
   }
 
@@ -894,12 +900,12 @@ class AppState extends ChangeNotifier {
   SessionProfile? sessionProfile;
   BackendVerification? myVerification;
   Account? _sessionAccount;
-  StreamSubscription<List<BackendVerification>>? _verificationSubscription;
+  StreamSubscription<void>? _verificationSubscription;
   StreamSubscription<List<BackendFacility>>? _facilitySubscription;
   StreamSubscription<List<BackendAccount>>? _accountSubscription;
-  StreamSubscription<List<BackendReservation>>? _reservationSubscription;
-  StreamSubscription<List<BackendNotification>>? _notificationSubscription;
-  StreamSubscription<List<BackendLoyaltyTransaction>>? _loyaltySubscription;
+  StreamSubscription<RowDelta<BackendReservation>>? _reservationSubscription;
+  StreamSubscription<RowDelta<BackendNotification>>? _notificationSubscription;
+  StreamSubscription<void>? _loyaltySubscription;
   StreamSubscription<void>? _feedbackSentimentSubscription;
 
   bool get hasSession => sessionProfile != null;
@@ -1044,13 +1050,33 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> initializeBackend() async {
-    await loadThemePreference();
     final service = backend;
-    if (service == null) return;
-    await applyBackendProfile(await service.currentProfile());
+    if (service == null) {
+      await loadThemePreference();
+      return;
+    }
+    final profile = service.currentProfile();
+    await loadThemePreference();
+    await applyBackendProfile(await profile);
   }
 
+  /// Bumped on every profile change so background workspace loads started for
+  /// an earlier session cannot write into the current one.
+  int _sessionGeneration = 0;
+
+  /// True while the signed-in workspace is still loading after routing.
+  bool workspaceLoading = false;
+
+  /// Completes when the background workspace load for the current session has
+  /// finished. Tests and callers that need fully loaded data can await it.
+  Future<void> workspaceReady = Future.value();
+
+  bool _isCurrentSession(int generation) => generation == _sessionGeneration;
+
   Future<void> applyBackendProfile(SessionProfile? profile) async {
+    final generation = ++_sessionGeneration;
+    workspaceLoading = false;
+    workspaceReady = Future.value();
     sessionProfile = profile;
     _syncSessionAccount();
     _clearAnomalyState();
@@ -1122,7 +1148,46 @@ class AppState extends ChangeNotifier {
         : AppView.auth;
     notifyListeners();
 
-    await _runSessionRefresh('facilities', refreshFacilities);
+    // Renters are routed by their verification record (see AuthController),
+    // so that single lookup stays on the critical path. Everything else loads
+    // in the background behind per-feature loading states.
+    if (!profile.isAdmin) {
+      _clearAdminLoyaltyState();
+      if (!_useDemoData) accounts = [];
+      await _runSessionRefresh('your verification', () async {
+        final record = await backend?.currentVerification();
+        if (!_isCurrentSession(generation)) return;
+        myVerification = record;
+        verifications = record == null ? [] : [_toVerification(record)];
+      });
+      if (!_isCurrentSession(generation)) return;
+      _syncSessionAccount();
+    }
+
+    workspaceLoading = true;
+    workspaceReady = _loadWorkspace(profile, generation);
+    unawaited(workspaceReady);
+  }
+
+  Future<void> _loadWorkspace(SessionProfile profile, int generation) async {
+    bool stale() => !_isCurrentSession(generation);
+
+    await Future.wait([
+      _runSessionRefresh('facilities', refreshFacilities),
+      _runSessionRefresh('reservations', refreshReservations),
+      _runSessionRefresh('notifications', refreshNotifications),
+      if (profile.isInternalAdmin) ...[
+        _runSessionRefresh('accounts', refreshAccounts),
+        _runSessionRefresh('verifications', refreshVerifications),
+      ] else if (profile.isExternalAdmin && !_useDemoData)
+        _runSessionRefresh('accounts', refreshAccounts)
+      else if (!profile.isAdmin)
+        _runSessionRefresh('loyalty', refreshLoyalty),
+    ]);
+    if (stale()) return;
+
+    // Live channels start after the initial snapshot so their first events are
+    // real changes rather than a duplicate of the load above.
     _facilitySubscription = backend?.facilityStream().listen(
       _applyFacilityRows,
       onError: (Object error) {
@@ -1131,28 +1196,33 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    await _runSessionRefresh('reservations', refreshReservations);
-    _reservationSubscription = backend?.reservationStream().listen(
-      _applyReservationRows,
+    _reservationSubscription = backend?.reservationChanges().listen(
+      _applyReservationChange,
       onError: (Object error) {
         reservationsError = 'Reservations could not refresh: $error';
         reservationsLoading = false;
         notifyListeners();
       },
     );
-    await _runSessionRefresh('notifications', refreshNotifications);
-    _notificationSubscription = backend?.notificationStream().listen(
-      _applyNotifications,
+    _notificationSubscription = backend?.notificationChanges().listen(
+      _applyNotificationChange,
       onError: (Object error) {
         notificationsError = 'Notifications could not refresh: $error';
         notifyListeners();
       },
     );
     unawaited(pushService?.registerIfAlreadyGranted() ?? Future.value());
+    // Day-before reminders arrive over the notification channel above.
+    unawaited(
+      backend?.generateReservationReminders().catchError(
+            (Object error) => debugPrint('Reminder generation failed: $error'),
+          ) ??
+          Future.value(),
+    );
+
     if (profile.isInternalAdmin) {
       _clearAdminLoyaltyState();
       _syncFeedbackSentimentSubscription();
-      await _runSessionRefresh('accounts', refreshAccounts);
       _accountSubscription = backend?.accountStream().listen(
         _applyBackendAccounts,
         onError: (Object error) {
@@ -1161,8 +1231,7 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
-      await _runSessionRefresh('verifications', refreshVerifications);
-      _verificationSubscription = backend?.verificationStream().listen(
+      _verificationSubscription = backend?.verificationChanges().listen(
         (_) {
           unawaited(refreshVerifications());
         },
@@ -1187,31 +1256,21 @@ class AppState extends ChangeNotifier {
                 paidRequesterNames.contains(account.name))
               account,
         ];
-      } else {
-        await _runSessionRefresh('accounts', refreshAccounts);
       }
       unawaited(refreshAnomalyCenter());
       await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else {
-      _clearAdminLoyaltyState();
-      if (!_useDemoData) accounts = [];
-      await _runSessionRefresh('your verification', () async {
-        myVerification = await backend?.currentVerification();
-        verifications = myVerification == null
-            ? []
-            : [_toVerification(myVerification!)];
-      });
-      _syncSessionAccount();
-      _verificationSubscription = backend?.verificationStream().listen(
+      _verificationSubscription = backend?.verificationChanges().listen(
         (_) {
           unawaited(refreshMyVerification());
         },
         onError: (Object error) =>
             debugPrint('Verification live refresh failed: $error'),
       );
-      await _runSessionRefresh('loyalty', refreshLoyalty);
       _syncLoyaltySubscription();
     }
+    if (stale()) return;
+    workspaceLoading = false;
     notifyListeners();
   }
 
@@ -1265,7 +1324,7 @@ class AppState extends ChangeNotifier {
     if (_useDemoData || service == null || !loyaltyAvailableForCurrentUser) {
       return;
     }
-    _loyaltySubscription = service.loyaltyTransactionStream().listen(
+    _loyaltySubscription = service.loyaltyTransactionChanges().listen(
       (_) {
         unawaited(refreshLoyalty());
       },
@@ -1346,7 +1405,9 @@ class AppState extends ChangeNotifier {
   Future<void> refreshVerifications() async {
     final service = backend;
     if (service == null || !isInternalAdmin) return;
+    final generation = _sessionGeneration;
     final rows = await service.verifications();
+    if (!_isCurrentSession(generation)) return;
     verifications = rows.map(_toVerification).toList();
     notifyListeners();
   }
@@ -1360,16 +1421,18 @@ class AppState extends ChangeNotifier {
   Future<void> refreshAccounts() async {
     final service = backend;
     if (service == null || (!isInternalAdmin && !isExternalAdmin)) return;
+    final generation = _sessionGeneration;
     accountsLoading = true;
     accountsError = null;
     notifyListeners();
     try {
-      _applyBackendAccounts(
-        isExternalAdmin
-            ? await service.externalClients()
-            : await service.accounts(),
-      );
+      final rows = isExternalAdmin
+          ? await service.externalClients()
+          : await service.accounts();
+      if (!_isCurrentSession(generation)) return;
+      _applyBackendAccounts(rows);
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       accountsLoading = false;
       accountsError = 'Accounts could not be loaded: ${_accountError(error)}';
       notifyListeners();
@@ -1881,12 +1944,16 @@ class AppState extends ChangeNotifier {
   Future<void> refreshFacilities() async {
     final service = backend;
     if (service == null || sessionProfile == null) return;
+    final generation = _sessionGeneration;
     facilitiesLoading = true;
     facilitiesError = null;
     notifyListeners();
     try {
-      _applyFacilityRows(await service.facilities());
+      final rows = await service.facilities();
+      if (!_isCurrentSession(generation)) return;
+      _applyFacilityRows(rows);
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       facilitiesError = 'Facilities could not be loaded: $error';
       facilitiesLoading = false;
       notifyListeners();
@@ -2141,23 +2208,53 @@ class AppState extends ChangeNotifier {
   Future<void> refreshReservations() async {
     final service = backend;
     if (service == null || !hasSession) return;
+    final generation = _sessionGeneration;
     reservationsLoading = true;
     reservationsError = null;
     notifyListeners();
     try {
-      _applyReservationRows(await service.reservations());
+      final rows = await service.reservations();
+      if (!_isCurrentSession(generation)) return;
+      _applyReservationRows(rows);
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       reservationsError = 'Reservations could not load: $error';
       reservationsLoading = false;
       notifyListeners();
     }
   }
 
-  void _applyReservationRows(List<BackendReservation> rows) {
+  /// Merges a live batch of changed reservations, converting only the rows
+  /// that changed instead of rebuilding every request from scratch.
+  void _applyReservationChange(RowDelta<BackendReservation> delta) {
+    if (delta.replacesAll) {
+      _applyReservationRows(delta.rows!);
+      return;
+    }
+    final rows = applyRowDelta(
+      _backendReservations.values.toList(),
+      delta,
+      (row) => row.id,
+    );
+    final converted = applyRowDelta(
+      requests,
+      RowDelta.patch(
+        upserts: delta.upserts.map(_toReservationRequest).toList(),
+        removedIds: delta.removedIds,
+      ),
+      (request) => request.id,
+    );
+    _applyReservationRows(rows, converted: converted);
+  }
+
+  void _applyReservationRows(
+    List<BackendReservation> rows, {
+    List<ReservationRequest>? converted,
+  }) {
     _backendReservations
       ..clear()
       ..addEntries(rows.map((row) => MapEntry(row.id, row)));
-    requests = rows.map(_toReservationRequest).toList();
+    requests = converted ?? rows.map(_toReservationRequest).toList();
     bookings = [
       for (final row in rows)
         for (final occurrence in row.occurrences)
@@ -2392,11 +2489,17 @@ class AppState extends ChangeNotifier {
   Future<void> refreshNotifications() async {
     final service = backend;
     if (service == null || !hasSession) return;
+    final generation = _sessionGeneration;
     try {
-      _applyNotifications(await service.notifications());
-      notificationPreferences = await service.notificationPreferences();
-      notifyListeners();
+      final (rows, preferences) = await (
+        service.notifications(),
+        service.notificationPreferences(),
+      ).wait;
+      if (!_isCurrentSession(generation)) return;
+      notificationPreferences = preferences;
+      _applyNotifications(rows);
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       notificationsError = 'Notifications could not load: $error';
       notifyListeners();
     }
@@ -2428,11 +2531,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  static const _notificationListLimit = 100;
+
+  void _applyNotificationChange(RowDelta<BackendNotification> delta) {
+    final merged = applyRowDelta(notifications, delta, (item) => item.id);
+    _applyNotifications(
+      merged.length > _notificationListLimit
+          ? merged.sublist(0, _notificationListLimit)
+          : merged,
+    );
+  }
+
   Future<void> openNotification(BackendNotification notification) async {
     final service = backend;
     if (notification.unread && service != null) {
+      // Mark read locally right away; the realtime update confirms it.
+      _applyNotifications([
+        for (final item in notifications)
+          item.id == notification.id ? item.markedRead(DateTime.now()) : item,
+      ]);
       await service.markNotificationRead(notification.id);
-      await refreshNotifications();
     }
     if (notification.kind == 'feedback_low_rating' && isAdmin) {
       goTo(AppView.feedback);
@@ -2465,7 +2583,7 @@ class AppState extends ChangeNotifier {
       final request = requestById(requestId);
       final previous = selectedRequestId;
       if (request != null) {
-        requestTab = request.status;
+        requestTab = _tabForRequest(request);
         selectedRequestId = request.id;
       }
       notifyListeners();
@@ -2758,7 +2876,7 @@ class AppState extends ChangeNotifier {
   }
 
   RequestStatus requestTab = RequestStatus.pending;
-  String? selectedRequestId = 'r1';
+  String? selectedRequestId;
   final Set<String> selectedRequestIds = {};
 
   String? _requestAnchorId;
@@ -3065,7 +3183,7 @@ class AppState extends ChangeNotifier {
     final request = requestById(id);
     if (request == null) return;
     final previous = selectedRequestId;
-    requestTab = request.status;
+    requestTab = _tabForRequest(request);
     selectedRequestId = request.id;
     selectedRequestIds.clear();
     _requestAnchorId = null;
@@ -3313,6 +3431,7 @@ class AppState extends ChangeNotifier {
       'cancelled' => CalendarEventState.cancelled,
       _ => switch (request.status) {
         RequestStatus.approved => CalendarEventState.confirmed,
+        RequestStatus.completed => CalendarEventState.confirmed,
         RequestStatus.pending => CalendarEventState.needsDecision,
         RequestStatus.changesRequested => CalendarEventState.changesRequested,
         RequestStatus.declined => CalendarEventState.declined,
@@ -3322,8 +3441,21 @@ class AppState extends ChangeNotifier {
     };
   }
 
+  bool requestMatchesTab(ReservationRequest request, RequestStatus tab) {
+    if (tab == RequestStatus.completed) {
+      return request.lifecycleStatus == ReservationLifecycleStatus.completed;
+    }
+    return request.lifecycleStatus != ReservationLifecycleStatus.completed &&
+        request.status == tab;
+  }
+
+  RequestStatus _tabForRequest(ReservationRequest request) =>
+      request.lifecycleStatus == ReservationLifecycleStatus.completed
+      ? RequestStatus.completed
+      : request.status;
+
   List<ReservationRequest> get visibleRequests => requests
-      .where((r) => r.status == requestTab && canDecideRequest(r))
+      .where((r) => requestMatchesTab(r, requestTab) && canDecideRequest(r))
       .toList();
 
   ReservationRequest? get selectedRequest {
@@ -3338,8 +3470,7 @@ class AppState extends ChangeNotifier {
     requestTab = tab;
     selectedRequestIds.clear();
     _requestAnchorId = null;
-    final list = visibleRequests;
-    selectedRequestId = list.isEmpty ? null : list.first.id;
+    selectedRequestId = null;
     notifyListeners();
     _syncSelectedRequestRiskSummary(previous, selectedRequestId);
   }
@@ -3401,6 +3532,11 @@ class AppState extends ChangeNotifier {
     if (!_useDemoData && backend != null && hasSession) {
       final action = switch (outcome) {
         RequestStatus.approved => 'approve',
+        RequestStatus.completed => throw ArgumentError.value(
+          outcome,
+          'outcome',
+          'Completed reservations are filtered by lifecycle and are not a decision outcome.',
+        ),
         RequestStatus.declined => 'decline',
         RequestStatus.changesRequested => 'request_changes',
         RequestStatus.pending => 'reopen',
@@ -3430,6 +3566,7 @@ class AppState extends ChangeNotifier {
     log(
       action: switch (outcome) {
         RequestStatus.approved => 'approved the reservation',
+        RequestStatus.completed => 'completed the reservation',
         RequestStatus.declined => 'declined the reservation',
         RequestStatus.changesRequested =>
           'requested changes to the reservation',
@@ -6511,10 +6648,8 @@ class AppState extends ChangeNotifier {
         request.status != RequestStatus.approved) {
       return false;
     }
-    if (request.lifecycleStatus !=
-            ReservationLifecycleStatus.pendingApproval &&
-        request.lifecycleStatus !=
-            ReservationLifecycleStatus.awaitingPayment &&
+    if (request.lifecycleStatus != ReservationLifecycleStatus.pendingApproval &&
+        request.lifecycleStatus != ReservationLifecycleStatus.awaitingPayment &&
         request.lifecycleStatus != ReservationLifecycleStatus.confirmed) {
       return false;
     }
@@ -6527,11 +6662,8 @@ class AppState extends ChangeNotifier {
     ReservationRequest request, {
     DateTime? now,
   }) => request.occurrences.any(
-    (occurrence) => canRequestOccurrenceReschedule(
-      request,
-      occurrence,
-      now: now,
-    ),
+    (occurrence) =>
+        canRequestOccurrenceReschedule(request, occurrence, now: now),
   );
 
   bool _hasFutureActiveOccurrence(ReservationRequest request, {DateTime? now}) {
@@ -6612,9 +6744,7 @@ class AppState extends ChangeNotifier {
     required String reason,
   }) async {
     final trimmedReason = reason.trim();
-    final originalDuration = occurrence.endsAt.difference(
-      occurrence.startsAt,
-    );
+    final originalDuration = occurrence.endsAt.difference(occurrence.startsAt);
     final requestedDuration = endsAt.difference(startsAt);
     final maxDurationMinutes = facilityNamed(
       request.facility,

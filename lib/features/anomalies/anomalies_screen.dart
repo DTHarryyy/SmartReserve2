@@ -52,10 +52,11 @@ class AnomaliesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final stacked = MediaQuery.sizeOf(context).width < SR.desktopMin;
+    final panelOpen = state.selectedAnomalyId != null;
 
     return QueueShell(
-      stacked: stacked,
-      panelOpen: state.selectedAnomalyId != null,
+      stacked: stacked || !panelOpen,
+      panelOpen: panelOpen,
       onClosePanel: () => state.selectAnomaly(null),
       panel: state.selectedAnomalyId == null
           ? null
@@ -225,6 +226,7 @@ class AnomaliesScreen extends StatelessWidget {
           children: [
             for (final anomaly in state.anomalyRows)
               RecordRow(
+                key: ValueKey('anomaly-row-${anomaly.id}'),
                 columns: _columns,
                 cells: _cells(context, state, anomaly),
                 onTap: () => state.selectAnomaly(anomaly.id),

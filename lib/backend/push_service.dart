@@ -22,7 +22,10 @@ class PushService {
   })
   registerToken;
   final Future<void> Function(String token) disableToken;
-  final VoidCallback onForegroundNotification;
+
+  /// Called for pushes that arrive while the app is open; the OS does not
+  /// display those, so the app shows them itself.
+  final void Function(String? title, String? body) onForegroundNotification;
   final void Function(String kind, String? requestId) onNotificationOpened;
 
   static const _webVapidKey = String.fromEnvironment(
@@ -89,7 +92,10 @@ class PushService {
       unawaited(registerToken(token: token, platform: _platform));
     });
     _foregroundSubscription ??= FirebaseMessaging.onMessage.listen(
-      (_) => onForegroundNotification(),
+      (message) => onForegroundNotification(
+        message.notification?.title,
+        message.notification?.body,
+      ),
     );
     _openedAppSubscription ??= FirebaseMessaging.onMessageOpenedApp.listen(
       _handleOpenedMessage,

@@ -44,8 +44,8 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: "assets/smart reserve logo.png"
-    background_color: "#ffffff"
-    theme_color: "#6367FF"
+    background_color: "#F3EFF5"
+    theme_color: "#800020"
 
 flutter:
   uses-material-design: true

@@ -97,7 +97,8 @@ Deno.serve(async (request) => {
     const deadTokens: string[] = [];
     let lastErrorCode: string | null = null;
 
-    for (const token of job.tokens) {
+    // A recipient's devices are independent, so send to all of them at once.
+    await Promise.all(job.tokens.map(async (token) => {
       try {
         const result = await sendFcmMessage({
           projectId: fcmProjectId,
@@ -107,7 +108,7 @@ Deno.serve(async (request) => {
         });
         if (result.ok) {
           sentCount += 1;
-          continue;
+          return;
         }
         const outcome = classifyFcmError(result.status, result.body);
         lastErrorCode = sanitizeErrorCode(extractErrorStatus(result.body) ?? `http_${result.status}`);
@@ -115,7 +116,7 @@ Deno.serve(async (request) => {
       } catch (error) {
         lastErrorCode = sanitizeErrorCode(error instanceof Error ? error.message : error);
       }
-    }
+    }));
 
     const status = sentCount > 0 ? "sent" : "failed";
     const { error: completeError } = await admin.rpc("complete_push_delivery", {

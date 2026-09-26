@@ -10,11 +10,17 @@ import 'package:flutter/material.dart';
 import 'sr_theme.dart';
 
 abstract final class SR {
-  static const primary = Color(0xFF1A73E8);
+  static Color get primary =>
+      _dark ? SrColors.dark.brand : SrColors.light.brand;
 
-  static const primaryHover = Color(0xFF1765CC);
+  static Color get primaryHover =>
+      _dark ? SrColors.dark.brandHover : SrColors.light.brandHover;
 
-  static const primaryPressed = Color(0xFF1254AD);
+  static Color get primaryPressed =>
+      _dark ? SrColors.dark.brandPressed : SrColors.light.brandPressed;
+
+  static Color get onPrimary =>
+      _dark ? SrColors.dark.onBrand : SrColors.light.onBrand;
 
   @Deprecated('Use context.srColors.primaryDeep instead.')
   static Color get primaryDeep =>
@@ -36,11 +42,19 @@ abstract final class SR {
   static Color get primarySoft =>
       _dark ? SrColors.dark.primarySoft : SrColors.light.primarySoft;
 
-  static const primaryBright = Color(0xFF00B4FF);
+  static Color get primaryBright =>
+      _dark ? SrColors.dark.accent : SrColors.light.accent;
 
-  static const secondary = Color(0xFF00B4FF);
-  static const accent = Color(0xFF00E0C7);
-  static const neutralDark = Color(0xFF0B1B33);
+  static Color get secondary =>
+      _dark ? SrColors.dark.secondary : SrColors.light.secondary;
+  static Color get accent =>
+      _dark ? SrColors.dark.accent : SrColors.light.accent;
+  static Color get neutralDark => SrColors.light.text;
+  static Color get info => _dark ? SrColors.dark.info : SrColors.light.info;
+  static Color get infoTint =>
+      _dark ? SrColors.dark.infoContainer : SrColors.light.infoContainer;
+  static Color get infoLine =>
+      _dark ? SrColors.dark.infoLine : SrColors.light.infoLine;
 
   static bool _dark = false;
 
@@ -138,7 +152,8 @@ abstract final class SR {
   static Color get glassLine2 =>
       _dark ? SrColors.dark.glassLine2 : SrColors.light.glassLine2;
 
-  static const green = Color(0xFF12B76A);
+  static Color get green =>
+      _dark ? SrColors.dark.success : SrColors.light.success;
   @Deprecated('Use context.srColors.greenDark instead.')
   static Color get greenDark =>
       _dark ? SrColors.dark.greenDark : SrColors.light.greenDark;
@@ -175,7 +190,8 @@ abstract final class SR {
   @Deprecated('Use context.srColors.amberTitle instead.')
   static Color get amberTitle =>
       _dark ? SrColors.dark.amberTitle : SrColors.light.amberTitle;
-  static const orange = Color(0xFFF79009);
+  static Color get orange =>
+      _dark ? SrColors.dark.accent : SrColors.light.accent;
 
   @Deprecated('Use context.srColors.red instead.')
   static Color get red => _dark ? SrColors.dark.red : SrColors.light.red;
@@ -185,7 +201,8 @@ abstract final class SR {
   @Deprecated('Use context.srColors.redLine instead.')
   static Color get redLine =>
       _dark ? SrColors.dark.redLine : SrColors.light.redLine;
-  static const redBright = Color(0xFFF97066);
+  static Color get redBright =>
+      _dark ? SrColors.dark.error : SrColors.light.error;
   @Deprecated('Use context.srColors.redInk instead.')
   static Color get redInk =>
       _dark ? SrColors.dark.redInk : SrColors.light.redInk;
@@ -194,9 +211,9 @@ abstract final class SR {
       _dark ? SrColors.dark.redInk2 : SrColors.light.redInk2;
 
   @Deprecated('Use SR.primary')
-  static const blue = primary;
+  static Color get blue => primary;
   @Deprecated('Use SR.primaryHover')
-  static const blueDark = primaryHover;
+  static Color get blueDark => primaryHover;
   @Deprecated('Use SR.primaryDeep')
   static Color get blueInk => primaryDeep;
   @Deprecated('Use SR.primaryTint')
@@ -210,7 +227,7 @@ abstract final class SR {
   @Deprecated('Use SR.primaryDeep')
   static Color get blueToken => primaryDeep;
   @Deprecated('Use SR.primaryBright')
-  static const blueBright = primaryBright;
+  static Color get blueBright => primaryBright;
 
   static const rXs = 6.0;
 
@@ -248,69 +265,21 @@ abstract final class SR {
   static const iconMd = 18.0;
   static const iconLg = 22.0;
 
-  static List<BoxShadow> get cardShadow => _dark
-      ? const []
-      : const [
-          BoxShadow(
-            color: Color(0x100B1B33),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ];
+  static List<BoxShadow> get cardShadow =>
+      _dark ? SrColors.dark.cardShadow : SrColors.light.cardShadow;
 
-  static List<BoxShadow> get floatShadow => _dark
-      ? const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ]
-      : const [
-          BoxShadow(
-            color: Color(0x1A0B1B33),
-            blurRadius: 18,
-            offset: Offset(0, 5),
-          ),
-        ];
+  static List<BoxShadow> get floatShadow =>
+      _dark ? SrColors.dark.floatShadow : SrColors.light.floatShadow;
 
-  static List<BoxShadow> get popoverShadow => _dark
-      ? const [
-          BoxShadow(
-            color: Color(0x8A000000),
-            blurRadius: 34,
-            offset: Offset(0, 16),
-          ),
-        ]
-      : const [
-          BoxShadow(
-            color: Color(0x290B1B33),
-            blurRadius: 34,
-            offset: Offset(0, 16),
-          ),
-        ];
+  static List<BoxShadow> get popoverShadow =>
+      _dark ? SrColors.dark.popoverShadow : SrColors.light.popoverShadow;
 
-  static List<BoxShadow> get dialogShadow => _dark
-      ? const [
-          BoxShadow(
-            color: Color(0xB3000000),
-            blurRadius: 70,
-            offset: Offset(0, 30),
-          ),
-        ]
-      : const [
-          BoxShadow(
-            color: Color(0x520B1B33),
-            blurRadius: 70,
-            offset: Offset(0, 30),
-          ),
-        ];
+  static List<BoxShadow> get dialogShadow =>
+      _dark ? SrColors.dark.dialogShadow : SrColors.light.dialogShadow;
 
   static List<BoxShadow> get toastShadow => popoverShadow;
 
-  static const List<BoxShadow> focusRing = [
-    BoxShadow(color: Color(0x331A73E8), spreadRadius: 3),
-  ];
+  static List<BoxShadow> get focusRing => focusRingOf(primary);
 
   static List<BoxShadow> focusRingOf(Color color) => [
     BoxShadow(color: color.withValues(alpha: .20), spreadRadius: 3),
@@ -504,7 +473,7 @@ enum SrTone {
     SrTone.success => SR.green,
     SrTone.warning => SR.orange,
     SrTone.error => SR.red,
-    SrTone.info => SR.primary,
+    SrTone.info => SR.info,
   };
 
   Color get tint => switch (this) {
@@ -513,7 +482,7 @@ enum SrTone {
     SrTone.success => SR.greenTint,
     SrTone.warning => SR.amberTint,
     SrTone.error => SR.redTint,
-    SrTone.info => SR.primaryTint,
+    SrTone.info => SR.infoTint,
   };
 
   Color get line => switch (this) {
@@ -522,7 +491,7 @@ enum SrTone {
     SrTone.success => SR.greenLine,
     SrTone.warning => SR.amberLine,
     SrTone.error => SR.redLine,
-    SrTone.info => SR.primaryLine,
+    SrTone.info => SR.infoLine,
   };
 
   Color get ink => switch (this) {
@@ -531,6 +500,6 @@ enum SrTone {
     SrTone.success => SR.greenDark,
     SrTone.warning => SR.amberTitle,
     SrTone.error => SR.redInk,
-    SrTone.info => SR.primaryDeep,
+    SrTone.info => SR.info,
   };
 }

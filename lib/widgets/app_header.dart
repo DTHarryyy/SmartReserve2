@@ -162,10 +162,10 @@ class _Avatar extends StatelessWidget {
 }
 
 class HeaderChip extends StatelessWidget {
-  const HeaderChip({super.key, required this.label, this.dot = SR.green});
+  const HeaderChip({super.key, required this.label, this.dot});
 
   final String label;
-  final Color dot;
+  final Color? dot;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -184,7 +184,10 @@ class HeaderChip extends StatelessWidget {
         Container(
           width: SR.space6,
           height: SR.space6,
-          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: dot ?? context.srColors.success,
+            shape: BoxShape.circle,
+          ),
         ),
         const SizedBox(width: SR.space6),
         Text(

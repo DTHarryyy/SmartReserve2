@@ -66,24 +66,21 @@ void main() {
     await tester.pump();
     expect(
       _backgroundColor(tester, AppView.reservations),
-      SrColors.light.surfaceSubtle,
+      SrColors.light.navHover,
     );
     expect(_backgroundColor(tester, AppView.calendar), Colors.transparent);
 
     await mouse.moveTo(tester.getCenter(calendar));
     await tester.pump();
     expect(_backgroundColor(tester, AppView.reservations), Colors.transparent);
-    expect(
-      _backgroundColor(tester, AppView.calendar),
-      SrColors.light.surfaceSubtle,
-    );
+    expect(_backgroundColor(tester, AppView.calendar), SrColors.light.navHover);
 
     await mouse.moveTo(const Offset(1000, 700));
     await tester.pump();
     expect(_backgroundColor(tester, AppView.calendar), Colors.transparent);
     expect(
       _backgroundColor(tester, AppView.facilities),
-      SrColors.light.primaryTint,
+      SrColors.light.navSelectedBg,
     );
 
     await tester.tap(calendar);
