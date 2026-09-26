@@ -12,6 +12,7 @@ import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
 import '../../widgets/decision_widgets.dart';
+import '../../widgets/evidence_thumbnails.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
@@ -1256,6 +1257,13 @@ class _UseAssessmentBoxState extends State<_UseAssessmentBox> {
   final List<ReservationUpload> _evidence = [];
   String? _error;
 
+  // The RPC caps each submission at 3, but files are never deleted on
+  // correction, so cap the running total here to keep the stated limit.
+  static const _maxEvidence = 3;
+
+  int get _attachedCount => widget.existing?.files.length ?? 0;
+  bool get _evidenceFull => _attachedCount + _evidence.length >= _maxEvidence;
+
   @override
   void dispose() {
     _comment.dispose();
@@ -1268,6 +1276,7 @@ class _UseAssessmentBoxState extends State<_UseAssessmentBox> {
     final busy = widget.state.reservationActionsPending.contains(
       'assessment:${widget.occurrence.id}',
     );
+    final attached = existing?.files ?? const <ReservationUseAssessmentFile>[];
     return Container(
       margin: const EdgeInsets.only(top: SR.space8),
       padding: const EdgeInsets.all(SR.space12),
@@ -1335,6 +1344,34 @@ class _UseAssessmentBoxState extends State<_UseAssessmentBox> {
               hintText: 'Describe room condition, damage, or clean use.',
             ),
           ),
+          if (attached.isNotEmpty) ...[
+            const SizedBox(height: SR.space8),
+            Text('Attached photos', style: SrType.caption()),
+            const SizedBox(height: SR.space6),
+            EvidenceThumbnailStrip(
+              files: attached,
+              resolveUrl: widget.state.assessmentEvidenceUrl,
+              size: 64,
+            ),
+          ],
+          if (_evidence.isNotEmpty) ...[
+            const SizedBox(height: SR.space8),
+            Text('To upload', style: SrType.caption()),
+            const SizedBox(height: SR.space6),
+            Wrap(
+              spacing: SR.space8,
+              runSpacing: SR.space8,
+              children: [
+                for (var i = 0; i < _evidence.length; i++)
+                  _PendingEvidence(
+                    upload: _evidence[i],
+                    onRemove: busy
+                        ? null
+                        : () => setState(() => _evidence.removeAt(i)),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: SR.space8),
           Wrap(
             spacing: SR.space8,
@@ -1342,11 +1379,11 @@ class _UseAssessmentBoxState extends State<_UseAssessmentBox> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SrButton(
-                label: _evidence.isEmpty
-                    ? 'Add evidence photos'
-                    : '${_evidence.length} evidence photo(s)',
+                label: _evidenceFull
+                    ? 'Photo limit reached ($_maxEvidence)'
+                    : 'Add evidence photo',
                 dense: true,
-                onPressed: busy || _evidence.length >= 3 ? null : _pickEvidence,
+                onPressed: busy || _evidenceFull ? null : _pickEvidence,
               ),
               SrButton(
                 label: busy
@@ -1430,10 +1467,61 @@ class _UseAssessmentBoxState extends State<_UseAssessmentBox> {
       leftUnclean: _leftUnclean,
       equipmentDamaged: _equipmentDamaged,
       comment: text,
-      evidence: _evidence,
+      evidence: List.of(_evidence),
     );
-    if (ok && mounted) setState(() => _error = null);
+    if (ok && mounted) {
+      setState(() {
+        _error = null;
+        _evidence.clear();
+      });
+    }
   }
+}
+
+class _PendingEvidence extends StatelessWidget {
+  const _PendingEvidence({required this.upload, required this.onRemove});
+
+  final ReservationUpload upload;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 64,
+    height: 64,
+    child: Stack(
+      children: [
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(
+              upload.bytes,
+              fit: BoxFit.cover,
+              semanticLabel: upload.name,
+            ),
+          ),
+        ),
+        Positioned(
+          top: 2,
+          right: 2,
+          child: Material(
+            color: Colors.black54,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onRemove,
+              child: Tooltip(
+                message: 'Remove ${upload.name}',
+                child: const Padding(
+                  padding: EdgeInsets.all(3),
+                  child: Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _StageDot extends StatelessWidget {

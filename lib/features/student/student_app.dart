@@ -16,6 +16,7 @@ import '../../theme/sr_theme.dart';
 import '../../util/campus_calendar.dart';
 import '../reservations/permit_panel.dart';
 import '../../widgets/amenity_request_field.dart';
+import '../../widgets/evidence_thumbnails.dart';
 import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
 import '../../widgets/rating_display.dart';
@@ -1618,6 +1619,13 @@ class _StudentAppState extends State<StudentApp> {
                 Text(
                   assessment.comment,
                   style: sans(12, height: 1.4, color: c.textSecondary),
+                ),
+              ],
+              if (assessment.files.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                EvidenceThumbnailStrip(
+                  files: assessment.files,
+                  resolveUrl: state.assessmentEvidenceUrl,
                 ),
               ],
             ],

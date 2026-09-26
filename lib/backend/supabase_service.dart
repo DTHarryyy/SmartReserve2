@@ -3240,6 +3240,7 @@ abstract interface class SmartReserveCoreBackend {
     String? reason,
   });
   Future<String> paymentProofUrl(String path);
+  Future<String> assessmentEvidenceUrl(String path);
   Future<void> submitReservationUseAssessment({
     required String requestId,
     required String occurrenceId,
@@ -4561,6 +4562,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   @override
   Future<String> paymentProofUrl(String path) =>
       _client.storage.from('payment-proofs').createSignedUrl(path, 60 * 10);
+
+  @override
+  Future<String> assessmentEvidenceUrl(String path) => _client.storage
+      .from('facility-assessment-evidence')
+      .createSignedUrl(path, 60 * 10);
 
   @override
   Future<void> submitReservationUseAssessment({

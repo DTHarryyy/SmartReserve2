@@ -2450,7 +2450,9 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (notification.kind == 'feedback_reply' && !isAdmin) {
+    if ((notification.kind == 'feedback_reply' ||
+            notification.kind == 'reservation_use_assessment') &&
+        !isAdmin) {
       pendingReservationFocusId = notification.requestId;
       goTo(AppView.userApp);
       notifyListeners();
@@ -5997,6 +5999,16 @@ class AppState extends ChangeNotifier {
       showToast(
         ToastMessage(_reservationError(error), tone: AdvisoryTone.block),
       );
+      return null;
+    }
+  }
+
+  Future<String?> assessmentEvidenceUrl(String path) async {
+    final service = _coreBackend;
+    if (service == null || !hasSession) return null;
+    try {
+      return await service.assessmentEvidenceUrl(path);
+    } catch (_) {
       return null;
     }
   }
