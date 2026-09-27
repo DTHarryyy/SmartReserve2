@@ -366,7 +366,9 @@ class _DecisionPanelState extends State<DecisionPanel> {
 
           PermitPanel(state: widget.state, request: _request),
 
-          if (_request.lifecycleStatus == ReservationLifecycleStatus.confirmed)
+          if (_request.lifecycleStatus == ReservationLifecycleStatus.confirmed ||
+              _request.lifecycleStatus ==
+                  ReservationLifecycleStatus.completed)
             _lifecycleCard(),
 
           if (_request.feedbackRating != null) _feedbackCard(),

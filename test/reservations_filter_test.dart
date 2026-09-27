@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/app/app_scope.dart';
 import 'package:smartreserve/app/app_state.dart';
 import 'package:smartreserve/features/reservations/reservations_screen.dart';
+import 'package:smartreserve/model/reservation.dart';
 import 'package:smartreserve/theme/sr_theme.dart';
 import 'package:smartreserve/widgets/queue_shell.dart';
 
@@ -71,5 +72,73 @@ void main() {
     expect(shell.panel, isNotNull);
     expect(shell.stacked, isFalse);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a completed reservation offers the post-use assessment', (
+    tester,
+  ) async {
+    final state = AppState()..setRequestTab(RequestStatus.completed);
+    final request = state.visibleRequests.firstWhere(
+      (r) => r.lifecycleStatus == ReservationLifecycleStatus.completed,
+    );
+
+    await _pumpReservations(tester, state);
+    await tester.tap(find.text(request.requester).first);
+    await tester.pump();
+
+    expect(state.selectedRequestId, request.id);
+    expect(
+      find.text('Post-use assessment', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  group('isUrgentRequest', () {
+    final now = DateTime(2026, 9, 27, 10);
+
+    test('a pending request starting within 48 hours is urgent', () {
+      expect(
+        isUrgentRequest(
+          status: RequestStatus.pending,
+          startsAt: now.add(const Duration(hours: 20)),
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a request whose start has passed is never urgent', () {
+      for (final status in RequestStatus.values) {
+        expect(
+          isUrgentRequest(
+            status: status,
+            startsAt: now.subtract(const Duration(days: 2)),
+            now: now,
+          ),
+          isFalse,
+          reason: status.name,
+        );
+      }
+    });
+
+    test('decided or far-off requests are not urgent', () {
+      expect(
+        isUrgentRequest(
+          status: RequestStatus.approved,
+          startsAt: now.add(const Duration(hours: 5)),
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        isUrgentRequest(
+          status: RequestStatus.pending,
+          startsAt: now.add(const Duration(days: 5)),
+          now: now,
+        ),
+        isFalse,
+      );
+    });
   });
 }

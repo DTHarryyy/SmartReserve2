@@ -244,6 +244,18 @@ class ReservationFile {
   final String storagePath;
 }
 
+/// Only an undecided request whose first date starts within the next 48
+/// hours is urgent. A start already in the past gives a negative difference,
+/// which must not count -- otherwise every completed booking reads URGENT.
+bool isUrgentRequest({
+  required RequestStatus status,
+  required DateTime startsAt,
+  required DateTime now,
+}) =>
+    status == RequestStatus.pending &&
+    !startsAt.isBefore(now) &&
+    startsAt.difference(now).inHours <= 48;
+
 class ReservationRequest {
   ReservationRequest({
     required this.id,

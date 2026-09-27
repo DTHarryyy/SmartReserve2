@@ -2369,7 +2369,11 @@ class AppState extends ChangeNotifier {
       end: _clock(occurrences.isEmpty ? first : occurrences.first.endsAt),
       heads: row.headcount,
       submitted: _relative(row.createdAt),
-      urgent: first.difference(campusNow()).inHours <= 48,
+      urgent: isUrgentRequest(
+        status: RequestStatus.fromRaw(row.status),
+        startsAt: first,
+        now: campusNow(),
+      ),
       attachments: row.attachments.length,
       noShows: 0,
       status: RequestStatus.fromRaw(row.status),
