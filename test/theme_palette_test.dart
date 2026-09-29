@@ -52,10 +52,11 @@ void main() {
   test('CSU anchor colors and material schemes stay synchronized', () {
     expect(SrColors.light.brand, const Color(0xFF800020));
     expect(SrColors.light.accent, const Color(0xFFFFC857));
-    expect(SrColors.light.canvas, const Color(0xFFF3EFF5));
+    expect(SrColors.light.canvas, const Color(0xFFFAFAFA));
     expect(SrColors.light.navBg, const Color(0xFFFFFFFF));
+    expect(SrColors.dark.canvas, const Color(0xFF0A0A0A));
     expect(SrColors.dark.navBg, SrColors.dark.surface);
-    expect(SrColors.dark.heroStart, const Color(0xFF800020));
+    expect(SrColors.dark.heroStart, SrColors.dark.surface);
     expect(SrColors.dark.brand, const Color(0xFFFFC857));
 
     final lightScheme = SrThemeData.light().colorScheme;
@@ -91,6 +92,8 @@ void main() {
 
     for (final pair in <(Color, Color)>[
       (light.onBrand, light.brand),
+      (light.brand, light.surface),
+      (light.brand, light.navSelectedBg),
       (light.onAccent, light.accent),
       (light.text, light.canvas),
       (light.textMuted, light.surface),
@@ -101,6 +104,8 @@ void main() {
       (light.error, light.errorContainer),
       (light.info, light.infoContainer),
       (dark.onBrand, dark.brand),
+      (dark.brand, dark.surface),
+      (dark.brand, dark.navSelectedBg),
       (dark.text, dark.canvas),
       (dark.textMuted, dark.surface),
       (dark.navForeground, dark.navBg),
@@ -111,6 +116,45 @@ void main() {
       (dark.info, dark.infoContainer),
     ]) {
       _expectContrast(pair.$1, pair.$2, 4.5);
+    }
+  });
+
+  test('backgrounds, text and borders stay hueless neutrals', () {
+    // Brand maroon/gold are reserved for accents; every large surface must
+    // stay a pure gray so the palette reads clean in both modes.
+    for (final colors in [SrColors.light, SrColors.dark]) {
+      for (final color in <Color>[
+        colors.canvas,
+        colors.surface,
+        colors.surfaceElevated,
+        colors.surfaceSubtle,
+        colors.surfaceSunken,
+        colors.brandContainer,
+        colors.primaryTint2,
+        colors.navBg,
+        colors.navHover,
+        colors.navSelectedBg,
+        colors.heroStart,
+        colors.heroEnd,
+        colors.text,
+        colors.textSecondary,
+        colors.textMuted,
+        colors.border,
+        colors.borderStrong,
+        colors.divider,
+      ]) {
+        final r = (color.r * 255).round();
+        final g = (color.g * 255).round();
+        final b = (color.b * 255).round();
+        final spread =
+            [r, g, b].reduce((a, v) => a > v ? a : v) -
+            [r, g, b].reduce((a, v) => a < v ? a : v);
+        expect(
+          spread,
+          lessThanOrEqualTo(3),
+          reason: '${color.toARGB32().toRadixString(16)} is tinted',
+        );
+      }
     }
   });
 

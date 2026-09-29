@@ -925,11 +925,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 decoration: BoxDecoration(
                   color: i == 0
                       ? context.srColors.divider
-                      : Color.lerp(
-                          context.srColors.warningContainer,
-                          context.srColors.heroStart,
-                          i / 3,
-                        ),
+                      : _heatColor(context.srColors, i / 3),
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -1683,17 +1679,25 @@ class _UtilisationRow extends StatelessWidget {
           widthFactor: row.fraction.clamp(0.0, 1.0),
           child: Container(
             height: 9,
-            color: row.fraction < .25
-                ? context.srColors.accent
-                : row.fraction < .6
-                ? context.srColors.info
-                : context.srColors.heroStart,
+            color: Color.lerp(
+              context.srColors.brand.withValues(alpha: .35),
+              context.srColors.brand,
+              row.fraction.clamp(0.0, 1.0),
+            ),
           ),
         ),
       ],
     ),
   );
 }
+
+/// Single-hue ramp for the demand heatmap: a faint wash of the brand color
+/// for quiet slots up to the solid brand color at peak.
+Color _heatColor(SrColors colors, double intensity) => Color.lerp(
+  colors.brand.withValues(alpha: .12),
+  colors.brand,
+  intensity.clamp(0.0, 1.0),
+)!;
 
 class _HeatCell extends StatelessWidget {
   const _HeatCell({
@@ -1715,11 +1719,7 @@ class _HeatCell extends StatelessWidget {
     final intensity = peak == 0 ? 0.0 : count / peak;
     final color = count == 0
         ? context.srColors.divider
-        : Color.lerp(
-            context.srColors.warningContainer,
-            context.srColors.heroStart,
-            intensity,
-          );
+        : _heatColor(context.srColors, intensity);
     return Semantics(
       button: true,
       label: label,
@@ -1750,7 +1750,7 @@ class _HeatCell extends StatelessWidget {
                 color: color,
                 borderRadius: BorderRadius.circular(5),
                 border: selected
-                    ? Border.all(color: SR.primaryHover, width: 2)
+                    ? Border.all(color: context.srColors.text, width: 2)
                     : null,
               ),
               child: Text(
@@ -1758,7 +1758,9 @@ class _HeatCell extends StatelessWidget {
                 style: mono(
                   9.5,
                   w: 600,
-                  color: intensity > .55 ? SR.onDark : context.srColors.warning,
+                  color: intensity > .55
+                      ? context.srColors.onBrand
+                      : context.srColors.text,
                 ),
               ),
             ),

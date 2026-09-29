@@ -281,7 +281,7 @@ class _NavButton extends StatelessWidget {
                       icon,
                       size: SR.iconMd,
                       color: current
-                          ? context.srColors.navSelectedForeground
+                          ? context.srColors.brand
                           : (hovered
                                 ? context.srColors.navForeground
                                 : context.srColors.navMuted),
@@ -325,7 +325,7 @@ class _NavButton extends StatelessWidget {
                   width: 3,
                   decoration: BoxDecoration(
                     color: current
-                        ? context.srColors.navSelectedForeground
+                        ? context.srColors.brand
                         : Colors.transparent,
                     borderRadius: const BorderRadius.horizontal(
                       right: Radius.circular(3),
@@ -428,10 +428,7 @@ class _MappedStat extends StatelessWidget {
                   widthFactor: total == 0
                       ? 0
                       : (mapped / total).clamp(0.0, 1.0),
-                  child: Container(
-                    height: 5,
-                    color: context.srColors.navSelectedBg,
-                  ),
+                  child: Container(height: 5, color: context.srColors.brand),
                 ),
               ],
             ),

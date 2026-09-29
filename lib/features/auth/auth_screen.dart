@@ -1033,13 +1033,9 @@ class _HeroBanner extends StatelessWidget {
     height: 184,
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
-      color: context.srColors.navBg,
+      color: context.srColors.surfaceSubtle,
       borderRadius: BorderRadius.circular(18),
-      gradient: LinearGradient(
-        colors: [context.srColors.heroStart, context.srColors.heroEnd],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
+      border: Border.all(color: context.srColors.border),
     ),
     child: Stack(
       children: [
@@ -1060,7 +1056,7 @@ class _HeroBanner extends StatelessWidget {
                       10,
                       w: 500,
                       tracking: .06,
-                      color: context.srColors.primarySoft,
+                      color: context.srColors.brand,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1070,7 +1066,7 @@ class _HeroBanner extends StatelessWidget {
                       22,
                       w: 600,
                       height: 1.25,
-                      color: context.srColors.surface,
+                      color: context.srColors.text,
                     ),
                   ),
                 ],
@@ -1100,18 +1096,26 @@ class _FacilityMotif extends StatelessWidget {
             child: Icon(
               Icons.location_on_rounded,
               size: 42,
-              color: SR.primaryBright,
+              color: context.srColors.brand,
             ),
           ),
           Positioned(
             right: 42,
             bottom: 3,
-            child: Icon(Icons.apartment_rounded, size: 82, color: SR.onDarkDim),
+            child: Icon(
+              Icons.apartment_rounded,
+              size: 82,
+              color: context.srColors.borderStrong,
+            ),
           ),
           Positioned(
             right: 4,
             bottom: 0,
-            child: Container(width: 122, height: 1, color: SR.onDarkDim),
+            child: Container(
+              width: 122,
+              height: 1,
+              color: context.srColors.borderStrong,
+            ),
           ),
         ],
       ),
@@ -1141,52 +1145,52 @@ class _Pitch extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [context.srColors.heroStart, context.srColors.heroEnd],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.isDark ? colors.surface : colors.surfaceSubtle,
+        border: Border(right: BorderSide(color: colors.border)),
       ),
-    ),
-    child: SafeArea(
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final short = SR.isShort(box.maxHeight);
-          final pad = EdgeInsets.symmetric(
-            horizontal: box.maxWidth >= 560 ? SR.space48 : SR.space32,
-            vertical: short ? SR.space24 : SR.space40,
-          );
-          return SrScrollView(
-            padding: pad,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: (box.maxHeight - pad.vertical).clamp(
-                  0.0,
-                  double.infinity,
-                ),
-              ),
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final short = SR.isShort(box.maxHeight);
+            final pad = EdgeInsets.symmetric(
+              horizontal: box.maxWidth >= 560 ? SR.space48 : SR.space32,
+              vertical: short ? SR.space24 : SR.space40,
+            );
+            return SrScrollView(
+              padding: pad,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: SR.contentWide),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _wordmark(),
-                    _headline(short),
-                    SizedBox(height: short ? SR.space16 : SR.space32),
-                    _pillarsAndFootnote(),
-                  ],
+                constraints: BoxConstraints(
+                  minHeight: (box.maxHeight - pad.vertical).clamp(
+                    0.0,
+                    double.infinity,
+                  ),
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: SR.contentWide),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _wordmark(colors),
+                      _headline(colors, short),
+                      SizedBox(height: short ? SR.space16 : SR.space32),
+                      _pillarsAndFootnote(colors),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _wordmark() => Row(
+  Widget _wordmark(SrColors colors) => Row(
     children: [
       const SrLogo(size: 32, radius: SR.rSm),
       const SizedBox(width: SR.space12),
@@ -1195,18 +1199,18 @@ class _Pitch extends StatelessWidget {
         children: [
           Text(
             'SmartReserve',
-            style: sans(15, w: 600, tracking: -.01, color: SR.onDark),
+            style: sans(15, w: 600, tracking: -.01, color: colors.text),
           ),
           Text(
             'CAGAYAN STATE UNIVERSITY — APARRI',
-            style: mono(10, color: SR.onDarkFaint),
+            style: mono(10, color: colors.textMuted),
           ),
         ],
       ),
     ],
   );
 
-  Widget _headline(bool short) => Padding(
+  Widget _headline(SrColors colors, bool short) => Padding(
     padding: EdgeInsets.symmetric(vertical: short ? SR.space16 : SR.space32),
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 340),
@@ -1220,21 +1224,21 @@ class _Pitch extends StatelessWidget {
               w: 600,
               height: 1.18,
               tracking: -.03,
-              color: SR.onDark,
+              color: colors.text,
             ),
           ),
           const SizedBox(height: SR.space12),
           Text(
             'Forty-six facilities across the Aparri campus, each pinned to '
             'its real coordinates.',
-            style: sans(13, height: 1.7, color: SR.onDarkMuted),
+            style: sans(13, height: 1.7, color: colors.textSecondary),
           ),
         ],
       ),
     ),
   );
 
-  Widget _pillarsAndFootnote() => Column(
+  Widget _pillarsAndFootnote(SrColors colors) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -1248,7 +1252,7 @@ class _Pitch extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
                   number,
-                  style: mono(10, w: 500, color: SR.primaryBright),
+                  style: mono(10, w: 600, color: colors.brand),
                 ),
               ),
               const SizedBox(width: SR.space12),
@@ -1256,11 +1260,15 @@ class _Pitch extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: sans(12.5, w: 600, color: SR.onDark)),
+                    Text(title, style: sans(12.5, w: 600, color: colors.text)),
                     const SizedBox(height: SR.space2),
                     Text(
                       body,
-                      style: sans(11.5, height: 1.6, color: SR.onDarkFaint),
+                      style: sans(
+                        11.5,
+                        height: 1.6,
+                        color: colors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -1269,28 +1277,24 @@ class _Pitch extends StatelessWidget {
           ),
         ),
         if (number != _pillars.last.$1)
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: SR.onDarkLine)),
+              border: Border(bottom: BorderSide(color: colors.border)),
             ),
             child: SizedBox(width: double.infinity),
           ),
       ],
       const SizedBox(height: SR.space24),
-      const DecoratedBox(
+      DecoratedBox(
         decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: SR.onDarkLine)),
+          border: Border(top: BorderSide(color: colors.border)),
         ),
         child: Padding(
-          padding: EdgeInsets.only(top: SR.space16),
+          padding: const EdgeInsets.only(top: SR.space16),
           child: Text(
             'Office of the Registrar · Cagayan State University, '
             'Aparri Campus',
-            style: TextStyle(
-              fontFamily: 'IBM Plex Mono',
-              fontSize: 10,
-              color: SR.onDarkDim,
-            ),
+            style: mono(10, color: colors.textMuted),
           ),
         ),
       ),

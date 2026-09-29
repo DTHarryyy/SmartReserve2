@@ -242,6 +242,7 @@ class _StudentAppState extends State<StudentApp> {
 
   Widget _header(AppState state, Account account, bool narrow) {
     final tiny = MediaQuery.sizeOf(context).width < 340;
+    final colors = context.srColors;
     return Container(
       padding: EdgeInsets.fromLTRB(
         narrow ? 16 : 24,
@@ -250,12 +251,8 @@ class _StudentAppState extends State<StudentApp> {
         _tab == StudentTab.browse ? 20 : 16,
       ),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.srColors.heroStart, context.srColors.heroEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        // borderRadius: BorderRadius.vertical(bottom: Radius.circular(0)),
+        color: colors.surface,
+        border: Border(bottom: BorderSide(color: colors.border)),
       ),
       child: SafeArea(
         bottom: false,
@@ -277,7 +274,7 @@ class _StudentAppState extends State<StudentApp> {
                             17,
                             w: 600,
                             tracking: -.02,
-                            color: Colors.white,
+                            color: colors.text,
                           ),
                         )
                       else
@@ -292,7 +289,7 @@ class _StudentAppState extends State<StudentApp> {
                                   narrow ? 18 : 21,
                                   w: 600,
                                   tracking: -.02,
-                                  color: Colors.white,
+                                  color: colors.text,
                                 ),
                               ),
                             ),
@@ -303,7 +300,7 @@ class _StudentAppState extends State<StudentApp> {
                         _timeGreeting(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: mono(10, color: SR.onDarkMuted),
+                        style: mono(10, color: colors.textMuted),
                       ),
                     ],
                   ),
@@ -319,22 +316,22 @@ class _StudentAppState extends State<StudentApp> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .16),
+                        color: colors.surface,
                         borderRadius: BorderRadius.circular(SR.rFull),
-                        border: Border.all(color: SR.onDarkLine),
+                        border: Border.all(color: colors.border),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.stars_rounded,
                             size: 15,
-                            color: Colors.white,
+                            color: colors.brand,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             '${state.loyalty?.balance ?? 0}',
-                            style: mono(11, w: 600, color: Colors.white),
+                            style: mono(11, w: 600, color: colors.text),
                           ),
                         ],
                       ),
@@ -347,7 +344,7 @@ class _StudentAppState extends State<StudentApp> {
                   children: [
                     IconButton(
                       tooltip: 'Notifications',
-                      color: Colors.white,
+                      color: colors.textSecondary,
                       onPressed: () => _showNotifications(state),
                       icon: const Icon(
                         Icons.notifications_none_rounded,
@@ -386,16 +383,16 @@ class _StudentAppState extends State<StudentApp> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .16),
+                    color: colors.surfaceSubtle,
                     borderRadius: BorderRadius.circular(SR.rFull),
-                    border: Border.all(color: SR.onDarkLine),
+                    border: Border.all(color: colors.border),
                   ),
                   child: Text(switch (account.verification) {
                     VerificationState.verified => 'VERIFIED',
                     VerificationState.pending => 'IN PROCESS',
                     VerificationState.rejected => 'NOT VERIFIED',
                     VerificationState.none => 'RENTER',
-                  }, style: mono(8.5, w: 600, color: Colors.white)),
+                  }, style: mono(8.5, w: 600, color: colors.textSecondary)),
                 ),
               ],
             ),
@@ -404,9 +401,9 @@ class _StudentAppState extends State<StudentApp> {
               Container(
                 height: 48,
                 decoration: BoxDecoration(
-                  color: context.srColors.surfaceElevated,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: context.srColors.floatShadow,
+                  color: colors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(SR.rMd),
+                  border: Border.all(color: colors.border),
                 ),
                 child: TextField(
                   controller: _browseSearch,
@@ -420,7 +417,10 @@ class _StudentAppState extends State<StudentApp> {
                     focusedBorder: InputBorder.none,
                     hintText: 'Search facilities, buildings, or amenities',
                     hintStyle: sans(12, color: context.srColors.textMuted),
-                    prefixIcon: Icon(Icons.search_rounded, color: SR.primary),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: colors.textMuted,
+                    ),
                     suffixIcon: _browseQuery.isEmpty
                         ? null
                         : IconButton(
@@ -3191,7 +3191,7 @@ class _CategoryShortcut extends StatelessWidget {
                   size: 19,
                   color: selected
                       ? context.srColors.onBrand
-                      : context.srColors.brand,
+                      : context.srColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 7),
