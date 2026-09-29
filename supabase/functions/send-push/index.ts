@@ -103,7 +103,7 @@ Deno.serve(async (request) => {
         const result = await sendFcmMessage({
           projectId: fcmProjectId,
           serviceAccountJson: fcmServiceAccountJson,
-          message: buildFcmMessage(job, token).message,
+          message: buildFcmMessage(job, token),
           timeoutMs,
         });
         if (result.ok) {

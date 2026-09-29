@@ -417,6 +417,14 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/permit-signatures/index.ts"
 
+# Called only by the pg_net nudge and the pg_cron sweep, which send the
+# x-smartreserve-worker-key header and no JWT. The function checks that key
+# itself, so the gateway JWT check would only reject every dispatch.
+[functions.send-push]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-push/index.ts"
+
 [functions.submit-reservation-signature]
 enabled = true
 verify_jwt = false
