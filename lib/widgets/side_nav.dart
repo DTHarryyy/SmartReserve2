@@ -185,13 +185,39 @@ class _BrandMark extends StatelessWidget {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const SrLogo(size: SR.controlSm, radius: SR.rSm),
-        const SizedBox(width: SR.space12),
         Image.asset(
           'assets/csu_logo_transparent.png',
           width: SR.controlSm,
           height: SR.controlSm,
           fit: BoxFit.contain,
+        ),
+        const SizedBox(width: SR.space12),
+        const SrLogo(size: SR.controlSm, radius: SR.rSm),
+        const SizedBox(width: SR.space12),
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SmartReserve',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: sans(
+                  15,
+                  w: 600,
+                  tracking: -.01,
+                  color: context.srColors.navForeground,
+                ),
+              ),
+              Text(
+                'CSU Aparri',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SrType.caption(color: context.srColors.navMuted),
+              ),
+            ],
+          ),
         ),
       ],
     ),

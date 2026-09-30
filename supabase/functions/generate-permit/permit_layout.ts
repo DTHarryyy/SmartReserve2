@@ -38,10 +38,10 @@ export const permitOverlayMasks: Record<"internal" | "external", Box[]> = {
     { x: 430, y: 291, width: 100, height: 13 },
     { x: 57, y: 351, width: 481, height: 13 },
     { x: 57, y: 400, width: 481, height: 41 },
-    { x: 57, y: 523, width: 240, height: 16 },
+    { x: 45, y: 524, width: 275, height: 20 },
     { x: 60, y: 540, width: 235, height: 10 },
     { x: 134, y: 580, width: 225, height: 13 },
-    { x: 179, y: 637, width: 259, height: 28 },
+    { x: 156, y: 639, width: 305, height: 34 },
   ],
   external: [
     { x: 129, y: 124, width: 293, height: 14 },
@@ -62,11 +62,11 @@ export const permitOverlayMasks: Record<"internal" | "external", Box[]> = {
     { x: 499, y: 518, width: 80, height: 22 },
     { x: 217, y: 554, width: 67, height: 10 },
     { x: 418, y: 549, width: 161, height: 20 },
-    { x: 400, y: 606, width: 135, height: 35 },
+    { x: 380, y: 610, width: 175, height: 37 },
     { x: 135, y: 681, width: 100, height: 18 },
     { x: 314, y: 681, width: 13, height: 18 },
-    { x: 210, y: 709, width: 200, height: 14 },
-    { x: 165, y: 759, width: 255, height: 11 },
+    { x: 185, y: 706, width: 250, height: 22 },
+    { x: 150, y: 756, width: 285, height: 20 },
   ],
 };
 
@@ -322,16 +322,16 @@ async function renderInternal(
     height: 13,
   }, { size: 9, minSize: 7, field: "office_college" });
   drawImage(page, await embedImage(document, signatures[0]), {
-    x: 57,
-    y: 523,
-    width: 240,
-    height: 16,
+    x: 45,
+    y: 524,
+    width: 275,
+    height: 20,
   });
   drawImage(page, await embedImage(document, signatures[1]), {
-    x: 179,
-    y: 637,
-    width: 259,
-    height: 28,
+    x: 156,
+    y: 639,
+    width: 305,
+    height: 34,
   });
 }
 
@@ -500,10 +500,10 @@ async function renderExternal(
     { size: 8.5, minSize: 6.5, field: "admission_fee" },
   );
   drawImage(page, await embedImage(document, signatures[0]), {
-    x: 400,
-    y: 606,
-    width: 135,
-    height: 35,
+    x: 380,
+    y: 610,
+    width: 175,
+    height: 37,
   });
   drawFitted(page, bold, formatMoney(snapshot.total_amount_centavos), {
     x: 135,
@@ -513,16 +513,16 @@ async function renderExternal(
   }, { size: 9, minSize: 7 });
   check(page, bold, 314, 681, 13, 18);
   drawImage(page, await embedImage(document, signatures[1]), {
-    x: 210,
-    y: 709,
-    width: 200,
-    height: 14,
+    x: 185,
+    y: 706,
+    width: 250,
+    height: 22,
   });
   drawImage(page, await embedImage(document, signatures[2]), {
-    x: 165,
-    y: 759,
-    width: 255,
-    height: 11,
+    x: 150,
+    y: 756,
+    width: 285,
+    height: 20,
   });
 }
 

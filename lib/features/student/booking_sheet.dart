@@ -1495,7 +1495,7 @@ class _BookingForm extends StatelessWidget {
         SrErrorText(error),
         const SizedBox(height: 12),
         SrButton(
-          label: submitting ? 'Sending…' : 'Send request to the registrar',
+          label: submitting ? 'Sending…' : 'Send Request Form',
           kind: SrButtonKind.primary,
           expand: true,
           minHeight: 46,

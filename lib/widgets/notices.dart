@@ -68,7 +68,9 @@ class ErrorBar extends StatelessWidget {
                       '✕',
                       style: sans(
                         12,
-                        color: Color(hovered ? 0xCCFFFFFF : 0x80FFFFFF),
+                        color: context.srColors.surface.withValues(
+                          alpha: hovered ? .8 : .5,
+                        ),
                       ),
                     ),
                   ),
@@ -88,35 +90,59 @@ class DarkBarButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.solid = false,
+    this.enabled = true,
+    this.onLight = false,
   });
 
   final String label;
   final VoidCallback onPressed;
 
   final bool solid;
+  final bool enabled;
+
+  /// True when the button sits on a surface-colored bar instead of an `ink` one.
+  final bool onLight;
 
   @override
-  Widget build(BuildContext context) => Hoverable(
-    builder: (context, hovered) => GestureDetector(
-      onTap: onPressed,
-      child: AnimatedContainer(
-        duration: SR.stateChange,
-        constraints: BoxConstraints(
-          minHeight: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 0,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        decoration: BoxDecoration(
-          color: solid ? SR.onDark : Color(hovered ? 0x33FFFFFF : 0x1AFFFFFF),
-          borderRadius: BorderRadius.circular(7),
-          border: solid ? null : Border.all(color: const Color(0x33FFFFFF)),
-        ),
-        child: Text(
-          label,
-          style: sans(11, w: 600, color: solid ? SR.neutralDark : SR.onDark),
+  Widget build(BuildContext context) {
+    final onBar = onLight ? context.srColors.ink : context.srColors.surface;
+    final barInk = onLight ? context.srColors.surface : context.srColors.ink;
+    return Hoverable(
+      builder: (context, hovered) => GestureDetector(
+        onTap: enabled ? onPressed : null,
+        child: AnimatedContainer(
+          duration: SR.stateChange,
+          constraints: BoxConstraints(
+            minHeight: SR.isCompact(MediaQuery.sizeOf(context).width) ? 44 : 0,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: !enabled
+                ? Colors.transparent
+                : solid
+                ? onBar
+                : onBar.withValues(alpha: hovered ? .2 : .1),
+            borderRadius: BorderRadius.circular(7),
+            border: solid && enabled
+                ? null
+                : Border.all(color: onBar.withValues(alpha: .3)),
+          ),
+          child: Text(
+            label,
+            style: sans(
+              11,
+              w: 600,
+              color: !enabled
+                  ? onBar.withValues(alpha: .6)
+                  : solid
+                  ? barInk
+                  : onBar,
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class SrToast extends StatelessWidget {

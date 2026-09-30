@@ -100,8 +100,10 @@ class ReservationsScreen extends StatelessWidget {
               actionLabel: 'Approve all conflict-free',
               blockedNote: blocked.isEmpty
                   ? null
-                  : '${blocked.length} carry a warning — bulk approve is off '
-                        'until they are cleared or deselected.',
+                  : '${blocked.length} ${blocked.length == 1 ? 'carries' : 'carry'} '
+                        'a warning — bulk approve is off until '
+                        '${blocked.length == 1 ? 'it is' : 'they are'} '
+                        'cleared or deselected.',
               onAction: blocked.isEmpty
                   ? () => state.bulkApproveRequests(selectable)
                   : null,

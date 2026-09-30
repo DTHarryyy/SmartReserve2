@@ -892,12 +892,27 @@ class SrKeyCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: keyLabel),
+          Text(
+            label,
+            style: keyLabel,
+            strutStyle: const StrutStyle(
+              fontSize: 10,
+              height: 1.4,
+              forceStrutHeight: true,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            // Fixed line height: fallback glyphs (e.g. the rating star) have
+            // taller metrics on some devices and overflowed the cell.
+            strutStyle: const StrutStyle(
+              fontSize: 12.5,
+              height: 1.4,
+              forceStrutHeight: true,
+            ),
             style: valueMono
                 ? mono(12.5, w: 500, color: valueColor ?? c.ink)
                 : sans(12.5, w: 500, color: valueColor ?? c.ink),

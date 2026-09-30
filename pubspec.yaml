@@ -34,16 +34,18 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.3
 
 flutter_launcher_icons:
-  image_path: "assets/smart reserve logo.png"
+  image_path: "assets/app_icon_rounded.png"
   android: true
   ios: true
+  image_path_ios: "assets/smart reserve logo.png"
+  remove_alpha_ios: true
   windows:
     generate: true
   macos:
     generate: true
   web:
     generate: true
-    image_path: "assets/smart reserve logo.png"
+    image_path: "assets/app_icon_rounded.png"
     background_color: "#F3EFF5"
     theme_color: "#800020"
 

@@ -257,12 +257,12 @@ class BulkBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: sans(12, w: 500, color: context.srColors.surface)),
+          Text(label, style: sans(12, w: 500, color: context.srColors.ink)),
           if (blockedNote != null) ...[
             const SizedBox(height: 2),
             Text(
               blockedNote!,
-              style: sans(10.5, height: 1.4, color: const Color(0x99FFFFFF)),
+              style: sans(11.5, height: 1.4, color: context.srColors.muted),
             ),
           ],
         ],
@@ -272,25 +272,30 @@ class BulkBar extends StatelessWidget {
         runSpacing: 8,
         children: [
           if (onAction != null)
-            DarkBarButton(label: actionLabel, onPressed: onAction!, solid: true)
+            DarkBarButton(
+              label: actionLabel,
+              onPressed: onAction!,
+              solid: true,
+              onLight: true,
+            )
           else
-            Opacity(
-              opacity: .4,
-              child: DarkBarButton(
-                label: actionLabel,
-                onPressed: () {},
-                solid: true,
-              ),
+            DarkBarButton(
+              label: actionLabel,
+              onPressed: () {},
+              solid: true,
+              enabled: false,
+              onLight: true,
             ),
-          DarkBarButton(label: 'Clear', onPressed: onClear),
+          DarkBarButton(label: 'Clear', onPressed: onClear, onLight: true),
         ],
       );
       return Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: context.srColors.ink,
+          color: context.srColors.surface,
           borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: context.srColors.border),
         ),
         child: compact
             ? Column(
