@@ -12,7 +12,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(21);
+select plan(25);
 
 create temp table pud_ids as
 select
@@ -249,6 +249,44 @@ select public.complete_push_delivery(
 select is(
   (select enabled from public.user_push_tokens where token = 'pud-token-a-web'),
   false, 'a dead token is disabled by complete_push_delivery'
+);
+
+-- A delivery whose recipient lost every enabled token after it was enqueued
+-- can never be sent: the lease skips it rather than leaving it stuck in
+-- 'processing' (send-push drops token-less jobs without completing them).
+insert into public.user_push_tokens (user_id, token, platform)
+select renter_a_id, 'pud-token-a2-android', 'android' from pud_ids;
+insert into public.app_notifications (recipient_id, kind, title, body)
+select renter_a_id, 'payment_verified', 'Verified', 'Payment verified.'
+from pud_ids;
+update public.user_push_tokens set enabled = false
+where token = 'pud-token-a2-android';
+select is(
+  (select jsonb_array_length(public.lease_push_deliveries(10, 120, 5)->'rows')),
+  0, 'a pending delivery with no enabled token left is not leased'
+);
+select is(
+  (select d.status || '/' || d.last_error_code from public.push_deliveries d
+   join public.app_notifications n on n.id = d.notification_id
+   where n.recipient_id = (select renter_a_id from pud_ids) and n.kind = 'payment_verified'),
+  'skipped/no_enabled_token', 'a token-less pending delivery is marked skipped'
+);
+
+-- With one live and one disabled token, only the live token is leased.
+insert into public.user_push_tokens (user_id, token, platform)
+select renter_a_id, 'pud-token-a3-web', 'web' from pud_ids;
+insert into public.app_notifications (recipient_id, kind, title, body)
+select renter_a_id, 'payment_rejected', 'Rejected', 'Payment rejected.'
+from pud_ids;
+create temp table pud_lease_tokens as
+select public.lease_push_deliveries(10, 120, 5)->'rows' as leased;
+select is(
+  (select jsonb_array_length(leased) from pud_lease_tokens),
+  1, 'the delivery for a recipient with a live token is leased'
+);
+select is(
+  (select leased->0->'tokens' from pud_lease_tokens),
+  '["pud-token-a3-web"]'::jsonb, 'only enabled tokens are returned with a leased delivery'
 );
 
 -- RLS: renter B cannot see renter A's tokens or any push_deliveries row.

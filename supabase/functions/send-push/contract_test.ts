@@ -71,6 +71,24 @@ Deno.test("classifies a malformed token argument as a dead token", () => {
   assertEquals(outcome, "dead_token");
 });
 
+Deno.test("a malformed request is fatal, never a dead token", () => {
+  // What FCM returns when the body itself is wrong (e.g. no `message`
+  // wrapper): an INVALID_ARGUMENT rpc status with no FcmError errorCode.
+  // Disabling the token here would kill every device on the first bad send.
+  const outcome = classifyFcmError(400, {
+    error: {
+      code: 400,
+      status: "INVALID_ARGUMENT",
+      message: 'Invalid JSON payload received. Unknown name "token": Cannot find field.',
+      details: [{
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        fieldViolations: [{ description: 'Invalid JSON payload received. Unknown name "token"' }],
+      }],
+    },
+  });
+  assertEquals(outcome, "fatal");
+});
+
 Deno.test("classifies a 500 as retryable", () => {
   assertEquals(classifyFcmError(500, { error: { status: "INTERNAL" } }), "retry");
 });
@@ -126,4 +144,16 @@ Deno.test("parseLeasedJobs handles a missing or malformed rows field", () => {
   assertEquals(parseLeasedJobs({}), []);
   assertEquals(parseLeasedJobs(null), []);
   assertEquals(parseLeasedJobs({ rows: "not-an-array" }), []);
+});
+
+Deno.test("send-push is deployed without the gateway JWT check", async () => {
+  // The pg_net nudge and pg_cron sweep authenticate with the worker key
+  // header only; with verify_jwt on, the gateway 401s every dispatch before
+  // index.ts ever runs and no push is delivered.
+  const config = await Deno.readTextFile(
+    new URL("../../config.toml", import.meta.url),
+  );
+  const block = config.match(/\[functions\.send-push\]\n([\s\S]*?)(?:\n\[|$)/);
+  assertEquals(block !== null, true, "config.toml has no [functions.send-push] block");
+  assertEquals(/^verify_jwt\s*=\s*false\s*$/m.test(block![1]), true);
 });

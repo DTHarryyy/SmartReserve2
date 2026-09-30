@@ -3,6 +3,8 @@
 // the network/crypto half kept apart from contract.ts so the pure message
 // and error-classification logic can be unit tested without a real key.
 
+import type { FcmMessage } from "./contract.ts";
+
 type ServiceAccount = {
   client_email: string;
   private_key: string;
@@ -107,7 +109,9 @@ export async function sendFcmMessage(
   options: {
     projectId: string;
     serviceAccountJson: string;
-    message: unknown;
+    // The full v1 request body: FCM rejects a bare message without the
+    // top-level `message` wrapper as INVALID_ARGUMENT.
+    message: FcmMessage;
     timeoutMs: number;
   },
 ): Promise<FcmSendResult> {

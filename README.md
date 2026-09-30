@@ -262,21 +262,31 @@ backfill RPC after the new-feedback path has been observed.
 
 Every row written to `app_notifications` fans out to a device push via
 Firebase Cloud Messaging, honoring the same three notification preferences
-already used by the in-app feed. Deploy `send-push` with `PUSH_ENABLED=false`,
-then set these secrets before enabling it:
+already used by the in-app feed. The chain is: `app_notifications` insert →
+trigger enqueues a `push_deliveries` row → pg_net nudge (and a 1-minute
+pg_cron sweep) calls the `send-push` Edge Function → FCM → device.
+
+`send-push` must be deployed with `verify_jwt = false` (set in
+`supabase/config.toml`): the nudge and the sweep authenticate only with the
+`x-smartreserve-worker-key` header, so a gateway JWT check would reject every
+dispatch before the function runs and no push would ever be delivered.
+
+Set these secrets:
 
 ```bash
-supabase secrets set FCM_PROJECT_ID=...
-supabase secrets set FCM_SERVICE_ACCOUNT_JSON=...
+supabase secrets set FCM_PROJECT_ID=smartreserve-48784
+supabase secrets set FCM_SERVICE_ACCOUNT_JSON="$(cat service-account.json)"
 supabase secrets set PUSH_WORKER_KEY=...
-supabase secrets set PUSH_ENABLED=false
 ```
 
-Store `smartreserve_function_url` and `smartreserve_push_worker_key` in
-Supabase Vault for the trigger nudge and Cron sweep, the same way the
-feedback sentiment worker does. `FCM_SERVICE_ACCOUNT_JSON` is the full JSON
-key for a Firebase service account with the Firebase Cloud Messaging API
-enabled; never commit it.
+Store `smartreserve_function_url` (the project URL, e.g.
+`https://<ref>.supabase.co`) and `smartreserve_push_worker_key` (the same
+value as `PUSH_WORKER_KEY`) in Supabase Vault for the trigger nudge and Cron
+sweep, the same way the feedback sentiment worker does. pg_net and pg_cron
+must be enabled. `FCM_SERVICE_ACCOUNT_JSON` is the full JSON key for a
+Firebase service account (Project Settings → Service accounts → "Generate
+new private key") with the Firebase Cloud Messaging API enabled; it is a
+real secret and must never reach the client or source control.
 
 The Firebase project (`smartreserve-48784`) exists, with both the Android
 app (`com.example.SmartReserve`, matching `android/app/build.gradle.kts`)
@@ -286,22 +296,60 @@ and the Web app registered. `lib/main.dart` hardcodes their `apiKey`/`appId`/
 same way `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` already are.
 `web/firebase-messaging-sw.js` carries the same Web config as plain JS,
 since a service worker can't read `--dart-define` values — update both
-together if the project ever changes.
+together if the project ever changes. The Web Push (VAPID) public key is a
+default in `lib/backend/push_service.dart`; override it with
+`--dart-define=FCM_VAPID_KEY=...` if you regenerate the key pair.
 
-Still needed before this goes live, none of which the app can do for itself:
+Deploy, then switch sending on:
 
-- Generate a Web Push (VAPID) key pair (Project Settings → Cloud Messaging →
-  Web configuration → "Generate key pair") and pass it as
-  `--dart-define=FCM_VAPID_KEY=...`; without it, web push registration
-  no-ops. Unlike the values above, a VAPID key is one half of a keypair
-  rather than a stable per-project identifier, so it isn't hardcoded as a
-  default.
-- Generate a Firebase service account key (Project Settings → Service
-  accounts → "Generate new private key") for `FCM_SERVICE_ACCOUNT_JSON`
-  above — this one is a real secret and must only ever reach Supabase
-  secrets, never the client or source control.
-- Set the Supabase secrets and Vault entries above, then
-  `supabase db push && supabase functions deploy send-push`.
+```bash
+supabase db push
+supabase functions deploy send-push --no-verify-jwt
+supabase secrets set PUSH_ENABLED=true
+```
+
+While `PUSH_ENABLED` is not `true` the function answers
+`{"disabled": true}` and sends nothing.
+
+#### Verifying push end to end
+
+1. Probe the function:
+   - `curl -X POST $SUPABASE_URL/functions/v1/send-push` (no key) should
+     return the function's own `{"code":"unauthorized"}`. A gateway
+     "Missing authorization header" means it was deployed with JWT
+     verification on.
+   - With `-H "x-smartreserve-worker-key: $PUSH_WORKER_KEY"` it should
+     return `{"claimed":…,"sent":…}`. `disabled: true` means `PUSH_ENABLED`
+     is off; `configuration_error` means an FCM secret is missing.
+2. In the app, Account → "Enable push on this device" → allow. The row shows
+   "Active on this device" and `user_push_tokens` gains an enabled row.
+3. In the SQL editor, send yourself a test notification and watch it:
+
+   ```sql
+   insert into app_notifications (recipient_id, kind, title, body)
+   values ('<your user id>', 'test', 'Push test', 'Hello');
+   select status, attempt_count, sent_count, last_error_code
+   from push_deliveries order by created_at desc limit 1;
+   select status_code, content from net._http_response
+   order by created desc limit 5;
+   ```
+
+   The delivery should reach `sent` within seconds (nudge) or a minute
+   (sweep). `skipped` means no enabled token or the preference is off;
+   `last_error_code` explains a failure; a 401 in `net._http_response`
+   means a wrong Vault worker key or JWT verification left on.
+4. On web and Android: with the app in the background the OS shows the
+   notification (Android as a heads-up alert); in the foreground the app
+   shows a toast; tapping it opens the notifications panel.
+5. Real flows: submitting, approving and declining a reservation and the
+   day-before reminder each push to the renter; turning off "Reminder the
+   day before" makes reminders `skipped`. Signing out disables the device's
+   token.
+
+Automated coverage: `deno task test` in `supabase/functions` (FCM message
+contract and the `verify_jwt` config guard), `supabase test db`
+(`supabase/tests/push_delivery_test.sql`: enqueue, lease, retry, dead
+tokens, RLS) and `flutter test test/push_notifications_test.dart`.
 
 ### The reservation assistant
 

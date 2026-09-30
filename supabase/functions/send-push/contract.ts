@@ -69,26 +69,33 @@ const deadTokenCodes = new Set(["UNREGISTERED", "INVALID_ARGUMENT", "SENDER_ID_M
 const retryCodes = new Set(["UNAVAILABLE", "INTERNAL", "QUOTA_EXCEEDED"]);
 
 export function classifyFcmError(status: number, body: unknown): FcmOutcome {
-  const errorCode = extractFcmErrorCode(body);
-  if (errorCode && deadTokenCodes.has(errorCode)) return "dead_token";
+  // Only FCM's own per-token errorCode can condemn a token. The generic
+  // google.rpc status is also INVALID_ARGUMENT for a malformed request body,
+  // and treating that as a dead token would disable every device on the
+  // first bad send.
+  const fcmErrorCode = extractFcmDetailErrorCode(body);
+  if (fcmErrorCode && deadTokenCodes.has(fcmErrorCode)) return "dead_token";
   if (status === 429 || status >= 500) return "retry";
+  const errorCode = fcmErrorCode ?? extractRpcStatus(body);
   if (errorCode && retryCodes.has(errorCode)) return "retry";
   return "fatal";
 }
 
-function extractFcmErrorCode(body: unknown): string | undefined {
-  if (!isRecord(body)) return undefined;
-  const error = body.error;
-  if (!isRecord(error)) return undefined;
-  const details = error.details;
-  if (Array.isArray(details)) {
-    for (const detail of details) {
-      if (isRecord(detail) && typeof detail.errorCode === "string") {
-        return detail.errorCode;
-      }
+function extractFcmDetailErrorCode(body: unknown): string | undefined {
+  if (!isRecord(body) || !isRecord(body.error)) return undefined;
+  const details = body.error.details;
+  if (!Array.isArray(details)) return undefined;
+  for (const detail of details) {
+    if (isRecord(detail) && typeof detail.errorCode === "string") {
+      return detail.errorCode;
     }
   }
-  return typeof error.status === "string" ? error.status : undefined;
+  return undefined;
+}
+
+function extractRpcStatus(body: unknown): string | undefined {
+  if (!isRecord(body) || !isRecord(body.error)) return undefined;
+  return typeof body.error.status === "string" ? body.error.status : undefined;
 }
 
 export function sanitizeErrorCode(value: unknown): string {
