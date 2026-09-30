@@ -14,7 +14,10 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const workerKey = Deno.env.get("PUSH_WORKER_KEY") ?? "";
 const fcmProjectId = Deno.env.get("FCM_PROJECT_ID") ?? "";
 const fcmServiceAccountJson = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON") ?? "";
-const enabled = (Deno.env.get("PUSH_ENABLED") ?? "false").toLowerCase() === "true";
+// Kill switch, not an opt-in: delivery runs once the FCM credentials below
+// are configured, unless PUSH_ENABLED is explicitly "false". Missing
+// credentials still surface as a configuration_error in the function logs.
+const enabled = (Deno.env.get("PUSH_ENABLED") ?? "true").trim().toLowerCase() !== "false";
 
 const batchSize = parsePositiveInt(Deno.env.get("PUSH_BATCH_SIZE"), 25, 1, 100);
 const leaseSeconds = parsePositiveInt(Deno.env.get("PUSH_LEASE_SECONDS"), 120, 30, 600);

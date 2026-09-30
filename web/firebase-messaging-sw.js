@@ -16,4 +16,37 @@ firebase.initializeApp({
   appId: "1:428216422364:web:d827a9e738cd91f01d8919",
 });
 
+// Registered before firebase.messaging() so it runs ahead of the SDK's own
+// click handler, which only acts on an fcm_options.link we don't send.
+// An open SmartReserve tab is focused (its realtime feed already shows the
+// notification); otherwise a new tab opens with the push's routing data in
+// the query string, which lib/main.dart replays once the session loads.
+self.addEventListener("notificationclick", (event) => {
+  const payload = event.notification?.data?.FCM_MSG?.data ?? {};
+  event.notification.close();
+  event.stopImmediatePropagation();
+
+  const params = new URLSearchParams();
+  if (payload.kind) params.set("push_kind", payload.kind);
+  if (payload.request_id) params.set("push_request", payload.request_id);
+  if (payload.notification_id) {
+    params.set("push_notification", payload.notification_id);
+  }
+  const scope = self.registration.scope;
+  const target = params.toString() ? `${scope}?${params}` : scope;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windows) => {
+        const open = windows.find((client) => client.url.startsWith(scope));
+        if (open) {
+          open.postMessage({ type: "smartreserve-push-open", ...payload });
+          return open.focus();
+        }
+        return self.clients.openWindow(target);
+      }),
+  );
+});
+
 firebase.messaging();

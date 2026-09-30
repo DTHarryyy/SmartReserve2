@@ -10,6 +10,7 @@ import 'app/app_scope.dart';
 import 'app/app_shell.dart';
 import 'app/app_state.dart';
 import 'backend/push_service.dart';
+import 'backend/push_web_bridge.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
 import 'theme/sr_theme.dart';
@@ -53,6 +54,22 @@ Future<void> main() async {
   await Supabase.initialize(url: url, publishableKey: key);
   state.configureBackend(SupabaseService(Supabase.instance.client));
   runApp(SmartReserveApp(state: state));
+  // A web notification click that opened this tab carries its routing data
+  // in the URL; clicks while a tab is already open arrive as messages.
+  if (consumeLaunchPushOpen() case final launch?) {
+    unawaited(
+      state.handlePushNotificationOpened(
+        launch.kind,
+        launch.requestId,
+        launch.notificationId,
+      ),
+    );
+  }
+  listenForPushClicks(
+    (kind, requestId, notificationId) => unawaited(
+      state.handlePushNotificationOpened(kind, requestId, notificationId),
+    ),
+  );
   // Push is only needed once a session exists, so Firebase starts after the
   // first frame instead of delaying it.
   unawaited(_configurePush(state));
@@ -122,7 +139,9 @@ Future<void> _configurePush(AppState state) async {
           state.showToast(ToastMessage(text, tone: AdvisoryTone.info));
         }
       },
-      onNotificationOpened: state.handlePushNotificationOpened,
+      onNotificationOpened: (kind, requestId, notificationId) => unawaited(
+        state.handlePushNotificationOpened(kind, requestId, notificationId),
+      ),
     );
     state.configurePush(push);
     unawaited(push.handleInitialMessage());

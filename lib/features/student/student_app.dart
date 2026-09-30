@@ -8,7 +8,6 @@ import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
-import '../../model/notice.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
@@ -19,6 +18,7 @@ import '../../widgets/amenity_request_field.dart';
 import '../../widgets/evidence_thumbnails.dart';
 import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
+import '../../widgets/push_enable_row.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_assistant_logo.dart';
@@ -84,7 +84,6 @@ class _StudentAppState extends State<StudentApp> {
   String? _highlightedReservationId;
 
   String? _editingField;
-  bool _pushBusy = false;
   final _editController = TextEditingController();
   final _browseSearch = TextEditingController();
   String _browseQuery = '';
@@ -2833,7 +2832,7 @@ class _StudentAppState extends State<StudentApp> {
                 ),
                 Divider(height: 1, color: context.srColors.border),
               ],
-              _pushRow(state),
+              PushEnableRow(state: state),
             ],
           ),
         ),
@@ -2855,46 +2854,6 @@ class _StudentAppState extends State<StudentApp> {
       ],
     ),
   );
-
-  Widget _pushRow(AppState state) {
-    final push = state.pushService;
-    if (push == null || !push.isSupported) {
-      return const SrListRow(
-        label: 'Enable push on this device',
-        value: 'Not supported here',
-      );
-    }
-    if (push.isRegistered) {
-      return const SrListRow(
-        label: 'Push notifications',
-        value: 'Active on this device',
-      );
-    }
-    return SrListRow(
-      label: 'Enable push on this device',
-      trailing: SrButton(
-        label: _pushBusy ? 'Requesting…' : 'Enable',
-        dense: true,
-        fontSize: 11,
-        onPressed: _pushBusy
-            ? null
-            : () async {
-                setState(() => _pushBusy = true);
-                final granted = await state.enablePushNotifications();
-                if (!mounted) return;
-                setState(() => _pushBusy = false);
-                if (!granted) {
-                  state.showToast(
-                    const ToastMessage(
-                      'Push notifications were not enabled. Check your browser or device permission settings.',
-                      tone: AdvisoryTone.block,
-                    ),
-                  );
-                }
-              },
-      ),
-    );
-  }
 
   Widget _accountActions(AppState state) => SrCard(
     child: LayoutBuilder(

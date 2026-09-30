@@ -26,7 +26,8 @@ class PushService {
   /// Called for pushes that arrive while the app is open; the OS does not
   /// display those, so the app shows them itself.
   final void Function(String? title, String? body) onForegroundNotification;
-  final void Function(String kind, String? requestId) onNotificationOpened;
+  final void Function(String kind, String? requestId, String? notificationId)
+  onNotificationOpened;
 
   static const _webVapidKey = String.fromEnvironment(
     'FCM_VAPID_KEY',
@@ -146,6 +147,10 @@ class PushService {
   void _handleOpenedMessage(RemoteMessage message) {
     final kind = message.data['kind'];
     if (kind is! String || kind.isEmpty) return;
-    onNotificationOpened(kind, message.data['request_id'] as String?);
+    onNotificationOpened(
+      kind,
+      message.data['request_id'] as String?,
+      message.data['notification_id'] as String?,
+    );
   }
 }

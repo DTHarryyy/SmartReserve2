@@ -35,12 +35,20 @@ grant execute on function public.send_day_before_reminders() to service_role;
 
 do $$
 begin
-  if not exists (select 1 from cron.job where jobname = 'smartreserve-day-before-reminders') then
-    perform cron.schedule(
-      'smartreserve-day-before-reminders', '*/5 * * * *',
-      'select public.send_day_before_reminders();'
-    );
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    if not exists (select 1 from cron.job where jobname = 'smartreserve-day-before-reminders') then
+      perform cron.schedule(
+        'smartreserve-day-before-reminders', '*/5 * * * *',
+        'select public.send_day_before_reminders();'
+      );
+    end if;
+  else
+    raise notice 'pg_cron is not available; schedule send_day_before_reminders() manually.';
   end if;
+exception
+  when invalid_schema_name or undefined_table or undefined_function
+    or insufficient_privilege then
+    raise notice 'day-before reminder cron scheduling was skipped; configure pg_cron manually.';
 end $$;
 
 notify pgrst, 'reload schema';

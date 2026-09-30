@@ -261,47 +261,54 @@ backfill RPC after the new-feedback path has been observed.
 ### Push notifications
 
 Every row written to `app_notifications` fans out to a device push via
-Firebase Cloud Messaging, honoring the same three notification preferences
-already used by the in-app feed. Deploy `send-push` with `PUSH_ENABLED=false`,
-then set these secrets before enabling it:
+Firebase Cloud Messaging (web + Android), honoring the notification
+preferences already used by the in-app feed. A trigger queues a
+`push_deliveries` row and nudges the `send-push` edge function immediately;
+a pg_cron job re-runs it every minute as a safety net.
 
-```bash
-supabase secrets set FCM_PROJECT_ID=...
-supabase secrets set FCM_SERVICE_ACCOUNT_JSON=...
-supabase secrets set PUSH_WORKER_KEY=...
-supabase secrets set PUSH_ENABLED=false
-```
+**What triggers a push**
 
-Store `smartreserve_function_url` and `smartreserve_push_worker_key` in
-Supabase Vault for the trigger nudge and Cron sweep, the same way the
-feedback sentiment worker does. `FCM_SERVICE_ACCOUNT_JSON` is the full JSON
-key for a Firebase service account with the Firebase Cloud Messaging API
-enabled; never commit it.
+- Renters: reservation approved / bumped / released / completed, payment
+  corrected, loyalty points earned or redeemed, admin feedback replies,
+  facility maintenance, and the day-before reminder (created by a cron job
+  every 5 minutes for bookings starting tomorrow, Asia/Manila).
+- Admins: reservation submitted or resubmitted, payment submitted,
+  low-rating feedback.
 
-The Firebase project (`smartreserve-48784`) exists, with both the Android
-app (`com.example.SmartReserve`, matching `android/app/build.gradle.kts`)
-and the Web app registered. `lib/main.dart` hardcodes their `apiKey`/`appId`/
-`projectId`/`messagingSenderId`/`authDomain` as `--dart-define` defaults
-(overridable for a different Firebase project without editing source), the
-same way `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` already are.
-`web/firebase-messaging-sw.js` carries the same Web config as plain JS,
-since a service worker can't read `--dart-define` values — update both
-together if the project ever changes.
+A device only receives pushes after its user taps **Enable** under
+"Enable push on this device" (renter profile or admin profile). Tapping a
+push opens the related reservation / feedback / loyalty screen.
 
-Still needed before this goes live, none of which the app can do for itself:
+**Server setup (one time)**
 
-- Generate a Web Push (VAPID) key pair (Project Settings → Cloud Messaging →
-  Web configuration → "Generate key pair") and pass it as
-  `--dart-define=FCM_VAPID_KEY=...`; without it, web push registration
-  no-ops. Unlike the values above, a VAPID key is one half of a keypair
-  rather than a stable per-project identifier, so it isn't hardcoded as a
-  default.
-- Generate a Firebase service account key (Project Settings → Service
-  accounts → "Generate new private key") for `FCM_SERVICE_ACCOUNT_JSON`
-  above — this one is a real secret and must only ever reach Supabase
-  secrets, never the client or source control.
-- Set the Supabase secrets and Vault entries above, then
-  `supabase db push && supabase functions deploy send-push`.
+The Firebase project (`smartreserve-48784`) and its Android + Web apps and
+Web Push (VAPID) key are already configured in `lib/main.dart`,
+`lib/backend/push_service.dart` and `web/firebase-messaging-sw.js`
+(overridable with `--dart-define`). What remains lives in Supabase:
+
+1. Generate a Firebase service account key (Firebase console → Project
+   Settings → Service accounts → "Generate new private key"). It is a real
+   secret: never commit it.
+2. Set the edge function secrets and deploy:
+
+   ```bash
+   supabase secrets set FCM_PROJECT_ID=smartreserve-48784
+   supabase secrets set FCM_SERVICE_ACCOUNT_JSON="$(cat service-account.json)"
+   supabase secrets set PUSH_WORKER_KEY=$(openssl rand -hex 32)
+   supabase db push && supabase functions deploy send-push
+   ```
+
+   Delivery is on as soon as these exist. `PUSH_ENABLED=false` is a kill
+   switch that pauses it without undeploying.
+3. Run section 1 of `supabase/snippets/push_setup.sql` in the SQL editor
+   (enables `pg_net`/`pg_cron` and stores `smartreserve_function_url` and
+   `smartreserve_push_worker_key` in Vault; the worker key must equal
+   `PUSH_WORKER_KEY`).
+4. Sign in, tap **Enable** on the profile page, trigger a notification, then
+   run sections 2 and 3 of the same script: every configuration check should
+   read `ok` and deliveries should show `sent`.
+
+iOS is not supported (it needs an Apple developer account and an APNs key).
 
 ### The reservation assistant
 

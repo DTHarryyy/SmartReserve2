@@ -4,6 +4,7 @@ import '../../app/app_scope.dart';
 import '../../app/app_view.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
+import '../../widgets/push_enable_row.dart';
 import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import '../../widgets/sr_scroll_view.dart';
@@ -103,6 +104,16 @@ class ProfileScreen extends StatelessWidget {
                           'yours, ask another internal admin from the '
                           'Users page.',
                     ),
+                    const SizedBox(height: SR.space12 + 2),
+                    Text('Notifications', style: SrType.label()),
+                    const SizedBox(height: SR.space4),
+                    Text(
+                      'Get new reservations, payments and low ratings on '
+                      'this device even when SmartReserve is closed.',
+                      style: SrType.caption(),
+                    ),
+                    const SizedBox(height: SR.space4),
+                    PushEnableRow(state: state),
                     const SizedBox(height: SR.space12 + 2),
                     Text('Appearance', style: SrType.label()),
                     const SizedBox(height: SR.space8),

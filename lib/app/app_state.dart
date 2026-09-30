@@ -979,9 +979,66 @@ class AppState extends ChangeNotifier {
     return granted;
   }
 
-  void handlePushNotificationOpened(String kind, String? requestId) {
-    notificationsOpen = true;
-    notifyListeners();
+  /// A push tapped before a session existed (cold start from the tray);
+  /// replayed once the workspace has loaded.
+  ({String kind, String? requestId, String? notificationId})? _pendingPushOpen;
+
+  /// Routes a tapped device push to the same screen the in-app bell would:
+  /// the matching notification is looked up (refreshing once if it has not
+  /// arrived yet) and handed to [openNotification]. When it cannot be found
+  /// the push's own kind/request id drive the routing instead.
+  Future<void> handlePushNotificationOpened(
+    String kind,
+    String? requestId, [
+    String? notificationId,
+  ]) async {
+    if (!hasSession) {
+      _pendingPushOpen = (
+        kind: kind,
+        requestId: requestId,
+        notificationId: notificationId,
+      );
+      return;
+    }
+    await workspaceReady;
+    BackendNotification? find() => notificationId == null
+        ? null
+        : notifications.cast<BackendNotification?>().firstWhere(
+            (item) => item?.id == notificationId,
+            orElse: () => null,
+          );
+    var match = find();
+    if (match == null && notificationId != null) {
+      await refreshNotifications();
+      match = find();
+    }
+    closeOverlays();
+    await openNotification(
+      match ??
+          BackendNotification(
+            id: notificationId ?? '',
+            kind: kind,
+            title: '',
+            body: '',
+            requestId: requestId,
+            createdAt: DateTime.now(),
+            // Already read: there is no known row to mark.
+            readAt: DateTime.now(),
+          ),
+    );
+  }
+
+  void _replayPendingPushOpen() {
+    final pending = _pendingPushOpen;
+    if (pending == null) return;
+    _pendingPushOpen = null;
+    unawaited(
+      handlePushNotificationOpened(
+        pending.kind,
+        pending.requestId,
+        pending.notificationId,
+      ),
+    );
   }
 
   bool get assistantHistoryAvailable =>
@@ -1185,6 +1242,7 @@ class AppState extends ChangeNotifier {
         _runSessionRefresh('loyalty', refreshLoyalty),
     ]);
     if (stale()) return;
+    _replayPendingPushOpen();
 
     // Live channels start after the initial snapshot so their first events are
     // real changes rather than a duplicate of the load above.
@@ -2593,7 +2651,9 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       _syncSelectedRequestRiskSummary(previous, selectedRequestId);
     } else {
+      pendingReservationFocusId = requestId;
       goTo(AppView.userApp);
+      notifyListeners();
     }
   }
 
