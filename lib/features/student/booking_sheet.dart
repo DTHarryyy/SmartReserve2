@@ -1437,10 +1437,29 @@ class _BookingForm extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (quoteError == null &&
+                        quote?.adminLane == 'internal' &&
+                        (quote?.afterHoursBillableMinutes ?? 0) > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Free until 5:00 PM · After-hours: '
+                        '${quote!.afterHoursBillableMinutes ~/ 60} hr × '
+                        '${pesoFromCentavos(quote!.afterHoursRateCentavos)} = '
+                        '${pesoFromCentavos(quote!.totalAmountCentavos)}',
+                        style: sans(
+                          11,
+                          w: 500,
+                          color: context.srColors.amberTitle,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       quoteError ??
-                          (quote?.totalAmountCentavos == 0
+                          (quote?.totalAmountCentavos == 0 &&
+                                  quote?.adminLane == 'internal'
+                              ? 'Campus use is free until 5:00 PM. Time after 5:00 PM, extensions and overtime are charged per hour.'
+                              : quote?.totalAmountCentavos == 0
                               ? 'No payment is required under this facility’s ${bookingRateLabel(account.pricingAudience).toLowerCase()}. Approval confirms the reservation.'
                               : '${pesoFromCentavos(quote?.requiredDownPaymentCentavos ?? 0)} is required after approval. The slot is held while payment proof is submitted and reviewed.'),
                       style: sans(

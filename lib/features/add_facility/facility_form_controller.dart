@@ -18,6 +18,7 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
     capacityField.addListener(_syncCapacity);
     descriptionField.addListener(_syncDescription);
     roomField.addListener(_syncRoom);
+    overtimeRateField.addListener(_syncOvertimeRate);
   }
 
   final FacilityDraft draft;
@@ -38,6 +39,7 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
   final capacityField = TextEditingController();
   final descriptionField = TextEditingController();
   final roomField = TextEditingController();
+  final overtimeRateField = TextEditingController();
 
   @override
   void dispose() {
@@ -45,6 +47,7 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
     capacityField.dispose();
     descriptionField.dispose();
     roomField.dispose();
+    overtimeRateField.dispose();
     super.dispose();
   }
 
@@ -63,6 +66,8 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
   void _syncDescription() =>
       _edit(() => draft.description = descriptionField.text);
   void _syncRoom() => _edit(() => draft.room = roomField.text);
+  void _syncOvertimeRate() =>
+      _edit(() => draft.overtimeRate = overtimeRateField.text);
 
   void setCategory(String value) => _edit(() => draft.category = value);
   void setStatus(FacilityStatus value) => _edit(() => draft.status = value);
@@ -118,6 +123,7 @@ class FacilityFormController extends ChangeNotifier with SafeChangeNotifier {
     capacityField.text = draft.capacity;
     descriptionField.text = draft.description;
     roomField.text = draft.room;
+    overtimeRateField.text = draft.overtimeRate;
     notifyListeners();
   }
 }

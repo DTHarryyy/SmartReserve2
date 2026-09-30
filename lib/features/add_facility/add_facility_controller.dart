@@ -255,6 +255,9 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
       ..maxDuration = facility.maxDuration
       ..advance = facility.advance
       ..buffer = facility.buffer
+      ..overtimeRate = FacilityDraft.pesosText(
+        facility.overtimeHourlyRateCentavos,
+      )
       ..days = _daysFromLabel(facility.days);
 
     draft.amenities
@@ -362,7 +365,8 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
       ..closeTime = blank.closeTime
       ..maxDuration = blank.maxDuration
       ..advance = blank.advance
-      ..buffer = blank.buffer;
+      ..buffer = blank.buffer
+      ..overtimeRate = blank.overtimeRate;
     draft.photos.clear();
     draft.amenities.clear();
     draft.geoEdited.clear();
@@ -439,7 +443,8 @@ class AddFacilityController extends ChangeNotifier with SafeChangeNotifier {
       ..closeTime = restored.closeTime
       ..maxDuration = restored.maxDuration
       ..advance = restored.advance
-      ..buffer = restored.buffer;
+      ..buffer = restored.buffer
+      ..overtimeRate = restored.overtimeRate;
 
     draft.geoEdited
       ..clear()

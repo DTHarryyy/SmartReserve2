@@ -13,6 +13,19 @@ import '../../util/campus_calendar.dart';
 
 enum PaymentProofMode { initialSubmission, correctionSubmission }
 
+/// Down payment while awaiting payment, extension/overtime once the booked
+/// price is covered, otherwise the remaining balance.
+PaymentPurpose paymentPurposeFor(ReservationRequest request) {
+  if (request.lifecycleStatus == ReservationLifecycleStatus.awaitingPayment) {
+    return PaymentPurpose.downPayment;
+  }
+  if (request.extraChargesCentavos > 0 &&
+      request.verifiedAmountCentavos >= request.totalAmountCentavos) {
+    return PaymentPurpose.adjustment;
+  }
+  return PaymentPurpose.balance;
+}
+
 Future<bool> showPaymentProofSheet(
   BuildContext context, {
   required AppState state,
@@ -313,11 +326,7 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
           )
         : await widget.state.submitReservationPayment(
             request: widget.request,
-            purpose:
-                widget.request.lifecycleStatus ==
-                    ReservationLifecycleStatus.awaitingPayment
-                ? PaymentPurpose.downPayment
-                : PaymentPurpose.balance,
+            purpose: paymentPurposeFor(widget.request),
             amountCentavos: centavos,
             referenceNumber: _reference.text,
             proof: _proof!,

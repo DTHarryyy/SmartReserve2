@@ -28,7 +28,7 @@ class PaymentReviewPanel extends StatelessWidget {
     final submitted = request.paymentTransactions
         .where((payment) => payment.status == PaymentDecisionStatus.submitted)
         .toList();
-    if (request.totalAmountCentavos == 0 &&
+    if (request.payableTotalCentavos == 0 &&
         request.paymentTransactions.isEmpty) {
       return const SizedBox.shrink();
     }

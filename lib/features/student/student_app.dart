@@ -1080,7 +1080,7 @@ class _StudentAppState extends State<StudentApp> {
                   runSpacing: 6,
                   children: _progressSteps(request),
                 ),
-                if (request.totalAmountCentavos > 0) ...[
+                if (request.payableTotalCentavos > 0) ...[
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(11),
@@ -1095,14 +1095,15 @@ class _StudentAppState extends State<StudentApp> {
                         Text(
                           '${request.aggregatePaymentStatus.label} · '
                           '${pesoFromCentavos(request.outstandingAmountCentavos)} remaining of '
-                          '${pesoFromCentavos(request.totalAmountCentavos)} '
-                          '(${request.downPaymentPercent}% down payment policy)',
+                          '${pesoFromCentavos(request.payableTotalCentavos)}'
+                          '${request.totalAmountCentavos > 0 ? ' (${request.downPaymentPercent}% down payment policy)' : ''}',
                           style: sans(
                             10.5,
                             w: 500,
                             color: context.srColors.ink3,
                           ),
                         ),
+                        ..._extraChargeLines(request),
                         if (request.paymentDueAt case final due?)
                           Text(
                             'Payment proof due ${_reservationDate(campusWallTime(due))} · '
@@ -1223,7 +1224,9 @@ class _StudentAppState extends State<StudentApp> {
                                     ReservationLifecycleStatus
                                         .awaitingPayment ||
                                 request.lifecycleStatus ==
-                                    ReservationLifecycleStatus.confirmed)) ...[
+                                    ReservationLifecycleStatus.confirmed ||
+                                request.lifecycleStatus ==
+                                    ReservationLifecycleStatus.completed)) ...[
                           const SizedBox(height: 8),
                           SrButton(
                             label:
@@ -1231,6 +1234,9 @@ class _StudentAppState extends State<StudentApp> {
                                   'payment:${request.id}',
                                 )
                                 ? 'Submitting…'
+                                : paymentPurposeFor(request) ==
+                                      PaymentPurpose.adjustment
+                                ? 'Pay ${pesoFromCentavos(request.outstandingAmountCentavos)} for extra time'
                                 : 'Submit payment proof',
                             kind: SrButtonKind.primary,
                             dense: true,
@@ -1761,7 +1767,7 @@ class _StudentAppState extends State<StudentApp> {
                   '${_reservationClock(occurrence.startsAt)}',
                   style: mono(10.5, color: context.srColors.ink3),
                 ),
-                if (checkedIn)
+                if (checkedIn) ...[
                   SrPill(
                     label: occurrence.checkedInLate
                         ? 'Checked in · ${occurrence.checkInLateMinutes} min late'
@@ -1773,8 +1779,26 @@ class _StudentAppState extends State<StudentApp> {
                         ? context.srColors.amberTitle
                         : context.srColors.greenDark,
                     fontSize: 10.5,
-                  )
-                else if (inWindow) ...[
+                  ),
+                  if (state.canCheckOut(request, occurrence)) ...[
+                    SrButton(
+                      label: 'Check out',
+                      kind: SrButtonKind.primary,
+                      dense: true,
+                      onPressed: state.reservationActionsPending.contains(
+                            request.id,
+                          )
+                          ? null
+                          : () => _checkOut(state, request, occurrence),
+                    ),
+                    if (occurrence.overtimeMinutesAt(now) > 0)
+                      Text(
+                        'Overtime ${occurrence.overtimeMinutesAt(now)} min · '
+                        'est. ${pesoFromCentavos(state.estimateExtraTimeCentavos(request, oldEnd: occurrence.endsAt, newEnd: now, overtime: true))}',
+                        style: sans(11, color: context.srColors.amberTitle),
+                      ),
+                  ],
+                ] else if (inWindow) ...[
                   SrButton(
                     label: busy ? 'Checking in...' : 'Check in',
                     kind: SrButtonKind.primary,
@@ -1797,6 +1821,35 @@ class _StudentAppState extends State<StudentApp> {
                         : 'Check-in closed 30 minutes after start.',
                     style: sans(11, color: context.srColors.muted),
                   ),
+                if (request.pendingExtensionFor(occurrence.id)
+                    case final pending?) ...[
+                  SrPill(
+                    label:
+                        'Extension to ${_reservationClock(pending.newEndsAt ?? occurrence.endsAt)} '
+                        'waiting for approval',
+                    background: context.srColors.amberTint,
+                    foreground: context.srColors.amberTitle,
+                    fontSize: 10.5,
+                  ),
+                  SrButton(
+                    label: 'Withdraw',
+                    dense: true,
+                    onPressed: state.reservationActionsPending.contains(
+                          request.id,
+                        )
+                        ? null
+                        : () => state.cancelExtension(request, pending),
+                  ),
+                ] else if (state.canRequestExtension(request, occurrence))
+                  SrButton(
+                    label: 'Extend time',
+                    dense: true,
+                    onPressed: state.reservationActionsPending.contains(
+                          request.id,
+                        )
+                        ? null
+                        : () => _requestExtension(state, request, occurrence),
+                  ),
               ],
             ),
           ),
@@ -1804,6 +1857,147 @@ class _StudentAppState extends State<StudentApp> {
       );
     }
     return rows;
+  }
+
+  /// Approved extensions and overtime, shown under the payment summary.
+  List<Widget> _extraChargeLines(ReservationRequest request) => [
+    for (final charge in request.timeCharges)
+      if (charge.isBillable || charge.status == TimeChargeStatus.waived)
+        Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(
+            '${charge.kind.label} · '
+            '${charge.billableHours} ${charge.billableHours == 1 ? 'hr' : 'hrs'} · '
+            '${charge.amountCentavos == 0 ? 'free (before 5:00 PM)' : pesoFromCentavos(charge.amountCentavos)}'
+            '${charge.status == TimeChargeStatus.waived ? ' · waived' : ''}',
+            style: sans(10.5, color: context.srColors.muted),
+          ),
+        ),
+  ];
+
+  Future<void> _requestExtension(
+    AppState state,
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+  ) async {
+    final reason = TextEditingController();
+    var hours = 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final newEnd = occurrence.endsAt.add(Duration(hours: hours));
+          final estimate = state.estimateExtraTimeCentavos(
+            request,
+            oldEnd: occurrence.endsAt,
+            newEnd: newEnd,
+          );
+          return AlertDialog(
+            title: const Text('Extend time'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Your booking ends at ${_reservationClock(occurrence.endsAt)}. '
+                  'An administrator approves the extension if the room is free.',
+                  style: sans(12, height: 1.5, color: context.srColors.ink3),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('+1 hr')),
+                    ButtonSegment(value: 2, label: Text('+2 hrs')),
+                    ButtonSegment(value: 3, label: Text('+3 hrs')),
+                  ],
+                  selected: {hours},
+                  onSelectionChanged: (value) =>
+                      setDialogState(() => hours = value.first),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'New end: ${_reservationClock(newEnd)} · '
+                  '${estimate == 0 ? (request.isCampusBooking ? 'Free (campus use before 5:00 PM)' : 'No charge') : '${pesoFromCentavos(estimate)} will be added to your balance'}',
+                  style: sans(12, w: 600),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason (optional)',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Request extension'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (confirmed == true) {
+      await state.requestExtension(
+        request,
+        occurrence,
+        hours: hours,
+        reason: reason.text,
+      );
+    }
+    reason.dispose();
+  }
+
+  Future<void> _checkOut(
+    AppState state,
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+  ) async {
+    final now = campusNow();
+    final over = occurrence.overtimeMinutesAt(now);
+    final estimate = state.estimateExtraTimeCentavos(
+      request,
+      oldEnd: occurrence.endsAt,
+      newEnd: now,
+      overtime: true,
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Check out'),
+        content: Text(
+          over == 0
+              ? 'Record that you have left the facility. There is no charge.'
+              : 'You are $over ${over == 1 ? 'minute' : 'minutes'} past your '
+                    'booked end time. '
+                    '${estimate == 0 ? 'This is within the free allowance.' : 'Estimated overtime: ${pesoFromCentavos(estimate)}. You can pay it right after checkout.'}',
+          style: sans(12.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Check out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await state.checkOutOccurrence(request, occurrence);
+    if (!ok || !mounted) return;
+    final updated = state.requestById(request.id);
+    if (updated != null && updated.outstandingAmountCentavos > 0) {
+      await _submitPayment(state, updated);
+    }
   }
 
   Future<void> _submitPayment(

@@ -17,6 +17,7 @@ import '../model/facility_draft.dart';
 import '../model/facility_photo.dart';
 import '../model/payment.dart';
 import '../model/permit.dart';
+import '../model/time_charges.dart';
 import '../features/reports/reports_data.dart';
 import '../model/audit_entry.dart';
 import '../model/anomaly.dart';
@@ -836,11 +837,20 @@ class BackendReservationQuote {
     this.downPaymentPercent = 50,
     this.paymentExemption = 'none',
     this.discount,
+    this.afterHoursMinutes = 0,
+    this.afterHoursBillableMinutes = 0,
+    this.afterHoursRateCentavos = 0,
   });
 
   final String facilityId;
   final String audience;
   final String adminLane;
+
+  /// Campus bookings: minutes after 5:00 PM, the whole hours billed for
+  /// them, and the facility overtime rate used. Zero for renters.
+  final int afterHoursMinutes;
+  final int afterHoursBillableMinutes;
+  final int afterHoursRateCentavos;
   final int facilityAmountCentavos;
   final int amenityAmountCentavos;
   final int discountAmountCentavos;
@@ -883,6 +893,11 @@ class BackendReservationQuote {
       terms: parse('terms', BackendTermsVersion.fromJson),
       downPaymentPercent: (json['down_payment_percent'] as num?)?.toInt() ?? 50,
       paymentExemption: '${json['payment_exemption'] ?? 'none'}',
+      afterHoursMinutes: (json['after_hours_minutes'] as num?)?.toInt() ?? 0,
+      afterHoursBillableMinutes:
+          (json['after_hours_billable_minutes'] as num?)?.toInt() ?? 0,
+      afterHoursRateCentavos:
+          (json['after_hours_rate_centavos'] as num?)?.toInt() ?? 0,
       discount: discount != null
           ? LoyaltyQuoteDiscount(
               claimId: '${discount['claim_id']}',
@@ -969,6 +984,8 @@ class BackendReservationOccurrence {
     this.attendanceReason,
     this.checkedInAt,
     this.checkInLateMinutes,
+    this.checkedOutAt,
+    this.overtimeMinutes,
     this.cancelledAt,
     this.cancelledBy,
     this.cancellationReason,
@@ -979,6 +996,8 @@ class BackendReservationOccurrence {
   final DateTime endsAt;
   final String bookingState;
   final String lifecycleStage;
+  final DateTime? checkedOutAt;
+  final int? overtimeMinutes;
   final DateTime? proposedStartsAt;
   final DateTime? proposedEndsAt;
   final String? exceptionReason;
@@ -1006,11 +1025,35 @@ class BackendReservationOccurrence {
         attendanceReason: json['attendance_reason'] as String?,
         checkedInAt: _date(json['checked_in_at']),
         checkInLateMinutes: (json['check_in_late_minutes'] as num?)?.toInt(),
+        checkedOutAt: _date(json['checked_out_at']),
+        overtimeMinutes: (json['overtime_minutes'] as num?)?.toInt(),
         cancelledAt: _date(json['cancelled_at']),
         cancelledBy: json['cancelled_by'] as String?,
         cancellationReason: json['cancellation_reason'] as String?,
       );
 }
+
+/// Parses one `reservation_time_charges` row. Times stay as instants; the
+/// app state converts them to campus wall time with the rest of the booking.
+ReservationTimeCharge parseReservationTimeCharge(Map<String, dynamic> json) =>
+    ReservationTimeCharge(
+      id: json['id'] as String,
+      occurrenceId: json['occurrence_id'] as String,
+      kind: TimeChargeKind.fromRaw('${json['kind']}'),
+      status: TimeChargeStatus.fromRaw('${json['status']}'),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      requestedMinutes: (json['requested_minutes'] as num?)?.toInt(),
+      previousEndsAt: _date(json['previous_ends_at']),
+      newEndsAt: _date(json['new_ends_at']),
+      actualEndAt: _date(json['actual_end_at']),
+      rawOverMinutes: (json['raw_over_minutes'] as num?)?.toInt(),
+      billableMinutes: (json['billable_minutes'] as num?)?.toInt() ?? 0,
+      hourlyRateCentavos: (json['hourly_rate_centavos'] as num?)?.toInt() ?? 0,
+      amountCentavos: (json['amount_centavos'] as num?)?.toInt() ?? 0,
+      reason: json['reason'] as String?,
+      decisionReason: json['decision_reason'] as String?,
+      decidedAt: _date(json['decided_at']),
+    );
 
 class BackendReservationAttachment {
   const BackendReservationAttachment({
@@ -1257,6 +1300,7 @@ class BackendReservation {
     this.signatureRequestId,
     this.signatureRequestStatus,
     this.useAssessments = const [],
+    this.timeCharges = const [],
     this.requesterCategory = 'external_renter',
     this.externalCompanyOrganization,
     this.externalCompleteAddress,
@@ -1265,6 +1309,7 @@ class BackendReservation {
   });
 
   final String id;
+  final List<ReservationTimeCharge> timeCharges;
   final String requesterId;
   final String facilityId;
   final String requesterName;
@@ -1429,6 +1474,10 @@ class BackendReservation {
             Map<String, dynamic>.from(raw as Map),
           ),
       ],
+      timeCharges: rows(
+        'reservation_time_charges',
+        parseReservationTimeCharge,
+      )..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
       requesterCategory: '${json['requester_category'] ?? 'external_renter'}',
       externalCompanyOrganization:
           json['external_company_organization'] as String?,
@@ -3426,6 +3475,8 @@ class BackendFacility {
     this.ratingCount = 0,
     this.internalPermitRowCode,
     this.externalPermitRowCode,
+    this.overtimeHourlyRateCentavos = 0,
+    this.overtimeGraceMinutes = 15,
   });
 
   final String id;
@@ -3436,6 +3487,8 @@ class BackendFacility {
   final int capacity;
   final String status;
   final String pinConfidence;
+  final int overtimeHourlyRateCentavos;
+  final int overtimeGraceMinutes;
   final String campusName;
   final String floor;
   final double? latitude;
@@ -3577,6 +3630,10 @@ class BackendFacility {
           0,
       internalPermitRowCode: json['internal_permit_row_code'] as String?,
       externalPermitRowCode: json['external_permit_row_code'] as String?,
+      overtimeHourlyRateCentavos:
+          (json['overtime_hourly_rate_centavos'] as num?)?.toInt() ?? 0,
+      overtimeGraceMinutes:
+          (json['overtime_grace_minutes'] as num?)?.toInt() ?? 15,
     );
   }
 
@@ -3640,6 +3697,8 @@ class BackendFacility {
     ratingCount: ratingCount,
     internalPermitRowCode: internalPermitRowCode,
     externalPermitRowCode: externalPermitRowCode,
+    overtimeHourlyRateCentavos: overtimeHourlyRateCentavos,
+    overtimeGraceMinutes: overtimeGraceMinutes,
   );
 
   Facility toFacility(String Function(String path) publicUrlFor) {
@@ -3715,6 +3774,8 @@ class BackendFacility {
       ratingCount: ratingCount,
       internalPermitRowCode: internalPermitRowCode,
       externalPermitRowCode: externalPermitRowCode,
+      overtimeHourlyRateCentavos: overtimeHourlyRateCentavos,
+      overtimeGraceMinutes: overtimeGraceMinutes,
     );
   }
 
@@ -4169,7 +4230,8 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'payment_method:facility_payment_methods!reservation_requests_payment_method_id_fkey(*),'
       'reservation_feedback(*,reservation_feedback_replies(*)),reservation_permits(*),'
       'reservation_signature_requests(id,status,requested_at,signed_at),'
-      'reservation_use_assessments(*,reservation_use_assessment_files(*))';
+      'reservation_use_assessments(*,reservation_use_assessment_files(*)),'
+      'reservation_time_charges(*)';
 
   @override
   Future<List<BackendReservation>> reservations() async {
@@ -4502,34 +4564,10 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_discount_claim_id': discountClaimId,
       },
     );
-    final quote = BackendReservationQuote.fromJson(
+    // Campus bookings are priced by the server too: free until 5:00 PM and
+    // the facility overtime rate for every started hour after it.
+    return BackendReservationQuote.fromJson(
       Map<String, dynamic>.from(data as Map),
-    );
-    if (quote.adminLane != 'internal') return quote;
-    return BackendReservationQuote(
-      facilityId: quote.facilityId,
-      audience: quote.audience,
-      adminLane: quote.adminLane,
-      facilityAmountCentavos: 0,
-      amenityAmountCentavos: 0,
-      discountAmountCentavos: 0,
-      totalAmountCentavos: 0,
-      requiredDownPaymentCentavos: 0,
-      pricingFingerprint: quote.pricingFingerprint,
-      lines: [
-        for (final line in quote.lines)
-          BackendPriceLine(
-            type: line.type,
-            sourceId: line.sourceId,
-            label: line.label,
-            quantity: line.quantity,
-            unitAmountCentavos: 0,
-            lineTotalCentavos: 0,
-          ),
-      ],
-      terms: quote.terms,
-      downPaymentPercent: quote.downPaymentPercent,
-      paymentExemption: 'internal_user',
     );
   }
 
@@ -4578,6 +4616,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       paymentExemption: '${json['payment_exemption'] ?? 'none'}',
       correctionAmountCentavos:
           (json['correction_amount_centavos'] as num?)?.toInt() ?? 0,
+      extraChargesCentavos:
+          (json['extra_charges_centavos'] as num?)?.toInt() ?? 0,
+      pendingExtensionCentavos:
+          (json['pending_extension_centavos'] as num?)?.toInt() ?? 0,
+      payableTotalCentavos: (json['payable_total_centavos'] as num?)?.toInt(),
     );
   }
 
@@ -5452,6 +5495,73 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       final data = Map<String, dynamic>.from(response as Map);
       return ReservationActionResult(actionId: data['action_id'] as String?);
     }
+    // Extra time: extensions, checkout with overtime, and waivers. None of
+    // these are undoable, so they return no action id.
+    switch (command.action) {
+      case 'request_extension':
+        await _client.rpc(
+          'request_time_extension',
+          params: {
+            'p_request_id': command.requestId,
+            'p_occurrence_id': command.payload['occurrence_id'],
+            'p_hours': command.payload['hours'],
+            'p_reason': command.reason,
+            'p_expected_version': command.expectedVersion,
+            'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+          },
+        );
+        return const ReservationActionResult();
+      case 'cancel_extension':
+        await _client.rpc(
+          'cancel_time_extension',
+          params: {'p_charge_id': command.payload['charge_id']},
+        );
+        return const ReservationActionResult();
+      case 'decide_extension':
+        await _client.rpc(
+          'decide_time_extension',
+          params: {
+            'p_charge_id': command.payload['charge_id'],
+            'p_decision': command.payload['decision'],
+            'p_reason': command.reason,
+          },
+        );
+        return const ReservationActionResult();
+      case 'admin_extend':
+        await _client.rpc(
+          'admin_extend_occurrence',
+          params: {
+            'p_request_id': command.requestId,
+            'p_occurrence_id': command.payload['occurrence_id'],
+            'p_hours': command.payload['hours'],
+            'p_reason': command.reason,
+            'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+          },
+        );
+        return const ReservationActionResult();
+      case 'check_out':
+        await _client.rpc(
+          'check_out_occurrence',
+          params: {
+            'p_request_id': command.requestId,
+            'p_occurrence_id': command.payload['occurrence_id'],
+            'p_checked_out_at': command.payload['checked_out_at'],
+            'p_reason': command.reason,
+            'p_expected_version': command.expectedVersion,
+            'p_idempotency_key': command.idempotencyKey ?? _uuid(),
+          },
+        );
+        return const ReservationActionResult();
+      case 'waive_charge':
+        await _client.rpc(
+          'waive_time_charge',
+          params: {
+            'p_charge_id': command.payload['charge_id'],
+            'p_reason': command.reason,
+          },
+        );
+        return const ReservationActionResult();
+    }
     final response = await _client.rpc(
       'reservation_action',
       params: {
@@ -5893,6 +6003,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
           ) ??
           15,
       'facility_classification': 'shared',
+      'overtime_hourly_rate_centavos': draft.overtimeRateCentavos ?? 0,
       'archived_at': null,
     };
   }

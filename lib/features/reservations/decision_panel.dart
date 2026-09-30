@@ -18,6 +18,7 @@ import '../../widgets/sr_components.dart';
 import '../../widgets/sr_controls.dart';
 import 'conflict_engine.dart';
 import 'day_timeline.dart';
+import 'extra_time_card.dart';
 import 'payment_review_panel.dart';
 import 'permit_panel.dart';
 import 'reservation_activity.dart';
@@ -371,6 +372,10 @@ class _DecisionPanelState extends State<DecisionPanel> {
                   ReservationLifecycleStatus.completed)
             _lifecycleCard(),
 
+          if (_request.lifecycleStatus == ReservationLifecycleStatus.confirmed ||
+              _request.timeCharges.isNotEmpty)
+            ExtraTimeCard(state: widget.state, request: _request),
+
           if (_request.feedbackRating != null) _feedbackCard(),
         ],
       ],
@@ -580,12 +585,22 @@ class _DecisionPanelState extends State<DecisionPanel> {
               SrFactChip(label: 'Requester type', value: requesterType),
               SrFactChip(
                 label: 'Payment required',
-                value: r.totalAmountCentavos > 0 ? 'Yes' : 'No — exempt',
+                value: r.payableTotalCentavos > 0 ? 'Yes' : 'No — exempt',
               ),
               SrFactChip(
                 label: 'Reservation total',
                 value: pesoFromCentavos(r.totalAmountCentavos),
               ),
+              if (r.extraChargesCentavos > 0) ...[
+                SrFactChip(
+                  label: 'Extra time',
+                  value: pesoFromCentavos(r.extraChargesCentavos),
+                ),
+                SrFactChip(
+                  label: 'Remaining balance',
+                  value: pesoFromCentavos(r.outstandingAmountCentavos),
+                ),
+              ],
               if (r.totalAmountCentavos > 0) ...[
                 SrFactChip(
                   label: 'Down payment policy',

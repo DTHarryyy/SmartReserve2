@@ -197,6 +197,8 @@ class Facility {
     this.locationReviewVersion = 1,
     this.internalPermitRowCode,
     this.externalPermitRowCode,
+    this.overtimeHourlyRateCentavos = 0,
+    this.overtimeGraceMinutes = 15,
   });
 
   final String id;
@@ -271,6 +273,13 @@ class Facility {
   int locationReviewVersion;
   String? internalPermitRowCode;
   String? externalPermitRowCode;
+
+  /// Charged per started hour for extensions, overtime past checkout grace,
+  /// and campus use after 5:00 PM.
+  int overtimeHourlyRateCentavos;
+
+  /// Overtime at or below this many minutes is not billed.
+  int overtimeGraceMinutes;
 
   bool get hasRatings => ratingCount > 0;
   bool get hasVerifiedLocation => locationReviewStatus.isVerified;

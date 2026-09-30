@@ -1,7 +1,7 @@
 enum PaymentPurpose {
   downPayment('down_payment', 'Down payment'),
   balance('balance', 'Remaining balance'),
-  adjustment('adjustment', 'Adjustment'),
+  adjustment('adjustment', 'Extension / overtime'),
   refund('refund', 'Refund');
 
   const PaymentPurpose(this.raw, this.label);
@@ -142,7 +142,10 @@ class PaymentSummary {
     this.downPaymentPercent = 50,
     this.paymentExemption = 'none',
     this.correctionAmountCentavos = 0,
-  });
+    this.extraChargesCentavos = 0,
+    this.pendingExtensionCentavos = 0,
+    int? payableTotalCentavos,
+  }) : payableTotalCentavos = payableTotalCentavos ?? totalAmountCentavos;
 
   final AggregatePaymentStatus status;
   final int totalAmountCentavos;
@@ -155,6 +158,15 @@ class PaymentSummary {
   final int downPaymentPercent;
   final String paymentExemption;
   final int correctionAmountCentavos;
+
+  /// Approved extension and overtime charges on top of [totalAmountCentavos].
+  final int extraChargesCentavos;
+
+  /// Quoted extensions still waiting for an administrator.
+  final int pendingExtensionCentavos;
+
+  /// What the requester owes in all: booked price plus approved extra time.
+  final int payableTotalCentavos;
 }
 
 class PriceSnapshotLine {

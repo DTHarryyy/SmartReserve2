@@ -2131,6 +2131,16 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Facility? facilityForRequest(ReservationRequest request) {
+    final id = request.facilityId;
+    if (id != null) {
+      for (final f in facilities) {
+        if (f.id == id) return f;
+      }
+    }
+    return facilityNamed(request.facility);
+  }
+
   List<Facility> get browsableFacilities => [
     for (final f in facilities)
       if (f.publicListing && f.state != FacilityState.draft) f,
@@ -2343,9 +2353,36 @@ class AppState extends ChangeNotifier {
               ? null
               : campusWallTime(occurrence.checkedInAt!),
           checkInLateMinutes: occurrence.checkInLateMinutes,
+          checkedOutAt: occurrence.checkedOutAt == null
+              ? null
+              : campusWallTime(occurrence.checkedOutAt!),
+          overtimeMinutes: occurrence.overtimeMinutes,
           cancelledAt: occurrence.cancelledAt,
           cancelledBy: occurrence.cancelledBy,
           cancellationReason: occurrence.cancellationReason,
+        ),
+    ];
+    DateTime? wall(DateTime? instant) =>
+        instant == null ? null : campusWallTime(instant);
+    final timeCharges = [
+      for (final charge in row.timeCharges)
+        ReservationTimeCharge(
+          id: charge.id,
+          occurrenceId: charge.occurrenceId,
+          kind: charge.kind,
+          status: charge.status,
+          createdAt: campusWallTime(charge.createdAt),
+          requestedMinutes: charge.requestedMinutes,
+          previousEndsAt: wall(charge.previousEndsAt),
+          newEndsAt: wall(charge.newEndsAt),
+          actualEndAt: wall(charge.actualEndAt),
+          rawOverMinutes: charge.rawOverMinutes,
+          billableMinutes: charge.billableMinutes,
+          hourlyRateCentavos: charge.hourlyRateCentavos,
+          amountCentavos: charge.amountCentavos,
+          reason: charge.reason,
+          decisionReason: charge.decisionReason,
+          decidedAt: wall(charge.decidedAt),
         ),
     ];
     final first = occurrences.isEmpty
@@ -2423,6 +2460,7 @@ class AppState extends ChangeNotifier {
       legacyFinancialState: row.legacyFinancialState,
       paymentTransactions: row.payments,
       paymentMethod: row.paymentMethod,
+      timeCharges: timeCharges,
       permit: row.permit,
       signatureRequestId: row.signatureRequestId,
       signatureRequestStatus: row.signatureRequestStatus,
@@ -2684,6 +2722,7 @@ class AppState extends ChangeNotifier {
         maxDuration: draft.maxDuration,
         advance: draft.advance,
         buffer: draft.buffer,
+        overtimeHourlyRateCentavos: draft.overtimeRateCentavos ?? 0,
         publicListing: draft.publicListing,
         campusName: draft.campusName,
         updated: '${_today()} · ${currentAdmin.name}',
@@ -2766,6 +2805,7 @@ class AppState extends ChangeNotifier {
       ..maxDuration = draft.maxDuration
       ..advance = draft.advance
       ..buffer = draft.buffer
+      ..overtimeHourlyRateCentavos = draft.overtimeRateCentavos ?? 0
       ..publicListing = draft.publicListing
       ..photoCount = draft.photos.length
       ..photos = List.of(draft.photos)
@@ -3934,6 +3974,12 @@ class AppState extends ChangeNotifier {
     'no_show' => 'No-show',
     'cancel' => 'Cancellation',
     'request_reschedule' => 'Reschedule request',
+    'request_extension' => 'Extension request',
+    'cancel_extension' => 'Extension withdrawal',
+    'decide_extension' => 'Extension decision',
+    'admin_extend' => 'Extension',
+    'check_out' => 'Checkout',
+    'waive_charge' => 'Charge waiver',
     'resubmit' => 'Resubmission',
     _ => 'Reservation update',
   };
@@ -6811,6 +6857,162 @@ class AppState extends ChangeNotifier {
         'starts_at': campusInstant(startsAt).toIso8601String(),
         'ends_at': campusInstant(endsAt).toIso8601String(),
       },
+      reversible: false,
+    );
+  }
+
+  // --- Extra time: extensions, checkout and overtime --------------------
+  //
+  // The server prices every charge; the estimates here only preview it with
+  // the same rules (lib/model/time_charges.dart).
+
+  bool canRequestExtension(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    DateTime? now,
+  }) =>
+      request.lifecycleStatus == ReservationLifecycleStatus.confirmed &&
+      occurrence.canRequestExtensionAt(now ?? campusNow()) &&
+      request.pendingExtensionFor(occurrence.id) == null;
+
+  bool canCheckOut(
+    ReservationRequest request,
+    ReservationOccurrence occurrence,
+  ) =>
+      request.lifecycleStatus == ReservationLifecycleStatus.confirmed &&
+      occurrence.canCheckOut;
+
+  /// Preview of what adding time from [oldEnd] to [newEnd] would cost.
+  /// [overtime] applies the facility's checkout grace.
+  int estimateExtraTimeCentavos(
+    ReservationRequest request, {
+    required DateTime oldEnd,
+    required DateTime newEnd,
+    bool overtime = false,
+  }) {
+    final facility = facilityForRequest(request);
+    final minutes = extraTimeBillableMinutes(
+      campus: request.isCampusBooking,
+      oldEnd: oldEnd,
+      newEnd: newEnd,
+      graceMinutes: overtime
+          ? facility?.overtimeGraceMinutes ?? kDefaultOvertimeGraceMinutes
+          : 0,
+    );
+    return extraTimeAmountCentavos(
+      billableMinutes: minutes,
+      hourlyRateCentavos: facility?.overtimeHourlyRateCentavos ?? 0,
+    );
+  }
+
+  bool _extraTimeNeedsBackend() {
+    if (backend != null && !_useDemoData) return false;
+    showToast(
+      const ToastMessage(
+        'Extensions and checkout need a live connection.',
+        tone: AdvisoryTone.block,
+      ),
+    );
+    return true;
+  }
+
+  Future<bool> requestExtension(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    required int hours,
+    String reason = '',
+  }) async {
+    if (_extraTimeNeedsBackend()) return false;
+    return _runReservationActionWithResult(
+      request,
+      'request_extension',
+      reason: reason,
+      payload: {'occurrence_id': occurrence.id, 'hours': hours},
+      reversible: false,
+    );
+  }
+
+  Future<bool> cancelExtension(
+    ReservationRequest request,
+    ReservationTimeCharge charge,
+  ) async {
+    if (_extraTimeNeedsBackend()) return false;
+    return _runReservationActionWithResult(
+      request,
+      'cancel_extension',
+      payload: {'charge_id': charge.id},
+      reversible: false,
+    );
+  }
+
+  /// Requester self checkout (now), or an administrator checkout that may
+  /// be backdated with [checkedOutAt] (campus wall time).
+  Future<bool> checkOutOccurrence(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    DateTime? checkedOutAt,
+    String reason = '',
+  }) async {
+    if (_extraTimeNeedsBackend()) return false;
+    return _runReservationActionWithResult(
+      request,
+      'check_out',
+      reason: reason,
+      payload: {
+        'occurrence_id': occurrence.id,
+        if (checkedOutAt != null)
+          'checked_out_at': campusInstant(checkedOutAt).toIso8601String(),
+      },
+      reversible: false,
+    );
+  }
+
+  Future<bool> decideExtension(
+    ReservationRequest request,
+    ReservationTimeCharge charge, {
+    required bool approve,
+    String reason = '',
+  }) async {
+    if (_extraTimeNeedsBackend()) return false;
+    return _runReservationActionWithResult(
+      request,
+      'decide_extension',
+      reason: reason,
+      payload: {
+        'charge_id': charge.id,
+        'decision': approve ? 'approve' : 'decline',
+      },
+      reversible: false,
+    );
+  }
+
+  Future<bool> adminExtendOccurrence(
+    ReservationRequest request,
+    ReservationOccurrence occurrence, {
+    required int hours,
+    String reason = '',
+  }) async {
+    if (_extraTimeNeedsBackend()) return false;
+    return _runReservationActionWithResult(
+      request,
+      'admin_extend',
+      reason: reason,
+      payload: {'occurrence_id': occurrence.id, 'hours': hours},
+      reversible: false,
+    );
+  }
+
+  Future<bool> waiveTimeCharge(
+    ReservationRequest request,
+    ReservationTimeCharge charge, {
+    required String reason,
+  }) async {
+    if (_extraTimeNeedsBackend()) return false;
+    return _runReservationActionWithResult(
+      request,
+      'waive_charge',
+      reason: reason,
+      payload: {'charge_id': charge.id},
       reversible: false,
     );
   }

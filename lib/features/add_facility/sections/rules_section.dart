@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../data/campus_data.dart';
+import '../../../model/facility_draft.dart';
 import '../../../theme/sr_tokens.dart';
 import '../../../util/campus_calendar.dart';
 import '../../../widgets/section_card.dart';
 import '../../../widgets/sr_controls.dart';
-import '../facility_form_controller.dart';
+import '../add_facility_controller.dart';
 
 import '../../../theme/sr_theme.dart';
 
@@ -13,11 +15,15 @@ class RulesSection extends StatelessWidget {
   const RulesSection({
     super.key,
     required this.controller,
+    required this.validation,
     required this.stacked,
     required this.dense,
   });
 
   final FacilityFormController controller;
+
+  /// Owns the validation errors and the scroll anchor for the overtime rate.
+  final AddFacilityController validation;
   final bool stacked;
   final bool dense;
 
@@ -50,14 +56,16 @@ class RulesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: controller,
+    animation: Listenable.merge([controller, validation]),
     builder: (context, _) {
       final draft = controller.draft;
+      final errors = validation.errors;
       return SectionCard(
         number: '06',
         title: 'Reservation rules',
         caption: 'Sensible defaults applied',
         dense: dense,
+        anchorKey: validation.sectionKeys[RequiredItem.overtimeRate],
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -211,6 +219,46 @@ class RulesSection extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+
+            const SizedBox(height: 14),
+            const SrLabel('Overtime rate', required: true),
+            SrTextField(
+              controller: controller.overtimeRateField,
+              placeholder: '0',
+              mono: true,
+              semanticLabel: 'Overtime rate in pesos per hour',
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                LengthLimitingTextInputFormatter(9),
+              ],
+              hasError: errors.containsKey(RequiredItem.overtimeRate),
+              padding: const EdgeInsets.only(left: 12),
+              suffix: Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 11),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: context.srColors.hairline),
+                  ),
+                ),
+                child: Text(
+                  '₱ per hour',
+                  style: sans(11, color: context.srColors.muted),
+                ),
+              ),
+            ),
+            SrErrorText(errors[RequiredItem.overtimeRate]),
+            const SizedBox(height: 4),
+            Text(
+              'Charged per started hour for approved extensions, overtime '
+              'past a 15-minute grace at checkout, and campus use after '
+              '5:00 PM.',
+              style: sans(11, height: 1.5, color: context.srColors.muted),
             ),
           ],
         ),

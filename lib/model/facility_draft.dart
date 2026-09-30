@@ -44,7 +44,8 @@ enum RequiredItem {
   capacity('Capacity', 3),
   building('Building', 4),
   pin('Map pin', 5),
-  photos('Photos', 6);
+  photos('Photos', 6),
+  overtimeRate('Overtime rate', 7);
 
   const RequiredItem(this.label, this.ordinal);
 
@@ -95,9 +96,27 @@ class FacilityDraft {
   String advance = '30 days ahead';
   String buffer = '15 minutes';
 
+  /// Pesos per hour, as typed. Charged for extensions, overtime and campus
+  /// use after 5:00 PM.
+  String overtimeRate = '';
+
   int? get capacitySeats {
     final n = int.tryParse(capacity.trim());
     return n != null && n > 0 ? n : null;
+  }
+
+  /// [overtimeRate] in centavos, or null when it is not a positive amount.
+  int? get overtimeRateCentavos {
+    final pesos = double.tryParse(overtimeRate.trim().replaceAll(',', ''));
+    if (pesos == null || pesos <= 0) return null;
+    return (pesos * 100).round();
+  }
+
+  static String pesosText(int centavos) {
+    if (centavos <= 0) return '';
+    return centavos % 100 == 0
+        ? '${centavos ~/ 100}'
+        : (centavos / 100).toStringAsFixed(2);
   }
 
   bool has(RequiredItem item) => switch (item) {
@@ -107,6 +126,7 @@ class FacilityDraft {
     RequiredItem.building => building.isNotEmpty,
     RequiredItem.pin => pin != null,
     RequiredItem.photos => photos.isNotEmpty,
+    RequiredItem.overtimeRate => overtimeRateCentavos != null,
   };
 
   int get completeCount => RequiredItem.values.where(has).length;
@@ -194,6 +214,17 @@ class FacilityDraft {
           'Add at least one photo. The first becomes the cover.';
     }
 
+    final rawRate = overtimeRate.trim();
+    if (rawRate.isEmpty) {
+      errors[RequiredItem.overtimeRate] =
+          'Set the hourly price for extensions and overtime.';
+    } else if (overtimeRateCentavos == null) {
+      errors[RequiredItem.overtimeRate] = 'Enter an amount above ₱0.';
+    } else if (overtimeRateCentavos! > 10000000) {
+      errors[RequiredItem.overtimeRate] =
+          'That looks too large. Check the hourly rate.';
+    }
+
     return errors;
   }
 
@@ -230,6 +261,7 @@ class FacilityDraft {
     'maxDuration': maxDuration,
     'advance': advance,
     'buffer': buffer,
+    'overtimeRate': overtimeRate,
   };
 
   static FacilityDraft fromJson(Map<String, dynamic> json) {
@@ -261,7 +293,8 @@ class FacilityDraft {
       ..closeTime = json['closeTime'] as String? ?? '19:00'
       ..maxDuration = json['maxDuration'] as String? ?? '4 hours'
       ..advance = json['advance'] as String? ?? '30 days ahead'
-      ..buffer = json['buffer'] as String? ?? '15 minutes';
+      ..buffer = json['buffer'] as String? ?? '15 minutes'
+      ..overtimeRate = json['overtimeRate'] as String? ?? '';
 
     final lat = (json['lat'] as num?)?.toDouble();
     final lng = (json['lng'] as num?)?.toDouble();
@@ -307,7 +340,8 @@ class FacilityDraft {
         closeTime != blank.closeTime ||
         maxDuration != blank.maxDuration ||
         advance != blank.advance ||
-        buffer != blank.buffer;
+        buffer != blank.buffer ||
+        overtimeRate != blank.overtimeRate;
   }
 
   static bool _sameDays(List<bool> a, List<bool> b) {

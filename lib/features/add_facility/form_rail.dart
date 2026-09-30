@@ -53,6 +53,7 @@ class FormRail extends StatelessWidget {
         AmenitiesSection(controller: controller.amenities, dense: dense),
         RulesSection(
           controller: controller.form,
+          validation: controller,
           stacked: stacked,
           dense: dense,
         ),

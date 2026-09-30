@@ -5,6 +5,9 @@ import '../util/campus_calendar.dart';
 import 'feedback.dart';
 import 'payment.dart';
 import 'permit.dart';
+import 'time_charges.dart';
+
+export 'time_charges.dart';
 
 /// Check-in opens this long before an occurrence starts.
 const kCheckInOpensBefore = Duration(minutes: 30);
@@ -179,6 +182,8 @@ class ReservationOccurrence {
     this.attendanceReason,
     this.checkedInAt,
     this.checkInLateMinutes,
+    this.checkedOutAt,
+    this.overtimeMinutes,
     this.cancelledAt,
     this.cancelledBy,
     this.cancellationReason,
@@ -197,6 +202,10 @@ class ReservationOccurrence {
   final String? attendanceReason;
   final DateTime? checkedInAt;
   final int? checkInLateMinutes;
+  final DateTime? checkedOutAt;
+
+  /// Minutes past [endsAt] at checkout (before grace or rounding).
+  final int? overtimeMinutes;
   final DateTime? cancelledAt;
   final String? cancelledBy;
   final String? cancellationReason;
@@ -223,6 +232,20 @@ class ReservationOccurrence {
       : 0;
 
   bool get checkedInLate => (checkInLateMinutes ?? 0) > 0;
+
+  /// Checkout is open for the whole checked-in period, early or late.
+  bool get canCheckOut => isBooked && stage == BookingStage.checkedIn;
+
+  /// An extension can be requested while the booking has not ended yet.
+  bool canRequestExtensionAt(DateTime now) =>
+      isBooked &&
+      (stage == BookingStage.booked || stage == BookingStage.checkedIn) &&
+      now.isBefore(endsAt);
+
+  /// Minutes past [endsAt] right now, rounded up like the server.
+  int overtimeMinutesAt(DateTime now) => now.isAfter(endsAt)
+      ? (now.difference(endsAt).inSeconds / 60).ceil()
+      : 0;
 
   /// No-show is only available once the check-in window has fully closed.
   bool canMarkNoShowAt(DateTime now) => now.isAfter(checkInClosesAt);
@@ -318,6 +341,7 @@ class ReservationRequest {
     this.signatureRequestId,
     this.signatureRequestStatus,
     List<ReservationUseAssessment>? useAssessments,
+    List<ReservationTimeCharge>? timeCharges,
     this.requesterCategory = 'external_renter',
     this.externalCompanyOrganization,
     this.externalCompleteAddress,
@@ -332,6 +356,7 @@ class ReservationRequest {
        priceLines = priceLines ?? <PriceSnapshotLine>[],
        acceptedTerms = acceptedTerms ?? <AcceptedTerms>[],
        useAssessments = useAssessments ?? <ReservationUseAssessment>[],
+       timeCharges = timeCharges ?? <ReservationTimeCharge>[],
        externalContactNumbers = externalContactNumbers ?? <String>[];
 
   final String id;
@@ -400,6 +425,9 @@ class ReservationRequest {
   final String? signatureRequestId;
   final String? signatureRequestStatus;
   final List<ReservationUseAssessment> useAssessments;
+
+  /// Extensions and overtime, newest first. Only approved rows are owed.
+  final List<ReservationTimeCharge> timeCharges;
   final String requesterCategory;
   final String? externalCompanyOrganization;
   final String? externalCompleteAddress;
@@ -410,6 +438,29 @@ class ReservationRequest {
   bool get signatureSubmitted => signatureRequestStatus == 'signed';
 
   bool get isPaymentExempt => paymentExemption != 'none';
+
+  /// Campus (internal-lane) bookings are free until 5:00 PM only.
+  bool get isCampusBooking => adminLane == 'internal';
+
+  int get extraChargesCentavos => timeCharges
+      .where((charge) => charge.isBillable)
+      .fold(0, (total, charge) => total + charge.amountCentavos);
+
+  /// The booked price plus approved extensions and overtime.
+  int get payableTotalCentavos => totalAmountCentavos + extraChargesCentavos;
+
+  ReservationTimeCharge? pendingExtensionFor(String occurrenceId) {
+    for (final charge in timeCharges) {
+      if (charge.occurrenceId == occurrenceId &&
+          charge.kind == TimeChargeKind.extension &&
+          charge.isPending) {
+        return charge;
+      }
+    }
+    return null;
+  }
+
+  bool get hasPendingExtension => timeCharges.any((charge) => charge.isPending);
 
   /// Null until the requester leaves feedback -- arrives with the
   /// reservation fetch via the reservation_feedback embed, so no separate
@@ -430,20 +481,27 @@ class ReservationRequest {
       .fold(0, (total, payment) => total + payment.amountCentavos);
 
   int get outstandingAmountCentavos {
-    final value = totalAmountCentavos - verifiedAmountCentavos;
+    final payable = payableTotalCentavos;
+    final value = payable - verifiedAmountCentavos;
     if (value < 0) return 0;
-    return value > totalAmountCentavos ? totalAmountCentavos : value;
+    return value > payable ? payable : value;
   }
 
   AggregatePaymentStatus get aggregatePaymentStatus {
-    if (totalAmountCentavos == 0) return AggregatePaymentStatus.notRequired;
-    if (verifiedAmountCentavos >= totalAmountCentavos) {
+    final payable = payableTotalCentavos;
+    if (payable == 0) return AggregatePaymentStatus.notRequired;
+    if (verifiedAmountCentavos >= payable) {
       return AggregatePaymentStatus.fullyPaid;
     }
-    if (balanceDueAt != null && balanceDueAt!.isBefore(DateTime.now())) {
+    final baseSettled = verifiedAmountCentavos >= totalAmountCentavos;
+    if (!baseSettled &&
+        balanceDueAt != null &&
+        balanceDueAt!.isBefore(DateTime.now())) {
       return AggregatePaymentStatus.overdue;
     }
-    if (verifiedAmountCentavos >= requiredDownPaymentCentavos) {
+    if (!baseSettled &&
+        requiredDownPaymentCentavos > 0 &&
+        verifiedAmountCentavos >= requiredDownPaymentCentavos) {
       return AggregatePaymentStatus.downPaymentVerified;
     }
     if (paymentTransactions.any(
