@@ -142,7 +142,6 @@ class _SrButtonState extends State<SrButton> {
           border: bd == null
               ? null
               : Border.all(color: enabled ? bd : c.border),
-          boxShadow: primary && enabled ? c.cardShadow : null,
         ),
         child: Row(
           mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,

@@ -319,13 +319,14 @@ class _HeroIcon extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: context.srColors.brand,
+        color: context.srColors.surfaceSubtle,
         shape: BoxShape.circle,
+        border: Border.all(color: context.srColors.border),
       ),
       alignment: Alignment.center,
       child: Icon(
         Icons.stars_rounded,
-        color: context.srColors.onBrand,
+        color: context.srColors.brand,
         size: size * 0.52,
       ),
     );
