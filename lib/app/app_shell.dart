@@ -251,6 +251,9 @@ class _AppShellState extends State<AppShell> {
                           ? 'Edit facility'
                           : _addFacility.draft.name.trim())
                     : state.view.title,
+                greetingName: state.view == AppView.users
+                    ? state.currentAdmin.name
+                    : null,
                 compact: !layout.isDesktop,
                 mobile: layout.isMobile,
                 avatarInitials: state.currentAdmin.initials,

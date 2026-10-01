@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(24);
+select plan(27);
 
 create temp table external_scope_ids as
 select
@@ -225,6 +225,26 @@ values (
   '97700000-0000-0000-0000-000000000001'
 );
 
+insert into public.payment_transactions(
+  id, request_id, payer_id, payment_method_id, purpose, amount_centavos,
+  reference_number, proof_path, status, idempotency_key, verified_by,
+  verified_at
+)
+values (
+  '97600000-0000-0000-0000-000000000002',
+  '97200000-0000-0000-0000-000000000004',
+  '97000000-0000-0000-0000-000000000102',
+  '97400000-0000-0000-0000-000000000002',
+  'down_payment',
+  120000,
+  'SCOPEPAY-B-0002',
+  '97000000-0000-0000-0000-000000000102/97200000-0000-0000-0000-000000000004/proof.jpg',
+  'verified',
+  '97700000-0000-0000-0000-000000000002',
+  '97000000-0000-0000-0000-000000000001',
+  '2030-02-08 03:30+00'
+);
+
 insert into public.reservation_feedback(
   id, reservation_id, facility_id, user_id, rating, comment, created_at
 )
@@ -350,6 +370,35 @@ select is(
   )->'summary'->>'booked_hours')::numeric,
   4::numeric,
   'external reports count every external-lane booking, not just the assigned facility''s'
+);
+
+create temp table external_report_result as
+select public.get_admin_report(
+  '2030-02-07 23:30+00',
+  '2030-02-08 05:30+00',
+  'External Scope Test'
+) body;
+grant select on external_report_result to authenticated;
+
+select is(
+  (select (body->'revenue'->>'gross_verified_centavos')::integer
+   from external_report_result),
+  120000,
+  'external reports expose actual top-level verified revenue'
+);
+
+select is(
+  (select (body->'revenue'->>'net_revenue_centavos')::integer
+   from external_report_result),
+  120000,
+  'external reports expose actual top-level net revenue'
+);
+
+select is(
+  (select sum((month->>'gross_verified_centavos')::integer)::integer
+   from external_report_result, jsonb_array_elements(body->'monthly_statistics') month),
+  120000,
+  'external reports expose actual monthly verified revenue'
 );
 
 select set_config(

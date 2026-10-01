@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/sr_tokens.dart';
+import 'brand_greeting.dart';
 import 'sr_controls.dart';
 
 import '../theme/sr_theme.dart';
@@ -17,7 +18,11 @@ class AppHeader extends StatelessWidget {
     this.compact = false,
     this.mobile = false,
     this.onMenu,
+    this.greetingName,
   });
+
+  /// When set, replaces the breadcrumbs and title with [BrandGreeting].
+  final String? greetingName;
 
   final List<String> crumbs;
   final String title;
@@ -54,22 +59,24 @@ class AppHeader extends StatelessWidget {
           const SizedBox(width: SR.space12),
         ],
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!compact) ...[
-                _Breadcrumbs(crumbs: crumbs),
-                const SizedBox(height: SR.space2),
-              ],
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: compact ? SrType.subhead() : SrType.heading(),
-              ),
-            ],
-          ),
+          child: greetingName != null
+              ? BrandGreeting(name: greetingName!)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!compact) ...[
+                      _Breadcrumbs(crumbs: crumbs),
+                      const SizedBox(height: SR.space2),
+                    ],
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: compact ? SrType.subhead() : SrType.heading(),
+                    ),
+                  ],
+                ),
         ),
         if (chip != null && !compact) ...[
           const SizedBox(width: SR.space12),

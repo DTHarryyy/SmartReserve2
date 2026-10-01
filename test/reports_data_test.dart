@@ -108,6 +108,40 @@ void main() {
     expect(snapshot.monthlyStatistics.single.completedOccurrences, 1);
   });
 
+  test('parses the zero-filled internal-admin redacted payload', () {
+    final payload = validPayload()
+      ..['revenue'] = {
+        'gross_verified_centavos': 0,
+        'refunds_centavos': 0,
+        'net_revenue_centavos': 0,
+        'outstanding_centavos': 0,
+        'verified_payment_count': 0,
+        'paid_reservation_count': 0,
+      };
+    final month = (payload['monthly_statistics'] as List).single as Map;
+    month
+      ..['gross_verified_centavos'] = 0
+      ..['refunds_centavos'] = 0
+      ..['net_revenue_centavos'] = 0;
+
+    final snapshot = ReportSnapshot.fromJson(payload, expectedScope: scope);
+
+    expect(snapshot.revenue.netRevenueCentavos, 0);
+    expect(snapshot.monthlyStatistics.single.grossVerifiedCentavos, 0);
+    expect(snapshot.monthlyStatistics.single.completedOccurrences, 1);
+  });
+
+  test('rejects monthly statistics missing financial keys', () {
+    final payload = validPayload();
+    final month = (payload['monthly_statistics'] as List).single as Map;
+    month
+      ..remove('gross_verified_centavos')
+      ..remove('refunds_centavos')
+      ..remove('net_revenue_centavos');
+
+    expect(parseFailure(payload), ReportContractFailureCode.invalidResponse);
+  });
+
   test('rejects an unsupported contract version', () {
     final payload = validPayload()..['contract_version'] = 1;
 

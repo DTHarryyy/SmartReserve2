@@ -21,6 +21,7 @@ import '../policies/policy_view.dart';
 import '../reservations/permit_panel.dart';
 import '../reservations/reservation_signature_dialog.dart';
 import '../../widgets/amenity_request_field.dart';
+import '../../widgets/brand_greeting.dart';
 import '../../widgets/evidence_thumbnails.dart';
 import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
@@ -111,13 +112,6 @@ class _StudentAppState extends State<StudentApp> {
     '100+ seats': 100,
     '500+ seats': 500,
   };
-
-  String _timeGreeting([DateTime? now]) {
-    final hour = (now ?? DateTime.now()).hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  }
 
   @override
   void initState() {
@@ -417,7 +411,6 @@ class _StudentAppState extends State<StudentApp> {
   );
 
   Widget _header(AppState state, Account account, bool narrow) {
-    final tiny = MediaQuery.sizeOf(context).width < 340;
     final colors = context.srColors;
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -437,50 +430,7 @@ class _StudentAppState extends State<StudentApp> {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (tiny)
-                        Text(
-                          account.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: sans(
-                            17,
-                            w: 600,
-                            tracking: -.02,
-                            color: colors.text,
-                          ),
-                        )
-                      else
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                account.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: sans(
-                                  narrow ? 18 : 21,
-                                  w: 600,
-                                  tracking: -.02,
-                                  color: colors.text,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _timeGreeting(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: mono(10, color: colors.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
+                Expanded(child: BrandGreeting(name: account.name)),
                 if (state.loyaltyAvailableForCurrentUser) ...[
                   InkWell(
                     key: const Key('student-loyalty-chip'),

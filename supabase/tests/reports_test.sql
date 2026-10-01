@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(18);
+select plan(24);
 
 select set_config(
   'request.jwt.claim.sub',
@@ -96,7 +96,7 @@ select public.get_admin_report(
 
 select is(jsonb_array_length(body->'utilisation'), 1, 'only active supply is included')
 from report_result;
-select is((body->>'contract_version')::integer, 2,
+select is((body->>'contract_version')::integer, 3,
   'the report contract version is explicit') from report_result;
 select is((body->'summary'->>'available_hours')::numeric, 4::numeric,
   'available hours are clipped to the half-open range') from report_result;
@@ -138,6 +138,37 @@ select is((select count(distinct cell->>'day' || ':' || cell->>'hour')
   'the demand grid has 49 unique cells');
 select ok(jsonb_array_length(body->'performance'->'per_admin') = 1,
   'internal administrators receive the administrator breakdown') from report_result;
+select ok(body->'revenue' ?& array[
+  'gross_verified_centavos', 'refunds_centavos', 'net_revenue_centavos',
+  'outstanding_centavos', 'verified_payment_count', 'paid_reservation_count'
+], 'internal-admin responses contain every required revenue key')
+from report_result;
+select is((select count(*)::integer
+  from report_result, jsonb_each(body->'revenue') kv
+  where (kv.value)::numeric <> 0), 0,
+  'internal-admin top-level revenue is zero-filled') from report_result;
+select ok(not exists (
+  select 1 from report_result, jsonb_array_elements(body->'monthly_statistics') month
+  where not (month ?& array[
+    'gross_verified_centavos', 'refunds_centavos', 'net_revenue_centavos'
+  ])
+), 'every internal-admin monthly row contains the financial keys');
+select is((select count(*)::integer
+  from report_result, jsonb_array_elements(body->'monthly_statistics') month
+  where (month->>'gross_verified_centavos')::integer <> 0
+    or (month->>'refunds_centavos')::integer <> 0
+    or (month->>'net_revenue_centavos')::integer <> 0), 0,
+  'internal-admin monthly financial values are zero') from report_result;
+select is((select (month->>'booked_hours')::numeric
+  from report_result, jsonb_array_elements(body->'monthly_statistics') month
+  limit 1), 3::numeric,
+  'internal-admin monthly operational statistics are retained')
+from report_result;
+select is((select (month->>'submitted_reservations')::integer
+  from report_result, jsonb_array_elements(body->'monthly_statistics') month
+  limit 1), 1,
+  'internal-admin monthly reservation counts are retained')
+from report_result;
 select is(jsonb_array_length(public.get_admin_report(
   '2030-01-06 23:30:00+00', '2030-01-07 03:30:00+00', 'Other Category'
 )->'utilisation'), 0, 'category filtering is applied by the database');

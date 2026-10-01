@@ -13,8 +13,7 @@ class SrAssistantLogo extends StatelessWidget {
   });
 
   static const _lightAssetName = 'assets/smart reserve logo.png';
-  static const _darkAssetName =
-      'assets/smart reserve logo transpatent.png';
+  static const _darkAssetName = 'assets/smart reserve logo transpatent.png';
 
   final double size;
   final double? radius;
