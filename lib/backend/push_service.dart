@@ -3,6 +3,19 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+@immutable
+class PushNotificationPayload {
+  const PushNotificationPayload({
+    required this.notificationId,
+    required this.kind,
+    this.requestId,
+  });
+
+  final String notificationId;
+  final String kind;
+  final String? requestId;
+}
+
 // The only file in the app that talks to firebase_messaging directly, so the
 // rest of the app (AppState, SmartReserveBackend) stays provider-agnostic.
 // Wired up through callbacks rather than a direct AppState reference to
@@ -25,8 +38,13 @@ class PushService {
 
   /// Called for pushes that arrive while the app is open; the OS does not
   /// display those, so the app shows them itself.
-  final void Function(String? title, String? body) onForegroundNotification;
-  final void Function(String kind, String? requestId) onNotificationOpened;
+  final void Function(
+    PushNotificationPayload payload,
+    String? title,
+    String? body,
+  )
+  onForegroundNotification;
+  final void Function(PushNotificationPayload payload) onNotificationOpened;
 
   static const _webVapidKey = String.fromEnvironment(
     'FCM_VAPID_KEY',
@@ -91,12 +109,15 @@ class PushService {
       _lastToken = token;
       unawaited(registerToken(token: token, platform: _platform));
     });
-    _foregroundSubscription ??= FirebaseMessaging.onMessage.listen(
-      (message) => onForegroundNotification(
+    _foregroundSubscription ??= FirebaseMessaging.onMessage.listen((message) {
+      final payload = _payload(message);
+      if (payload == null) return;
+      onForegroundNotification(
+        payload,
         message.notification?.title,
         message.notification?.body,
-      ),
-    );
+      );
+    });
     _openedAppSubscription ??= FirebaseMessaging.onMessageOpenedApp.listen(
       _handleOpenedMessage,
     );
@@ -144,8 +165,21 @@ class PushService {
   }
 
   void _handleOpenedMessage(RemoteMessage message) {
+    final payload = _payload(message);
+    if (payload != null) onNotificationOpened(payload);
+  }
+
+  PushNotificationPayload? _payload(RemoteMessage message) {
+    final id = message.data['notification_id'];
     final kind = message.data['kind'];
-    if (kind is! String || kind.isEmpty) return;
-    onNotificationOpened(kind, message.data['request_id'] as String?);
+    if (id is! String || id.isEmpty || kind is! String || kind.isEmpty) {
+      return null;
+    }
+    final requestId = message.data['request_id'];
+    return PushNotificationPayload(
+      notificationId: id,
+      kind: kind,
+      requestId: requestId is String && requestId.isNotEmpty ? requestId : null,
+    );
   }
 }

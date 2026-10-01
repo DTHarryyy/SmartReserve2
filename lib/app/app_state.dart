@@ -24,6 +24,7 @@ import '../model/facility_draft.dart';
 import '../model/feedback.dart';
 import '../model/loyalty.dart';
 import '../model/notice.dart';
+import '../model/notification_navigation.dart';
 import '../model/payment.dart';
 import '../model/permit.dart';
 import '../model/reservation.dart';
@@ -471,6 +472,10 @@ class AppState extends ChangeNotifier {
 
   bool notificationsOpen = false;
 
+  NotificationNavigationIntent? pendingNotificationIntent;
+  PushNotificationPayload? _pendingPushNotification;
+  final Set<String> notificationActionsPending = {};
+
   void toggleNotifications() {
     notificationsOpen = !notificationsOpen;
     notifyListeners();
@@ -480,6 +485,11 @@ class AppState extends ChangeNotifier {
     if (!notificationsOpen) return;
     notificationsOpen = false;
     notifyListeners();
+  }
+
+  void clearNotificationIntent(NotificationNavigationIntent intent) {
+    if (!identical(pendingNotificationIntent, intent)) return;
+    pendingNotificationIntent = null;
   }
 
   late List<Facility> facilities;
@@ -979,9 +989,40 @@ class AppState extends ChangeNotifier {
     return granted;
   }
 
-  void handlePushNotificationOpened(String kind, String? requestId) {
-    notificationsOpen = true;
-    notifyListeners();
+  void handlePushNotificationOpened(PushNotificationPayload payload) {
+    if (!hasSession || workspaceLoading) {
+      _pendingPushNotification = payload;
+      return;
+    }
+    unawaited(_openPushNotification(payload));
+  }
+
+  Future<void> _openPushNotification(PushNotificationPayload payload) async {
+    final service = backend;
+    if (service == null || !hasSession) {
+      _pendingPushNotification = payload;
+      return;
+    }
+    try {
+      final notification = await service.notificationById(
+        payload.notificationId,
+      );
+      if (notification == null) {
+        showToast(
+          const ToastMessage.warning(
+            'This notification is no longer available.',
+          ),
+        );
+        return;
+      }
+      await openNotification(notification);
+    } catch (error) {
+      showToast(
+        ToastMessage.error(
+          'The notification could not be opened: ${friendlyBackendMessage('$error')}',
+        ),
+      );
+    }
   }
 
   bool get assistantHistoryAvailable =>
@@ -1110,6 +1151,11 @@ class AppState extends ChangeNotifier {
           ? [...seedBookings(), ...seriesDemoBookings()]
           : [];
       notifications = [];
+      notificationsLoading = false;
+      notificationsError = null;
+      pendingNotificationIntent = null;
+      _pendingPushNotification = null;
+      notificationActionsPending.clear();
       unawaited(pushService?.unregister() ?? Future.value());
       _backendReservations.clear();
       userCalendarSlots = [];
@@ -1207,7 +1253,8 @@ class AppState extends ChangeNotifier {
     _notificationSubscription = backend?.notificationChanges().listen(
       _applyNotificationChange,
       onError: (Object error) {
-        notificationsError = 'Notifications could not refresh: $error';
+        notificationsError =
+            'Notifications could not refresh: ${friendlyBackendMessage('$error')}';
         notifyListeners();
       },
     );
@@ -1272,6 +1319,9 @@ class AppState extends ChangeNotifier {
     if (stale()) return;
     workspaceLoading = false;
     notifyListeners();
+    final pendingPush = _pendingPushNotification;
+    _pendingPushNotification = null;
+    if (pendingPush != null) unawaited(_openPushNotification(pendingPush));
   }
 
   Future<void> _runSessionRefresh(
@@ -2209,11 +2259,11 @@ class AppState extends ChangeNotifier {
 
   bool reservationsLoading = false;
   String? reservationsError;
+  bool notificationsLoading = false;
   String? notificationsError;
   final Set<String> reservationActionsPending = {};
 
-  int get unreadNotifications =>
-      notifications.where((item) => item.unread).length;
+  int get unreadNotifications => notifications.length;
 
   Future<void> refreshReservations() async {
     final service = backend;
@@ -2532,9 +2582,12 @@ class AppState extends ChangeNotifier {
     final service = backend;
     if (service == null || !hasSession) return;
     final generation = _sessionGeneration;
+    notificationsLoading = true;
+    notificationsError = null;
+    notifyListeners();
     try {
       final (rows, preferences) = await (
-        service.notifications(),
+        service.unreadNotifications(),
         service.notificationPreferences(),
       ).wait;
       if (!_isCurrentSession(generation)) return;
@@ -2542,8 +2595,14 @@ class AppState extends ChangeNotifier {
       _applyNotifications(rows);
     } catch (error) {
       if (!_isCurrentSession(generation)) return;
-      notificationsError = 'Notifications could not load: $error';
+      notificationsError =
+          'Notifications could not load: ${friendlyBackendMessage('$error')}';
       notifyListeners();
+    } finally {
+      if (_isCurrentSession(generation)) {
+        notificationsLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -2568,7 +2627,10 @@ class AppState extends ChangeNotifier {
   }
 
   void _applyNotifications(List<BackendNotification> rows) {
-    notifications = rows;
+    notifications = [
+      for (final row in rows)
+        if (row.unread) row,
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     notificationsError = null;
     notifyListeners();
   }
@@ -2576,7 +2638,20 @@ class AppState extends ChangeNotifier {
   static const _notificationListLimit = 100;
 
   void _applyNotificationChange(RowDelta<BackendNotification> delta) {
-    final merged = applyRowDelta(notifications, delta, (item) => item.id);
+    final readIds = {
+      for (final item in delta.upserts)
+        if (!item.unread) item.id,
+    };
+    final visibleDelta = RowDelta<BackendNotification>.patch(
+      upserts: [
+        for (final item in delta.upserts)
+          if (item.unread) item,
+      ],
+      removedIds: {...delta.removedIds, ...readIds},
+    );
+    final merged = delta.replacesAll
+        ? delta.rows!
+        : applyRowDelta(notifications, visibleDelta, (item) => item.id);
     _applyNotifications(
       merged.length > _notificationListLimit
           ? merged.sublist(0, _notificationListLimit)
@@ -2585,54 +2660,155 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openNotification(BackendNotification notification) async {
+    if (!notificationActionsPending.add(notification.id)) return;
     final service = backend;
-    if (notification.unread && service != null) {
-      // Mark read locally right away; the realtime update confirms it.
+    final originalIndex = notifications.indexWhere(
+      (item) => item.id == notification.id,
+    );
+    if (originalIndex >= 0) {
       _applyNotifications([
         for (final item in notifications)
-          item.id == notification.id ? item.markedRead(DateTime.now()) : item,
+          if (item.id != notification.id) item,
       ]);
-      await service.markNotificationRead(notification.id);
     }
-    if (notification.kind == 'feedback_low_rating' && isAdmin) {
-      goTo(AppView.feedback);
-      return;
+    closeOverlays();
+
+    Future<void>? markFuture;
+    if (notification.unread && service != null) {
+      markFuture = service.markNotificationRead(notification.id).catchError((
+        Object error,
+      ) {
+        if (!notifications.any((item) => item.id == notification.id)) {
+          final restored = [...notifications];
+          restored.insert(
+            min(max(originalIndex, 0), restored.length),
+            notification,
+          );
+          _applyNotifications(restored);
+        }
+        showToast(
+          ToastMessage.error(
+            'This notification could not be marked as read: ${friendlyBackendMessage('$error')}',
+          ),
+        );
+      });
     }
-    if (notification.kind.startsWith('anomaly_') && isAdmin) {
-      goTo(AppView.anomalies);
-      final anomalyId = notification.anomalyId;
-      if (anomalyId != null) selectAnomaly(anomalyId);
-      return;
-    }
-    if (notification.kind.startsWith('loyalty_') && !isAdmin) {
-      pendingLoyaltyOpen = true;
-      goTo(AppView.userApp);
+
+    try {
+      var resolved = notification;
+      if (service != null &&
+          notification.eventId != null &&
+          notification.eventDetails.isEmpty) {
+        try {
+          resolved =
+              await service.notificationById(notification.id) ?? resolved;
+        } catch (_) {
+          // Event details improve child-record targeting, but a transient
+          // refresh failure should not prevent the parent record from opening.
+        }
+      }
+      final intent = resolveNotificationNavigation(
+        kind: resolved.kind,
+        isAdmin: isAdmin,
+        requestId: resolved.requestId,
+        anomalyId: resolved.anomalyId,
+        eventDetails: resolved.eventDetails,
+      );
+      _routeNotification(intent);
+      if (markFuture != null) await markFuture;
+    } finally {
+      notificationActionsPending.remove(notification.id);
       notifyListeners();
-      return;
     }
-    if ((notification.kind == 'feedback_reply' ||
-            notification.kind == 'reservation_use_assessment') &&
-        !isAdmin) {
-      pendingReservationFocusId = notification.requestId;
-      goTo(AppView.userApp);
-      notifyListeners();
-      return;
-    }
-    final requestId = notification.requestId;
-    if (requestId == null) return;
-    if (isAdmin) {
-      view = AppView.reservations;
-      final request = requestById(requestId);
-      final previous = selectedRequestId;
-      if (request != null) {
+  }
+
+  void _routeNotification(NotificationNavigationIntent intent) {
+    pendingNotificationIntent = intent;
+    switch (intent.destination) {
+      case NotificationDestination.feedback:
+        goTo(AppView.feedback);
+        return;
+      case NotificationDestination.anomalies:
+        goTo(AppView.anomalies);
+        if (intent.anomalyId != null) selectAnomaly(intent.anomalyId);
+        pendingNotificationIntent = null;
+        return;
+      case NotificationDestination.adminReservation:
+        final requestId = intent.requestId;
+        if (requestId == null) {
+          _showUnavailableNotification();
+          return;
+        }
+        final request = requestById(requestId);
+        if (request == null) {
+          _showUnavailableNotification();
+          return;
+        }
+        final previous = selectedRequestId;
+        view = AppView.reservations;
         requestTab = _tabForRequest(request);
         selectedRequestId = request.id;
-      }
-      notifyListeners();
-      _syncSelectedRequestRiskSummary(previous, selectedRequestId);
-    } else {
-      goTo(AppView.userApp);
+        _syncSelectedRequestRiskSummary(previous, selectedRequestId);
+        notifyListeners();
+        if (_notificationActionIsStale(intent, request)) {
+          _showStaleNotificationAction();
+        }
+        return;
+      case NotificationDestination.loyalty:
+        pendingLoyaltyOpen = true;
+        pendingNotificationIntent = null;
+        goTo(AppView.userApp);
+        return;
+      case NotificationDestination.renterReservation:
+        pendingReservationFocusId = intent.requestId;
+        goTo(AppView.userApp);
+        return;
+      case NotificationDestination.browse:
+        goTo(AppView.userApp);
+        return;
+      case NotificationDestination.unavailable:
+        _showUnavailableNotification();
+        return;
     }
+  }
+
+  void _showUnavailableNotification() {
+    pendingNotificationIntent = null;
+    _showStaleNotificationAction();
+  }
+
+  void _showStaleNotificationAction() {
+    showToast(
+      const ToastMessage.warning(
+        'This action has already been completed or is no longer available.',
+      ),
+    );
+  }
+
+  bool _notificationActionIsStale(
+    NotificationNavigationIntent intent,
+    ReservationRequest request,
+  ) {
+    final resourceId = intent.resourceId;
+    if (intent.focus == NotificationFocus.payment && resourceId != null) {
+      for (final payment in request.paymentTransactions) {
+        if (payment.id == resourceId) {
+          return payment.status != PaymentDecisionStatus.submitted;
+        }
+      }
+      return true;
+    }
+    if (intent.focus == NotificationFocus.extraTime &&
+        intent.actionLabel == 'Review extension' &&
+        resourceId != null) {
+      for (final charge in request.timeCharges) {
+        if (charge.id == resourceId || charge.occurrenceId == resourceId) {
+          return !charge.isPending;
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   Future<Facility> persistFacility(
@@ -6206,6 +6382,27 @@ class AppState extends ChangeNotifier {
     try {
       await service.ensurePermit(requestId);
       await refreshReservations();
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          friendlyBackendMessage('$error'),
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> regeneratePermit(String requestId) async {
+    final service = _coreBackend;
+    if (service == null || (!isInternalAdmin && !isExternalAdmin)) {
+      return false;
+    }
+    try {
+      await service.regeneratePermit(requestId);
+      await refreshReservations();
+      showToast(const ToastMessage('Permit regenerated.'));
       return true;
     } catch (error) {
       showToast(

@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PermitSnapshot, sha256, templateHashes } from "./contract.ts";
-import { renderPermit } from "./permit_layout.ts";
+import { FacilityAmenity, renderPermit } from "./permit_layout.ts";
 
 const url = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -123,7 +123,7 @@ Deno.serve(async (request) => {
   if (typeof body.requestId !== "string") {
     return json({ error: "Reservation reference required", request_id: requestId }, 400);
   }
-  if (body.action !== "ensure" && body.action !== "preview") {
+  if (!["ensure", "preview", "regenerate"].includes(body.action)) {
     return json({ error: "Unknown action", request_id: requestId }, 400);
   }
   let generationStarted = false;
@@ -194,10 +194,12 @@ Deno.serve(async (request) => {
         },
       };
     } else {
-      const { data, error } = await admin.rpc("prepare_reservation_permit", {
-        p_request_id: body.requestId,
-        p_actor_id: auth.user.id,
-      });
+      const { data, error } = await admin.rpc(
+        body.action === "regenerate"
+          ? "regenerate_reservation_permit"
+          : "prepare_reservation_permit",
+        { p_request_id: body.requestId, p_actor_id: auth.user.id },
+      );
       if (error) throw error;
       if (!data) {
         return json(
@@ -240,17 +242,52 @@ Deno.serve(async (request) => {
         permit.external_recommender_signature_id,
         permit.external_authorized_signature_id,
       ];
+    // Each official signature block prints the name of the admin who
+    // uploaded that signature revision.
+    const signerNames: Record<string, string | null> = {};
     for (const id of officialIds) {
       const { data: revision, error: revisionError } = await admin.from(
         "permit_official_signature_revisions",
       )
-        .select("storage_path").eq("id", id).single();
+        .select("storage_path,slot,uploaded_by").eq("id", id).single();
       if (revisionError) throw revisionError;
       signatures.push(
         await download("permit-official-signatures", revision.storage_path),
       );
+      const { data: signer } = await admin.from("profiles")
+        .select("full_name").eq("id", revision.uploaded_by).single();
+      signerNames[revision.slot] = signer?.full_name ?? null;
     }
-    const pdf = await renderPermit(template, snapshot, signatures);
+    // Internal permits also list the facility's built-in amenities under
+    // B. EQUIPMENT, using each amenity's configured permit row when it has one.
+    let facilityAmenities: FacilityAmenity[] = [];
+    if (snapshot.template_kind === "internal") {
+      const { data: request, error: requestError } = await admin.from(
+        "reservation_requests",
+      ).select("facility_id").eq("id", body.requestId).single();
+      if (requestError) throw requestError;
+      const [{ data: facility, error: facilityError }, { data: rows, error: rowsError }] =
+        await Promise.all([
+          admin.from("facilities").select("amenities")
+            .eq("id", request.facility_id).single(),
+          admin.from("facility_amenities")
+            .select("name,internal_permit_row_code")
+            .eq("facility_id", request.facility_id).eq("enabled", true),
+        ]);
+      if (facilityError) throw facilityError;
+      if (rowsError) throw rowsError;
+      facilityAmenities = ((facility.amenities ?? []) as string[]).map((label) => ({
+        label,
+        rowCode: rows?.find((row: { name: string }) =>
+          String(row.name).trim().toLowerCase() === label.trim().toLowerCase()
+        )?.internal_permit_row_code ?? null,
+      }));
+    }
+    const pdf = await renderPermit(template, snapshot, signatures, {
+      internalApproverName: signerNames.internal_approver,
+      externalAuthorizedName: signerNames.external_authorized_official,
+      facilityAmenities,
+    });
     const path =
       `${snapshot.requester_id}/${body.requestId}/${permit.permit_number}-v${permit.version}.pdf`;
     if (body.action === "preview") {

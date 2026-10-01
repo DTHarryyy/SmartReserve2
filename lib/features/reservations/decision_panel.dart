@@ -8,6 +8,7 @@ import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
 import '../../model/payment.dart';
+import '../../model/notification_navigation.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
@@ -35,12 +36,16 @@ class DecisionPanel extends StatefulWidget {
     required this.assessment,
     required this.showBack,
     required this.onBack,
+    this.notificationFocus,
+    this.notificationResourceId,
   });
 
   final AppState state;
   final ReservationAssessment assessment;
   final bool showBack;
   final VoidCallback onBack;
+  final NotificationFocus? notificationFocus;
+  final String? notificationResourceId;
 
   @override
   State<DecisionPanel> createState() => _DecisionPanelState();
@@ -55,11 +60,21 @@ class _DecisionPanelState extends State<DecisionPanel> {
   _Tab _tab = _Tab.review;
   String? _correctingOccurrenceId;
   Timer? _completionGateTimer;
+  Timer? _notificationHighlightTimer;
+  NotificationFocus? _activeNotificationFocus;
+  String? _activeNotificationResourceId;
+  final _reviewKey = GlobalKey();
+  final _paymentKey = GlobalKey();
+  final _extraTimeKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    _activeNotificationFocus = widget.notificationFocus;
+    _activeNotificationResourceId = widget.notificationResourceId;
     _scheduleCompletionGateRefresh();
+    _scheduleNotificationFocus();
+    _scheduleNotificationHighlightClear();
   }
 
   @override
@@ -72,11 +87,58 @@ class _DecisionPanelState extends State<DecisionPanel> {
       _correctingOccurrenceId = null;
     }
     _scheduleCompletionGateRefresh();
+    if (old.notificationFocus != widget.notificationFocus ||
+        old.notificationResourceId != widget.notificationResourceId ||
+        old.assessment.request.id != widget.assessment.request.id) {
+      if (widget.notificationFocus != null) {
+        _activeNotificationFocus = widget.notificationFocus;
+        _activeNotificationResourceId = widget.notificationResourceId;
+        _scheduleNotificationHighlightClear();
+      }
+      _scheduleNotificationFocus();
+    }
+  }
+
+  void _scheduleNotificationHighlightClear() {
+    _notificationHighlightTimer?.cancel();
+    if (_activeNotificationFocus == null) return;
+    _notificationHighlightTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() {
+        _activeNotificationFocus = null;
+        _activeNotificationResourceId = null;
+      });
+    });
+  }
+
+  void _scheduleNotificationFocus() {
+    final focus = widget.notificationFocus;
+    if (focus == null) return;
+    _tab = _Tab.review;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = switch (focus) {
+        NotificationFocus.payment => _paymentKey,
+        NotificationFocus.extraTime => _extraTimeKey,
+        _ => _reviewKey,
+      };
+      final targetContext = key.currentContext;
+      if (targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: MediaQuery.maybeOf(context)?.disableAnimations == true
+            ? Duration.zero
+            : SR.entrance,
+        curve: SR.easing,
+        alignment: .08,
+      );
+    });
   }
 
   @override
   void dispose() {
     _completionGateTimer?.cancel();
+    _notificationHighlightTimer?.cancel();
     super.dispose();
   }
 
@@ -359,26 +421,78 @@ class _DecisionPanelState extends State<DecisionPanel> {
 
           if (_series.applies) _seriesCard(),
 
-          PanelCard(child: _actions(assessment)),
+          KeyedSubtree(
+            key: _reviewKey,
+            child: _notificationFocusFrame(
+              focus: NotificationFocus.review,
+              child: PanelCard(child: _actions(assessment)),
+            ),
+          ),
 
-          PaymentReviewPanel(state: widget.state, request: _request),
+          KeyedSubtree(
+            key: _paymentKey,
+            child: _notificationFocusFrame(
+              focus: NotificationFocus.payment,
+              child: PaymentReviewPanel(
+                state: widget.state,
+                request: _request,
+                highlightedPaymentId:
+                    _activeNotificationFocus == NotificationFocus.payment
+                    ? _activeNotificationResourceId
+                    : null,
+              ),
+            ),
+          ),
 
           _eligibilityCard(),
 
           PermitPanel(state: widget.state, request: _request),
 
-          if (_request.lifecycleStatus == ReservationLifecycleStatus.confirmed ||
-              _request.lifecycleStatus ==
-                  ReservationLifecycleStatus.completed)
+          if (_request.lifecycleStatus ==
+                  ReservationLifecycleStatus.confirmed ||
+              _request.lifecycleStatus == ReservationLifecycleStatus.completed)
             _lifecycleCard(),
 
-          if (_request.lifecycleStatus == ReservationLifecycleStatus.confirmed ||
+          if (_request.lifecycleStatus ==
+                  ReservationLifecycleStatus.confirmed ||
               _request.timeCharges.isNotEmpty)
-            ExtraTimeCard(state: widget.state, request: _request),
+            KeyedSubtree(
+              key: _extraTimeKey,
+              child: _notificationFocusFrame(
+                focus: NotificationFocus.extraTime,
+                child: ExtraTimeCard(state: widget.state, request: _request),
+              ),
+            ),
 
           if (_request.feedbackRating != null) _feedbackCard(),
         ],
       ],
+    );
+  }
+
+  Widget _notificationFocusFrame({
+    required NotificationFocus focus,
+    required Widget child,
+  }) {
+    final highlighted = switch (focus) {
+      NotificationFocus.review =>
+        _activeNotificationFocus != null &&
+            _activeNotificationFocus != NotificationFocus.payment &&
+            _activeNotificationFocus != NotificationFocus.extraTime,
+      _ => _activeNotificationFocus == focus,
+    };
+    return AnimatedContainer(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : SR.entrance,
+      padding: highlighted ? const EdgeInsets.all(2) : EdgeInsets.zero,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(SR.rLg + 2),
+        border: highlighted
+            ? Border.all(color: context.srColors.focus, width: 2)
+            : null,
+      ),
+      child: child,
     );
   }
 

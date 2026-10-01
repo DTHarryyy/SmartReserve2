@@ -6,28 +6,37 @@ import 'package:smartreserve/backend/push_service.dart';
 PushService _pushService({
   List<String>? registered,
   List<String>? disabled,
-  void Function(String kind, String? requestId)? onOpened,
+  void Function(PushNotificationPayload payload)? onOpened,
 }) => PushService(
   registerToken: ({required token, required platform, deviceLabel}) async =>
       registered?.add(token),
   disableToken: (token) async => disabled?.add(token),
-  onForegroundNotification: (_, _) {},
-  onNotificationOpened: onOpened ?? (_, _) {},
+  onForegroundNotification: (_, _, _) {},
+  onNotificationOpened: onOpened ?? (_) {},
 );
 
 void main() {
   group('AppState push wiring', () {
-    test('enabling push without a configured PushService reports failure', () async {
-      final state = AppState();
-      expect(state.pushService, isNull);
-      expect(await state.enablePushNotifications(), isFalse);
-    });
+    test(
+      'enabling push without a configured PushService reports failure',
+      () async {
+        final state = AppState();
+        expect(state.pushService, isNull);
+        expect(await state.enablePushNotifications(), isFalse);
+      },
+    );
 
-    test('opening a push notification opens the notifications panel', () {
+    test('opening a push waits for an authenticated workspace', () {
       final state = AppState();
       expect(state.notificationsOpen, isFalse);
-      state.handlePushNotificationOpened('reservation_submitted', 'r1');
-      expect(state.notificationsOpen, isTrue);
+      state.handlePushNotificationOpened(
+        const PushNotificationPayload(
+          notificationId: 'n1',
+          kind: 'reservation_submitted',
+          requestId: 'r1',
+        ),
+      );
+      expect(state.notificationsOpen, isFalse);
     });
   });
 

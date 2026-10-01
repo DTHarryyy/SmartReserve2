@@ -5,6 +5,8 @@ import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
 import '../../model/account.dart';
 import '../../model/feedback.dart';
+import '../../model/notification_navigation.dart';
+import '../../model/notice.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
 import '../../util/campus_calendar.dart';
@@ -75,6 +77,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   _DateFilter _date = _DateFilter.all;
   bool _needsReviewOnly = false;
   FeedbackSort _sort = FeedbackSort.newest;
+  bool _openingNotification = false;
 
   static const _ratingLabels = {
     _RatingFilter.all: 'All ratings',
@@ -209,6 +212,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       animation: AppScope.of(context),
       builder: (context, _) {
         final state = AppScope.of(context);
+        _consumeNotificationIntent(state);
 
         final facilityNames = <String>[
           'All facilities',
@@ -275,6 +279,50 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         );
       },
     );
+  }
+
+  void _consumeNotificationIntent(AppState state) {
+    final intent = state.pendingNotificationIntent;
+    if (_openingNotification ||
+        intent == null ||
+        intent.destination != NotificationDestination.feedback) {
+      return;
+    }
+    _openingNotification = true;
+    state.clearNotificationIntent(intent);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _search.clear();
+      setState(() {
+        _facilityName = 'All facilities';
+        _rating = _RatingFilter.all;
+        _sentiment = _SentimentFilter.all;
+        _analysisStatus = _AnalysisStatusFilter.all;
+        _topic = null;
+        _date = _DateFilter.all;
+        _needsReviewOnly = false;
+        _sort = FeedbackSort.newest;
+      });
+      await state.refreshFeedback(query: const FeedbackQuery());
+      if (!mounted) return;
+      FeedbackEntry? target;
+      for (final entry in state.feedbackEntries) {
+        if (entry.feedback.reservationId == intent.requestId) {
+          target = entry;
+          break;
+        }
+      }
+      if (target == null) {
+        state.showToast(
+          const ToastMessage.warning(
+            'This feedback is no longer available for review.',
+          ),
+        );
+      } else {
+        _showFeedbackDetails(context, state, target);
+      }
+      _openingNotification = false;
+    });
   }
 
   Widget _buildFilters({

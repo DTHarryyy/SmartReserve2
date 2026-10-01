@@ -230,6 +230,12 @@ class _PermitPanelState extends State<PermitPanel> {
                 dense: true,
                 onPressed: _busy ? null : () => _deliver(generatedPermit),
               ),
+            if (_admin)
+              SrButton(
+                label: 'Regenerate permit',
+                dense: true,
+                onPressed: _busy ? null : () => _regenerate(generatedPermit),
+              ),
           ],
         ),
       ];
@@ -428,6 +434,43 @@ class _PermitPanelState extends State<PermitPanel> {
       setState(() {
         _busy = false;
         if (!ok) _error = 'The permit could not be prepared.';
+      });
+    }
+  }
+
+  Future<void> _regenerate(ReservationPermit permit) async {
+    if (!_admin || _busy) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Regenerate permit?'),
+        content: Text(
+          '${permit.permitNumber} will be superseded and a new permit will be '
+          'issued with the current layout and signatures.'
+          '${permit.isDelivered ? ' Send the new permit to the requester afterwards.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Regenerate'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final ok = await widget.state.regeneratePermit(widget.request.id);
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        if (!ok) _error = 'The permit could not be regenerated.';
       });
     }
   }

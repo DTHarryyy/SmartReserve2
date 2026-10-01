@@ -29,6 +29,7 @@ import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
 import '../widgets/app_header.dart';
 import '../widgets/notices.dart';
+import '../widgets/notification_inbox.dart';
 import '../widgets/side_nav.dart';
 import '../widgets/sr_controls.dart';
 import 'app_scope.dart';
@@ -180,7 +181,12 @@ class _AppShellState extends State<AppShell> {
     final state = AppScope.of(context);
     final layout = Layout.of(MediaQuery.sizeOf(context).width);
 
-    return PrimaryScrollController.none(child: _scaffold(state, layout));
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): state.closeOverlays,
+      },
+      child: PrimaryScrollController.none(child: _scaffold(state, layout)),
+    );
   }
 
   Widget _scaffold(AppState state, Layout layout) {
@@ -279,7 +285,16 @@ class _AppShellState extends State<AppShell> {
         top: layout.isDesktop ? 68 : 60,
         child: Align(
           alignment: Alignment.topRight,
-          child: _NotificationsPanel(state: state),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 410,
+              maxHeight: (MediaQuery.sizeOf(context).height - 84).clamp(
+                240.0,
+                600.0,
+              ),
+            ),
+            child: NotificationInbox(state: state),
+          ),
         ),
       ),
     ],
@@ -318,14 +333,30 @@ class _AppShellState extends State<AppShell> {
         tooltip: state.unreadNotifications == 0
             ? 'Notifications'
             : '${state.unreadNotifications} unread notifications',
-        size: 40,
-        onPressed: state.toggleNotifications,
+        size: 44,
+        onPressed: () => _showNotificationSheet(state),
       )
     else
       SrButton(
-        label: state.unreadNotifications == 0
-            ? 'Notifications'
-            : 'Notifications ${state.unreadNotifications}',
+        label: 'Notifications',
+        icon: const Icon(Icons.notifications_none_rounded, size: 18),
+        trailing: state.unreadNotifications == 0
+            ? null
+            : Container(
+                constraints: const BoxConstraints(minWidth: 22),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: context.srColors.brandContainer,
+                  borderRadius: BorderRadius.circular(SR.rFull),
+                ),
+                child: Text(
+                  state.unreadNotifications > 99
+                      ? '99+'
+                      : '${state.unreadNotifications}',
+                  textAlign: TextAlign.center,
+                  style: mono(9.5, w: 600, color: context.srColors.brand),
+                ),
+              ),
         dense: true,
         onPressed: state.toggleNotifications,
       ),
@@ -369,6 +400,29 @@ class _AppShellState extends State<AppShell> {
       _ => const [],
     },
   ];
+
+  Future<void> _showNotificationSheet(AppState state) =>
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: context.srColors.scrimSoft,
+        builder: (sheetContext) => FractionallySizedBox(
+          heightFactor: .80,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+            child: AnimatedBuilder(
+              animation: state,
+              builder: (_, _) => NotificationInbox(
+                state: state,
+                mobile: true,
+                onClose: () => Navigator.of(sheetContext).pop(),
+              ),
+            ),
+          ),
+        ),
+      );
 
   Widget? _mobileAction(AppState state) => switch (state.view) {
     AppView.facilities when state.isAdmin => FloatingActionButton.extended(
@@ -465,126 +519,4 @@ class _AppShellState extends State<AppShell> {
         QualityIssueType.missingPhotos => FacilityEditorReason.photos,
         QualityIssueType.incompletePermitMapping => null,
       };
-}
-
-class _NotificationsPanel extends StatelessWidget {
-  const _NotificationsPanel({required this.state});
-
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.srColors;
-    final availableHeight = (MediaQuery.sizeOf(context).height - 76).clamp(
-      160.0,
-      480.0,
-    );
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: 360,
-        constraints: BoxConstraints(maxHeight: availableHeight),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(SR.rMd),
-          border: Border.all(color: colors.border),
-          boxShadow: SR.popoverShadow,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                SR.space16,
-                SR.space12,
-                SR.space16,
-                SR.space12,
-              ),
-              child: Text('Notifications', style: SrType.subhead()),
-            ),
-            Divider(height: 1, color: colors.border),
-            if (state.notificationsError case final error?)
-              Padding(
-                padding: const EdgeInsets.all(SR.space16),
-                child: Text(error, style: SrType.bodySm(color: colors.red)),
-              )
-            else if (state.notifications.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(SR.space24),
-                child: Text(
-                  'No notifications yet.',
-                  textAlign: TextAlign.center,
-                  style: SrType.bodySm(color: colors.muted),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: state.notifications.length,
-                  separatorBuilder: (_, _) =>
-                      Divider(height: 1, color: colors.hairline),
-                  itemBuilder: (context, index) {
-                    final item = state.notifications[index];
-                    return InkWell(
-                      onTap: () {
-                        state.closeOverlays();
-                        state.openNotification(item);
-                      },
-                      child: Container(
-                        color: item.unread
-                            ? colors.primaryTint2
-                            : colors.surface,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: SR.space16,
-                          vertical: SR.space12,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                top: SR.space6,
-                                right: SR.space8,
-                              ),
-                              child: Container(
-                                width: SR.space6,
-                                height: SR.space6,
-                                decoration: BoxDecoration(
-                                  color: item.unread
-                                      ? SR.primary
-                                      : Colors.transparent,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.title,
-                                    style: SrType.bodySm(
-                                      w: item.unread ? 600 : 500,
-                                      color: colors.ink,
-                                    ),
-                                  ),
-                                  const SizedBox(height: SR.space2),
-                                  Text(item.body, style: SrType.caption()),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -150,7 +150,9 @@ Deno.test("both official templates accept bounded overlays without adding pages"
     const signatures = fixture.template_kind === "internal"
       ? [signature, signature]
       : [signature, signature, signature];
-    const output = await renderPermit(template, fixture, signatures);
+    const output = await renderPermit(template, fixture, signatures, {
+      internalApproverName: "Jasmin Sambrano",
+    });
     const rendered = await PDFDocument.load(output);
     assertEquals(rendered.getPageCount(), 1);
     const renderedStreams = pageContentStreams(rendered);

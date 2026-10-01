@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_state.dart';
 import '../../app/app_view.dart';
 import '../../model/verification.dart';
+import '../policies/policy_view.dart';
 import '../../theme/sr_theme.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/sr_controls.dart';
@@ -502,7 +503,36 @@ class AuthScreen extends StatelessWidget {
       ),
       SrErrorText(controller.confirmPasswordError),
 
-      const SizedBox(height: 14),
+      const SizedBox(height: 10),
+
+      Text.rich(
+        TextSpan(
+          text: 'By creating an account, you agree to the ',
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: _InlineLink(
+                label: 'Terms and Conditions',
+                onTap: () => showPolicyDocument(context, PolicyKind.terms),
+              ),
+            ),
+            const TextSpan(text: ' and the '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: _InlineLink(
+                label: 'Rules and Regulations',
+                onTap: () => showPolicyDocument(context, PolicyKind.rules),
+              ),
+            ),
+            const TextSpan(text: '.'),
+          ],
+        ),
+        style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+      ),
+
+      const SizedBox(height: 8),
 
       _submitButton(
         context,

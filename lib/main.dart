@@ -113,13 +113,21 @@ Future<void> _configurePush(AppState state) async {
           ),
       disableToken: (token) => state.backend!.disablePushToken(token),
       // The realtime channel already updates the bell; just surface it.
-      onForegroundNotification: (title, body) {
+      onForegroundNotification: (payload, title, body) {
         final text = [
           ?title,
           ?body,
         ].where((part) => part.trim().isNotEmpty).join(' — ');
         if (text.isNotEmpty) {
-          state.showToast(ToastMessage(text, tone: AdvisoryTone.info));
+          state.showToast(
+            ToastMessage.info(
+              text,
+              action: ToastAction(
+                label: 'View',
+                onPressed: () => state.handlePushNotificationOpened(payload),
+              ),
+            ),
+          );
         }
       },
       onNotificationOpened: state.handlePushNotificationOpened,

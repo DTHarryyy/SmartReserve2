@@ -1474,10 +1474,8 @@ class BackendReservation {
             Map<String, dynamic>.from(raw as Map),
           ),
       ],
-      timeCharges: rows(
-        'reservation_time_charges',
-        parseReservationTimeCharge,
-      )..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
+      timeCharges: rows('reservation_time_charges', parseReservationTimeCharge)
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
       requesterCategory: '${json['requester_category'] ?? 'external_renter'}',
       externalCompanyOrganization:
           json['external_company_organization'] as String?,
@@ -1580,7 +1578,9 @@ class BackendNotification {
     required this.body,
     required this.createdAt,
     this.requestId,
+    this.eventId,
     this.anomalyId,
+    this.eventDetails = const {},
     this.readAt,
   });
 
@@ -1589,7 +1589,9 @@ class BackendNotification {
   final String title;
   final String body;
   final String? requestId;
+  final String? eventId;
   final String? anomalyId;
+  final Map<String, dynamic> eventDetails;
   final DateTime createdAt;
   final DateTime? readAt;
 
@@ -1602,7 +1604,9 @@ class BackendNotification {
     body: body,
     createdAt: createdAt,
     requestId: requestId,
+    eventId: eventId,
     anomalyId: anomalyId,
+    eventDetails: eventDetails,
     readAt: at,
   );
 
@@ -1613,10 +1617,24 @@ class BackendNotification {
         title: '${json['title'] ?? ''}',
         body: '${json['body'] ?? ''}',
         requestId: json['request_id'] as String?,
+        eventId: json['event_id'] as String?,
         anomalyId: json['anomaly_id'] as String?,
+        eventDetails: _notificationEventDetails(json['event']),
         createdAt: DateTime.parse(json['created_at'] as String),
         readAt: _date(json['read_at']),
       );
+}
+
+Map<String, dynamic> _notificationEventDetails(Object? value) {
+  if (value is Map) {
+    final event = Map<String, dynamic>.from(value);
+    final details = event['details'];
+    return details is Map ? Map<String, dynamic>.from(details) : const {};
+  }
+  if (value is List && value.isNotEmpty && value.first is Map) {
+    return _notificationEventDetails(value.first);
+  }
+  return const {};
 }
 
 DateTime? _date(Object? value) =>
@@ -3135,7 +3153,8 @@ abstract interface class SmartReserveBackend {
   Future<Map<String, dynamic>> assistantChat(Map<String, dynamic> body);
   Future<void> undoReservationAction(String actionId);
   Future<String> reservationAttachmentUrl(String path);
-  Future<List<BackendNotification>> notifications();
+  Future<List<BackendNotification>> unreadNotifications();
+  Future<BackendNotification?> notificationById(String notificationId);
   Future<void> generateReservationReminders();
   Stream<RowDelta<BackendNotification>> notificationChanges();
   Future<void> markNotificationRead(String notificationId);
@@ -3315,6 +3334,7 @@ abstract interface class SmartReserveCoreBackend {
     List<ReservationUpload> evidence,
   });
   Future<ReservationPermit?> ensurePermit(String requestId);
+  Future<ReservationPermit?> regeneratePermit(String requestId);
   Future<PermitReadiness> permitReadiness(String requestId);
   Future<void> refreshReservationPermitItemsForMapping(String requestId);
   Future<void> saveReservationPermitMappings(
@@ -4764,12 +4784,22 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<ReservationPermit?> ensurePermit(String requestId) async {
+  Future<ReservationPermit?> ensurePermit(String requestId) =>
+      _invokePermitGenerator('ensure', requestId);
+
+  @override
+  Future<ReservationPermit?> regeneratePermit(String requestId) =>
+      _invokePermitGenerator('regenerate', requestId);
+
+  Future<ReservationPermit?> _invokePermitGenerator(
+    String action,
+    String requestId,
+  ) async {
     late final FunctionResponse response;
     try {
       response = await _client.functions.invoke(
         'generate-permit',
-        body: {'action': 'ensure', 'requestId': requestId},
+        body: {'action': action, 'requestId': requestId},
       );
     } catch (error) {
       throw StateError(
@@ -5617,10 +5647,11 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   }
 
   @override
-  Future<List<BackendNotification>> notifications() async {
+  Future<List<BackendNotification>> unreadNotifications() async {
     final rows = await _client
         .from('app_notifications')
-        .select()
+        .select('*,event:reservation_events(details)')
+        .isFilter('read_at', null)
         .order('created_at', ascending: false)
         .limit(100);
     return (rows as List)
@@ -5630,6 +5661,18 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
           ),
         )
         .toList();
+  }
+
+  @override
+  Future<BackendNotification?> notificationById(String notificationId) async {
+    final row = await _client
+        .from('app_notifications')
+        .select('*,event:reservation_events(details)')
+        .eq('id', notificationId)
+        .maybeSingle();
+    return row == null
+        ? null
+        : BackendNotification.fromJson(Map<String, dynamic>.from(row));
   }
 
   /// Live notification updates applied straight from the change payload, so a
@@ -5650,7 +5693,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       ),
       (batch) async {
         if (batch.any((change) => change.isResync)) {
-          return RowDelta.replace(await notifications());
+          return RowDelta.replace(await unreadNotifications());
         }
         final upserts = <String, BackendNotification>{};
         final removed = <String>{};

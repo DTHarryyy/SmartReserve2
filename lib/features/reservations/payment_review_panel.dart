@@ -18,10 +18,12 @@ class PaymentReviewPanel extends StatelessWidget {
     super.key,
     required this.state,
     required this.request,
+    this.highlightedPaymentId,
   });
 
   final AppState state;
   final ReservationRequest request;
+  final String? highlightedPaymentId;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +58,7 @@ class PaymentReviewPanel extends StatelessWidget {
                 payment: payment,
                 methodLabel: _methodLabel(payment),
                 canDecide: submitted.contains(payment),
+                highlighted: payment.id == highlightedPaymentId,
               ),
           ],
         ],
@@ -86,92 +89,111 @@ class _PaymentRow extends StatelessWidget {
     required this.payment,
     required this.methodLabel,
     required this.canDecide,
+    required this.highlighted,
   });
 
   final AppState state;
   final PaymentTransaction payment;
   final String? methodLabel;
   final bool canDecide;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
     final pending = state.reservationActionsPending.contains(
       'payment:${payment.id}',
     );
-    return Container(
-      margin: const EdgeInsets.only(bottom: SR.space8),
-      padding: const EdgeInsets.all(SR.space12),
-      decoration: BoxDecoration(
-        color: context.srColors.surfaceSubtle,
-        borderRadius: BorderRadius.circular(SR.rSm),
-        border: Border.all(color: context.srColors.hairline),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: SR.space8,
-            runSpacing: SR.space4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                pesoFromCentavos(payment.amountCentavos),
-                style: SrType.body(w: 600),
-              ),
-              SrStatusChip(
-                label: payment.status.label,
-                tone: switch (payment.status) {
-                  PaymentDecisionStatus.verified => SrTone.success,
-                  PaymentDecisionStatus.needsCorrection => SrTone.warning,
-                  PaymentDecisionStatus.rejected => SrTone.error,
-                  _ => SrTone.warning,
-                },
-                dense: true,
-              ),
-              Text(
-                '${payment.purpose.label} · '
-                '${methodLabel == null ? '' : '$methodLabel · '}'
-                'Ref ${payment.referenceNumber}',
-                style: SrType.caption(),
-              ),
-            ],
+    return Semantics(
+      label: highlighted ? 'Payment referenced by notification' : null,
+      container: highlighted,
+      child: AnimatedContainer(
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : SR.entrance,
+        margin: const EdgeInsets.only(bottom: SR.space8),
+        padding: const EdgeInsets.all(SR.space12),
+        decoration: BoxDecoration(
+          color: highlighted
+              ? context.srColors.primaryTint
+              : context.srColors.surfaceSubtle,
+          borderRadius: BorderRadius.circular(SR.rSm),
+          border: Border.all(
+            color: highlighted
+                ? context.srColors.focus
+                : context.srColors.hairline,
+            width: highlighted ? 2 : 1,
           ),
-          if (payment.rejectionReason case final reason?) ...[
-            const SizedBox(height: SR.space4),
-            Text(reason, style: SrType.bodySm(color: context.srColors.redInk)),
-          ],
-          const SizedBox(height: SR.space8),
-          Wrap(
-            spacing: SR.space6,
-            runSpacing: SR.space6,
-            children: [
-              SrButton(
-                label: 'Open proof',
-                dense: true,
-                onPressed: () => _openProof(),
-              ),
-              if (canDecide) ...[
-                SrButton(
-                  label: pending ? 'Saving…' : 'Verify',
-                  kind: SrButtonKind.success,
-                  dense: true,
-                  onPressed: pending
-                      ? null
-                      : () => state.decideReservationPayment(
-                          payment: payment,
-                          decision: 'verify',
-                        ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: SR.space8,
+              runSpacing: SR.space4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  pesoFromCentavos(payment.amountCentavos),
+                  style: SrType.body(w: 600),
                 ),
-                SrButton(
-                  label: 'Request correction',
-                  kind: SrButtonKind.danger,
+                SrStatusChip(
+                  label: payment.status.label,
+                  tone: switch (payment.status) {
+                    PaymentDecisionStatus.verified => SrTone.success,
+                    PaymentDecisionStatus.needsCorrection => SrTone.warning,
+                    PaymentDecisionStatus.rejected => SrTone.error,
+                    _ => SrTone.warning,
+                  },
                   dense: true,
-                  onPressed: pending ? null : () => _reject(context),
+                ),
+                Text(
+                  '${payment.purpose.label} · '
+                  '${methodLabel == null ? '' : '$methodLabel · '}'
+                  'Ref ${payment.referenceNumber}',
+                  style: SrType.caption(),
                 ),
               ],
+            ),
+            if (payment.rejectionReason case final reason?) ...[
+              const SizedBox(height: SR.space4),
+              Text(
+                reason,
+                style: SrType.bodySm(color: context.srColors.redInk),
+              ),
             ],
-          ),
-        ],
+            const SizedBox(height: SR.space8),
+            Wrap(
+              spacing: SR.space6,
+              runSpacing: SR.space6,
+              children: [
+                SrButton(
+                  label: 'Open proof',
+                  dense: true,
+                  onPressed: () => _openProof(),
+                ),
+                if (canDecide) ...[
+                  SrButton(
+                    label: pending ? 'Saving…' : 'Verify',
+                    kind: SrButtonKind.success,
+                    dense: true,
+                    onPressed: pending
+                        ? null
+                        : () => state.decideReservationPayment(
+                            payment: payment,
+                            decision: 'verify',
+                          ),
+                  ),
+                  SrButton(
+                    label: 'Request correction',
+                    kind: SrButtonKind.danger,
+                    dense: true,
+                    onPressed: pending ? null : () => _reject(context),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

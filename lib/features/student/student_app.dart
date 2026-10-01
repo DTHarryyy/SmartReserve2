@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_scope.dart';
@@ -9,16 +11,20 @@ import '../../app/app_view.dart';
 import '../../model/account.dart';
 import '../../model/facility.dart';
 import '../../model/notice.dart';
+import '../../model/notification_navigation.dart';
 import '../../model/payment.dart';
 import '../../model/reservation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../theme/sr_theme.dart';
 import '../../util/campus_calendar.dart';
+import '../policies/policy_view.dart';
 import '../reservations/permit_panel.dart';
+import '../reservations/reservation_signature_dialog.dart';
 import '../../widgets/amenity_request_field.dart';
 import '../../widgets/evidence_thumbnails.dart';
 import '../../widgets/facility_catalogue_card.dart';
 import '../../widgets/filter_bar.dart';
+import '../../widgets/notification_inbox.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/responsive_dialog.dart';
 import '../../widgets/sr_assistant_logo.dart';
@@ -82,6 +88,9 @@ class _StudentAppState extends State<StudentApp> {
   /// hold their own buttons, and wrapping the whole card in a tap handler
   /// would fight the gesture arena with those.
   String? _highlightedReservationId;
+  final Map<String, GlobalKey> _reservationKeys = {};
+  final LayerLink _notificationAnchor = LayerLink();
+  OverlayEntry? _notificationOverlay;
 
   String? _editingField;
   bool _pushBusy = false;
@@ -135,7 +144,49 @@ class _StudentAppState extends State<StudentApp> {
         _openLoyalty(context);
       });
     }
-    if (state.pendingReservationFocusId case final focusId?) {
+    if (state.pendingNotificationIntent case final intent?
+        when intent.destination == NotificationDestination.browse) {
+      state.clearNotificationIntent(intent);
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        setState(() => _tab = StudentTab.browse);
+        final facilityId = intent.resourceId;
+        if (facilityId == null) return;
+        Facility? facility;
+        for (final candidate in state.facilities) {
+          if (candidate.id == facilityId) {
+            facility = candidate;
+            break;
+          }
+        }
+        if (facility == null) {
+          state.showToast(
+            const ToastMessage.warning('This facility is no longer available.'),
+          );
+          return;
+        }
+        final reserveEnabled =
+            facility.state == FacilityState.active &&
+            facility.bookableForCurrentUser;
+        final availabilityLabel = _facilityAvailabilityLabelFor(facility);
+        await showFacilityPreview(
+          context,
+          state: state,
+          facility: facility,
+          reserveEnabled: reserveEnabled,
+          reserveReason:
+              _facilityAdminUnavailabilityExplanationFor(facility) ??
+              availabilityLabel,
+          onReserve: (reserveContext) => showBookingSheet(
+            reserveContext,
+            state: state,
+            facility: facility!,
+          ),
+        );
+      });
+    } else if (state.pendingNotificationIntent case final intent?
+        when intent.destination == NotificationDestination.renterReservation) {
+      state.clearNotificationIntent(intent);
       state.pendingReservationFocusId = null;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
@@ -143,6 +194,43 @@ class _StudentAppState extends State<StudentApp> {
         // fetched once by refreshReservations() -- unlike app_notifications,
         // it is not realtime-subscribed. Without this refresh a renter
         // sitting in the app sees the notification but a stale card.
+        await state.refreshReservations();
+        if (!mounted) return;
+        final focusId = intent.requestId;
+        final request = focusId == null ? null : state.requestById(focusId);
+        if (request == null) {
+          state.showToast(
+            const ToastMessage.warning(
+              'This reservation is no longer available.',
+            ),
+          );
+          return;
+        }
+        setState(() {
+          _tab = StudentTab.mine;
+          _highlightedReservationId = focusId;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          final targetContext = _reservationKeys[request.id]?.currentContext;
+          if (targetContext != null) {
+            await Scrollable.ensureVisible(
+              targetContext,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : SR.entrance,
+              curve: SR.easing,
+              alignment: .08,
+            );
+          }
+          if (!mounted || !intent.openForm) return;
+          await _openNotificationForm(state, request, intent);
+        });
+      });
+    } else if (state.pendingReservationFocusId case final focusId?) {
+      // Compatibility for navigation initiated by older callers.
+      state.pendingReservationFocusId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         await state.refreshReservations();
         if (!mounted) return;
         setState(() {
@@ -153,8 +241,90 @@ class _StudentAppState extends State<StudentApp> {
     }
   }
 
+  Future<void> _openNotificationForm(
+    AppState state,
+    ReservationRequest request,
+    NotificationNavigationIntent intent,
+  ) async {
+    switch (intent.focus) {
+      case NotificationFocus.signature:
+        if (!request.signatureRequested || request.signatureRequestId == null) {
+          _showStaleNotification(state);
+          return;
+        }
+        final upload = await showReservationSignatureDialog(
+          context,
+          requestId: request.id,
+        );
+        if (upload != null && mounted) {
+          await state.submitReservationSignature(
+            signatureRequestId: request.signatureRequestId!,
+            requestId: request.id,
+            signature: upload,
+          );
+        }
+        return;
+      case NotificationFocus.payment:
+        PaymentTransaction? correction;
+        final now = DateTime.now();
+        for (final payment in request.paymentTransactions) {
+          if (payment.status == PaymentDecisionStatus.needsCorrection &&
+              (payment.correctionDueAt == null ||
+                  !payment.correctionDueAt!.isBefore(now)) &&
+              (intent.resourceId == null || payment.id == intent.resourceId)) {
+            correction = payment;
+            break;
+          }
+        }
+        if (correction != null) {
+          await _submitPayment(state, request, correctingPayment: correction);
+          return;
+        }
+        final underReview = request.paymentTransactions.any(
+          (payment) =>
+              payment.status == PaymentDecisionStatus.submitted ||
+              payment.status == PaymentDecisionStatus.needsCorrection,
+        );
+        final canSubmit =
+            request.lifecycleStatus ==
+                ReservationLifecycleStatus.awaitingPayment ||
+            request.lifecycleStatus == ReservationLifecycleStatus.confirmed ||
+            request.lifecycleStatus == ReservationLifecycleStatus.completed;
+        if (request.outstandingAmountCentavos > 0 &&
+            !underReview &&
+            canSubmit) {
+          await _submitPayment(state, request);
+        } else {
+          _showStaleNotification(state);
+        }
+        return;
+      case NotificationFocus.permit:
+        final permit = request.permit;
+        if (permit == null || !permit.isDownloadable) {
+          _showStaleNotification(state);
+          return;
+        }
+        final bytes = await state.permitPdfBytes(permit);
+        if (bytes == null) {
+          _showStaleNotification(state);
+          return;
+        }
+        await Printing.layoutPdf(onLayout: (_) async => bytes);
+        return;
+      case _:
+        return;
+    }
+  }
+
+  void _showStaleNotification(AppState state) => state.showToast(
+    const ToastMessage.warning(
+      'This action has already been completed or is no longer available.',
+    ),
+  );
+
   @override
   void dispose() {
+    _closeNotificationOverlay();
     _editController.dispose();
     _browseSearch.dispose();
     _assistant.dispose();
@@ -168,43 +338,49 @@ class _StudentAppState extends State<StudentApp> {
     final width = MediaQuery.sizeOf(context).width;
     final narrow = SR.isCompact(width);
 
-    return ColoredBox(
-      color: context.srColors.bg,
-      child: Column(
-        children: [
-          _header(state, account, narrow),
-          Expanded(
-            child: switch (_tab) {
-              StudentTab.browse => _scrollable(
-                _browse(state, account),
-                width,
-                narrow,
-                key: const ValueKey(StudentTab.browse),
-              ),
-              StudentTab.mine => _scrollable(
-                _mine(state),
-                width,
-                narrow,
-                key: const ValueKey(StudentTab.mine),
-              ),
-              StudentTab.calendar => const PublicCalendarScreen(
-                key: ValueKey(StudentTab.calendar),
-              ),
-              StudentTab.account => _scrollable(
-                _account(state, account),
-                width,
-                narrow,
-                key: const ValueKey(StudentTab.account),
-                fullWidth: true,
-              ),
-            },
-          ),
-          _BottomNav(
-            selected: _tab,
-            onSelect: (tab) => setState(() => _tab = tab),
-            onOpenAssistant: () => _openAssistant(context),
-          ),
-        ],
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape):
+            _closeNotificationOverlay,
+      },
+      child: ColoredBox(
+        color: context.srColors.bg,
+        child: Column(
+          children: [
+            _header(state, account, narrow),
+            Expanded(
+              child: switch (_tab) {
+                StudentTab.browse => _scrollable(
+                  _browse(state, account),
+                  width,
+                  narrow,
+                  key: const ValueKey(StudentTab.browse),
+                ),
+                StudentTab.mine => _scrollable(
+                  _mine(state),
+                  width,
+                  narrow,
+                  key: const ValueKey(StudentTab.mine),
+                ),
+                StudentTab.calendar => const PublicCalendarScreen(
+                  key: ValueKey(StudentTab.calendar),
+                ),
+                StudentTab.account => _scrollable(
+                  _account(state, account),
+                  width,
+                  narrow,
+                  key: const ValueKey(StudentTab.account),
+                  fullWidth: true,
+                ),
+              },
+            ),
+            _BottomNav(
+              selected: _tab,
+              onSelect: (tab) => setState(() => _tab = tab),
+              onOpenAssistant: () => _openAssistant(context),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -339,42 +515,43 @@ class _StudentAppState extends State<StudentApp> {
                   ),
                   SizedBox(width: narrow ? 2 : 6),
                 ],
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    IconButton(
-                      tooltip: 'Notifications',
-                      color: colors.textSecondary,
-                      onPressed: () => _showNotifications(state),
-                      icon: const Icon(
-                        Icons.notifications_none_rounded,
-                        size: 22,
+                CompositedTransformTarget(
+                  link: _notificationAnchor,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        tooltip: 'Notifications',
+                        color: colors.textSecondary,
+                        onPressed: () => _showNotifications(state),
+                        icon: const Icon(
+                          Icons.notifications_none_rounded,
+                          size: 22,
+                        ),
                       ),
-                    ),
-                    if (state.unreadNotifications > 0)
-                      Positioned(
-                        right: 1,
-                        top: 1,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: SR.redBright,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '${state.unreadNotifications}',
-                            style: mono(
-                              8.5,
-                              w: 600,
-                              color: Theme.of(context).colorScheme.onError,
+                      if (state.unreadNotifications > 0)
+                        Positioned(
+                          right: 1,
+                          top: 1,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.brand,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              state.unreadNotifications > 99
+                                  ? '99+'
+                                  : '${state.unreadNotifications}',
+                              style: mono(8.5, w: 600, color: colors.onBrand),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
                 SizedBox(width: narrow ? 2 : 6),
                 Container(
@@ -446,65 +623,74 @@ class _StudentAppState extends State<StudentApp> {
   }
 
   Future<void> _showNotifications(AppState state) async {
+    if (MediaQuery.sizeOf(context).width >= SR.tabletMin) {
+      if (_notificationOverlay != null) {
+        _closeNotificationOverlay();
+        return;
+      }
+      final overlay = Overlay.of(context);
+      _notificationOverlay = OverlayEntry(
+        builder: (overlayContext) => Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _closeNotificationOverlay,
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _notificationAnchor,
+              showWhenUnlinked: false,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(0, 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 410,
+                  maxHeight: (MediaQuery.sizeOf(overlayContext).height - 92)
+                      .clamp(240.0, 600.0),
+                ),
+                child: AnimatedBuilder(
+                  animation: state,
+                  builder: (_, _) => NotificationInbox(
+                    state: state,
+                    onClose: _closeNotificationOverlay,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      overlay.insert(_notificationOverlay!);
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 520),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                child: Text('Notifications', style: sans(16, w: 600)),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: state.notifications.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No notifications yet.',
-                          style: sans(12, color: context.srColors.muted),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: state.notifications.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final item = state.notifications[index];
-                          return ListTile(
-                            tileColor: item.unread
-                                ? context.srColors.primaryTint
-                                : null,
-                            title: Text(
-                              item.title,
-                              style: sans(12.5, w: item.unread ? 600 : 500),
-                            ),
-                            subtitle: Text(
-                              item.body,
-                              style: sans(
-                                11,
-                                height: 1.45,
-                                color: context.srColors.ink4,
-                              ),
-                            ),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await state.openNotification(item);
-                              if (mounted) {
-                                setState(() => _tab = StudentTab.mine);
-                              }
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ],
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: context.srColors.scrimSoft,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .80,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: AnimatedBuilder(
+            animation: state,
+            builder: (_, _) => NotificationInbox(
+              state: state,
+              mobile: true,
+              onClose: () => Navigator.of(sheetContext).pop(),
+            ),
           ),
         ),
       ),
     );
+  }
+
+  void _closeNotificationOverlay() {
+    _notificationOverlay?.remove();
+    _notificationOverlay = null;
   }
 
   Widget _browse(AppState state, Account account) {
@@ -949,6 +1135,7 @@ class _StudentAppState extends State<StudentApp> {
       children: [
         for (final request in rows)
           Container(
+            key: _reservationKeys.putIfAbsent(request.id, () => GlobalKey()),
             margin: const EdgeInsets.only(bottom: 9),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
             decoration: BoxDecoration(
@@ -1785,9 +1972,8 @@ class _StudentAppState extends State<StudentApp> {
                       label: 'Check out',
                       kind: SrButtonKind.primary,
                       dense: true,
-                      onPressed: state.reservationActionsPending.contains(
-                            request.id,
-                          )
+                      onPressed:
+                          state.reservationActionsPending.contains(request.id)
                           ? null
                           : () => _checkOut(state, request, occurrence),
                     ),
@@ -1834,9 +2020,8 @@ class _StudentAppState extends State<StudentApp> {
                   SrButton(
                     label: 'Withdraw',
                     dense: true,
-                    onPressed: state.reservationActionsPending.contains(
-                          request.id,
-                        )
+                    onPressed:
+                        state.reservationActionsPending.contains(request.id)
                         ? null
                         : () => state.cancelExtension(request, pending),
                   ),
@@ -1844,9 +2029,8 @@ class _StudentAppState extends State<StudentApp> {
                   SrButton(
                     label: 'Extend time',
                     dense: true,
-                    onPressed: state.reservationActionsPending.contains(
-                          request.id,
-                        )
+                    onPressed:
+                        state.reservationActionsPending.contains(request.id)
                         ? null
                         : () => _requestExtension(state, request, occurrence),
                   ),
@@ -2650,6 +2834,8 @@ class _StudentAppState extends State<StudentApp> {
           const SizedBox(height: SR.space16),
         ],
         _preferencesPanel(state, compact),
+        const SizedBox(height: SR.space16),
+        _policiesPanel(),
       ],
     );
 
@@ -3089,6 +3275,33 @@ class _StudentAppState extends State<StudentApp> {
       ),
     );
   }
+
+  Widget _policiesPanel() => SrCard.bare(
+    key: const Key('student-policies'),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(SR.rLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SrListRow(
+            icon: Icons.description_outlined,
+            label: 'Terms and Conditions',
+            onTap: () => showPolicyDocument(context, PolicyKind.terms),
+          ),
+          Divider(
+            height: 1,
+            indent: SR.space16,
+            color: context.srColors.hairline,
+          ),
+          SrListRow(
+            icon: Icons.gavel_rounded,
+            label: 'Rules and Regulations',
+            onTap: () => showPolicyDocument(context, PolicyKind.rules),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _accountActions(AppState state) => SrCard(
     child: LayoutBuilder(

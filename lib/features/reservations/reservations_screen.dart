@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../model/reservation.dart';
+import '../../model/notification_navigation.dart';
 import '../../theme/sr_tokens.dart';
 import '../../widgets/queue_shell.dart';
 import '../../widgets/record_table.dart';
@@ -48,6 +49,19 @@ class ReservationsScreen extends StatelessWidget {
     final stacked = MediaQuery.sizeOf(context).width < SR.desktopMin;
     final rows = state.visibleRequests;
     final selected = state.selectedRequest;
+    final notificationIntent = state.pendingNotificationIntent;
+    final notificationFocus =
+        notificationIntent != null &&
+            notificationIntent.destination ==
+                NotificationDestination.adminReservation &&
+            notificationIntent.requestId == selected?.id
+        ? notificationIntent
+        : null;
+    if (notificationFocus != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        state.clearNotificationIntent(notificationFocus);
+      });
+    }
 
     final assessments = <String, ReservationAssessment>{
       for (final r in rows) r.id: _assess(state, r),
@@ -73,6 +87,8 @@ class ReservationsScreen extends StatelessWidget {
           : DecisionPanel(
               state: state,
               assessment: assessments[selected.id]!,
+              notificationFocus: notificationFocus?.focus,
+              notificationResourceId: notificationFocus?.resourceId,
 
               showBack: false,
               onBack: () => state.selectRequest(null),

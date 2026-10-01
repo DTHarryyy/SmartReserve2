@@ -3476,24 +3476,17 @@ class AssistantController extends ChangeNotifier {
   }
 
   void _handleAnnouncements(AppState state) {
-    final unread = [
-      for (final item in state.notifications)
-        if (item.unread) item,
-    ];
-    final recent = unread.isNotEmpty ? unread : state.notifications;
-
-    if (recent.isEmpty) {
+    final unread = state.notifications;
+    if (unread.isEmpty) {
       _say('Nothing new for you right now.');
       return;
     }
 
     _say(
-      unread.isNotEmpty
-          ? 'You have ${_formatCount(unread.length)} unread '
-                '${unread.length == 1 ? 'notice' : 'notices'}:'
-          : 'Your most recent notices:',
+      'You have ${_formatCount(unread.length)} unread '
+      '${unread.length == 1 ? 'notice' : 'notices'}:',
     );
-    for (final item in recent.take(5)) {
+    for (final item in unread.take(5)) {
       _say('• ${item.title}${item.body.isEmpty ? '' : ' — ${item.body}'}');
     }
 
