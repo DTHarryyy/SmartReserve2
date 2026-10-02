@@ -3,14 +3,19 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(12);
+select plan(17);
 
 create temp table public_calendar_actors as
 select
   (select id from public.profiles
    where role = 'user' order by created_at limit 1) user_id,
   (select id from public.profiles
-   where role = 'internal_admin' order by created_at limit 1) admin_id;
+   where role = 'internal_admin' order by created_at limit 1) admin_id,
+  (select id from public.profiles
+   where role = 'external_admin' order by created_at limit 1) external_admin_id,
+  (select id from public.profiles
+   where role = 'user' and account_status = 'active'
+   order by created_at offset 1 limit 1) other_user_id;
 
 select set_config(
   'request.jwt.claim.sub',
@@ -119,13 +124,20 @@ select set_config(
   (select admin_id::text from public_calendar_actors),
   false
 );
-select throws_ok(
-  $$select count(*) from public.public_reservation_calendar(
-      array['97000000-0000-0000-0000-000000000001'::uuid],
-      '2030-01-07 00:00+00', '2030-01-08 00:00+00'
-    )$$,
-  '42501', null, 'administrator callers are denied'
-);
+select is((select count(*)::integer from public.public_reservation_calendar(
+  array['97000000-0000-0000-0000-000000000001'::uuid],
+  '2030-01-07 00:00+00', '2030-01-08 00:00+00'
+)), 3, 'internal administrators receive the shared sanitized schedule');
+
+select set_config('request.jwt.claim.sub',
+  (select external_admin_id::text from public_calendar_actors), false);
+select is((select count(*)::integer from public.public_reservation_calendar(
+  array['97000000-0000-0000-0000-000000000001'::uuid],
+  '2030-01-07 00:00+00', '2030-01-08 00:00+00'
+)), 3, 'external administrators receive the same shared schedule');
+
+select set_config('request.jwt.claim.sub',
+  (select admin_id::text from public_calendar_actors), false);
 
 update public.profiles set account_status = 'suspended'
 where id = (select user_id from public_calendar_actors);
@@ -152,28 +164,28 @@ select is((select count(*)::integer from public.public_reservation_calendar(
     '97000000-0000-0000-0000-000000000004'::uuid
   ],
   '2030-01-07 00:00+00', '2030-01-08 00:00+00'
-)), 2, 'unverified active users receive only unavailable public active slots');
+)), 6, 'active users see reservations across public, private, archived and maintenance facilities');
 
 update public.profiles set verification_status = 'pending'
 where id = (select user_id from public_calendar_actors);
 select is((select count(*)::integer from public.public_reservation_calendar(
   array['97000000-0000-0000-0000-000000000001'::uuid],
   '2030-01-07 00:00+00', '2030-01-08 00:00+00'
-)), 2, 'pending users receive the same sanitized schedule');
+)), 3, 'pending users receive the same sanitized schedule');
 
 update public.profiles set verification_status = 'rejected'
 where id = (select user_id from public_calendar_actors);
 select is((select count(*)::integer from public.public_reservation_calendar(
   array['97000000-0000-0000-0000-000000000001'::uuid],
   '2030-01-07 00:00+00', '2030-01-08 00:00+00'
-)), 2, 'rejected users receive the same sanitized schedule');
+)), 3, 'rejected users receive the same sanitized schedule');
 
 update public.profiles set verification_status = 'verified'
 where id = (select user_id from public_calendar_actors);
 select is((select count(*)::integer from public.public_reservation_calendar(
   array['97000000-0000-0000-0000-000000000001'::uuid],
   '2030-01-07 00:00+00', '2030-01-08 00:00+00'
-)), 2, 'verified users receive the same sanitized schedule');
+)), 3, 'verified users receive the same sanitized schedule');
 
 select results_eq(
   $$select starts_at from public.public_reservation_calendar(
@@ -181,8 +193,9 @@ select results_eq(
       '2030-01-07 00:00+00', '2030-01-08 00:00+00'
     ) order by starts_at$$,
   $$values ('2030-01-07 00:00+00'::timestamptz),
-           ('2030-01-07 02:00+00'::timestamptz)$$,
-  'only held and booked public active occurrences are returned'
+           ('2030-01-07 02:00+00'::timestamptz),
+           ('2030-01-07 04:00+00'::timestamptz)$$,
+  'active reservation times are shared, while cancelled and expired slots are excluded'
 );
 
 select results_eq(
@@ -211,8 +224,8 @@ select * from public.public_reservation_calendar(
 
 select is((select count(*)::integer
   from information_schema.columns
-  where table_name = 'public_calendar_result'), 3,
-  'the result exposes exactly three columns');
+  where table_name = 'public_calendar_result'), 5,
+  'the result exposes only the facility name, identifiers and reserved interval');
 
 select isnt(to_jsonb(result) ?| array[
   'id', 'request_id', 'requester_id', 'requester_name', 'purpose',
@@ -220,6 +233,38 @@ select isnt(to_jsonb(result) ?| array[
 ], true, 'the result contains no sensitive reservation columns')
 from public_calendar_result result
 limit 1;
+
+select set_config('request.jwt.claim.sub',
+  (select other_user_id::text from public_calendar_actors), false);
+select results_eq(
+  $$select occurrence_id from public.public_reservation_calendar(
+    array['97000000-0000-0000-0000-000000000001'::uuid],
+    '2030-01-07 00:00+00', '2030-01-08 00:00+00'
+  ) order by occurrence_id$$,
+  $$select occurrence_id from public_calendar_result order by occurrence_id$$,
+  'another user sees exactly the same reservations, including other users bookings'
+);
+
+select is((select count(*)::integer from public.public_reservation_calendar(
+  array[]::uuid[], '2030-01-07 00:00+00', '2030-01-08 00:00+00'
+) where facility_id in (
+  '97000000-0000-0000-0000-000000000001'::uuid,
+  '97000000-0000-0000-0000-000000000002'::uuid,
+  '97000000-0000-0000-0000-000000000003'::uuid,
+  '97000000-0000-0000-0000-000000000004'::uuid
+)), 6, 'an empty facility filter loads the centralized schedule');
+
+select is((select facility_name from public.public_reservation_calendar(
+  array['97000000-0000-0000-0000-000000000003'::uuid],
+  '2030-01-07 00:00+00', '2030-01-08 00:00+00'
+) limit 1), 'Public Calendar Archived',
+  'facility names remain available without exposing full facility records');
+
+select throws_ok(
+  $$select * from public.public_reservation_calendar(array[]::uuid[],
+    '2030-01-07 00:00+00', '2031-01-07 00:00+00')$$,
+  '22023', null, 'all-facility queries still enforce the maximum date range'
+);
 
 select * from finish();
 rollback;

@@ -82,7 +82,26 @@ class CalendarEvent {
   final bool privacyMasked;
   final bool isMine;
 
-  bool get canOpenRequest => requestId != null;
+  bool get canOpenRequest => requestId != null && !privacyMasked;
+
+  CalendarEvent get reservedOnly => CalendarEvent(
+    id: id,
+    occurrenceId: occurrenceId,
+    startsAt: startsAt,
+    endsAt: endsAt,
+    facility: facility,
+    building: '',
+    room: '',
+    requester: 'Reserved',
+    organization: '',
+    purpose: 'Reserved',
+    headcount: 0,
+    state: CalendarEventState.confirmed,
+    lifecycle: BookingStage.booked,
+    statusLabel: 'Reserved',
+    summaryLabel: 'Reserved',
+    privacyMasked: true,
+  );
 
   String get timeLabel =>
       '${formatClock12(startsAt.hour + startsAt.minute / 60)}–${formatClock12(endsAt.hour + endsAt.minute / 60)}';
@@ -92,7 +111,7 @@ class CalendarEvent {
   String get effectiveSummaryLabel => summaryLabel ?? '$requester · $purpose';
 
   String get eventChipLabel => privacyMasked
-      ? '$facility · $effectiveStatusLabel'
+      ? '$timeLabel · $facility · $effectiveStatusLabel'
       : '$facility · $requester';
 
   bool overlapsDay(DateTime day) {
@@ -115,10 +134,12 @@ class PublicCalendarSlot {
     required this.startsAt,
     required this.endsAt,
     this.occurrenceId,
+    this.facilityName,
   });
 
   final String facilityId;
   final DateTime startsAt;
   final DateTime endsAt;
   final String? occurrenceId;
+  final String? facilityName;
 }

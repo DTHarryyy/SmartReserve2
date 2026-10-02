@@ -1233,12 +1233,14 @@ class BackendPublicReservationSlot {
     required this.startsAt,
     required this.endsAt,
     this.occurrenceId,
+    this.facilityName,
   });
 
   final String facilityId;
   final DateTime startsAt;
   final DateTime endsAt;
   final String? occurrenceId;
+  final String? facilityName;
 
   factory BackendPublicReservationSlot.fromJson(Map<String, dynamic> json) =>
       BackendPublicReservationSlot(
@@ -1246,6 +1248,7 @@ class BackendPublicReservationSlot {
         startsAt: DateTime.parse('${json['starts_at']}').toUtc(),
         endsAt: DateTime.parse('${json['ends_at']}').toUtc(),
         occurrenceId: json['occurrence_id'] as String?,
+        facilityName: json['facility_name'] as String?,
       );
 }
 
@@ -4451,33 +4454,14 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     required DateTime from,
     required DateTime to,
   }) async {
-    if (facilityIds.isEmpty) return const [];
-    late final Object? data;
-    try {
-      data = await _client.rpc(
-        'public_reservation_calendar',
-        params: {
-          'p_facility_ids': facilityIds,
-          'p_from': from.toUtc().toIso8601String(),
-          'p_to': to.toUtc().toIso8601String(),
-        },
-      );
-    } on PostgrestException catch (error) {
-      if (error.code != 'PGRST202') rethrow;
-      final fallback = await facilityBusyWindows(
-        facilityIds: facilityIds,
-        from: from,
-        to: to,
-      );
-      return [
-        for (final row in fallback)
-          BackendPublicReservationSlot(
-            facilityId: row.facilityId,
-            startsAt: row.startsAt,
-            endsAt: row.endsAt,
-          ),
-      ];
-    }
+    final data = await _client.rpc(
+      'public_reservation_calendar',
+      params: {
+        'p_facility_ids': facilityIds,
+        'p_from': from.toUtc().toIso8601String(),
+        'p_to': to.toUtc().toIso8601String(),
+      },
+    );
     return [
       for (final row in (data as List? ?? const []))
         BackendPublicReservationSlot.fromJson(

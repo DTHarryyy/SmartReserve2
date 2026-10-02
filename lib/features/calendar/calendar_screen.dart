@@ -46,7 +46,7 @@ class _PublicCalendarScreenState extends State<PublicCalendarScreen> {
     final state = AppScope.of(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(state.ensureUserCalendarLoaded());
+      unawaited(state.refreshUserCalendar());
     });
   }
 
@@ -68,9 +68,34 @@ class _CalendarFrame extends StatefulWidget {
 
 class _CalendarFrameState extends State<_CalendarFrame> {
   final _search = TextEditingController();
+  Timer? _refreshTimer;
+  AppState? _calendarState;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = AppScope.of(context);
+    if (identical(state, _calendarState)) return;
+    _calendarState = state;
+    _refreshTimer?.cancel();
+    if (widget.surface == _CalendarSurface.admin) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(state.refreshCalendar());
+      });
+    }
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      if (widget.surface == _CalendarSurface.public) {
+        if (!state.userCalendarLoading) unawaited(state.refreshUserCalendar());
+      } else if (!state.calendarLoading) {
+        unawaited(state.refreshCalendar());
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -216,9 +241,9 @@ class _CalendarData {
         viewMode: state.userCalendarViewMode,
         facilityFilter: state.userCalendarFacilityFilter,
         facilities: state.userCalendarFacilities,
-        displayFacilities: [
-          for (final facility in state.publicCalendarFacilities) facility.name,
-        ]..sort(),
+        displayFacilities: state.userCalendarFacilities
+            .where((name) => name != 'All facilities')
+            .toList(),
         allEvents: state.userCalendarEvents,
         visibleEvents: state.visibleUserCalendarEvents,
         loading: state.userCalendarLoading,
@@ -247,8 +272,8 @@ class _CalendarData {
       displayFacilities: state.scheduleFacilities,
       allEvents: state.calendarEvents,
       visibleEvents: state.visibleCalendarEvents,
-      loading: state.reservationsLoading,
-      error: state.reservationsError,
+      loading: state.calendarLoading,
+      error: state.calendarError,
       query: state.calendarQuery,
       usesDefaultStatusFilters: setEquals(
         state.calendarStates,
@@ -261,7 +286,7 @@ class _CalendarData {
       onToday: state.goToCalendarToday,
       onSelectDate: state.selectCalendarDate,
       onSelectEvent: state.selectCalendarEvent,
-      onRefresh: state.refreshReservations,
+      onRefresh: state.refreshCalendar,
       resetFilters: state.resetCalendarFilters,
     );
   }
@@ -2027,7 +2052,7 @@ class _EventChip extends StatelessWidget {
             border: Border.all(color: tone.line),
           ),
           child: Text(
-            compact
+            compact && !event.privacyMasked
                 ? '${formatClock12(event.startsAt.hour + event.startsAt.minute / 60)} ${event.eventChipLabel}'
                 : event.eventChipLabel,
             maxLines: compact ? 1 : 2,
@@ -2079,7 +2104,8 @@ class _EventDetails extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       Text(event.facility, style: sans(16, w: 600, tracking: -.015)),
-      if (event.building.isNotEmpty || event.room.isNotEmpty) ...[
+      if (!event.privacyMasked &&
+          (event.building.isNotEmpty || event.room.isNotEmpty)) ...[
         const SizedBox(height: 3),
         Text(
           [
@@ -2094,21 +2120,23 @@ class _EventDetails extends StatelessWidget {
         label: 'When',
         value: '${formatCampusDate(event.startsAt)} · ${event.timeLabel}',
       ),
-      _DetailRow(label: 'Requester', value: event.requester),
-      if (event.organization.isNotEmpty)
-        _DetailRow(label: 'Organization', value: event.organization),
-      if (event.headcount > 0)
-        _DetailRow(label: 'Headcount', value: '${event.headcount} people'),
-      _DetailRow(label: 'Lifecycle', value: event.lifecycle.label),
-      if (event.recurrenceLabel != null)
-        _DetailRow(label: 'Series', value: event.recurrenceLabel!),
-      const SizedBox(height: 14),
-      Text('Purpose', style: keyLabel),
-      const SizedBox(height: 5),
-      Text(
-        event.purpose,
-        style: sans(12, height: 1.55, color: context.srColors.ink3),
-      ),
+      if (!event.privacyMasked) ...[
+        _DetailRow(label: 'Requester', value: event.requester),
+        if (event.organization.isNotEmpty)
+          _DetailRow(label: 'Organization', value: event.organization),
+        if (event.headcount > 0)
+          _DetailRow(label: 'Headcount', value: '${event.headcount} people'),
+        _DetailRow(label: 'Lifecycle', value: event.lifecycle.label),
+        if (event.recurrenceLabel != null)
+          _DetailRow(label: 'Series', value: event.recurrenceLabel!),
+        const SizedBox(height: 14),
+        Text('Purpose', style: keyLabel),
+        const SizedBox(height: 5),
+        Text(
+          event.purpose,
+          style: sans(12, height: 1.55, color: context.srColors.ink3),
+        ),
+      ],
       const SizedBox(height: 20),
       if (onOpenRequest != null)
         SrButton(
@@ -2121,6 +2149,11 @@ class _EventDetails extends StatelessWidget {
         Text(
           'Only the person who made this reservation can see its full '
           'details.',
+          style: sans(11, height: 1.5, color: context.srColors.muted),
+        )
+      else if (event.isMine)
+        Text(
+          'Full details are available in your reservations.',
           style: sans(11, height: 1.5, color: context.srColors.muted),
         )
       else

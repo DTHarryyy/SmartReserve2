@@ -1158,6 +1158,10 @@ class AppState extends ChangeNotifier {
       notificationActionsPending.clear();
       unawaited(pushService?.unregister() ?? Future.value());
       _backendReservations.clear();
+      adminCalendarSlots = null;
+      calendarError = null;
+      calendarLoading = false;
+      _calendarRequestId++;
       userCalendarSlots = [];
       userCalendarError = null;
       userCalendarLoading = false;
@@ -3106,6 +3110,8 @@ class AppState extends ChangeNotifier {
       for (final f in facilities) f.name,
       for (final b in bookings) b.facility,
       for (final r in requests) r.facility,
+      for (final slot in adminCalendarSlots ?? const <PublicCalendarSlot>[])
+        if (slot.facilityName != null) slot.facilityName!,
     }.toList()..sort();
     return names;
   }
@@ -3119,6 +3125,10 @@ class AppState extends ChangeNotifier {
     ...CalendarEventState.defaultVisible,
   };
   String? selectedCalendarEventId;
+  List<PublicCalendarSlot>? adminCalendarSlots;
+  bool calendarLoading = false;
+  String? calendarError;
+  int _calendarRequestId = 0;
 
   late DateTime userCalendarAnchor;
   CalendarViewMode userCalendarViewMode = CalendarViewMode.month;
@@ -3135,6 +3145,21 @@ class AppState extends ChangeNotifier {
   ];
 
   List<CalendarEvent> get calendarEvents {
+    if (_useDemoData && adminCalendarSlots == null) {
+      return [
+        for (final event in _reservationCalendarEvents)
+          if (event.isMine ||
+              CalendarEventState.defaultVisible.contains(event.state))
+            event.isMine ? event : event.reservedOnly,
+      ];
+    }
+    return _calendarEventsFromSlots(
+      adminCalendarSlots ?? const [],
+      useRequestIds: true,
+    );
+  }
+
+  List<CalendarEvent> get _reservationCalendarEvents {
     final events = <CalendarEvent>[];
     final requestOccurrenceIds = <String>{};
 
@@ -3240,51 +3265,65 @@ class AppState extends ChangeNotifier {
     ];
   }
 
-  List<Facility> get publicCalendarFacilities => [
-    for (final f in facilities)
-      if (f.publicListing && f.state == FacilityState.active) f,
-  ];
+  List<Facility> get publicCalendarFacilities => facilities;
 
   List<String> get userCalendarFacilities => [
     'All facilities',
-    ...{for (final f in publicCalendarFacilities) f.name}.toList()..sort(),
+    ...{
+      for (final f in facilities) f.name,
+      for (final request in requests) request.facility,
+      for (final slot in userCalendarSlots)
+        if (slot.facilityName != null) slot.facilityName!,
+    }.toList()..sort(),
   ];
 
-  List<CalendarEvent> get userCalendarEvents {
-    final publicFacilityNames = {
-      for (final facility in publicCalendarFacilities) facility.name,
-    };
+  List<CalendarEvent> get userCalendarEvents =>
+      _calendarEventsFromSlots(userCalendarSlots);
+
+  List<CalendarEvent> _calendarEventsFromSlots(
+    List<PublicCalendarSlot> slots, {
+    bool useRequestIds = false,
+  }) {
+    final reservationEvents = _reservationCalendarEvents;
     final mineEvents = [
-      for (final event in calendarEvents)
-        if (event.isMine && publicFacilityNames.contains(event.facility)) event,
+      for (final event in reservationEvents)
+        if (event.isMine) event,
     ];
+    final eventsByOccurrence = {
+      for (final event in reservationEvents)
+        event.occurrenceId ?? event.id: event,
+    };
     final mineOccurrenceIds = {
-      for (final event in mineEvents)
-        if (event.occurrenceId != null) event.occurrenceId!,
+      for (final event in mineEvents) event.occurrenceId ?? event.id,
     };
     final facilitiesById = {
       for (final facility in facilities) facility.id: facility,
     };
     final othersEvents = <CalendarEvent>[];
-    for (final slot in userCalendarSlots) {
+    for (final slot in slots) {
       if (slot.occurrenceId != null &&
           mineOccurrenceIds.contains(slot.occurrenceId)) {
         continue;
       }
       final facility = facilitiesById[slot.facilityId];
-      if (facility == null ||
-          !facility.publicListing ||
-          facility.state != FacilityState.active) {
-        continue;
-      }
+      final facilityName = slot.facilityName ?? facility?.name;
+      if (facilityName == null) continue;
+      final knownEvent = useRequestIds
+          ? eventsByOccurrence[slot.occurrenceId]
+          : null;
       othersEvents.add(
         CalendarEvent(
-          id: 'public:${slot.facilityId}:${slot.startsAt.toIso8601String()}:${slot.endsAt.toIso8601String()}',
+          id:
+              knownEvent?.id ??
+              (slot.occurrenceId == null
+                  ? 'public:${slot.facilityId}:${slot.startsAt.toIso8601String()}:${slot.endsAt.toIso8601String()}'
+                  : 'public:${slot.occurrenceId}'),
+          occurrenceId: slot.occurrenceId,
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
-          facility: facility.name,
-          building: facility.building,
-          room: facility.room,
+          facility: facilityName,
+          building: '',
+          room: '',
           requester: 'Reserved',
           organization: '',
           purpose: 'Reserved',
@@ -3331,6 +3370,7 @@ class AppState extends ChangeNotifier {
     if (calendarViewMode == mode) return;
     calendarViewMode = mode;
     notifyListeners();
+    unawaited(refreshCalendar());
   }
 
   void setCalendarFacilityFilter(String facility) {
@@ -3372,12 +3412,14 @@ class AppState extends ChangeNotifier {
     };
     selectedCalendarEventId = null;
     notifyListeners();
+    unawaited(refreshCalendar());
   }
 
   void goToCalendarToday() {
     calendarAnchor = calendarToday;
     selectedCalendarEventId = null;
     notifyListeners();
+    unawaited(refreshCalendar());
   }
 
   void selectCalendarDate(DateTime date, {CalendarViewMode? mode}) {
@@ -3385,6 +3427,7 @@ class AppState extends ChangeNotifier {
     if (mode != null) calendarViewMode = mode;
     selectedCalendarEventId = null;
     notifyListeners();
+    unawaited(refreshCalendar());
   }
 
   void selectCalendarEvent(String? id) {
@@ -3418,150 +3461,103 @@ class AppState extends ChangeNotifier {
     await refreshUserCalendar();
   }
 
-  Future<void> refreshUserCalendar() async {
-    final requestId = ++_userCalendarRequestId;
-    userCalendarLoading = true;
-    userCalendarError = null;
+  Future<void> refreshCalendar() => _refreshCalendarSlots(admin: true);
+
+  Future<void> refreshUserCalendar() => _refreshCalendarSlots(admin: false);
+
+  Future<void> _refreshCalendarSlots({required bool admin}) async {
+    final requestId = admin ? ++_calendarRequestId : ++_userCalendarRequestId;
+    final generation = _sessionGeneration;
+    bool isCurrent() =>
+        generation == _sessionGeneration &&
+        requestId == (admin ? _calendarRequestId : _userCalendarRequestId);
+    if (admin) {
+      calendarLoading = true;
+      calendarError = null;
+    } else {
+      userCalendarLoading = true;
+      userCalendarError = null;
+    }
     notifyListeners();
     try {
+      final anchor = admin ? calendarAnchor : userCalendarAnchor;
+      final mode = admin ? calendarViewMode : userCalendarViewMode;
       final slots = _useDemoData
-          ? _localPublicCalendarSlots()
-          : await _remotePublicCalendarSlots();
-      if (requestId != _userCalendarRequestId) return;
-      userCalendarSlots = slots;
-      userCalendarError = null;
+          ? _localPublicCalendarSlots(anchor, mode)
+          : await _remotePublicCalendarSlots(anchor, mode);
+      if (!isCurrent()) return;
+      if (admin) {
+        adminCalendarSlots = slots;
+      } else {
+        userCalendarSlots = slots;
+      }
     } catch (error) {
-      if (requestId != _userCalendarRequestId) return;
-      userCalendarError = 'Reserved dates could not load: $error';
+      if (!isCurrent()) return;
+      if (admin) {
+        calendarError = 'Reserved dates could not load: $error';
+      } else {
+        userCalendarError = 'Reserved dates could not load: $error';
+      }
     } finally {
-      if (requestId == _userCalendarRequestId) {
-        userCalendarLoading = false;
+      if (isCurrent()) {
+        if (admin) {
+          calendarLoading = false;
+        } else {
+          userCalendarLoading = false;
+        }
         notifyListeners();
       }
     }
   }
 
-  Future<List<PublicCalendarSlot>> _remotePublicCalendarSlots() async {
+  Future<List<PublicCalendarSlot>> _remotePublicCalendarSlots(
+    DateTime anchor,
+    CalendarViewMode mode,
+  ) async {
     final service = backend;
-    if (service == null || !hasSession || isAdmin) return const [];
-    if (userAccount.status != AccountStatus.active) return const [];
-    final targets = _selectedPublicCalendarFacilities();
-    if (targets.isEmpty) return const [];
-    final (fromWall, toWall) = _calendarRange(
-      userCalendarAnchor,
-      userCalendarViewMode,
+    if (service == null || !hasSession) return const [];
+    if (sessionProfile?.accountStatus != 'active') return const [];
+    final (fromWall, toWall) = _calendarRange(anchor, mode);
+    final rows = await service.publicReservationCalendar(
+      facilityIds: const [],
+      from: campusInstant(fromWall),
+      to: campusInstant(toWall),
     );
-    final slots = <PublicCalendarSlot>[];
-    for (var i = 0; i < targets.length; i += 40) {
-      final batch = targets
-          .skip(i)
-          .take(40)
-          .map((facility) => facility.id)
-          .toList();
-      final rows = await service.publicReservationCalendar(
-        facilityIds: batch,
-        from: campusInstant(fromWall),
-        to: campusInstant(toWall),
-      );
-      slots.addAll([
-        for (final row in rows)
-          PublicCalendarSlot(
-            facilityId: row.facilityId,
-            startsAt: campusWallTime(row.startsAt),
-            endsAt: campusWallTime(row.endsAt),
-            occurrenceId: row.occurrenceId,
-          ),
-      ]);
-    }
-    slots.sort((a, b) => a.startsAt.compareTo(b.startsAt));
-    return slots;
-  }
-
-  List<Facility> _selectedPublicCalendarFacilities() {
-    if (userCalendarFacilityFilter == 'All facilities') {
-      return publicCalendarFacilities;
-    }
-    return [
-      for (final facility in publicCalendarFacilities)
-        if (facility.name == userCalendarFacilityFilter) facility,
-    ];
-  }
-
-  List<PublicCalendarSlot> _localPublicCalendarSlots() {
-    final targets = _selectedPublicCalendarFacilities();
-    if (targets.isEmpty) return const [];
-    final targetIds = {for (final facility in targets) facility.id};
-    final targetNames = {for (final facility in targets) facility.name};
-    final (from, to) = _calendarRange(userCalendarAnchor, userCalendarViewMode);
-    final slots = <PublicCalendarSlot>[];
-
-    for (final booking in bookings) {
-      final facility = booking.facilityId == null
-          ? facilityNamed(booking.facility)
-          : facilities.cast<Facility?>().firstWhere(
-              (item) => item?.id == booking.facilityId,
-              orElse: () => null,
-            );
-      final facilityId = facility?.id ?? booking.facilityId;
-      if (facilityId == null ||
-          (!targetIds.contains(facilityId) &&
-              !targetNames.contains(booking.facility))) {
-        continue;
-      }
-      if (!booking.startsAt.isBefore(to) || !booking.endsAt.isAfter(from)) {
-        continue;
-      }
-      slots.add(
+    final slots = [
+      for (final row in rows)
         PublicCalendarSlot(
-          facilityId: facilityId,
-          startsAt: booking.startsAt,
-          endsAt: booking.endsAt,
+          facilityId: row.facilityId,
+          facilityName: row.facilityName,
+          startsAt: campusWallTime(row.startsAt),
+          endsAt: campusWallTime(row.endsAt),
+          occurrenceId: row.occurrenceId,
         ),
-      );
-    }
-
-    for (final request in requests) {
-      final facilityId = _facilityIdFor(request);
-      if (facilityId == null || !targetIds.contains(facilityId)) continue;
-      if (request.occurrences.isEmpty) {
-        if (request.status != RequestStatus.approved) continue;
-        final date = parseCampusDate(request.date);
-        if (date == null) continue;
-        final startsAt = _dateAtClock(date, request.start);
-        final endsAt = _dateAtClock(date, request.end);
-        final normalizedEnd = endsAt.isAfter(startsAt)
-            ? endsAt
-            : endsAt.add(const Duration(days: 1));
-        if (!startsAt.isBefore(to) || !normalizedEnd.isAfter(from)) continue;
-        slots.add(
-          PublicCalendarSlot(
-            facilityId: facilityId,
-            startsAt: startsAt,
-            endsAt: normalizedEnd,
-          ),
-        );
-        continue;
-      }
-      for (final occurrence in request.occurrences) {
-        if (occurrence.bookingState != 'held' &&
-            occurrence.bookingState != 'booked') {
-          continue;
-        }
-        if (!occurrence.startsAt.isBefore(to) ||
-            !occurrence.endsAt.isAfter(from)) {
-          continue;
-        }
-        slots.add(
-          PublicCalendarSlot(
-            facilityId: facilityId,
-            startsAt: occurrence.startsAt,
-            endsAt: occurrence.endsAt,
-          ),
-        );
-      }
-    }
+    ];
     slots.sort((a, b) => a.startsAt.compareTo(b.startsAt));
     return slots;
+  }
+
+  List<PublicCalendarSlot> _localPublicCalendarSlots(
+    DateTime anchor,
+    CalendarViewMode mode,
+  ) {
+    final (from, to) = _calendarRange(anchor, mode);
+    return [
+      for (final event in _reservationCalendarEvents)
+        if (CalendarEventState.defaultVisible.contains(event.state) &&
+            event.startsAt.isBefore(to) &&
+            event.endsAt.isAfter(from))
+          PublicCalendarSlot(
+            facilityId:
+                requestById(event.requestId ?? '')?.facilityId ??
+                facilityNamed(event.facility)?.id ??
+                'calendar:${event.facility}',
+            facilityName: event.facility,
+            occurrenceId: event.occurrenceId ?? event.id,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+          ),
+    ];
   }
 
   void setUserCalendarViewMode(CalendarViewMode mode) {
@@ -5276,9 +5272,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool isMyReservationRequest(ReservationRequest r) =>
-      r.requesterId == userAccount.id ||
-      (r.requesterId == null && r.requester == userAccount.name);
+  bool isMyReservationRequest(ReservationRequest r) {
+    final profile = sessionProfile;
+    if (profile != null) return r.requesterId == profile.id;
+    return r.requesterId == userAccount.id ||
+        (r.requesterId == null && r.requester == userAccount.name);
+  }
 
   List<ReservationRequest> get myRequests => [
     for (final r in requests)

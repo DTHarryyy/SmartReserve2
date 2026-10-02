@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartreserve/app/app_scope.dart';
 import 'package:smartreserve/app/app_state.dart';
+import 'package:smartreserve/backend/supabase_service.dart';
 import 'package:smartreserve/features/calendar/calendar_screen.dart';
 import 'package:smartreserve/model/calendar_event.dart';
 import 'package:smartreserve/model/reservation.dart';
@@ -308,6 +309,114 @@ void main() {
 
     expect(find.text('1 reservation'), findsOneWidget);
     expect(find.text('Computer Laboratory 1'), findsOneWidget);
+    expect(find.textContaining('Private Requester'), findsNothing);
+  });
+
+  for (final role in ['user', 'internal_admin', 'external_admin']) {
+    testWidgets('$role calendar hides other requesters details', (
+      tester,
+    ) async {
+      final state = AppState()
+        ..sessionProfile = SessionProfile(
+          id: 'different-viewer',
+          email: 'viewer@example.com',
+          fullName: 'Viewer',
+          role: role,
+          campusClaim: null,
+          campusId: null,
+          unit: null,
+          verificationStatus: 'verified',
+          onboardingComplete: true,
+          accountStatus: 'active',
+          accountAccessType: 'legacy_unassigned',
+          mustChangePassword: false,
+          createdAt: DateTime.utc(2026),
+        )
+        ..calendarAnchor = DateTime(2026, 7, 26)
+        ..userCalendarAnchor = DateTime(2026, 7, 26);
+      await _pumpCalendar(
+        tester,
+        state,
+        child: role == 'user'
+            ? const PublicCalendarScreen()
+            : const CalendarScreen(),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(_monthCell(DateTime(2026, 7, 28)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Reserved'), findsWidgets);
+      expect(find.textContaining('Jomar Padilla'), findsNothing);
+      expect(find.textContaining('Hands-on workshop'), findsNothing);
+      expect(find.textContaining('9:00 AM'), findsWidgets);
+
+      if (role != 'user') {
+        await tester.tap(find.byKey(const ValueKey('calendar-day-event-r1')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('calendar-day-sheet')), findsOneWidget);
+        expect(find.text('Reservation details'), findsNothing);
+      }
+    });
+  }
+
+  for (final mode in [CalendarViewMode.week, CalendarViewMode.day]) {
+    testWidgets(
+      '${mode.name} details show only reserved times for other bookings',
+      (tester) async {
+        final state = AppState()
+          ..signInAsUser('u3')
+          ..calendarAnchor = DateTime(2026, 7, 28)
+          ..calendarViewMode = mode
+          ..selectedCalendarEventId = 'r1';
+        await _pumpCalendar(tester, state, size: const Size(1440, 1000));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Reservation details'), findsOneWidget);
+        expect(find.text('Reserved'), findsWidgets);
+        expect(find.textContaining('Jomar Padilla'), findsNothing);
+        expect(find.textContaining('Hands-on workshop'), findsNothing);
+        expect(find.text('REQUESTER'), findsNothing);
+        expect(find.text('HEADCOUNT'), findsNothing);
+        expect(find.text('LIFECYCLE'), findsNothing);
+        expect(find.text('Purpose'), findsNothing);
+        expect(find.text('Open reservation'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('shared calendar refreshes new reservations while open', (
+    tester,
+  ) async {
+    final state = AppState()..userCalendarAnchor = DateTime(2026, 7, 26);
+    await _pumpCalendar(tester, state, child: const PublicCalendarScreen());
+    await tester.pumpAndSettle();
+    state.bookings.add(
+      Booking.fromLabels(
+        id: 'new-other-booking',
+        facility: 'Computer Laboratory 1',
+        date: 'Wed 29 Jul',
+        start: '15:00',
+        end: '16:00',
+        label: 'Private purpose',
+        requester: 'Private Requester',
+      ),
+    );
+
+    expect(
+      state.userCalendarEvents.any(
+        (event) => event.id == 'public:new-other-booking',
+      ),
+      isFalse,
+    );
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(
+      state.userCalendarEvents.any(
+        (event) => event.id == 'public:new-other-booking',
+      ),
+      isTrue,
+    );
     expect(find.textContaining('Private Requester'), findsNothing);
   });
 

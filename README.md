@@ -88,10 +88,12 @@ by modifying the application request.
   GPS. Every map action has a non-spatial equivalent.
 - **Advisories** dock under the map — outside the boundary, over 90 m from the
   building, loose accuracy. They warn and flag for review; they never block.
-- **Centralized calendar.** The month, week and day views show every
-  reservation occurrence across all facilities, including weekends and every
-  date in a recurring series. Facility, status and text filters narrow the
-  operational view; a selected event opens its request in the decision queue.
+- **Centralized calendar.** Active users and both administrator roles see
+  reservation times across all facilities in month, week and day views,
+  including weekends and recurring dates. Other people's entries show only
+  the facility, date and reserved time; your own entries retain full details.
+  Cancelled and expired reservations do not occupy the shared schedule.
+  The calendar refreshes every 30 seconds while open.
 - **Conflict detection** on selection, not on submit, with a computed
   next-free-slot offer and an approve-and-bump path that requires a reason.
 - **Recurring series** are one decision, not twelve: every date is expanded and

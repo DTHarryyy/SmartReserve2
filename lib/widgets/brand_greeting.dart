@@ -14,9 +14,14 @@ String timeGreeting([DateTime? now]) {
 /// CSU and SmartReserve logos beside the app name and a "Good evening, Name"
 /// line, used in the admin and student headers.
 class BrandGreeting extends StatelessWidget {
-  const BrandGreeting({super.key, required this.name});
+  const BrandGreeting({
+    super.key,
+    required this.name,
+    this.spacing = SR.space12,
+  });
 
   final String name;
+  final double spacing;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -27,9 +32,9 @@ class BrandGreeting extends StatelessWidget {
         height: SR.controlSm,
         fit: BoxFit.contain,
       ),
-      const SizedBox(width: SR.space12),
+      SizedBox(width: spacing),
       const SrLogo(size: SR.controlSm, radius: SR.rSm),
-      const SizedBox(width: SR.space12),
+      SizedBox(width: spacing),
       Flexible(
         child: Column(
           mainAxisSize: MainAxisSize.min,
