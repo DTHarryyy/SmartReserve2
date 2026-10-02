@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/sr_theme.dart';
 import '../theme/sr_tokens.dart';
-import 'sr_logo.dart';
 
 String timeGreeting([DateTime? now]) {
   final hour = (now ?? DateTime.now()).hour;
@@ -33,7 +32,13 @@ class BrandGreeting extends StatelessWidget {
         fit: BoxFit.contain,
       ),
       SizedBox(width: spacing),
-      const SrLogo(size: SR.controlSm, radius: SR.rSm),
+      Image.asset(
+        'assets/SmartReserve_noBG.png',
+        width: SR.controlSm,
+        height: SR.controlSm,
+        fit: BoxFit.contain,
+        cacheWidth: (SR.controlSm * MediaQuery.devicePixelRatioOf(context)).ceil(),
+      ),
       SizedBox(width: spacing),
       Flexible(
         child: Column(

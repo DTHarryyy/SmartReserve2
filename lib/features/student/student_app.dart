@@ -2754,6 +2754,22 @@ class _StudentAppState extends State<StudentApp> {
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= SR.expandedMin;
     final compact = SR.isCompact(width);
+    final requests = state.myRequests;
+    final approved = requests
+        .where((request) => request.status == RequestStatus.approved)
+        .length;
+    final noShows = requests.fold<int>(
+      0,
+      (total, request) =>
+          total +
+          (request.occurrences.isEmpty
+              ? (request.stage == BookingStage.noShow ? 1 : 0)
+              : request.occurrences
+                    .where(
+                      (occurrence) => occurrence.stage == BookingStage.noShow,
+                    )
+                    .length),
+    );
     final hasProfileDetails =
         state.userDetailsEditable ||
         (account.verification != VerificationState.none &&
@@ -2801,13 +2817,9 @@ class _StudentAppState extends State<StudentApp> {
         SrCellGrid(
           columns: 3,
           children: [
-            SrKeyCell(label: 'REQUESTS', value: '${state.myRequests.length}'),
-            SrKeyCell(
-              label: 'APPROVED',
-              value:
-                  '${state.myRequests.where((r) => r.status == RequestStatus.approved).length}',
-            ),
-            SrKeyCell(label: 'NO-SHOWS', value: '${account.noShows}'),
+            SrKeyCell(label: 'REQUESTS', value: '${requests.length}'),
+            SrKeyCell(label: 'APPROVED', value: '$approved'),
+            SrKeyCell(label: 'NO-SHOWS', value: '$noShows'),
           ],
         ),
         const SizedBox(height: SR.space16),
