@@ -119,6 +119,8 @@ class AuthController extends ChangeNotifier {
   String? documentError;
   String? operationError;
   String? operationNotice;
+  String? policiesError;
+  bool acceptedPolicies = false;
   bool busy = false;
 
   SmartReserveBackend? get _backend => _state.backend;
@@ -190,8 +192,15 @@ class AuthController extends ChangeNotifier {
     idError = null;
     unitError = null;
     documentError = null;
+    policiesError = null;
     operationError = null;
     operationNotice = null;
+    notifyListeners();
+  }
+
+  void setAcceptedPolicies(bool value) {
+    acceptedPolicies = value;
+    if (value) policiesError = null;
     notifyListeners();
   }
 
@@ -210,6 +219,7 @@ class AuthController extends ChangeNotifier {
     document = null;
     submissionId = null;
     claim = CampusClaim.student;
+    acceptedPolicies = false;
     busy = false;
     goTo(AuthStep.signIn);
   }
@@ -379,6 +389,12 @@ class AuthController extends ChangeNotifier {
     }
     if (confirmPasswordField.text != passwordField.text) {
       confirmPasswordError = 'Enter the same password again.';
+      notifyListeners();
+      return;
+    }
+    if (!acceptedPolicies) {
+      policiesError =
+          'Accept the Terms and Conditions and Rules and Regulations to continue.';
       notifyListeners();
       return;
     }

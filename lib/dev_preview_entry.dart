@@ -20,7 +20,7 @@ Future<void> main() async {
       role: 'internal_admin',
       campusClaim: null,
       campusId: null,
-      unit: 'Office of the Registrar',
+      unit: 'Office of the Campus Executive Officer',
       verificationStatus: 'verified',
       onboardingComplete: true,
       accountStatus: 'active',

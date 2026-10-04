@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/app_state.dart';
@@ -91,7 +92,7 @@ class AuthScreen extends StatelessWidget {
                           if (!desktop) ...[
                             const SizedBox(height: 18),
                             Text(
-                              'Office of the Registrar · Cagayan State University, Aparri Campus',
+                              'Office of the Campus Executive Officer · Cagayan State University, Aparri Campus',
                               textAlign: TextAlign.center,
                               style: sans(
                                 11.5,
@@ -505,32 +506,12 @@ class AuthScreen extends StatelessWidget {
 
       const SizedBox(height: 10),
 
-      Text.rich(
-        TextSpan(
-          text: 'By creating an account, you agree to the ',
-          children: [
-            WidgetSpan(
-              alignment: PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: _InlineLink(
-                label: 'Terms and Conditions',
-                onTap: () => showPolicyDocument(context, PolicyKind.terms),
-              ),
-            ),
-            const TextSpan(text: ' and the '),
-            WidgetSpan(
-              alignment: PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: _InlineLink(
-                label: 'Rules and Regulations',
-                onTap: () => showPolicyDocument(context, PolicyKind.rules),
-              ),
-            ),
-            const TextSpan(text: '.'),
-          ],
-        ),
-        style: sans(11.5, height: 1.6, color: context.srColors.ink4),
+      _PolicyConsent(
+        value: controller.acceptedPolicies,
+        hasError: controller.policiesError != null,
+        onChanged: controller.setAcceptedPolicies,
       ),
+      SrErrorText(controller.policiesError),
 
       const SizedBox(height: 8),
 
@@ -1159,13 +1140,13 @@ class _Pitch extends StatelessWidget {
   static const _pillars = [
     (
       '01',
-      'Every room, pinned',
+      'Every facility, pinned',
       'Forty-six facilities, each at its real coordinates.',
     ),
     (
       '02',
       'One decision queue',
-      'The registrar clears requests without creating a clash.',
+      'The admin clears requests without creating a clash.',
     ),
     (
       '03',
@@ -1248,7 +1229,7 @@ class _Pitch extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Reserve any room on campus, and know exactly where it is.',
+            'Reserve any facility on campus, and know exactly where it is.',
             style: sans(
               short ? 24 : 30,
               w: 600,
@@ -1322,7 +1303,7 @@ class _Pitch extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.only(top: SR.space16),
           child: Text(
-            'Office of the Registrar · Cagayan State University, '
+            'Office of the Campus Executive Officer · Cagayan State University, '
             'Aparri Campus',
             style: mono(10, color: colors.textMuted),
           ),
@@ -1918,6 +1899,93 @@ class _Outcome extends StatelessWidget {
       action,
     ],
   );
+}
+
+/// Consent checkbox for the policies. The links are plain text spans so the
+/// sentence wraps like normal text; tapping anywhere else toggles the box.
+class _PolicyConsent extends StatefulWidget {
+  const _PolicyConsent({
+    required this.value,
+    required this.hasError,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final bool hasError;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_PolicyConsent> createState() => _PolicyConsentState();
+}
+
+class _PolicyConsentState extends State<_PolicyConsent> {
+  late final _termsTap = TapGestureRecognizer()
+    ..onTap = () => showPolicyDocument(context, PolicyKind.terms);
+  late final _rulesTap = TapGestureRecognizer()
+    ..onTap = () => showPolicyDocument(context, PolicyKind.rules);
+
+  @override
+  void dispose() {
+    _termsTap.dispose();
+    _rulesTap.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.srColors;
+    final link = sans(12.5, w: 600, height: 1.5, color: SR.primary);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(SR.rSm),
+        onTap: () => widget.onChanged(!widget.value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 20,
+                height: 19,
+                child: Checkbox(
+                  key: const Key('accept-policies-checkbox'),
+                  value: widget.value,
+                  isError: widget.hasError,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: (value) => widget.onChanged(value ?? false),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    text: 'I have read and agree to the ',
+                    children: [
+                      TextSpan(
+                        text: 'Terms and Conditions',
+                        style: link,
+                        recognizer: _termsTap,
+                      ),
+                      const TextSpan(text: ' and the '),
+                      TextSpan(
+                        text: 'Rules and Regulations',
+                        style: link,
+                        recognizer: _rulesTap,
+                      ),
+                      const TextSpan(text: '.'),
+                    ],
+                  ),
+                  style: sans(12.5, height: 1.5, color: colors.ink3),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _InlineLink extends StatelessWidget {

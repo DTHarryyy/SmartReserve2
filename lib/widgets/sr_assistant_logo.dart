@@ -12,8 +12,8 @@ class SrAssistantLogo extends StatelessWidget {
     this.borderColor,
   });
 
-  static const _lightAssetName = 'assets/smart reserve logo.png';
-  static const _darkAssetName = 'assets/smart reserve logo transpatent.png';
+  static const _lightAssetName = 'assets/chat lightmode.jpg';
+  static const _darkAssetName = 'assets/chat darkmode.jpg';
 
   final double size;
   final double? radius;
@@ -31,16 +31,19 @@ class SrAssistantLogo extends StatelessWidget {
         borderColor ??
         colors.border.withValues(alpha: colors.isDark ? .78 : .66);
 
-    final logo = Image.asset(
-      colors.isDark ? _darkAssetName : _lightAssetName,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
+    final logo = ClipOval(
+      child: Image.asset(
+        colors.isDark ? _darkAssetName : _lightAssetName,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.high,
+        excludeFromSemantics: true,
+      ),
     );
 
     return Container(
       width: size,
       height: size,
-      padding: EdgeInsets.all(padding ?? size * .11),
+      padding: EdgeInsets.all(padding ?? size * .06),
       decoration: BoxDecoration(
         color: resolvedBackground,
         borderRadius: BorderRadius.circular(radius ?? size * .5),
