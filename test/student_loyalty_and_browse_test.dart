@@ -612,7 +612,6 @@ void main() {
       size: const Size(1180, 840),
     );
 
-    expect(find.text('Clients'), findsOneWidget);
     expect(
       find.text(
         'This shared directory includes all active external or unverified renters with reservation or payment activity. Campus records, administrator accounts, and verification documents are excluded.',

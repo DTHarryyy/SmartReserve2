@@ -491,7 +491,6 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SrPageHeader(
-              title: 'Organizations',
               description:
                   '${_units.length} organization${_units.length == 1 ? '' : 's'} configured',
               actions: compact ? const [] : _pageActions(),

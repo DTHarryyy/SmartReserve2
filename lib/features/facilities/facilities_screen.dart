@@ -90,7 +90,6 @@ class _FacilitiesScreenState extends State<FacilitiesScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SrPageHeader(
-            title: 'Facilities',
             description: state.facilitiesLoading
                 ? null
                 : '${rows.length} of ${state.facilities.length} shown',

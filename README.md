@@ -291,7 +291,7 @@ new private key") with the Firebase Cloud Messaging API enabled; it is a
 real secret and must never reach the client or source control.
 
 The Firebase project (`smartreserve-48784`) exists, with both the Android
-app (`com.example.SmartReserve`, matching `android/app/build.gradle.kts`)
+app (`com.smartreserve.app`, matching `android/app/build.gradle.kts`)
 and the Web app registered. `lib/main.dart` hardcodes their `apiKey`/`appId`/
 `projectId`/`messagingSenderId`/`authDomain` as `--dart-define` defaults
 (overridable for a different Firebase project without editing source), the

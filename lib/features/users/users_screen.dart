@@ -103,7 +103,6 @@ class _UsersScreenState extends State<UsersScreen> {
         children: [
           if (!stacked) ...[
             SrPageHeader(
-              title: state.isExternalAdmin ? 'Clients' : 'Users',
               description: '${rows.length} of ${state.accounts.length} shown',
               actions: [
                 if (state.isInternalAdmin)

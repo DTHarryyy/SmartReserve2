@@ -75,7 +75,6 @@ class AnomaliesScreen extends StatelessWidget {
         eyebrow: state.isExternalAdmin
             ? 'External renter reservation risk'
             : 'Verified-user reservation risk',
-        title: 'Anomaly Center',
         description:
             'Deterministic, explainable risk signals for your assigned '
             'facilities. Risk is advisory — it never auto-rejects or bans '

@@ -82,7 +82,6 @@ class _LoyaltyAdminScreenState extends State<LoyaltyAdminScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SrPageHeader(
-                title: 'Loyalty',
                 description:
                     'External-rate renter points, claimable discounts, and voucher history.',
               ),

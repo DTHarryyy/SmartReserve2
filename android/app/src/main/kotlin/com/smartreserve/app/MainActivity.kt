@@ -1,4 +1,4 @@
-package com.example.SmartReserve
+package com.smartreserve.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

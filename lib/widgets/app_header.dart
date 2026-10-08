@@ -58,7 +58,8 @@ class AppHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (!compact) ...[
+              // A single crumb would only repeat the title.
+              if (!compact && crumbs.length > 1) ...[
                 _Breadcrumbs(crumbs: crumbs),
                 const SizedBox(height: SR.space2),
               ],

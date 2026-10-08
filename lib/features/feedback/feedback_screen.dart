@@ -232,7 +232,6 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SrPageHeader(
-                      title: 'Feedback',
                       description:
                           'View reviews submitted by users after completed reservations.',
                     ),

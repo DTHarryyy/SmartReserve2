@@ -91,14 +91,16 @@ class SrCard extends StatelessWidget {
 class SrPageHeader extends StatelessWidget {
   const SrPageHeader({
     super.key,
-    required this.title,
+    this.title,
     this.eyebrow,
     this.description,
     this.actions = const [],
   });
 
   final String? eyebrow;
-  final String title;
+
+  /// Leave null on top-level pages: the app header already shows the title.
+  final String? title;
   final String? description;
   final List<Widget> actions;
 
@@ -117,9 +119,9 @@ class SrPageHeader extends StatelessWidget {
               ),
               const SizedBox(height: SR.space4),
             ],
-            Text(title, style: SrType.title()),
+            if (title case final title?) Text(title, style: SrType.title()),
             if (description case final description?) ...[
-              const SizedBox(height: SR.space4),
+              if (title != null) const SizedBox(height: SR.space4),
               Text(description, style: SrType.bodySm()),
             ],
           ],
