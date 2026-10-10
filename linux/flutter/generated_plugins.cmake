@@ -3,10 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links_linux
   desktop_drop
   file_saver
   file_selector_linux
-  gtk
   printing
   url_launcher_linux
 )
