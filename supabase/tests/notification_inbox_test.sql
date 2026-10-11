@@ -12,6 +12,8 @@ select
   gen_random_uuid() as read_id,
   gen_random_uuid() as other_id_notification;
 
+grant select on notification_inbox_fixture to authenticated;
+
 insert into public.app_notifications(id, recipient_id, kind, title, body, read_at)
 select unread_id, owner_id, 'inbox_unread_test', 'Inbox unread test', 'Unread', null
 from notification_inbox_fixture

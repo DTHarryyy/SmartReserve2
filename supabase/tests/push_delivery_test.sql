@@ -12,7 +12,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(25);
+select plan(28);
 
 create temp table pud_ids as
 select
@@ -304,6 +304,34 @@ select throws_ok(
   'authenticated has no read access to push_deliveries at all'
 );
 reset role;
+
+-- Logging out one device must preserve the same user's other signed-in device.
+insert into public.user_push_tokens (user_id, token, platform)
+select renter_a_id, 'pud-logout-device', 'android' from pud_ids;
+select set_config(
+  'request.jwt.claim.sub', (select renter_a_id::text from pud_ids), false
+);
+set local role authenticated;
+update public.user_push_tokens set enabled = false where token = 'pud-logout-device';
+select is(
+  (select enabled from public.user_push_tokens where token = 'pud-logout-device'),
+  false, 'logout can disable this device before authentication is cleared'
+);
+select is(
+  (select enabled from public.user_push_tokens where token = 'pud-token-a3-web'),
+  true, 'logout preserves another signed-in device for the same account'
+);
+reset role;
+insert into public.app_notifications (recipient_id, kind, title, body)
+select renter_a_id, 'reservation_submitted', 'After logout', 'Other device only.'
+from pud_ids;
+create temp table pud_after_logout as
+select public.lease_push_deliveries(10, 120, 5)->'rows' as leased;
+select is(
+  (select leased->0->'tokens' from pud_after_logout),
+  '["pud-token-a3-web"]'::jsonb,
+  'the worker delivers only to the device that remains signed in'
+);
 
 select * from finish();
 rollback;

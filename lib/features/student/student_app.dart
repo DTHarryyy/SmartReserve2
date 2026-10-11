@@ -582,6 +582,7 @@ class _StudentAppState extends State<StudentApp> {
         _closeNotificationOverlay();
         return;
       }
+      unawaited(state.refreshNotifications(silent: true));
       final overlay = Overlay.of(context);
       _notificationOverlay = OverlayEntry(
         builder: (overlayContext) => Stack(
@@ -619,6 +620,7 @@ class _StudentAppState extends State<StudentApp> {
       overlay.insert(_notificationOverlay!);
       return;
     }
+    unawaited(state.refreshNotifications(silent: true));
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3439,7 +3441,8 @@ class _AssistantButton extends StatelessWidget {
                 width: 42,
                 height: 42,
                 fit: BoxFit.cover,
-                cacheWidth: (42 * MediaQuery.devicePixelRatioOf(context)).ceil(),
+                cacheWidth: (42 * MediaQuery.devicePixelRatioOf(context))
+                    .ceil(),
                 filterQuality: FilterQuality.high,
                 excludeFromSemantics: true,
               ),

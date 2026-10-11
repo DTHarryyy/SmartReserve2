@@ -13,7 +13,6 @@ import 'backend/push_service.dart';
 import 'backend/supabase_service.dart';
 import 'theme/sr_tokens.dart';
 import 'theme/sr_theme.dart';
-import 'model/notice.dart';
 import 'widgets/sr_logo.dart';
 import 'widgets/toast_host.dart';
 
@@ -105,6 +104,12 @@ Future<void> _configurePush(AppState state) async {
       ),
     );
     final push = PushService(
+      currentUserId: () {
+        final userId = state.sessionProfile?.id;
+        return userId != null && state.backend?.user?.id == userId
+            ? userId
+            : null;
+      },
       registerToken: ({required token, required platform, deviceLabel}) =>
           state.backend!.registerPushToken(
             token: token,
@@ -112,30 +117,13 @@ Future<void> _configurePush(AppState state) async {
             deviceLabel: deviceLabel,
           ),
       disableToken: (token) => state.backend!.disablePushToken(token),
-      // The realtime channel already updates the bell; just surface it.
       onForegroundNotification: (payload, title, body) {
-        final text = [
-          ?title,
-          ?body,
-        ].where((part) => part.trim().isNotEmpty).join(' — ');
-        if (text.isNotEmpty) {
-          state.showToast(
-            ToastMessage.info(
-              text,
-              action: ToastAction(
-                label: 'View',
-                onPressed: () => state.handlePushNotificationOpened(payload),
-              ),
-            ),
-          );
-        }
+        unawaited(state.handleForegroundPushNotification(payload, title, body));
       },
       onNotificationOpened: state.handlePushNotificationOpened,
     );
     state.configurePush(push);
     unawaited(push.handleInitialMessage());
-    // A restored session may have finished loading before Firebase was ready.
-    if (state.hasSession) unawaited(push.registerIfAlreadyGranted());
   } catch (error) {
     debugPrint(
       'Firebase could not initialize; push notifications are disabled: $error',
@@ -152,7 +140,8 @@ class SmartReserveApp extends StatefulWidget {
   State<SmartReserveApp> createState() => _SmartReserveAppState();
 }
 
-class _SmartReserveAppState extends State<SmartReserveApp> {
+class _SmartReserveAppState extends State<SmartReserveApp>
+    with WidgetsBindingObserver {
   static final _lightTheme = SrThemeData.light();
   static final _darkTheme = SrThemeData.dark();
 
@@ -162,6 +151,11 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.state.setNotificationAppActive(
+      WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
+    );
     _themeMode = widget.state.themePreference.themeMode;
     widget.state.addListener(_syncThemeMode);
     _bootstrap = _boot();
@@ -169,8 +163,15 @@ class _SmartReserveAppState extends State<SmartReserveApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.state.setNotificationAppActive(false);
     widget.state.removeListener(_syncThemeMode);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    widget.state.setNotificationAppActive(state == AppLifecycleState.resumed);
   }
 
   @override

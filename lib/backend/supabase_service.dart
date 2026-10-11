@@ -3852,6 +3852,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   Stream<TableChange> _tableChanges(
     String table, {
     PostgresChangeFilter? filter,
+    bool resyncOnFirstJoin = false,
   }) {
     late final StreamController<TableChange> controller;
     RealtimeChannel? channel;
@@ -3885,7 +3886,9 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
               if (controller.isClosed) return;
               switch (status) {
                 case RealtimeSubscribeStatus.subscribed:
-                  if (joined) controller.add(const TableChange.resync());
+                  if (joined || resyncOnFirstJoin) {
+                    controller.add(const TableChange.resync());
+                  }
                   joined = true;
                 case RealtimeSubscribeStatus.channelError:
                   debugPrint('Realtime $table channel error: $error');
@@ -5632,9 +5635,12 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<List<BackendNotification>> unreadNotifications() async {
+    final userId = user?.id;
+    if (userId == null) return [];
     final rows = await _client
         .from('app_notifications')
         .select('*,event:reservation_events(details)')
+        .eq('recipient_id', userId)
         .isFilter('read_at', null)
         .order('created_at', ascending: false)
         .limit(100);
@@ -5649,9 +5655,12 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   @override
   Future<BackendNotification?> notificationById(String notificationId) async {
+    final userId = user?.id;
+    if (userId == null) return null;
     final row = await _client
         .from('app_notifications')
         .select('*,event:reservation_events(details)')
+        .eq('recipient_id', userId)
         .eq('id', notificationId)
         .maybeSingle();
     return row == null
@@ -5664,40 +5673,20 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   @override
   Stream<RowDelta<BackendNotification>> notificationChanges() {
     final userId = user?.id;
-    return coalesceChanges(
+    if (userId == null) return const Stream.empty();
+    return reconcileRowChanges<BackendNotification>(
       _tableChanges(
         'app_notifications',
-        filter: userId == null
-            ? null
-            : PostgresChangeFilter(
-                type: PostgresChangeFilterType.eq,
-                column: 'recipient_id',
-                value: userId,
-              ),
+        resyncOnFirstJoin: true,
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'recipient_id',
+          value: userId,
+        ),
       ),
-      (batch) async {
-        if (batch.any((change) => change.isResync)) {
-          return RowDelta.replace(await unreadNotifications());
-        }
-        final upserts = <String, BackendNotification>{};
-        final removed = <String>{};
-        for (final change in batch) {
-          final id = change.id!;
-          if (change.deleted) {
-            upserts.remove(id);
-            removed.add(id);
-          } else {
-            removed.remove(id);
-            upserts[id] = BackendNotification.fromJson(change.record);
-          }
-        }
-        // Newest first, matching the list order.
-        return RowDelta.patch(
-          upserts: upserts.values.toList().reversed.toList(),
-          removedIds: removed,
-        );
-      },
-      debounce: const Duration(milliseconds: 50),
+      fetchSnapshot: unreadNotifications,
+      fromRecord: BackendNotification.fromJson,
+      idOf: (notification) => notification.id,
     );
   }
 

@@ -112,6 +112,31 @@ by modifying the application request.
   collapsing queue panel at 768–1179 px, single column with a full-screen
   crosshair pinning sheet below that.
 
+## Windows website installer
+
+Install Visual Studio with Desktop development with C++ and Inno Setup 6.7 or
+later from <https://jrsoftware.org/isdl.php>, then run on Windows x64:
+
+```powershell
+./tool/build_windows_installer.ps1 -LandingPagePath D:\Projects\Smart-Reserve-Landing-Page
+```
+
+The script finds Flutter from PATH or `.vscode/settings.json`, or accepts
+`-FlutterPath`. It also accepts `-IsccPath` and `-VcRuntimeDirectory` overrides.
+It builds a release, stages only the release bundle with the x64 Visual C++
+redistributable DLLs, and uses `windows/installer/smartreserve.iss` to create
+`build/windows-installer/output/SmartReserve-Setup.exe`. The installer is copied
+to the landing page's `public/downloads/` after its version and size checks pass.
+Version comes from `pubspec.yaml`; update the landing page's `site.version` to
+match before rebuilding. Build outputs stay ignored in this app repository.
+
+The installer uses a fixed identity and installs under the current user's
+`LocalAppData/Programs/SmartReserve`, adds shortcuts and an uninstaller, and
+does not require an administrator or Flutter on the user's computer. The
+initial installer is unsigned. Test install, launch, reinstallation and
+uninstall before deploying the landing page. Publish only the packaged client;
+environment files and Firebase service-account credentials must stay out of it.
+
 ## Running
 
 ```bash
@@ -262,6 +287,24 @@ backfill RPC after the new-feedback path has been observed.
 
 ### Push notifications
 
+The inbox and unread badge subscribe as soon as the signed-in profile is
+accepted, and resync when the live channel first joins or reconnects. While
+the app is active, a silent 10-second refresh catches missed events; returning
+to the app or opening the inbox refreshes immediately. Background polling
+stops when the app is hidden. Foreground FCM messages also update the inbox,
+so a dropped realtime connection does not leave the badge stale. Browser or
+device notification permission is needed for background alerts, but not for
+in-app updates.
+
+Push registrations are tied to the account signed in on that device. Logout
+disables the database token before clearing authentication and revokes it in
+FCM even when the database request fails. Device ownership is retained across
+app restarts; switching accounts rotates the token before registering the new
+account. Signed-out startup and resume retry any outstanding cleanup. Closing
+the app while still signed in keeps background delivery enabled. Foreground
+alerts are displayed only after confirming the notification belongs to the
+current account.
+
 Every row written to `app_notifications` fans out to a device push via
 Firebase Cloud Messaging, honoring the same three notification preferences
 already used by the in-app feed. The chain is: `app_notifications` insert →
@@ -347,6 +390,11 @@ While `PUSH_ENABLED` is not `true` the function answers
    day-before reminder each push to the renter; turning off "Reminder the
    day before" makes reminders `skipped`. Signing out disables the device's
    token.
+6. Sign out on one device while the same account stays signed in on another.
+   Only the signed-in device should receive the next reservation alert. Sign
+   in as a different user on the first device; it should receive that user's
+   alerts and no alerts from the previous account. Repeat after restarting the
+   app, and with a failed logout token-disable request to verify FCM revocation.
 
 Automated coverage: `deno task test` in `supabase/functions` (FCM message
 contract and the `verify_jwt` config guard), `supabase test db`

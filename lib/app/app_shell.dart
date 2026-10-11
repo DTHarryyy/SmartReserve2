@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -401,28 +403,30 @@ class _AppShellState extends State<AppShell> {
     },
   ];
 
-  Future<void> _showNotificationSheet(AppState state) =>
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: context.srColors.scrimSoft,
-        builder: (sheetContext) => FractionallySizedBox(
-          heightFactor: .80,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-            child: AnimatedBuilder(
-              animation: state,
-              builder: (_, _) => NotificationInbox(
-                state: state,
-                mobile: true,
-                onClose: () => Navigator.of(sheetContext).pop(),
-              ),
+  Future<void> _showNotificationSheet(AppState state) {
+    unawaited(state.refreshNotifications(silent: true));
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: context.srColors.scrimSoft,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .80,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: AnimatedBuilder(
+            animation: state,
+            builder: (_, _) => NotificationInbox(
+              state: state,
+              mobile: true,
+              onClose: () => Navigator.of(sheetContext).pop(),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
   Widget? _mobileAction(AppState state) => switch (state.view) {
     AppView.facilities when state.isAdmin => FloatingActionButton.extended(

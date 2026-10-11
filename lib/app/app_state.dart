@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show AuthState, AuthChangeEvent;
 
 import '../backend/realtime_changes.dart';
 import '../backend/push_service.dart';
@@ -478,6 +480,7 @@ class AppState extends ChangeNotifier {
 
   void toggleNotifications() {
     notificationsOpen = !notificationsOpen;
+    if (notificationsOpen) unawaited(refreshNotifications(silent: true));
     notifyListeners();
   }
 
@@ -915,6 +918,17 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<BackendAccount>>? _accountSubscription;
   StreamSubscription<RowDelta<BackendReservation>>? _reservationSubscription;
   StreamSubscription<RowDelta<BackendNotification>>? _notificationSubscription;
+  Timer? _notificationPollTimer;
+  bool _notificationAppActive = true;
+  bool _disposed = false;
+  Future<void>? _notificationRefresh;
+  bool _notificationRefreshAgain = false;
+  List<RowDelta<BackendNotification>>? _notificationRefreshDeltas;
+  final Set<String> _notificationReadIds = {};
+  bool _notificationPreferencesLoaded = false;
+  bool _notificationsLoaded = false;
+  Future<void>? _notificationPreferenceRefresh;
+  int _notificationPreferenceRevision = 0;
   StreamSubscription<void>? _loyaltySubscription;
   StreamSubscription<void>? _feedbackSentimentSubscription;
 
@@ -972,24 +986,185 @@ class AppState extends ChangeNotifier {
   }
 
   void configureBackend(SmartReserveBackend service) {
+    _backendAuthSubscription?.cancel();
     backend = service;
+    _backendAuthSubscription = service.authChanges.listen((authState) {
+      if (_disposed || backend != service) return;
+      if (authState.event == AuthChangeEvent.signedOut) {
+        unawaited(applyBackendProfile(null));
+      } else {
+        final userId = authState.session?.user.id;
+        if (userId != null &&
+            sessionProfile != null &&
+            sessionProfile!.id != userId) {
+          unawaited(_acceptChangedAuthSession(service, userId));
+        }
+      }
+    });
+  }
+
+  StreamSubscription<AuthState>? _backendAuthSubscription;
+
+  Future<void> _acceptChangedAuthSession(
+    SmartReserveBackend service,
+    String userId,
+  ) async {
+    await applyBackendProfile(null);
+    final generation = _sessionGeneration;
+    try {
+      final profile = await service.currentProfile();
+      if (_isCurrentSession(generation) &&
+          backend == service &&
+          service.user?.id == userId &&
+          profile?.id == userId) {
+        await applyBackendProfile(profile);
+      }
+    } catch (error) {
+      debugPrint('Changed session profile could not load: $error');
+    }
   }
 
   PushService? pushService;
+  bool _signingOut = false;
 
   void configurePush(PushService service) {
+    if (_disposed) {
+      unawaited(service.dispose());
+      return;
+    }
     pushService = service;
+    if (hasSession && _notificationAppActive) {
+      unawaited(_registerGrantedPush());
+    } else if (!hasSession) {
+      unawaited(service.unregister());
+    }
+  }
+
+  Future<void> _registerGrantedPush() async {
+    if (_disposed || _signingOut || !hasSession) return;
+    final generation = _sessionGeneration;
+    await pushService?.registerIfAlreadyGranted();
+    if (_isCurrentSession(generation)) notifyListeners();
+  }
+
+  /// Called by the application lifecycle; polling never runs in the background.
+  void setNotificationAppActive(bool active) {
+    if (_disposed || _notificationAppActive == active) return;
+    _notificationAppActive = active;
+    _syncNotificationPolling();
+    if (active && hasSession) {
+      unawaited(refreshNotifications(silent: true));
+      unawaited(_registerGrantedPush());
+    } else if (active) {
+      unawaited(pushService?.unregister() ?? Future.value());
+    }
+  }
+
+  void _syncNotificationPolling() {
+    _notificationPollTimer?.cancel();
+    _notificationPollTimer = null;
+    if (_disposed ||
+        !_notificationAppActive ||
+        !hasSession ||
+        backend == null) {
+      return;
+    }
+    _notificationPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(refreshNotifications(silent: true));
+    });
+  }
+
+  void _startNotificationSync(int generation) {
+    final service = backend;
+    if (service == null) return;
+    try {
+      _notificationSubscription = service.notificationChanges().listen(
+        (delta) {
+          if (_isCurrentSession(generation)) _applyNotificationChange(delta);
+        },
+        onError: (Object error) {
+          if (!_isCurrentSession(generation)) return;
+          notificationsError =
+              'Notifications could not refresh: ${friendlyBackendMessage('$error')}';
+          notifyListeners();
+          unawaited(refreshNotifications(silent: true));
+        },
+        onDone: () {
+          if (_isCurrentSession(generation)) _notificationSubscription = null;
+        },
+      );
+    } catch (error) {
+      debugPrint('Notification subscription failed: $error');
+    }
+    _syncNotificationPolling();
+  }
+
+  /// A push also updates the inbox when the realtime channel is unavailable.
+  Future<void> handleForegroundPushNotification(
+    PushNotificationPayload payload,
+    String? title,
+    String? body,
+  ) async {
+    final service = backend;
+    if (_disposed || _signingOut || !hasSession || service == null) return;
+    final generation = _sessionGeneration;
+    final text = [
+      ?title,
+      ?body,
+    ].where((part) => part.trim().isNotEmpty).join(' — ');
+    void showVerifiedToast() {
+      if (text.isEmpty || !_isCurrentSession(generation)) return;
+      showToast(
+        ToastMessage.info(
+          text,
+          action: ToastAction(
+            label: 'View',
+            onPressed: () {
+              if (_isCurrentSession(generation)) {
+                handlePushNotificationOpened(payload);
+              }
+            },
+          ),
+        ),
+      );
+    }
+
+    try {
+      final row = await service
+          .notificationById(payload.notificationId)
+          .timeout(_notificationRequestTimeout);
+      if (!_isCurrentSession(generation)) return;
+      if (row != null) {
+        _applyNotificationChange(
+          RowDelta.patch(upserts: [row], removedIds: {}),
+        );
+        showVerifiedToast();
+        return;
+      }
+    } catch (error) {
+      debugPrint('Foreground push inbox lookup failed: $error');
+    }
+    if (_isCurrentSession(generation)) {
+      await refreshNotifications(silent: true);
+      if (_isCurrentSession(generation) &&
+          notifications.any((row) => row.id == payload.notificationId)) {
+        showVerifiedToast();
+      }
+    }
   }
 
   Future<bool> enablePushNotifications() async {
     final push = pushService;
-    if (push == null) return false;
+    if (_disposed || _signingOut || !hasSession || push == null) return false;
+    final generation = _sessionGeneration;
     final granted = await push.requestPermissionAndRegister();
+    if (!_isCurrentSession(generation)) return false;
     notifyListeners();
     return granted;
   }
 
   void handlePushNotificationOpened(PushNotificationPayload payload) {
+    if (_disposed) return;
     if (!hasSession || workspaceLoading) {
       _pendingPushNotification = payload;
       return;
@@ -1003,10 +1178,12 @@ class AppState extends ChangeNotifier {
       _pendingPushNotification = payload;
       return;
     }
+    final generation = _sessionGeneration;
     try {
       final notification = await service.notificationById(
         payload.notificationId,
       );
+      if (!_isCurrentSession(generation)) return;
       if (notification == null) {
         showToast(
           const ToastMessage.warning(
@@ -1017,6 +1194,7 @@ class AppState extends ChangeNotifier {
       }
       await openNotification(notification);
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       showToast(
         ToastMessage.error(
           'The notification could not be opened: ${friendlyBackendMessage('$error')}',
@@ -1096,9 +1274,13 @@ class AppState extends ChangeNotifier {
       await loadThemePreference();
       return;
     }
+    final generation = _sessionGeneration;
     final profile = service.currentProfile();
     await loadThemePreference();
-    await applyBackendProfile(await profile);
+    final acceptedProfile = await profile;
+    if (_isCurrentSession(generation)) {
+      await applyBackendProfile(acceptedProfile);
+    }
   }
 
   /// Bumped on every profile change so background workspace loads started for
@@ -1112,9 +1294,19 @@ class AppState extends ChangeNotifier {
   /// finished. Tests and callers that need fully loaded data can await it.
   Future<void> workspaceReady = Future.value();
 
-  bool _isCurrentSession(int generation) => generation == _sessionGeneration;
+  bool _isCurrentSession(int generation) =>
+      !_disposed && generation == _sessionGeneration;
 
   Future<void> applyBackendProfile(SessionProfile? profile) async {
+    if (_disposed) return;
+    final previousUserId = sessionProfile?.id;
+    if (previousUserId != profile?.id) toasts.dismiss();
+    if (previousUserId != null && previousUserId != profile?.id) {
+      _pendingPushNotification = null;
+      if (!_signingOut) {
+        unawaited(pushService?.unregister() ?? Future.value());
+      }
+    }
     final generation = ++_sessionGeneration;
     workspaceLoading = false;
     workspaceReady = Future.value();
@@ -1131,6 +1323,27 @@ class AppState extends ChangeNotifier {
     _reservationSubscription = null;
     _notificationSubscription?.cancel();
     _notificationSubscription = null;
+    _notificationPollTimer?.cancel();
+    _notificationPollTimer = null;
+    _notificationRefresh = null;
+    _notificationRefreshAgain = false;
+    _notificationRefreshDeltas = null;
+    _notificationReadIds.clear();
+    _notificationPreferencesLoaded = false;
+    _notificationsLoaded = false;
+    _notificationPreferenceRefresh = null;
+    _notificationPreferenceRevision++;
+    notificationPreferences = {
+      'Decision on my requests': true,
+      'Reminder the day before': true,
+      'New facilities on campus': false,
+    };
+    notifications = [];
+    notificationsLoading = false;
+    notificationsError = null;
+    notificationsOpen = false;
+    pendingNotificationIntent = null;
+    notificationActionsPending.clear();
     _loyaltySubscription?.cancel();
     _loyaltySubscription = null;
     _feedbackSentimentSubscription?.cancel();
@@ -1156,7 +1369,9 @@ class AppState extends ChangeNotifier {
       pendingNotificationIntent = null;
       _pendingPushNotification = null;
       notificationActionsPending.clear();
-      unawaited(pushService?.unregister() ?? Future.value());
+      if (previousUserId == null && !_signingOut) {
+        unawaited(pushService?.unregister() ?? Future.value());
+      }
       _backendReservations.clear();
       adminCalendarSlots = null;
       calendarError = null;
@@ -1184,6 +1399,10 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    _startNotificationSync(generation);
+    final initialNotifications = refreshNotifications();
+    unawaited(_registerGrantedPush());
 
     // Authentication is complete once the profile has been accepted. Route the
     // session before loading workspace data so a later feature failure cannot
@@ -1215,17 +1434,21 @@ class AppState extends ChangeNotifier {
     }
 
     workspaceLoading = true;
-    workspaceReady = _loadWorkspace(profile, generation);
+    workspaceReady = _loadWorkspace(profile, generation, initialNotifications);
     unawaited(workspaceReady);
   }
 
-  Future<void> _loadWorkspace(SessionProfile profile, int generation) async {
+  Future<void> _loadWorkspace(
+    SessionProfile profile,
+    int generation,
+    Future<void> initialNotifications,
+  ) async {
     bool stale() => !_isCurrentSession(generation);
 
     await Future.wait([
       _runSessionRefresh('facilities', refreshFacilities),
       _runSessionRefresh('reservations', refreshReservations),
-      _runSessionRefresh('notifications', refreshNotifications),
+      initialNotifications,
       if (profile.isInternalAdmin) ...[
         _runSessionRefresh('accounts', refreshAccounts),
         _runSessionRefresh('verifications', refreshVerifications),
@@ -1254,15 +1477,6 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    _notificationSubscription = backend?.notificationChanges().listen(
-      _applyNotificationChange,
-      onError: (Object error) {
-        notificationsError =
-            'Notifications could not refresh: ${friendlyBackendMessage('$error')}';
-        notifyListeners();
-      },
-    );
-    unawaited(pushService?.registerIfAlreadyGranted() ?? Future.value());
     // Day-before reminders arrive over the notification channel above.
     unawaited(
       backend?.generateReservationReminders().catchError(
@@ -2065,8 +2279,13 @@ class AppState extends ChangeNotifier {
       );
 
   Future<void> signOut() async {
+    if (_signingOut) return;
+    _signingOut = true;
     Object? signOutError;
     try {
+      // Disable while the old user's credentials still authorize the update.
+      // FCM revocation also runs when the database is unavailable.
+      await pushService?.unregister();
       await backend?.signOut();
     } catch (error, stackTrace) {
       signOutError = error;
@@ -2074,6 +2293,7 @@ class AppState extends ChangeNotifier {
       debugPrintStack(stackTrace: stackTrace);
     } finally {
       await applyBackendProfile(null);
+      _signingOut = false;
     }
     if (signOutError != null) {
       showToast(
@@ -2125,6 +2345,12 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _backendAuthSubscription?.cancel();
+    _sessionGeneration++;
+    _notificationPollTimer?.cancel();
+    _notificationRefreshDeltas = null;
+    unawaited(pushService?.dispose() ?? Future.value());
     toasts.dispose();
     _cancelAllRiskSummaryPolls();
     _verificationSubscription?.cancel();
@@ -2582,35 +2808,95 @@ class AppState extends ChangeNotifier {
     return '${difference.inDays} days ago';
   }
 
-  Future<void> refreshNotifications() async {
+  Future<void> refreshNotifications({bool silent = false}) {
     final service = backend;
-    if (service == null || !hasSession) return;
+    if (_disposed || service == null || !hasSession) return Future.value();
+    if (!_notificationPreferencesLoaded) {
+      unawaited(_refreshNotificationPreferences());
+    }
+    final pending = _notificationRefresh;
+    if (pending != null) {
+      _notificationRefreshAgain = true;
+      return pending;
+    }
     final generation = _sessionGeneration;
-    notificationsLoading = true;
-    notificationsError = null;
-    notifyListeners();
-    try {
-      final (rows, preferences) = await (
-        service.unreadNotifications(),
-        service.notificationPreferences(),
-      ).wait;
-      if (!_isCurrentSession(generation)) return;
-      notificationPreferences = preferences;
-      _applyNotifications(rows);
-    } catch (error) {
-      if (!_isCurrentSession(generation)) return;
-      notificationsError =
-          'Notifications could not load: ${friendlyBackendMessage('$error')}';
+    if (_notificationSubscription == null) _startNotificationSync(generation);
+    if (!silent || (!_notificationsLoaded && notifications.isEmpty)) {
+      notificationsLoading = true;
+      notificationsError = null;
       notifyListeners();
+    }
+    return _notificationRefresh = _refreshNotificationRows(service, generation);
+  }
+
+  static const _notificationRequestTimeout = Duration(seconds: 10);
+
+  Future<void> _refreshNotificationRows(
+    SmartReserveBackend service,
+    int generation,
+  ) async {
+    try {
+      do {
+        _notificationRefreshAgain = false;
+        final journal = <RowDelta<BackendNotification>>[];
+        _notificationRefreshDeltas = journal;
+        try {
+          var rows = await service.unreadNotifications().timeout(
+            _notificationRequestTimeout,
+          );
+          if (!_isCurrentSession(generation)) return;
+          // The snapshot may predate changes already displayed by realtime.
+          for (final delta in journal) {
+            rows = applyRowDelta(rows, delta, (row) => row.id);
+          }
+          _applyNotifications(rows);
+        } catch (error) {
+          if (!_isCurrentSession(generation)) return;
+          notificationsError =
+              'Notifications could not load: ${friendlyBackendMessage('$error')}';
+          notifyListeners();
+        }
+      } while (_isCurrentSession(generation) && _notificationRefreshAgain);
     } finally {
       if (_isCurrentSession(generation)) {
+        _notificationRefresh = null;
+        _notificationRefreshDeltas = null;
         notificationsLoading = false;
         notifyListeners();
       }
     }
   }
 
+  Future<void> _refreshNotificationPreferences() {
+    final pending = _notificationPreferenceRefresh;
+    if (pending != null) return pending;
+    final service = backend;
+    if (_disposed || service == null || !hasSession) return Future.value();
+    final generation = _sessionGeneration;
+    final revision = _notificationPreferenceRevision;
+    return _notificationPreferenceRefresh = (() async {
+      try {
+        final preferences = await service.notificationPreferences().timeout(
+          _notificationRequestTimeout,
+        );
+        if (!_isCurrentSession(generation)) return;
+        if (revision == _notificationPreferenceRevision) {
+          notificationPreferences = preferences;
+          notifyListeners();
+        }
+        _notificationPreferencesLoaded = true;
+      } catch (error) {
+        debugPrint('Notification preferences could not load: $error');
+      } finally {
+        if (_isCurrentSession(generation)) {
+          _notificationPreferenceRefresh = null;
+        }
+      }
+    })();
+  }
+
   void setNotificationPreference(String key, bool value) {
+    _notificationPreferenceRevision++;
     notificationPreferences = {...notificationPreferences, key: value};
     notifyListeners();
     final service = backend;
@@ -2631,10 +2917,14 @@ class AppState extends ChangeNotifier {
   }
 
   void _applyNotifications(List<BackendNotification> rows) {
-    notifications = [
+    _notificationsLoaded = true;
+    final byId = <String, BackendNotification>{
       for (final row in rows)
-        if (row.unread) row,
-    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        if (row.unread && !_notificationReadIds.contains(row.id)) row.id: row,
+    };
+    final sorted = byId.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    notifications = sorted.take(_notificationListLimit).toList();
     notificationsError = null;
     notifyListeners();
   }
@@ -2642,10 +2932,14 @@ class AppState extends ChangeNotifier {
   static const _notificationListLimit = 100;
 
   void _applyNotificationChange(RowDelta<BackendNotification> delta) {
+    _notificationRefreshDeltas?.add(delta);
     final readIds = {
-      for (final item in delta.upserts)
+      for (final item in delta.rows ?? delta.upserts)
         if (!item.unread) item.id,
     };
+    // Reads and deletions are permanent for this session; a late snapshot or
+    // push lookup must not resurrect them. Failed optimistic reads roll back.
+    _notificationReadIds.addAll({...readIds, ...delta.removedIds});
     final visibleDelta = RowDelta<BackendNotification>.patch(
       upserts: [
         for (final item in delta.upserts)
@@ -2656,15 +2950,14 @@ class AppState extends ChangeNotifier {
     final merged = delta.replacesAll
         ? delta.rows!
         : applyRowDelta(notifications, visibleDelta, (item) => item.id);
-    _applyNotifications(
-      merged.length > _notificationListLimit
-          ? merged.sublist(0, _notificationListLimit)
-          : merged,
-    );
+    _applyNotifications(merged);
   }
 
   Future<void> openNotification(BackendNotification notification) async {
+    if (_disposed) return;
     if (!notificationActionsPending.add(notification.id)) return;
+    final generation = _sessionGeneration;
+    _notificationReadIds.add(notification.id);
     final service = backend;
     final originalIndex = notifications.indexWhere(
       (item) => item.id == notification.id,
@@ -2682,13 +2975,12 @@ class AppState extends ChangeNotifier {
       markFuture = service.markNotificationRead(notification.id).catchError((
         Object error,
       ) {
+        if (!_isCurrentSession(generation)) return;
+        _notificationReadIds.remove(notification.id);
         if (!notifications.any((item) => item.id == notification.id)) {
-          final restored = [...notifications];
-          restored.insert(
-            min(max(originalIndex, 0), restored.length),
-            notification,
+          _applyNotificationChange(
+            RowDelta.patch(upserts: [notification], removedIds: {}),
           );
-          _applyNotifications(restored);
         }
         showToast(
           ToastMessage.error(
@@ -2718,11 +3010,14 @@ class AppState extends ChangeNotifier {
         anomalyId: resolved.anomalyId,
         eventDetails: resolved.eventDetails,
       );
+      if (!_isCurrentSession(generation)) return;
       _routeNotification(intent);
       if (markFuture != null) await markFuture;
     } finally {
-      notificationActionsPending.remove(notification.id);
-      notifyListeners();
+      if (_isCurrentSession(generation)) {
+        notificationActionsPending.remove(notification.id);
+        notifyListeners();
+      }
     }
   }
 

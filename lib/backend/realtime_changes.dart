@@ -90,6 +90,81 @@ class RowDelta<T> {
   bool get replacesAll => rows != null;
 }
 
+/// Applies live rows immediately, including while a catch-up snapshot is in
+/// flight. Replay those rows over the snapshot so it cannot undo newer events.
+Stream<RowDelta<T>> reconcileRowChanges<T>(
+  Stream<TableChange> source, {
+  required Future<List<T>> Function() fetchSnapshot,
+  required T Function(Map<String, dynamic>) fromRecord,
+  required String Function(T) idOf,
+  Duration snapshotTimeout = const Duration(seconds: 10),
+}) {
+  late final StreamController<RowDelta<T>> controller;
+  StreamSubscription<TableChange>? subscription;
+  List<RowDelta<T>>? journal;
+  var resyncAgain = false;
+  var cancelled = false;
+
+  bool active() => !cancelled && !controller.isClosed;
+
+  Future<void> resync() async {
+    if (!active()) return;
+    if (journal != null) {
+      resyncAgain = true;
+      return;
+    }
+    do {
+      resyncAgain = false;
+      final changes = <RowDelta<T>>[];
+      journal = changes;
+      try {
+        var rows = await fetchSnapshot().timeout(snapshotTimeout);
+        if (!active()) return;
+        for (final delta in changes) {
+          rows = applyRowDelta(rows, delta, idOf);
+        }
+        controller.add(RowDelta.replace(rows));
+      } catch (error, stack) {
+        if (active()) controller.addError(error, stack);
+      } finally {
+        journal = null;
+      }
+    } while (active() && resyncAgain);
+  }
+
+  controller = StreamController<RowDelta<T>>(
+    onListen: () {
+      subscription = source.listen(
+        (change) {
+          if (!active()) return;
+          if (change.isResync) {
+            unawaited(resync());
+            return;
+          }
+          try {
+            final delta = RowDelta<T>.patch(
+              upserts: change.deleted ? [] : [fromRecord(change.record)],
+              removedIds: change.deleted ? {change.id!} : {},
+            );
+            journal?.add(delta);
+            controller.add(delta);
+          } catch (error, stack) {
+            controller.addError(error, stack);
+          }
+        },
+        onError: controller.addError,
+        onDone: controller.close,
+      );
+    },
+    onCancel: () async {
+      cancelled = true;
+      journal = null;
+      await subscription?.cancel();
+    },
+  );
+  return controller.stream;
+}
+
 /// Merges [delta] into [current], keyed by [idOf]. Upserted rows that were not
 /// present are placed first (newest-first lists); existing rows keep their slot.
 List<T> applyRowDelta<T>(

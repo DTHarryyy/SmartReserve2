@@ -153,7 +153,7 @@ Deno.test("send-push is deployed without the gateway JWT check", async () => {
   const config = await Deno.readTextFile(
     new URL("../../config.toml", import.meta.url),
   );
-  const block = config.match(/\[functions\.send-push\]\n([\s\S]*?)(?:\n\[|$)/);
+  const block = config.match(/\[functions\.send-push\]\r?\n([\s\S]*?)(?:\r?\n\[|$)/);
   assertEquals(block !== null, true, "config.toml has no [functions.send-push] block");
   assertEquals(/^verify_jwt\s*=\s*false\s*$/m.test(block![1]), true);
 });
