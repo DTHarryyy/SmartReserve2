@@ -197,6 +197,7 @@ List<ReservationRequest> seedRequests() => [
     noShows: 0,
     status: RequestStatus.approved,
     lifecycleStatus: ReservationLifecycleStatus.completed,
+    stage: BookingStage.completed,
     decidedBy: 'You',
     decidedAt: '9 days ago',
     occurrences: [
