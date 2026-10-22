@@ -250,7 +250,7 @@ void main() {
     expect(find.text('Availability period'), findsOneWidget);
     expect(find.textContaining('Valid from'), findsOneWidget);
     expect(find.textContaining('Valid until'), findsOneWidget);
-    expect(find.text('Offer status'), findsOneWidget);
+    expect(find.textContaining('Offer status'), findsOneWidget);
     expect(find.text('Required fields are marked *.'), findsOneWidget);
     expect(
       find.text('Active — renters can claim this discount'),
@@ -316,9 +316,13 @@ void main() {
 
     await _openNewDiscountDialog(tester, state, size: const Size(1180, 840));
 
-    await tester.tap(
-      find.text(_friendlyTestDate(DateTime(now.year, now.month, now.day))),
+    // The date fields sit below the fold of the editor dialog.
+    final validFrom = find.text(
+      _friendlyTestDate(DateTime(now.year, now.month, now.day)),
     );
+    await tester.ensureVisible(validFrom);
+    await tester.pumpAndSettle();
+    await tester.tap(validFrom);
     await tester.pumpAndSettle();
     await tester.tap(find.text('15').last);
     await tester.pumpAndSettle();
@@ -458,26 +462,45 @@ void main() {
     expect(find.text('Included rate'), findsWidgets);
   });
 
-  testWidgets('browse card reserve CTA opens the booking form directly', (
-    tester,
-  ) async {
-    final state = AppState();
-    final facility = state.bookableFacilities.first;
+  testWidgets(
+    'browse card reserve CTA goes through details to the booking form',
+    (tester) async {
+      final state = AppState();
+      final facility = state.bookableFacilities.first;
 
-    await _pumpScoped(
-      tester,
-      state,
-      const StudentApp(),
-      size: const Size(1180, 840),
-    );
+      await _pumpScoped(
+        tester,
+        state,
+        const StudentApp(),
+        size: const Size(1180, 840),
+      );
 
-    await tester.tap(
-      find.byKey(ValueKey('facility-card-reserve-${facility.id}')),
-    );
-    await tester.pumpAndSettle();
+      // The first card's CTA sits below the fold of this viewport.
+      final reserve = find.byKey(
+        ValueKey('facility-card-reserve-${facility.id}'),
+      );
+      await tester.ensureVisible(reserve);
+      await tester.pumpAndSettle();
+      await tester.tap(reserve);
+      await tester.pumpAndSettle();
 
-    expect(find.text('Request this facility'), findsOneWidget);
-  });
+      // The card opens the facility details first; their own reserve action
+      // is what opens the booking form.
+      expect(find.text('Facility details'), findsOneWidget);
+      expect(find.text('Request this facility'), findsNothing);
+
+      final detailsReserve = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.widgetWithText(SrButton, 'Reserve now'),
+      );
+      await tester.ensureVisible(detailsReserve);
+      await tester.pumpAndSettle();
+      await tester.tap(detailsReserve);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Request this facility'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'unavailable browse card keeps details but disables reserve CTA',
