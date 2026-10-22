@@ -122,7 +122,11 @@ void main() {
       size: const Size(1200, 800),
       onResolveQualityIssue: (issue) => selectedIssue = issue,
     );
-    await tester.tap(find.text('Review pin').first);
+    // The data-quality table sits well below the fold at this viewport.
+    final reviewPin = find.text('Review pin').first;
+    await tester.ensureVisible(reviewPin);
+    await tester.pump();
+    await tester.tap(reviewPin);
     await tester.pump();
 
     expect(selectedIssue, isNotNull);

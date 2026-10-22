@@ -33,7 +33,9 @@ Future<void> _pumpScoped(
         debugShowCheckedModeBanner: false,
         builder: (context, child) =>
             SrThemeBridge(child: child ?? const SizedBox.shrink()),
-        home: child,
+        // The app always hosts these screens inside a Scaffold; bare, their
+        // TextFields and InkWells have no Material to paint on.
+        home: Material(child: child),
       ),
     ),
   );

@@ -128,6 +128,8 @@ List<Account> seedAccounts() => [
     lastActive: '2 hours ago',
     joined: 'Jun 2026',
     noShows: 0,
+    accountAccessType: AccountAccessType.organizationRepresentative,
+    organizationUnitBookingAudience: 'student',
   ),
   Account(
     id: 'u2',
@@ -142,6 +144,8 @@ List<Account> seedAccounts() => [
     lastActive: 'Yesterday',
     joined: 'Feb 2025',
     noShows: 0,
+    accountAccessType: AccountAccessType.organizationRepresentative,
+    organizationUnitBookingAudience: 'faculty',
   ),
   Account(
     id: 'u3',
@@ -217,6 +221,8 @@ List<Account> seedAccounts() => [
     suspendReason:
         'Three no-shows in one semester. Suspension lifts automatically at '
         'the end of August.',
+    accountAccessType: AccountAccessType.organizationRepresentative,
+    organizationUnitBookingAudience: 'student',
   ),
   Account(
     id: 'u8',
