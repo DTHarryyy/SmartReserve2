@@ -273,11 +273,12 @@ declare
   tables jsonb := '{}'::jsonb;
   counts jsonb := '{}'::jsonb;
   body jsonb;
+  body_text text;
   result public.system_backups;
 begin
   foreach t in array public.system_backup_tables() loop
     execute format(
-      'select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)), ''[]''::jsonb) from public.%I x',
+      'select coalesce(jsonb_agg(to_jsonb(x)), ''[]''::jsonb) from public.%I x',
       t
     ) into table_rows;
     tables := tables || jsonb_build_object(t, table_rows);
@@ -292,13 +293,14 @@ begin
     'tables', tables
   );
 
+  body_text := body::text;
   insert into public.system_backups(
     label, kind, format_version, schema_version, table_counts, size_bytes,
     checksum, payload, created_by, created_by_name
   ) values (
     left(coalesce(p_label, ''), 120), p_kind, 1, body ->> 'schema_version', counts,
-    octet_length(body::text),
-    encode(extensions.digest(body::text, 'sha256'), 'hex'),
+    octet_length(body_text),
+    encode(extensions.digest(body_text, 'sha256'), 'hex'),
     body, p_actor_id, p_actor_name
   ) returning * into result;
   return result;

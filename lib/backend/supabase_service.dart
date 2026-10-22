@@ -17,6 +17,7 @@ import '../model/facility_draft.dart';
 import '../model/facility_photo.dart';
 import '../model/payment.dart';
 import '../model/permit.dart';
+import '../model/system_backup.dart';
 import '../model/time_charges.dart';
 import '../features/reports/reports_data.dart';
 import '../model/audit_entry.dart';
@@ -3280,6 +3281,20 @@ abstract interface class SmartReserveBackend {
   Future<AuditPage> auditEntries(AuditQuery query);
   Future<void> recordAuditExport(AuditQuery query, int rowCount);
   Future<void> revertAuditEntry(String entryId, String reason);
+  Future<List<BackendSystemBackup>> systemBackups();
+  Future<BackendSystemBackup> createSystemBackup({String label = ''});
+
+  /// The backup as pretty-printed JSON, ready to save as a file.
+  Future<String> systemBackupPayload(String backupId);
+  Future<BackendSystemBackup> importSystemBackup(
+    Map<String, dynamic> payload, {
+    String label = '',
+  });
+  Future<BackendBackupRestoreResult> restoreSystemBackup(
+    String backupId, {
+    required String reason,
+  });
+  Future<void> deleteSystemBackup(String backupId, {String reason = ''});
   Future<void> requestReservationSignature(String requestId);
   Future<void> submitReservationSignature({
     required String signatureRequestId,
@@ -6170,6 +6185,71 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     'revert_facility_audit_entry',
     params: {'p_entry_id': entryId, 'p_reason': reason},
   );
+
+  @override
+  Future<List<BackendSystemBackup>> systemBackups() async {
+    final data = await _client.rpc('list_system_backups');
+    return [
+      for (final row in data as List)
+        BackendSystemBackup.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<BackendSystemBackup> createSystemBackup({String label = ''}) async {
+    final data = await _client.rpc(
+      'create_system_backup',
+      params: {'p_label': label},
+    );
+    return BackendSystemBackup.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<String> systemBackupPayload(String backupId) async {
+    final data = await _client.rpc(
+      'get_system_backup_payload',
+      params: {'p_backup_id': backupId},
+    );
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
+
+  @override
+  Future<BackendSystemBackup> importSystemBackup(
+    Map<String, dynamic> payload, {
+    String label = '',
+  }) async {
+    final data = await _client.rpc(
+      'import_system_backup',
+      params: {'p_payload': payload, 'p_label': label},
+    );
+    return BackendSystemBackup.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<BackendBackupRestoreResult> restoreSystemBackup(
+    String backupId, {
+    required String reason,
+  }) async {
+    final data = await _client.rpc(
+      'restore_system_backup',
+      params: {
+        'p_backup_id': backupId,
+        'p_reason': reason,
+        // The screen makes the person type RESTORE; the server insists too.
+        'p_confirm': 'RESTORE',
+      },
+    );
+    return BackendBackupRestoreResult.fromJson(
+      Map<String, dynamic>.from(data as Map),
+    );
+  }
+
+  @override
+  Future<void> deleteSystemBackup(String backupId, {String reason = ''}) =>
+      _client.rpc(
+        'delete_system_backup',
+        params: {'p_backup_id': backupId, 'p_reason': reason},
+      );
 
   Future<void> inviteAdmin({
     required String email,

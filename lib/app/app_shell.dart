@@ -11,6 +11,7 @@ import '../features/anomalies/anomalies_screen.dart';
 import '../features/audit/audit_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
+import '../features/backups/backups_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/facilities/facilities_screen.dart';
 import '../features/facilities/facility_configuration_dialog.dart';
@@ -474,6 +475,7 @@ class _AppShellState extends State<AppShell> {
     AppView.anomalies => const AnomaliesScreen(),
     AppView.loyalty => const LoyaltyAdminScreen(),
     AppView.audit => const AuditScreen(),
+    AppView.backups => const BackupsScreen(),
     AppView.notes => const NotesScreen(),
     AppView.profile => const ProfileScreen(),
 
