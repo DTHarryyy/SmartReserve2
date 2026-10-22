@@ -6,6 +6,11 @@
 -- reservations. Also return occurrence_id so the client can identify which
 -- slots belong to the signed-in user and dedupe them against their own
 -- full-detail reservation data, without exposing any other caller's identity.
+-- The function now returns occurrence_id as well. Postgres cannot change the
+-- return type of an existing function with create or replace, so a clean
+-- replay (supabase db reset) needs it dropped first.
+drop function if exists public.public_reservation_calendar(uuid[], timestamptz, timestamptz);
+
 create or replace function public.public_reservation_calendar(
   p_facility_ids uuid[],
   p_from timestamptz,
