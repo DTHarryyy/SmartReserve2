@@ -721,9 +721,10 @@ begin
   for i in reverse array_length(tables, 1) .. 1 loop
     t := tables[i];
     continue when t = 'profiles';
-    execute format('delete from public.%I', t);
+    -- "where true": safeupdate rejects a bare DELETE.
+    execute format('delete from public.%I where true', t);
   end loop;
-  delete from public.reservation_action_journal;
+  delete from public.reservation_action_journal where true;
 
   profiles_result := public._restore_system_profiles(b.payload -> 'tables' -> 'profiles');
   restored := restored || jsonb_build_object(
