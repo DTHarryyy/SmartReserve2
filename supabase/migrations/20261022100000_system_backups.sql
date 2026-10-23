@@ -715,6 +715,10 @@ begin
     execute format('alter table public.%I disable trigger user', t);
   end loop;
 
+  -- Deleting reservations nulls assistant_messages.reservation_id, which would
+  -- trip the owner check in validate_assistant_message for the restoring admin.
+  alter table public.assistant_messages disable trigger user;
+
   update public.organizational_units set parent_id = null where parent_id is not null;
   update public.profiles set organization_slot_id = null where organization_slot_id is not null;
 
@@ -768,6 +772,8 @@ begin
   foreach t in array tables loop
     execute format('alter table public.%I enable trigger user', t);
   end loop;
+
+  alter table public.assistant_messages enable trigger user;
 
   -- Rebuild derived data that the restore invalidated.
   insert into public.facility_rating_stats(facility_id, rating_average, rating_count, updated_at)
