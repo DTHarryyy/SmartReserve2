@@ -80,3 +80,18 @@ String friendlyBackendMessage(
       ? trimmed
       : '$trimmed.';
 }
+
+/// Message for a failed backup or restore call. The database writes its
+/// validation messages for people to read, so those are passed through; only
+/// the codes that carry no useful message are replaced.
+String systemBackupMessage(Object error) {
+  final raw = '$error';
+  if (raw.contains('55P03')) {
+    return 'Another restore is already running. Try again in a minute.';
+  }
+  if (raw.contains('P0002')) return 'That backup no longer exists.';
+  return friendlyBackendMessage(
+    raw,
+    fallback: 'The backup request could not be completed. Try again.',
+  );
+}

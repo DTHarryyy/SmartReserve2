@@ -37,6 +37,7 @@ lib/
     verifications/             campus-claim queue, document viewer
     users/                     accounts, invite, role and suspension
     audit/                     append-only log with diffs and revert
+    backups/                   create, download, upload and restore backups
     reports/                   utilisation, demand, performance, data quality
     auth/                      the nine-card onboarding flow
     student/                   user browse, reservations, account, booking
@@ -57,6 +58,53 @@ lib/
   ever edited or deleted.
 - **Reports → Add Facility.** A data-quality row deep-links into the offending
   record in edit mode.
+
+## Backup and recovery
+
+Administrators (internal and external) can protect the system's records from
+**Backups** in the console.
+
+- **Create.** A manual backup snapshots facilities and their rates, amenities
+  and payment methods, reservations with their occurrences, events, prices,
+  permits and payments, feedback, loyalty, notifications and accounts into the
+  `system_backups` table. A nightly job (02:15 Philippine time) adds an
+  automatic backup and keeps the latest 7.
+- **Download / upload.** A backup can be saved as a `.json` file and, by an
+  Internal Admin, uploaded again to restore it.
+- **Restore.** Needs a reason and the typed word `RESTORE`. It runs as one
+  database transaction, so a failure changes nothing. First it saves a
+  **safety backup** of the current data, so a restore can itself be undone from
+  the result dialog. Audit, notification, anomaly and push triggers are held
+  off while rows reload, so a restore does not email or notify anyone. The
+  audit log is never rolled back: it records the backup, download, restore and
+  delete.
+- **Checks before a restore.** The backup's sha256 checksum, its format
+  version and the database schema version must match, and a restore refuses to
+  remove the acting administrator's own access.
+
+Limits worth knowing:
+
+- Uploaded files (facility photos, permits, payment proofs, signatures) are not
+  copied; only the rows that point at them are. A restore never deletes
+  Storage objects.
+- A backup can only be restored on the schema version it was taken on. After a
+  new migration, take a new backup.
+- Sign-in accounts live in Supabase Auth and are never changed. Accounts
+  created after a backup are kept, with their later records rolled back;
+  accounts deleted since are skipped, together with the records that belong to
+  them (the result dialog reports both).
+- A restore runs inside one API request, which the hosted database limits to
+  about 8 seconds. On test hardware a restore of ~5,000 reservations (about
+  20,000 records) took roughly 3.5 seconds, including the safety backup. If the
+  data grows several times beyond that, run restores through an Edge Function
+  with the service role instead.
+- Backups sit in the same database, so download one now and then for an
+  off-site copy. Files contain every reservation from both lanes; store them
+  securely.
+
+The covered and excluded tables are listed in
+`supabase/migrations/20261022100000_system_backups.sql`. A pgTAP test fails if
+a future table is added without being placed in one list or the other.
 
 ## Authorization model
 

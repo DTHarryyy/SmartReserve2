@@ -30,6 +30,7 @@ import '../model/notification_navigation.dart';
 import '../model/payment.dart';
 import '../model/permit.dart';
 import '../model/reservation.dart';
+import '../model/system_backup.dart';
 import '../model/verification.dart';
 import '../features/assistant/assistant_availability.dart';
 import '../features/reports/reports_data.dart';
@@ -280,6 +281,7 @@ class AppState extends ChangeNotifier {
     view = next;
     if (next == AppView.reports) unawaited(refreshReports());
     if (next == AppView.audit) unawaited(refreshAudit());
+    if (next == AppView.backups) unawaited(refreshBackups());
     if (next == AppView.feedback) unawaited(refreshFeedback());
     if (next == AppView.loyalty) {
       unawaited(refreshExternalLoyaltyAdmin());
@@ -406,6 +408,183 @@ class AppState extends ChangeNotifier {
       supportReference: 'RPT-SERVICE-UNKNOWN',
       explanation: 'Reports could not be loaded. Retry in a moment.',
     );
+  }
+
+  // --- Backup & recovery -------------------------------------------------
+
+  List<BackendSystemBackup> systemBackups = const [];
+  bool backupsLoading = false;
+  String? backupsError;
+  bool creatingBackup = false;
+
+  /// True while a restore runs. The screen blocks input for the duration:
+  /// the database holds write locks until the restore commits.
+  bool restoringBackup = false;
+
+  /// The backup a download, import or delete is currently working on.
+  String? backupBusyId;
+  BackendBackupRestoreResult? lastRestore;
+
+  /// Backups are stored in the live database, so the offline prototype data
+  /// has nothing to back up.
+  bool get backupsAvailable => backend != null && isAdmin;
+
+  void _backupFailed(String what, Object error) {
+    debugPrint('SmartReserve backup: $what failed: $error');
+    showToast(
+      ToastMessage(systemBackupMessage(error), tone: AdvisoryTone.block),
+    );
+  }
+
+  Future<void> refreshBackups() async {
+    final service = backend;
+    if (service == null || !isAdmin) return;
+    backupsLoading = true;
+    backupsError = null;
+    notifyListeners();
+    try {
+      systemBackups = await service.systemBackups();
+    } catch (error) {
+      backupsError = 'Backups could not load: ${systemBackupMessage(error)}';
+    } finally {
+      backupsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<BackendSystemBackup?> createBackup({String label = ''}) async {
+    final service = backend;
+    if (service == null || !isAdmin || creatingBackup) return null;
+    creatingBackup = true;
+    notifyListeners();
+    try {
+      final created = await service.createSystemBackup(label: label.trim());
+      systemBackups = [created, ...systemBackups];
+      showToast(
+        ToastMessage.success(
+          'Backup created with ${created.totalRows} records.',
+        ),
+      );
+      return created;
+    } catch (error) {
+      _backupFailed('create', error);
+      return null;
+    } finally {
+      creatingBackup = false;
+      notifyListeners();
+    }
+  }
+
+  /// The backup's JSON text, or null when it could not be fetched.
+  Future<String?> backupPayload(BackendSystemBackup backup) async {
+    final service = backend;
+    if (service == null || !isAdmin || backupBusyId != null) return null;
+    backupBusyId = backup.id;
+    notifyListeners();
+    try {
+      return await service.systemBackupPayload(backup.id);
+    } catch (error) {
+      _backupFailed('download', error);
+      return null;
+    } finally {
+      backupBusyId = null;
+      notifyListeners();
+    }
+  }
+
+  Future<BackendSystemBackup?> importBackup(
+    Uint8List bytes, {
+    String label = '',
+  }) async {
+    final service = backend;
+    if (service == null || !isAdmin || creatingBackup) return null;
+    final check = checkBackupFile(bytes);
+    if (check is BackupFileInvalid) {
+      showToast(ToastMessage(check.message, tone: AdvisoryTone.block));
+      return null;
+    }
+    creatingBackup = true;
+    notifyListeners();
+    try {
+      final imported = await service.importSystemBackup(
+        (check as BackupFileValid).payload,
+        label: label.trim(),
+      );
+      systemBackups = [imported, ...systemBackups];
+      return imported;
+    } catch (error) {
+      _backupFailed('import', error);
+      return null;
+    } finally {
+      creatingBackup = false;
+      notifyListeners();
+    }
+  }
+
+  Future<BackendBackupRestoreResult?> restoreBackup(
+    BackendSystemBackup backup,
+    String reason,
+  ) async {
+    final service = backend;
+    if (service == null || !isAdmin || restoringBackup) return null;
+    restoringBackup = true;
+    backupBusyId = backup.id;
+    notifyListeners();
+    try {
+      final result = await service.restoreSystemBackup(
+        backup.id,
+        reason: reason.trim(),
+      );
+      lastRestore = result;
+      // Everything on screen may have changed underneath us.
+      await Future.wait([
+        _runSessionRefresh('facilities', refreshFacilities),
+        _runSessionRefresh('reservations', refreshReservations),
+        _runSessionRefresh('notifications', refreshNotifications),
+        _runSessionRefresh('accounts', refreshAccounts),
+        if (isInternalAdmin) ...[
+          _runSessionRefresh('verifications', refreshVerifications),
+          _runSessionRefresh('audit', refreshAudit),
+        ],
+        _runSessionRefresh('backups', refreshBackups),
+      ]);
+      showToast(
+        ToastMessage.success(
+          'Restored ${result.totalRestored} records. A safety backup of the '
+          'previous data was saved.',
+        ),
+      );
+      return result;
+    } catch (error) {
+      _backupFailed('restore', error);
+      return null;
+    } finally {
+      restoringBackup = false;
+      backupBusyId = null;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteBackup(BackendSystemBackup backup) async {
+    final service = backend;
+    if (service == null || !isAdmin || backupBusyId != null) return false;
+    backupBusyId = backup.id;
+    notifyListeners();
+    try {
+      await service.deleteSystemBackup(backup.id);
+      systemBackups = [
+        for (final b in systemBackups)
+          if (b.id != backup.id) b,
+      ];
+      showToast(const ToastMessage.info('Backup deleted.'));
+      return true;
+    } catch (error) {
+      _backupFailed('delete', error);
+      return false;
+    } finally {
+      backupBusyId = null;
+      notifyListeners();
+    }
   }
 
   Future<void> refreshAudit({AuditQuery? query}) async {
