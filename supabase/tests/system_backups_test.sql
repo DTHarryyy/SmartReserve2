@@ -525,7 +525,7 @@ reset role;
 update public.system_backups
 set payload = jsonb_set(payload, '{tables,facilities,0,capacity}', '1')
 where id = (select backup_id from bk_runs where name = 'tamper');
-update public.system_backups set schema_version = '19990101000000'
+update public.system_backups set schema_version = '19990101000000', schema_fingerprint = 'stale'
 where id = (select backup_id from bk_runs where name = 'old');
 update public.system_backups
 set payload = jsonb_set(payload, '{tables,profiles}', (

@@ -20,7 +20,8 @@ create table if not exists public.system_backups (
   created_at timestamptz not null default now(),
   restored_at timestamptz,
   restored_by uuid references public.profiles(id) on delete set null,
-  restored_by_name text
+  restored_by_name text,
+  schema_fingerprint text
 );
 
 create index if not exists system_backups_created_idx
@@ -200,6 +201,26 @@ begin
 end;
 $$;
 
+-- Hash of the column layout of every backed-up table. A backup can be restored
+-- whenever this still matches, so migrations that do not touch those tables
+-- (functions, policies, other tables) do not strand existing backups.
+create or replace function public._system_backup_schema_fingerprint()
+returns text
+language sql
+stable
+set search_path = public, extensions
+as $$
+  select encode(extensions.digest(coalesce(string_agg(
+    t.name || '.' || a.attname || ':' || format_type(a.atttypid, a.atttypmod)
+      || ':' || a.attnotnull::text,
+    ',' order by t.ord, a.attname
+  ), ''), 'sha256'), 'hex')
+  from unnest(public.system_backup_tables()) with ordinality as t(name, ord)
+  join pg_attribute a
+    on a.attrelid = format('public.%I', t.name)::regclass
+   and a.attnum > 0 and not a.attisdropped and a.attgenerated = '';
+$$;
+
 create or replace function public._system_backup_actor()
 returns table(id uuid, name text, role text)
 language sql
@@ -226,7 +247,7 @@ as $$
     b.id, b.label, b.kind, b.format_version, b.schema_version, b.table_counts,
     b.size_bytes, b.checksum, b.created_by_name, b.created_at, b.restored_at,
     b.restored_by_name,
-    b.schema_version = public._system_backup_schema_version()
+    coalesce(b.schema_fingerprint = public._system_backup_schema_fingerprint(), false)
   )::public.system_backup_summary;
 $$;
 
@@ -289,6 +310,7 @@ begin
     'format', 'smartreserve-backup',
     'format_version', 1,
     'schema_version', public._system_backup_schema_version(),
+    'schema_fingerprint', public._system_backup_schema_fingerprint(),
     'captured_at', now(),
     'tables', tables
   );
@@ -296,12 +318,12 @@ begin
   body_text := body::text;
   insert into public.system_backups(
     label, kind, format_version, schema_version, table_counts, size_bytes,
-    checksum, payload, created_by, created_by_name
+    checksum, payload, created_by, created_by_name, schema_fingerprint
   ) values (
     left(coalesce(p_label, ''), 120), p_kind, 1, body ->> 'schema_version', counts,
     octet_length(body_text),
     encode(extensions.digest(body_text, 'sha256'), 'hex'),
-    body, p_actor_id, p_actor_name
+    body, p_actor_id, p_actor_name, body ->> 'schema_fingerprint'
   ) returning * into result;
   return result;
 end;
@@ -437,6 +459,7 @@ end;
 $$;
 
 revoke all on function public._system_backup_schema_version() from public, anon, authenticated;
+revoke all on function public._system_backup_schema_fingerprint() from public, anon, authenticated;
 revoke all on function public._system_backup_actor() from public, anon, authenticated;
 revoke all on function public._system_backup_summary(public.system_backups) from public, anon, authenticated;
 revoke all on function public._system_backup_audit(text, text, uuid, jsonb, boolean, text) from public, anon, authenticated;
@@ -585,12 +608,12 @@ begin
   select * into actor from public._system_backup_actor();
   insert into public.system_backups(
     label, kind, format_version, schema_version, table_counts, size_bytes,
-    checksum, payload, created_by, created_by_name
+    checksum, payload, created_by, created_by_name, schema_fingerprint
   ) values (
     case when label = '' then 'Uploaded backup' else label end, 'uploaded', 1,
     p_payload ->> 'schema_version', counts, octet_length(p_payload::text),
     encode(extensions.digest(p_payload::text, 'sha256'), 'hex'),
-    p_payload, actor.id, actor.name
+    p_payload, actor.id, actor.name, p_payload ->> 'schema_fingerprint'
   ) returning * into b;
 
   perform public._system_backup_audit(
@@ -684,9 +707,9 @@ begin
   if b.format_version <> 1 or b.payload ->> 'format_version' <> '1' then
     raise exception using errcode = '22023', message = 'Unsupported backup format';
   end if;
-  if b.schema_version <> v_schema then
+  if b.schema_fingerprint is distinct from public._system_backup_schema_fingerprint() then
     raise exception using errcode = '22023', message = format(
-      'This backup was taken on database version %s; the current version is %s. Backups can only be restored on the same version.',
+      'This backup was taken on database version %s and the database structure has changed since (current version %s), so it can no longer be restored.',
       b.schema_version, v_schema
     );
   end if;
