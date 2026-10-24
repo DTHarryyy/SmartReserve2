@@ -147,10 +147,7 @@ class _SideNavState extends State<SideNav> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _BrandMark(
-              collapsed: collapsed,
-              onToggleCollapsed: widget.onToggleCollapsed,
-            ),
+            _BrandMark(collapsed: collapsed),
             Expanded(
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
@@ -200,6 +197,8 @@ class _SideNavState extends State<SideNav> {
                 mapped: state.mappedCount,
                 total: state.catalogueTotal,
               ),
+            if (widget.onToggleCollapsed case final onToggle?)
+              _CollapseToggle(collapsed: collapsed, onPressed: onToggle),
             _AdminFooter(
               state: state,
               onSelect: widget.onSelect,
@@ -213,39 +212,16 @@ class _SideNavState extends State<SideNav> {
 }
 
 class _BrandMark extends StatelessWidget {
-  const _BrandMark({required this.collapsed, this.onToggleCollapsed});
+  const _BrandMark({required this.collapsed});
 
   final bool collapsed;
-  final VoidCallback? onToggleCollapsed;
-
-  Widget _toggle(BuildContext context) => Tooltip(
-    message: collapsed ? 'Expand side panel' : 'Collapse side panel',
-    child: IconButton(
-      key: const Key('side-nav-collapse-toggle'),
-      visualDensity: VisualDensity.compact,
-      iconSize: SR.iconMd,
-      color: context.srColors.navMuted,
-      onPressed: onToggleCollapsed,
-      icon: Icon(
-        collapsed
-            ? Icons.keyboard_double_arrow_right_rounded
-            : Icons.keyboard_double_arrow_left_rounded,
-      ),
-    ),
-  );
 
   @override
   Widget build(BuildContext context) => collapsed
-      ? Padding(
-          padding: const EdgeInsets.fromLTRB(0, SR.space16, 0, SR.space8),
-          child: Column(
-            children: [
-              const SrLogo(size: SR.controlSm, radius: SR.rSm),
-              if (onToggleCollapsed != null) ...[
-                const SizedBox(height: SR.space4),
-                _toggle(context),
-              ],
-            ],
+      ? const Padding(
+          padding: EdgeInsets.fromLTRB(0, SR.space20, 0, SR.space8),
+          child: Center(
+            child: SrLogo(size: SR.controlSm, radius: SR.rSm),
           ),
         )
       : _expanded(context);
@@ -294,10 +270,76 @@ class _BrandMark extends StatelessWidget {
             ],
           ),
         ),
-        if (onToggleCollapsed != null) _toggle(context),
       ],
     ),
   );
+}
+
+/// Shrinks the panel to an icon rail (or back), just above the profile.
+class _CollapseToggle extends StatelessWidget {
+  const _CollapseToggle({required this.collapsed, required this.onPressed});
+
+  final bool collapsed;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = collapsed ? 'Expand side panel' : 'Collapse side panel';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(SR.space8, 0, SR.space8, SR.space8),
+      child: Tooltip(
+        message: label,
+        child: Semantics(
+          button: true,
+          label: label,
+          excludeSemantics: true,
+          child: Hoverable(
+            builder: (context, hovered) => GestureDetector(
+              key: const Key('side-nav-collapse-toggle'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onPressed,
+              child: AnimatedContainer(
+                duration: SR.stateChange,
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: SR.space12),
+                decoration: BoxDecoration(
+                  color: hovered
+                      ? context.srColors.navHover
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(SR.rSm),
+                ),
+                child: Row(
+                  mainAxisAlignment: collapsed
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  children: [
+                    Icon(
+                      collapsed
+                          ? Icons.keyboard_double_arrow_right_rounded
+                          : Icons.keyboard_double_arrow_left_rounded,
+                      size: SR.iconMd,
+                      color: context.srColors.navMuted,
+                    ),
+                    if (!collapsed) ...[
+                      const SizedBox(width: SR.space12),
+                      Text(
+                        'Collapse',
+                        style: sans(
+                          12.5,
+                          w: 500,
+                          color: context.srColors.navMuted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _GroupLabel extends StatelessWidget {
