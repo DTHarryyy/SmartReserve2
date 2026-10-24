@@ -121,6 +121,12 @@ class _AppShellState extends State<AppShell> {
       }
       return true;
     }
+    if (accel &&
+        event.logicalKey == LogicalKeyboardKey.keyB &&
+        state.view.usesAdminChrome) {
+      state.setSideNavHidden(!state.sideNavHidden);
+      return true;
+    }
     if (accel && event.logicalKey == LogicalKeyboardKey.keyK) {
       if (state.view == AppView.addFacility) _addFacility.map.openSearch();
       return true;
@@ -225,7 +231,14 @@ class _AppShellState extends State<AppShell> {
       body: SafeArea(
         child: Row(
           children: [
-            if (layout.isDesktop) SideNav(state: state, onSelect: _navSelect),
+            if (layout.isDesktop && !state.sideNavHidden)
+              SideNav(
+                state: state,
+                onSelect: _navSelect,
+                collapsed: state.sideNavCollapsed,
+                onToggleCollapsed: () =>
+                    state.setSideNavCollapsed(!state.sideNavCollapsed),
+              ),
             Expanded(child: _chrome(state, layout)),
           ],
         ),
@@ -259,8 +272,18 @@ class _AppShellState extends State<AppShell> {
                 avatarInitials: state.currentAdmin.initials,
                 onOpenProfile: () => state.goTo(AppView.profile),
                 onMenu: layout.isDesktop
-                    ? null
+                    ? () => state.setSideNavHidden(!state.sideNavHidden)
                     : () => _scaffoldKey.currentState?.openDrawer(),
+                menuIcon: layout.isDesktop
+                    ? (state.sideNavHidden
+                          ? Icons.menu_open_rounded
+                          : Icons.menu_rounded)
+                    : Icons.menu_rounded,
+                menuTooltip: layout.isDesktop
+                    ? (state.sideNavHidden
+                          ? 'Show side panel (Ctrl+B)'
+                          : 'Hide side panel (Ctrl+B)')
+                    : 'Sections',
                 chip: _headerChip(state),
                 actions: _headerActions(state, layout),
               ),

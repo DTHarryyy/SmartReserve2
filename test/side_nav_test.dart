@@ -11,6 +11,8 @@ Future<void> _pumpSideNav(
   WidgetTester tester, {
   required AppState state,
   required ValueChanged<AppView> onSelect,
+  bool collapsed = false,
+  VoidCallback? onToggleCollapsed,
 }) async {
   tester.view.physicalSize = const Size(1200, 900);
   tester.view.devicePixelRatio = 1;
@@ -24,8 +26,13 @@ Future<void> _pumpSideNav(
         body: Align(
           alignment: Alignment.topLeft,
           child: SizedBox(
-            width: SideNav.width,
-            child: SideNav(state: state, onSelect: onSelect),
+            width: collapsed ? SideNav.collapsedWidth : SideNav.width,
+            child: SideNav(
+              state: state,
+              onSelect: onSelect,
+              collapsed: collapsed,
+              onToggleCollapsed: onToggleCollapsed,
+            ),
           ),
         ),
       ),
@@ -85,5 +92,32 @@ void main() {
 
     await tester.tap(calendar);
     expect(selected, AppView.calendar);
+  });
+
+  testWidgets('collapsed rail shows icons with tooltips and still navigates', (
+    tester,
+  ) async {
+    final state = AppState()..view = AppView.facilities;
+    AppView? selected;
+    var toggled = 0;
+    await _pumpSideNav(
+      tester,
+      state: state,
+      collapsed: true,
+      onToggleCollapsed: () => toggled++,
+      onSelect: (section) => selected = section,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reservations'), findsNothing);
+    expect(find.text('Mapped facilities'), findsNothing);
+    expect(find.byTooltip('Reservations'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('side-nav-item-calendar')));
+    expect(selected, AppView.calendar);
+
+    await tester.tap(find.byKey(const Key('side-nav-collapse-toggle')));
+    expect(toggled, 1);
+    expect(tester.takeException(), isNull);
   });
 }

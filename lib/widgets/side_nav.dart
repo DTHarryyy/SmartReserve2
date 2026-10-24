@@ -76,13 +76,22 @@ class SideNav extends StatefulWidget {
     required this.state,
     required this.onSelect,
     this.showStats = true,
+    this.collapsed = false,
+    this.onToggleCollapsed,
   });
 
   final AppState state;
   final ValueChanged<AppView> onSelect;
   final bool showStats;
 
+  /// Icon-only rail: labels, group headings and the mapped stat are hidden.
+  final bool collapsed;
+
+  /// Shows the collapse/expand control when non-null (desktop only).
+  final VoidCallback? onToggleCollapsed;
+
   static const width = 248.0;
+  static const collapsedWidth = 72.0;
 
   @override
   State<SideNav> createState() => _SideNavState();
@@ -117,8 +126,11 @@ class _SideNavState extends State<SideNav> {
   Widget build(BuildContext context) {
     final state = widget.state;
     final groups = state.isExternalAdmin ? _externalGroups : _internalGroups;
-    return Container(
-      width: SideNav.width,
+    final collapsed = widget.collapsed;
+    return AnimatedContainer(
+      duration: SR.stateChange,
+      curve: SR.easing,
+      width: collapsed ? SideNav.collapsedWidth : SideNav.width,
       decoration: BoxDecoration(
         color: context.srColors.navBg,
         border: Border(right: BorderSide(color: context.srColors.navBorder)),
@@ -128,20 +140,29 @@ class _SideNavState extends State<SideNav> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _BrandMark(),
+            _BrandMark(
+              collapsed: collapsed,
+              onToggleCollapsed: widget.onToggleCollapsed,
+            ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
-                  SR.space12,
+                padding: EdgeInsets.fromLTRB(
+                  collapsed ? SR.space8 : SR.space12,
                   0,
-                  SR.space12,
+                  collapsed ? SR.space8 : SR.space12,
                   SR.space12,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final group in groups) ...[
-                      _GroupLabel(group.label),
+                      if (collapsed)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: SR.space8),
+                          child: Divider(height: 1),
+                        )
+                      else
+                        _GroupLabel(group.label),
                       for (final section in group.items)
                         _NavButton(
                           section: section,
@@ -156,6 +177,7 @@ class _SideNavState extends State<SideNav> {
                           total: _totalFor(section),
                           pending: _pendingFor(section),
                           current: state.view.navSection == section,
+                          collapsed: collapsed,
                           hovered: _hoveredSection == section,
                           onHoverEnter: () => _setHoveredSection(section),
                           onHoverExit: () => _clearHoveredSection(section),
@@ -166,12 +188,16 @@ class _SideNavState extends State<SideNav> {
                 ),
               ),
             ),
-            if (widget.showStats)
+            if (widget.showStats && !collapsed)
               _MappedStat(
                 mapped: state.mappedCount,
                 total: state.catalogueTotal,
               ),
-            _AdminFooter(state: state, onSelect: widget.onSelect),
+            _AdminFooter(
+              state: state,
+              onSelect: widget.onSelect,
+              collapsed: collapsed,
+            ),
           ],
         ),
       ),
@@ -180,10 +206,44 @@ class _SideNavState extends State<SideNav> {
 }
 
 class _BrandMark extends StatelessWidget {
-  const _BrandMark();
+  const _BrandMark({required this.collapsed, this.onToggleCollapsed});
+
+  final bool collapsed;
+  final VoidCallback? onToggleCollapsed;
+
+  Widget _toggle(BuildContext context) => Tooltip(
+    message: collapsed ? 'Expand side panel' : 'Collapse side panel',
+    child: IconButton(
+      key: const Key('side-nav-collapse-toggle'),
+      visualDensity: VisualDensity.compact,
+      iconSize: SR.iconMd,
+      color: context.srColors.navMuted,
+      onPressed: onToggleCollapsed,
+      icon: Icon(
+        collapsed
+            ? Icons.keyboard_double_arrow_right_rounded
+            : Icons.keyboard_double_arrow_left_rounded,
+      ),
+    ),
+  );
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) => collapsed
+      ? Padding(
+          padding: const EdgeInsets.fromLTRB(0, SR.space16, 0, SR.space8),
+          child: Column(
+            children: [
+              const SrLogo(size: SR.controlSm, radius: SR.rSm),
+              if (onToggleCollapsed != null) ...[
+                const SizedBox(height: SR.space4),
+                _toggle(context),
+              ],
+            ],
+          ),
+        )
+      : _expanded(context);
+
+  Widget _expanded(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(
       SR.space20,
       SR.space20,
@@ -227,6 +287,7 @@ class _BrandMark extends StatelessWidget {
             ],
           ),
         ),
+        if (onToggleCollapsed != null) _toggle(context),
       ],
     ),
   );
@@ -263,6 +324,7 @@ class _NavButton extends StatelessWidget {
     required this.onHoverExit,
     required this.onTap,
     required this.pending,
+    this.collapsed = false,
     this.total,
   });
 
@@ -273,6 +335,7 @@ class _NavButton extends StatelessWidget {
   final int pending;
   final bool current;
   final bool hovered;
+  final bool collapsed;
   final VoidCallback onHoverEnter;
   final VoidCallback onHoverExit;
   final VoidCallback onTap;
@@ -280,9 +343,15 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = context.isCompact;
-    return Semantics(
+    final iconColor = current
+        ? context.srColors.brand
+        : (hovered
+              ? context.srColors.navForeground
+              : context.srColors.navMuted);
+    final button = Semantics(
       button: true,
       selected: current,
+      label: collapsed ? label : null,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => onHoverEnter(),
@@ -309,45 +378,46 @@ class _NavButton extends StatelessWidget {
                             : Colors.transparent),
                   borderRadius: BorderRadius.circular(SR.rSm),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      icon,
-                      size: SR.iconMd,
-                      color: current
-                          ? context.srColors.brand
-                          : (hovered
-                                ? context.srColors.navForeground
-                                : context.srColors.navMuted),
-                    ),
-                    const SizedBox(width: SR.space12),
-                    Expanded(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: sans(
-                          13,
-                          w: current ? 600 : 500,
-                          color: current
-                              ? context.srColors.navSelectedForeground
-                              : context.srColors.navForeground,
+                child: collapsed
+                    ? Center(
+                        child: Badge(
+                          isLabelVisible: pending > 0,
+                          smallSize: 8,
+                          backgroundColor: context.srColors.brand,
+                          child: Icon(icon, size: SR.iconMd, color: iconColor),
                         ),
+                      )
+                    : Row(
+                        children: [
+                          Icon(icon, size: SR.iconMd, color: iconColor),
+                          const SizedBox(width: SR.space12),
+                          Expanded(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: sans(
+                                13,
+                                w: current ? 600 : 500,
+                                color: current
+                                    ? context.srColors.navSelectedForeground
+                                    : context.srColors.navForeground,
+                              ),
+                            ),
+                          ),
+                          if (pending > 0)
+                            _PendingBadge(count: pending, current: current)
+                          else if (total != null)
+                            Text(
+                              total!,
+                              style: mono(
+                                10,
+                                w: 500,
+                                color: context.srColors.navMuted,
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
-                    if (pending > 0)
-                      _PendingBadge(count: pending, current: current)
-                    else if (total != null)
-                      Text(
-                        total!,
-                        style: mono(
-                          10,
-                          w: 500,
-                          color: context.srColors.navMuted,
-                        ),
-                      ),
-                  ],
-                ),
               ),
               Positioned(
                 left: 0,
@@ -372,6 +442,7 @@ class _NavButton extends StatelessWidget {
         ),
       ),
     );
+    return collapsed ? Tooltip(message: label, child: button) : button;
   }
 }
 
@@ -483,10 +554,15 @@ class _MappedStat extends StatelessWidget {
 }
 
 class _AdminFooter extends StatelessWidget {
-  const _AdminFooter({required this.state, required this.onSelect});
+  const _AdminFooter({
+    required this.state,
+    required this.onSelect,
+    this.collapsed = false,
+  });
 
   final AppState state;
   final ValueChanged<AppView> onSelect;
+  final bool collapsed;
 
   @override
   Widget build(BuildContext context) {
@@ -510,6 +586,9 @@ class _AdminFooter extends StatelessWidget {
                 borderRadius: BorderRadius.circular(SR.rSm),
               ),
               child: Row(
+                mainAxisAlignment: collapsed
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
                 children: [
                   Container(
                     width: 30,
@@ -528,39 +607,41 @@ class _AdminFooter extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: SR.space8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          admin.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: sans(
-                            12,
-                            w: 600,
-                            color: context.srColors.navForeground,
+                  if (!collapsed) ...[
+                    const SizedBox(width: SR.space8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            admin.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: sans(
+                              12,
+                              w: 600,
+                              color: context.srColors.navForeground,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Administrator · ${admin.role.label}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: SrType.caption(
-                            color: context.srColors.navMuted,
+                          Text(
+                            'Administrator · ${admin.role.label}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: SrType.caption(
+                              color: context.srColors.navMuted,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: SR.iconMd,
-                    color: hovered
-                        ? context.srColors.navForeground
-                        : context.srColors.navMuted,
-                  ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: SR.iconMd,
+                      color: hovered
+                          ? context.srColors.navForeground
+                          : context.srColors.navMuted,
+                    ),
+                  ],
                 ],
               ),
             ),

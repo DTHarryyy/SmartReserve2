@@ -17,6 +17,8 @@ class AppHeader extends StatelessWidget {
     this.compact = false,
     this.mobile = false,
     this.onMenu,
+    this.menuIcon = Icons.menu_rounded,
+    this.menuTooltip = 'Sections',
   });
 
   final List<String> crumbs;
@@ -30,6 +32,8 @@ class AppHeader extends StatelessWidget {
   final bool compact;
   final bool mobile;
   final VoidCallback? onMenu;
+  final IconData menuIcon;
+  final String menuTooltip;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -45,8 +49,9 @@ class AppHeader extends StatelessWidget {
       children: [
         if (onMenu != null) ...[
           SrIconButton(
-            icon: Icons.menu_rounded,
-            tooltip: 'Sections',
+            key: const Key('app-header-menu'),
+            icon: menuIcon,
+            tooltip: menuTooltip,
             size: SR.controlMd,
             fontSize: 15,
             onPressed: onMenu,

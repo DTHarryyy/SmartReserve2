@@ -221,7 +221,34 @@ class AppState extends ChangeNotifier {
     themePreference = SrThemePreference.fromStorage(
       preferences.getString(_themePreferenceKey),
     );
+    sideNavCollapsed = preferences.getBool(_sideNavCollapsedKey) ?? false;
+    sideNavHidden = preferences.getBool(_sideNavHiddenKey) ?? false;
     notifyListeners();
+  }
+
+  static const _sideNavCollapsedKey = 'sr.side_nav_collapsed.v1';
+  static const _sideNavHiddenKey = 'sr.side_nav_hidden.v1';
+
+  /// Desktop side panel shows icons only, leaving more room for the content.
+  bool sideNavCollapsed = false;
+
+  /// Desktop side panel is hidden entirely (toggled from the header or ⌘B).
+  bool sideNavHidden = false;
+
+  Future<void> setSideNavCollapsed(bool collapsed) async {
+    if (sideNavCollapsed == collapsed) return;
+    sideNavCollapsed = collapsed;
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_sideNavCollapsedKey, collapsed);
+  }
+
+  Future<void> setSideNavHidden(bool hidden) async {
+    if (sideNavHidden == hidden) return;
+    sideNavHidden = hidden;
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_sideNavHiddenKey, hidden);
   }
 
   Future<void> setThemePreference(SrThemePreference preference) async {
