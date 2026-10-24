@@ -24,6 +24,7 @@ import '../model/audit_entry.dart';
 import '../model/anomaly.dart';
 import '../model/feedback.dart';
 import '../model/loyalty.dart';
+import '../model/support_ticket.dart';
 import '../util/geo.dart';
 
 enum AccountManagementRetryability {
@@ -1588,6 +1589,7 @@ class BackendNotification {
     this.requestId,
     this.eventId,
     this.anomalyId,
+    this.supportTicketId,
     this.eventDetails = const {},
     this.readAt,
   });
@@ -1599,6 +1601,7 @@ class BackendNotification {
   final String? requestId;
   final String? eventId;
   final String? anomalyId;
+  final String? supportTicketId;
   final Map<String, dynamic> eventDetails;
   final DateTime createdAt;
   final DateTime? readAt;
@@ -1614,6 +1617,7 @@ class BackendNotification {
     requestId: requestId,
     eventId: eventId,
     anomalyId: anomalyId,
+    supportTicketId: supportTicketId,
     eventDetails: eventDetails,
     readAt: at,
   );
@@ -1627,6 +1631,7 @@ class BackendNotification {
         requestId: json['request_id'] as String?,
         eventId: json['event_id'] as String?,
         anomalyId: json['anomaly_id'] as String?,
+        supportTicketId: json['support_ticket_id'] as String?,
         eventDetails: _notificationEventDetails(json['event']),
         createdAt: DateTime.parse(json['created_at'] as String),
         readAt: _date(json['read_at']),
@@ -3319,6 +3324,16 @@ abstract interface class SmartReserveBackend {
   );
   String facilityPhotoUrl(String path);
   String paymentQrUrl(String path);
+
+  /// Tickets the caller can see: their own, or every ticket for an admin.
+  Future<List<SupportTicket>> supportTickets();
+  Future<SupportTicket> createSupportTicket(
+    SupportTicketDraft draft, {
+    ReservationUpload? attachment,
+  });
+  Future<void> replySupportTicket(String ticketId, String message);
+  Future<void> setSupportTicketStatus(String ticketId, SupportStatus status);
+  Future<String> supportAttachmentUrl(String path);
 
   /// Uploads a GCash QR image for [facilityId] and returns its storage path.
   /// It is shown to renters only once saved with the facility configuration.
@@ -5892,6 +5907,87 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   String facilityPhotoUrl(String path) =>
       _client.storage.from('facility-photos').getPublicUrl(path);
+
+  static const _supportTicketSelect =
+      '*,requester:profiles!support_tickets_requester_id_fkey(full_name,email),'
+      'replies:support_ticket_replies(*)';
+
+  @override
+  Future<List<SupportTicket>> supportTickets() async {
+    if (user == null) return const [];
+    final rows = await _client
+        .from('support_tickets')
+        .select(_supportTicketSelect)
+        .order('last_activity_at', ascending: false)
+        .limit(200);
+    return [
+      for (final row in rows as List)
+        SupportTicket.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<SupportTicket> createSupportTicket(
+    SupportTicketDraft draft, {
+    ReservationUpload? attachment,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    String? attachmentPath;
+    if (attachment != null) {
+      final extension = attachment.mimeType == 'image/png' ? 'png' : 'jpg';
+      attachmentPath =
+          '${currentUser.id}/${DateTime.now().toUtc().millisecondsSinceEpoch}'
+          '.$extension';
+      await _client.storage
+          .from('support-attachments')
+          .uploadBinary(
+            attachmentPath,
+            attachment.bytes,
+            fileOptions: FileOptions(contentType: attachment.mimeType),
+          );
+    }
+    final created = await _client.rpc(
+      'create_support_ticket',
+      params: {
+        'p_category': draft.category.raw,
+        'p_subject': draft.subject.trim(),
+        'p_message': draft.message.trim(),
+        'p_attachment_path': attachmentPath,
+      },
+    );
+    final id = (created as Map)['id'] as String;
+    final row = await _client
+        .from('support_tickets')
+        .select(_supportTicketSelect)
+        .eq('id', id)
+        .single();
+    return SupportTicket.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  @override
+  Future<void> replySupportTicket(String ticketId, String message) async {
+    await _client.rpc(
+      'reply_support_ticket',
+      params: {'p_ticket_id': ticketId, 'p_message': message.trim()},
+    );
+  }
+
+  @override
+  Future<void> setSupportTicketStatus(
+    String ticketId,
+    SupportStatus status,
+  ) async {
+    await _client.rpc(
+      'set_support_ticket_status',
+      params: {'p_ticket_id': ticketId, 'p_status': status.raw},
+    );
+  }
+
+  @override
+  Future<String> supportAttachmentUrl(String path) => _client.storage
+      .from('support-attachments')
+      .createSignedUrl(path, 60 * 30);
 
   @override
   String paymentQrUrl(String path) =>

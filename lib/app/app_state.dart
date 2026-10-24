@@ -30,6 +30,7 @@ import '../model/notification_navigation.dart';
 import '../model/payment.dart';
 import '../model/permit.dart';
 import '../model/reservation.dart';
+import '../model/support_ticket.dart';
 import '../model/system_backup.dart';
 import '../model/verification.dart';
 import '../features/assistant/assistant_availability.dart';
@@ -314,6 +315,7 @@ class AppState extends ChangeNotifier {
       unawaited(refreshExternalLoyaltyAdmin());
     }
     if (next == AppView.anomalies) unawaited(refreshAnomalyCenter());
+    if (next == AppView.support) unawaited(refreshSupportTickets());
     closeOverlays();
     notifyListeners();
   }
@@ -1552,6 +1554,13 @@ class AppState extends ChangeNotifier {
     notificationsOpen = false;
     pendingNotificationIntent = null;
     notificationActionsPending.clear();
+    supportTickets = [];
+    supportLoaded = false;
+    supportLoading = false;
+    supportError = null;
+    selectedSupportTicketId = null;
+    pendingSupportTicketId = null;
+    _supportRequestId++;
     _loyaltySubscription?.cancel();
     _loyaltySubscription = null;
     _feedbackSentimentSubscription?.cancel();
@@ -1712,6 +1721,7 @@ class AppState extends ChangeNotifier {
             debugPrint('Verifications live refresh failed: $error'),
       );
       unawaited(refreshAnomalyCenter());
+      unawaited(refreshSupportTickets());
       await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else if (profile.isExternalAdmin) {
       _syncFeedbackSentimentSubscription();
@@ -1731,6 +1741,7 @@ class AppState extends ChangeNotifier {
         ];
       }
       unawaited(refreshAnomalyCenter());
+      unawaited(refreshSupportTickets());
       await _runSessionRefresh('initial report', _applyInitialReportLink);
     } else {
       _verificationSubscription = backend?.verificationChanges().listen(
@@ -3159,6 +3170,12 @@ class AppState extends ChangeNotifier {
         ? delta.rows!
         : applyRowDelta(notifications, visibleDelta, (item) => item.id);
     _applyNotifications(merged);
+    // Ticket threads are not realtime-subscribed; a fresh support
+    // notification is the cue that the queue or a thread changed.
+    if (!delta.replacesAll &&
+        visibleDelta.upserts.any((item) => item.kind.startsWith('support_'))) {
+      unawaited(refreshSupportTickets());
+    }
   }
 
   Future<void> openNotification(BackendNotification notification) async {
@@ -3216,6 +3233,7 @@ class AppState extends ChangeNotifier {
         isAdmin: isAdmin,
         requestId: resolved.requestId,
         anomalyId: resolved.anomalyId,
+        supportTicketId: resolved.supportTicketId,
         eventDetails: resolved.eventDetails,
       );
       if (!_isCurrentSession(generation)) return;
@@ -3269,6 +3287,19 @@ class AppState extends ChangeNotifier {
       case NotificationDestination.renterReservation:
         pendingReservationFocusId = intent.requestId;
         goTo(AppView.userApp);
+        return;
+      case NotificationDestination.support:
+        pendingNotificationIntent = null;
+        unawaited(refreshSupportTickets());
+        if (isAdmin) {
+          selectedSupportTicketId = intent.resourceId;
+          goTo(AppView.support);
+          notifyListeners();
+        } else {
+          pendingSupportTicketId = intent.resourceId ?? '';
+          goTo(AppView.userApp);
+          notifyListeners();
+        }
         return;
       case NotificationDestination.browse:
         goTo(AppView.userApp);
@@ -7095,6 +7126,190 @@ class AppState extends ChangeNotifier {
     if (!isInternalAdmin && !isExternalAdmin) return null;
     try {
       return await _coreBackend?.previewPermit(requestId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Technical support
+  // ---------------------------------------------------------------------
+
+  /// The caller's tickets, or the whole queue for an admin; newest activity
+  /// first.
+  List<SupportTicket> supportTickets = [];
+  bool supportLoaded = false;
+  bool supportLoading = false;
+  String? supportError;
+  String? selectedSupportTicketId;
+  SupportStatus? supportStatusFilter;
+
+  /// Set when a renter opens a support notification; the user app opens the
+  /// support page (and the ticket, when non-empty) and clears it.
+  String? pendingSupportTicketId;
+  int _supportRequestId = 0;
+
+  SupportTicket? get selectedSupportTicket =>
+      supportTicketById(selectedSupportTicketId);
+
+  SupportTicket? supportTicketById(String? id) {
+    if (id == null) return null;
+    for (final ticket in supportTickets) {
+      if (ticket.id == id) return ticket;
+    }
+    return null;
+  }
+
+  List<SupportTicket> get visibleSupportTickets => [
+    for (final ticket in supportTickets)
+      if (supportStatusFilter == null || ticket.status == supportStatusFilter)
+        ticket,
+  ];
+
+  /// Active tickets still waiting on an administrator's answer.
+  int get supportAwaitingCount =>
+      supportTickets.where((ticket) => ticket.awaitingAdmin).length;
+
+  void setSupportStatusFilter(SupportStatus? status) {
+    supportStatusFilter = status;
+    final selected = selectedSupportTicket;
+    if (selected != null && status != null && selected.status != status) {
+      selectedSupportTicketId = null;
+    }
+    notifyListeners();
+  }
+
+  void selectSupportTicket(String? id) {
+    selectedSupportTicketId = id;
+    notifyListeners();
+  }
+
+  Future<void> refreshSupportTickets() async {
+    final service = backend;
+    if (service == null || !hasSession) return;
+    final requestId = ++_supportRequestId;
+    supportLoading = true;
+    supportError = null;
+    notifyListeners();
+    try {
+      final rows = await service.supportTickets();
+      if (requestId != _supportRequestId) return;
+      supportTickets = rows;
+      supportLoaded = true;
+    } catch (error) {
+      if (requestId != _supportRequestId) return;
+      supportError = friendlyBackendMessage('$error');
+    } finally {
+      if (requestId == _supportRequestId) {
+        supportLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Files a ticket; returns it, or null after showing why it failed.
+  Future<SupportTicket?> createSupportTicket(
+    SupportTicketDraft draft, {
+    ReservationUpload? attachment,
+  }) async {
+    final invalid = draft.error;
+    if (invalid != null) {
+      showToast(ToastMessage(invalid, tone: AdvisoryTone.block));
+      return null;
+    }
+    final service = backend;
+    if (service == null) {
+      showToast(
+        const ToastMessage(
+          'Support tickets need a connection to SmartReserve.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return null;
+    }
+    try {
+      final ticket = await service.createSupportTicket(
+        draft,
+        attachment: attachment,
+      );
+      supportTickets = [
+        ticket,
+        for (final item in supportTickets)
+          if (item.id != ticket.id) item,
+      ];
+      showToast(
+        const ToastMessage(
+          'Ticket sent. Support will reply here and by email.',
+        ),
+      );
+      notifyListeners();
+      return ticket;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'The ticket was not sent: ${friendlyBackendMessage('$error')}',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return null;
+    }
+  }
+
+  Future<bool> replySupportTicket(String ticketId, String message) async {
+    final trimmed = message.trim();
+    if (trimmed.length < SupportLimits.replyMin ||
+        trimmed.length > SupportLimits.replyMax) {
+      showToast(
+        ToastMessage(
+          'Replies need ${SupportLimits.replyMin}–${SupportLimits.replyMax} '
+          'characters.',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+    final service = backend;
+    if (service == null) return false;
+    try {
+      await service.replySupportTicket(ticketId, trimmed);
+      await refreshSupportTickets();
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'The reply was not sent: ${friendlyBackendMessage('$error')}',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<bool> setSupportTicketStatus(
+    String ticketId,
+    SupportStatus status,
+  ) async {
+    final service = backend;
+    if (service == null) return false;
+    try {
+      await service.setSupportTicketStatus(ticketId, status);
+      await refreshSupportTickets();
+      showToast(ToastMessage('Ticket marked ${status.label.toLowerCase()}.'));
+      return true;
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'The ticket was not updated: ${friendlyBackendMessage('$error')}',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return false;
+    }
+  }
+
+  Future<String?> supportAttachmentUrl(String path) async {
+    try {
+      return await backend?.supportAttachmentUrl(path);
     } catch (_) {
       return null;
     }

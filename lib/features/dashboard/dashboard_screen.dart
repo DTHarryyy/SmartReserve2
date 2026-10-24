@@ -163,6 +163,14 @@ class _KpiGrid extends StatelessWidget {
         onTap: state.toggleNotifications,
       ),
       _KpiTile(
+        key: const Key('dashboard-kpi-support'),
+        label: 'Support tickets to answer',
+        value: state.supportAwaitingCount,
+        icon: Icons.support_agent_rounded,
+        tone: state.supportAwaitingCount > 0 ? SrTone.warning : SrTone.neutral,
+        onTap: () => state.goTo(AppView.support),
+      ),
+      _KpiTile(
         key: const Key('dashboard-kpi-mapped'),
         label: 'Facilities mapped',
         value: state.mappedCount,
@@ -311,6 +319,11 @@ class _Shortcuts extends StatelessWidget {
           onTap: () => state.goTo(AppView.loyalty),
         ),
       ],
+      (
+        label: 'Support',
+        icon: Icons.support_agent_rounded,
+        onTap: () => state.goTo(AppView.support),
+      ),
       (
         label: 'Backups',
         icon: Icons.backup_rounded,

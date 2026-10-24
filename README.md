@@ -486,6 +486,23 @@ transactional provider's SMTP for more. Check delivery with
 limit 5;`. Tests: `supabase/tests/email_notification_delivery_test.sql` and
 `deno task test` (`send-email/contract_test.ts`).
 
+### Technical support
+
+Renters open **Account → Help & support** to file a ticket (topic, subject,
+message, optional screenshot) and follow its thread. Administrators answer
+from **Support** in the console, which lists every ticket by status and
+flags the ones still waiting on an answer (also counted on the Dashboard and
+the side-panel badge). An admin reply moves an open ticket to *In progress*;
+a renter reply reopens a *Resolved* one; a *Closed* ticket takes no more
+replies. New tickets notify the Internal Admins, and every reply or status
+change notifies the other side — in the app, by push and by email.
+
+Writes go through `create_support_ticket`, `reply_support_ticket` and
+`set_support_ticket_status`; screenshots live in the private
+`support-attachments` bucket under the requester's id. Tests:
+`supabase/tests/support_tickets_test.sql` and
+`flutter test test/support_tickets_test.dart`.
+
 ### The reservation assistant
 
 The in-app assistant answers reservation, payment, permit, availability,

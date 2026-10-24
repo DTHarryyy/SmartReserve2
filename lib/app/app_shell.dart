@@ -24,6 +24,7 @@ import '../features/reports/reports_screen.dart';
 import '../features/reports/reports_data.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/student/student_app.dart';
+import '../features/support/support_screen.dart';
 import '../features/users/users_screen.dart';
 import '../features/users/organization_accounts_dialog.dart';
 import '../features/verifications/verifications_screen.dart';
@@ -503,6 +504,7 @@ class _AppShellState extends State<AppShell> {
     AppView.loyalty => const LoyaltyAdminScreen(),
     AppView.audit => const AuditScreen(),
     AppView.backups => const BackupsScreen(),
+    AppView.support => const SupportScreen(),
     AppView.notes => const NotesScreen(),
     AppView.profile => const ProfileScreen(),
 

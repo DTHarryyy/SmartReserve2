@@ -23,6 +23,7 @@ enum AppView {
   audit('Audit log', 'Audit log', Icons.history_rounded),
   reports('Reports', 'Reports', Icons.insights_rounded),
   backups('Backups', 'Backup and recovery', Icons.backup_rounded),
+  support('Support', 'Technical support', Icons.support_agent_rounded),
   notes('Design notes', 'Design notes', Icons.sticky_note_2_rounded),
   profile('Profile', 'Your profile', Icons.account_circle_rounded),
   userApp('User app', 'SmartReserve', Icons.phone_iphone_rounded),
