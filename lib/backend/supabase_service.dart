@@ -5832,6 +5832,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'Decision on my requests': row?['reservation_decisions'] as bool? ?? true,
       'Reminder the day before': row?['day_before_reminders'] as bool? ?? true,
       'New facilities on campus': row?['new_facilities'] as bool? ?? false,
+      'Email me notifications': row?['email_notifications'] as bool? ?? true,
     };
   }
 
@@ -5846,6 +5847,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'reservation_decisions': preferences['Decision on my requests'] ?? true,
       'day_before_reminders': preferences['Reminder the day before'] ?? true,
       'new_facilities': preferences['New facilities on campus'] ?? false,
+      'email_notifications': preferences['Email me notifications'] ?? true,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
   }

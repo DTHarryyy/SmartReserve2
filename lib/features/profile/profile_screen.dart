@@ -112,6 +112,24 @@ class ProfileScreen extends StatelessWidget {
                       onChanged: state.setThemePreference,
                     ),
                     const SizedBox(height: SR.space12 + 2),
+                    Text('Notifications', style: SrType.label()),
+                    const SizedBox(height: SR.space8),
+                    SrListRow(
+                      label: 'Email me notifications',
+                      trailing: SrToggle(
+                        key: const Key('profile-email-notifications'),
+                        label: 'Email me notifications',
+                        value:
+                            state
+                                .notificationPreferences['Email me notifications'] ??
+                            true,
+                        onChanged: (value) => state.setNotificationPreference(
+                          'Email me notifications',
+                          value,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: SR.space12 + 2),
                     SrButton(
                       label: 'Open my record in Users',
                       icon: Icon(

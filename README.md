@@ -449,6 +449,43 @@ contract and the `verify_jwt` config guard), `supabase test db`
 (`supabase/tests/push_delivery_test.sql`: enqueue, lease, retry, dead
 tokens, RLS) and `flutter test test/push_notifications_test.dart`.
 
+### Email notifications (Gmail)
+
+Every `app_notifications` row is also emailed to its recipient, next to the
+push. The pipeline mirrors push: an insert trigger enqueues an
+`email_deliveries` row → pg_net nudge (and a 1-minute pg_cron sweep) calls the
+`send-email` Edge Function → Gmail SMTP → inbox. Failed sends retry with
+backoff (1, 2, 4 … 30 minutes); a rejected address fails immediately.
+
+A user gets email only when their account is active, "Email me
+notifications" is on (Account → Notifications for renters, Profile for
+admins), and the per-kind toggles allow it — turning off "Reminder the day
+before" stops the reminder email as well as the push. Opting out also drops
+email that is already queued.
+
+The function sends through the same Gmail account as the Auth emails, using a
+Gmail **app password** (Google Account → Security → 2-Step Verification → App
+passwords), never the account password:
+
+```bash
+supabase functions deploy send-email --no-verify-jwt
+supabase secrets set EMAIL_WORKER_KEY=... \
+  SMARTRESERVE_SMTP_USERNAME=you@gmail.com \
+  SMARTRESERVE_SMTP_PASSWORD=<app password> \
+  SMARTRESERVE_APP_URL=https://<your SmartReserve web address> \
+  EMAIL_ENABLED=true
+```
+
+Store `smartreserve_email_worker_key` (the same value as `EMAIL_WORKER_KEY`)
+in Supabase Vault next to `smartreserve_function_url`. Optional settings:
+`SMTP_HOST` (default `smtp.gmail.com`), `SMTP_PORT` (587; 465 for implicit
+TLS), `EMAIL_FROM_NAME`, `EMAIL_BATCH_SIZE`, `EMAIL_MAX_ATTEMPTS`. Gmail caps
+a personal account at about 500 messages a day; use a Workspace account or a
+transactional provider's SMTP for more. Check delivery with
+`select status, last_error_code from email_deliveries order by created_at desc
+limit 5;`. Tests: `supabase/tests/email_notification_delivery_test.sql` and
+`deno task test` (`send-email/contract_test.ts`).
+
 ### The reservation assistant
 
 The in-app assistant answers reservation, payment, permit, availability,

@@ -728,6 +728,7 @@ class AppState extends ChangeNotifier {
     'Decision on my requests': true,
     'Reminder the day before': true,
     'New facilities on campus': false,
+    'Email me notifications': true,
   };
 
   final Set<String> feedbackSubmitting = {};
@@ -1543,6 +1544,7 @@ class AppState extends ChangeNotifier {
       'Decision on my requests': true,
       'Reminder the day before': true,
       'New facilities on campus': false,
+      'Email me notifications': true,
     };
     notifications = [];
     notificationsLoading = false;
