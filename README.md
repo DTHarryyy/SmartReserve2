@@ -503,6 +503,24 @@ Writes go through `create_support_ticket`, `reply_support_ticket` and
 `supabase/tests/support_tickets_test.sql` and
 `flutter test test/support_tickets_test.dart`.
 
+### Office service feedback
+
+Besides rating a facility after a visit, renters can rate the reservation
+**office** — overall, response time, staff helpfulness and how clear the
+process was — from **Account → Rate our office**, and are invited to right
+after they rate a completed visit. One rating per person per day. Admins read
+the ratings and per-dimension averages under **Feedback → Office service**.
+Tests: `supabase/tests/office_feedback_test.sql` and
+`flutter test test/office_feedback_test.dart`.
+
+### GCash QR codes
+
+In a facility's settings (Configure → GCash destination), Internal and
+External Admins can upload the QR from their GCash app. Renters see it in the
+payment dialog above the account number and can open it full size to save
+and scan. Images live in the public `payment-qr` bucket under the facility's
+id; only administrators can write there.
+
 ### The reservation assistant
 
 The in-app assistant answers reservation, payment, permit, availability,

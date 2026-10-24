@@ -40,6 +40,7 @@ import 'facility_preview.dart';
 import 'feedback_dialog.dart';
 import 'payment_proof_sheet.dart';
 import 'loyalty_page.dart';
+import '../feedback/office_feedback_dialog.dart';
 import '../support/support_page.dart';
 
 enum StudentTab {
@@ -1860,8 +1861,22 @@ class _StudentAppState extends State<StudentApp> {
           label: 'Rate your visit',
           kind: SrButtonKind.primary,
           dense: true,
-          onPressed: () =>
-              showFeedbackDialog(context, state: state, request: request),
+          onPressed: () async {
+            final sent = await showFeedbackDialog(
+              context,
+              state: state,
+              request: request,
+            );
+            if (sent != true || !mounted) return;
+            // Invite a rating of the office too, at most once a day.
+            await state.refreshOfficeFeedback();
+            if (!mounted || state.officeFeedbackGivenToday) return;
+            await showOfficeFeedbackDialog(
+              context,
+              state: state,
+              prompted: true,
+            );
+          },
         ),
       );
     } else if (request.lifecycleStatus ==
@@ -2829,6 +2844,17 @@ class _StudentAppState extends State<StudentApp> {
             value: 'Report a problem',
             trailing: const Icon(Icons.chevron_right_rounded, size: 18),
             onTap: () => _openSupport(context),
+          ),
+        ),
+        const SizedBox(height: SR.space16),
+        SrCard.bare(
+          child: SrListRow(
+            key: const Key('student-office-feedback-entry'),
+            icon: Icons.thumb_up_alt_outlined,
+            label: 'Rate our office',
+            value: 'Service feedback',
+            trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+            onTap: () => showOfficeFeedbackDialog(context, state: state),
           ),
         ),
         const SizedBox(height: SR.space16),

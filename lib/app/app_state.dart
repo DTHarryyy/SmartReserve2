@@ -310,7 +310,10 @@ class AppState extends ChangeNotifier {
     if (next == AppView.reports) unawaited(refreshReports());
     if (next == AppView.audit) unawaited(refreshAudit());
     if (next == AppView.backups) unawaited(refreshBackups());
-    if (next == AppView.feedback) unawaited(refreshFeedback());
+    if (next == AppView.feedback) {
+      unawaited(refreshFeedback());
+      unawaited(refreshOfficeFeedback());
+    }
     if (next == AppView.loyalty) {
       unawaited(refreshExternalLoyaltyAdmin());
     }
@@ -1554,6 +1557,9 @@ class AppState extends ChangeNotifier {
     notificationsOpen = false;
     pendingNotificationIntent = null;
     notificationActionsPending.clear();
+    officeFeedbackEntries = [];
+    officeFeedbackError = null;
+    _officeFeedbackRequestId++;
     supportTickets = [];
     supportLoaded = false;
     supportLoading = false;
@@ -7312,6 +7318,90 @@ class AppState extends ChangeNotifier {
       return await backend?.supportAttachmentUrl(path);
     } catch (_) {
       return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Office service feedback
+  // ---------------------------------------------------------------------
+
+  List<OfficeFeedback> officeFeedbackEntries = [];
+  bool officeFeedbackLoading = false;
+  String? officeFeedbackError;
+  bool officeFeedbackSubmitting = false;
+  int _officeFeedbackRequestId = 0;
+
+  OfficeFeedbackSummary get officeFeedbackSummary =>
+      OfficeFeedbackSummary.of(officeFeedbackEntries);
+
+  /// The renter already rated the office in the last day (the server allows
+  /// one rating per 24 hours), so the post-visit prompt stays quiet.
+  bool get officeFeedbackGivenToday {
+    final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+    final me = sessionProfile?.id;
+    return officeFeedbackEntries.any(
+      (row) => row.userId == me && row.createdAt.isAfter(cutoff),
+    );
+  }
+
+  Future<void> refreshOfficeFeedback() async {
+    final service = backend;
+    if (service == null || !hasSession) return;
+    final requestId = ++_officeFeedbackRequestId;
+    officeFeedbackLoading = true;
+    officeFeedbackError = null;
+    notifyListeners();
+    try {
+      final rows = await service.officeFeedback();
+      if (requestId != _officeFeedbackRequestId) return;
+      officeFeedbackEntries = rows;
+    } catch (error) {
+      if (requestId != _officeFeedbackRequestId) return;
+      officeFeedbackError = friendlyBackendMessage('$error');
+    } finally {
+      if (requestId == _officeFeedbackRequestId) {
+        officeFeedbackLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Returns null on success, otherwise the reason to show in the form.
+  Future<String?> submitOfficeFeedback({
+    required int overall,
+    int? responsiveness,
+    int? helpfulness,
+    int? clarity,
+    String comment = '',
+  }) async {
+    if (overall < 1 || overall > 5) return 'Choose an overall rating.';
+    if (comment.trim().length > FeedbackLimits.commentMax) {
+      return 'Keep your comment under ${FeedbackLimits.commentMax} characters.';
+    }
+    final service = backend;
+    if (service == null) {
+      return 'Office feedback needs a connection to SmartReserve.';
+    }
+    officeFeedbackSubmitting = true;
+    notifyListeners();
+    try {
+      await service.submitOfficeFeedback(
+        overall: overall,
+        responsiveness: responsiveness,
+        helpfulness: helpfulness,
+        clarity: clarity,
+        comment: comment,
+      );
+      showToast(
+        const ToastMessage('Thanks — your feedback reached the office.'),
+      );
+      unawaited(refreshOfficeFeedback());
+      return null;
+    } catch (error) {
+      return friendlyBackendMessage('$error');
+    } finally {
+      officeFeedbackSubmitting = false;
+      notifyListeners();
     }
   }
 

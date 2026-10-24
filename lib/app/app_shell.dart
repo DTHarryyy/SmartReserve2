@@ -16,7 +16,7 @@ import '../features/calendar/calendar_screen.dart';
 import '../features/facilities/facilities_screen.dart';
 import '../features/facilities/facility_configuration_dialog.dart';
 import '../features/dashboard/dashboard_screen.dart';
-import '../features/feedback/feedback_screen.dart';
+import '../features/feedback/office_feedback_panel.dart';
 import '../features/loyalty/loyalty_admin_screen.dart';
 import '../features/notes/notes_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -499,7 +499,7 @@ class _AppShellState extends State<AppShell> {
     ),
     AppView.users => const UsersScreen(),
     AppView.organizations => const OrganizationsScreen(),
-    AppView.feedback => const FeedbackScreen(),
+    AppView.feedback => const FeedbackHub(),
     AppView.anomalies => const AnomaliesScreen(),
     AppView.loyalty => const LoyaltyAdminScreen(),
     AppView.audit => const AuditScreen(),

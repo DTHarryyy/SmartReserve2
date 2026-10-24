@@ -3335,6 +3335,16 @@ abstract interface class SmartReserveBackend {
   Future<void> setSupportTicketStatus(String ticketId, SupportStatus status);
   Future<String> supportAttachmentUrl(String path);
 
+  /// Office service ratings: the caller's own, or all of them for an admin.
+  Future<List<OfficeFeedback>> officeFeedback();
+  Future<void> submitOfficeFeedback({
+    required int overall,
+    int? responsiveness,
+    int? helpfulness,
+    int? clarity,
+    String comment = '',
+  });
+
   /// Uploads a GCash QR image for [facilityId] and returns its storage path.
   /// It is shown to renters only once saved with the facility configuration.
   Future<String> uploadPaymentQr(String facilityId, ReservationUpload image);
@@ -5988,6 +5998,42 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
   Future<String> supportAttachmentUrl(String path) => _client.storage
       .from('support-attachments')
       .createSignedUrl(path, 60 * 30);
+
+  @override
+  Future<List<OfficeFeedback>> officeFeedback() async {
+    if (user == null) return const [];
+    final rows = await _client
+        .from('office_feedback')
+        .select(
+          '*,person:profiles!office_feedback_user_id_fkey(full_name,email)',
+        )
+        .order('created_at', ascending: false)
+        .limit(500);
+    return [
+      for (final row in rows as List)
+        OfficeFeedback.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<void> submitOfficeFeedback({
+    required int overall,
+    int? responsiveness,
+    int? helpfulness,
+    int? clarity,
+    String comment = '',
+  }) async {
+    await _client.rpc(
+      'submit_office_feedback',
+      params: {
+        'p_overall_rating': overall,
+        'p_responsiveness_rating': responsiveness,
+        'p_helpfulness_rating': helpfulness,
+        'p_clarity_rating': clarity,
+        'p_comment': comment.trim(),
+      },
+    );
+  }
 
   @override
   String paymentQrUrl(String path) =>
