@@ -7100,6 +7100,32 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Public URL of a GCash QR, or null in demo mode / without a path.
+  String? paymentQrUrl(String? path) {
+    final service = backend;
+    if (service == null || path == null || path.isEmpty) return null;
+    return service.paymentQrUrl(path);
+  }
+
+  Future<String?> uploadPaymentQr(
+    String facilityId,
+    ReservationUpload image,
+  ) async {
+    final service = backend;
+    if (service == null) return null;
+    try {
+      return await service.uploadPaymentQr(facilityId, image);
+    } catch (error) {
+      showToast(
+        ToastMessage(
+          'The QR image could not be uploaded: ${_reservationError(error)}',
+          tone: AdvisoryTone.block,
+        ),
+      );
+      return null;
+    }
+  }
+
   Future<bool> saveFacilityConfiguration(
     FacilityConfigurationDraft draft,
   ) async {

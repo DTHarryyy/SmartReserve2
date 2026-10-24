@@ -954,6 +954,7 @@ class FacilityConfigurationDraft {
     this.downPaymentPercent = 50,
     this.internalPermitRowCode,
     this.externalPermitRowCode,
+    this.qrPath,
   });
 
   final String facilityId;
@@ -968,6 +969,9 @@ class FacilityConfigurationDraft {
   final int downPaymentPercent;
   final String? internalPermitRowCode;
   final String? externalPermitRowCode;
+
+  /// GCash QR to show after saving; null removes it.
+  final String? qrPath;
 }
 
 class BackendReservationOccurrence {
@@ -2059,27 +2063,28 @@ class BackendFeedbackSummary {
   final List<BackendFacilityRating> highest;
   final List<BackendFacilityRating> lowest;
 
-  factory BackendFeedbackSummary.fromJson(Map<String, dynamic> json) =>
-      BackendFeedbackSummary(
-        average: _decimal(json['average']),
-        total: (json['total'] as num?)?.toInt() ?? 0,
-        fiveStar: (json['five_star'] as num?)?.toInt() ?? 0,
-        lowRated: (json['low_rated'] as num?)?.toInt() ?? 0,
-        highest: ((json['highest'] as List?) ?? const [])
-            .map(
-              (row) => BackendFacilityRating.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(),
-        lowest: ((json['lowest'] as List?) ?? const [])
-            .map(
-              (row) => BackendFacilityRating.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(),
-      );
+  factory BackendFeedbackSummary.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendFeedbackSummary(
+    average: _decimal(json['average']),
+    total: (json['total'] as num?)?.toInt() ?? 0,
+    fiveStar: (json['five_star'] as num?)?.toInt() ?? 0,
+    lowRated: (json['low_rated'] as num?)?.toInt() ?? 0,
+    highest: ((json['highest'] as List?) ?? const [])
+        .map(
+          (row) => BackendFacilityRating.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+    lowest: ((json['lowest'] as List?) ?? const [])
+        .map(
+          (row) => BackendFacilityRating.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+  );
 
   FeedbackSummary toModel() => FeedbackSummary(
     average: average,
@@ -3313,6 +3318,11 @@ abstract interface class SmartReserveBackend {
     OfficialSignatureSlot slot,
   );
   String facilityPhotoUrl(String path);
+  String paymentQrUrl(String path);
+
+  /// Uploads a GCash QR image for [facilityId] and returns its storage path.
+  /// It is shown to renters only once saved with the facility configuration.
+  Future<String> uploadPaymentQr(String facilityId, ReservationUpload image);
 }
 
 abstract interface class SmartReserveCoreBackend {
@@ -3452,6 +3462,7 @@ FacilityPaymentMethod _facilityPaymentMethod(Map<String, dynamic> json) =>
       instructions: '${json['instructions'] ?? ''}',
       methodType: '${json['method_type'] ?? 'gcash'}',
       enabled: json['enabled'] as bool? ?? true,
+      qrPath: json['qr_path'] as String?,
     );
 
 class BackendFacility {
@@ -5052,7 +5063,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     FacilityConfigurationDraft draft,
   ) async {
     await _client.rpc(
-      'save_facility_configuration_v3',
+      'save_facility_configuration_v4',
       params: {
         'p_facility_id': draft.facilityId,
         'p_rates': [
@@ -5081,6 +5092,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_down_payment_percent': draft.downPaymentPercent,
         'p_internal_permit_row_code': draft.internalPermitRowCode,
         'p_external_permit_row_code': draft.externalPermitRowCode,
+        'p_qr_path': draft.qrPath,
       },
     );
   }
@@ -5880,6 +5892,29 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   String facilityPhotoUrl(String path) =>
       _client.storage.from('facility-photos').getPublicUrl(path);
+
+  @override
+  String paymentQrUrl(String path) =>
+      _client.storage.from('payment-qr').getPublicUrl(path);
+
+  @override
+  Future<String> uploadPaymentQr(
+    String facilityId,
+    ReservationUpload image,
+  ) async {
+    final extension = image.mimeType == 'image/png' ? 'png' : 'jpg';
+    final path =
+        '$facilityId/gcash-${DateTime.now().toUtc().millisecondsSinceEpoch}'
+        '.$extension';
+    await _client.storage
+        .from('payment-qr')
+        .uploadBinary(
+          path,
+          image.bytes,
+          fileOptions: FileOptions(contentType: image.mimeType),
+        );
+    return path;
+  }
 
   @override
   Future<List<BackendFacility>> facilities() async {
