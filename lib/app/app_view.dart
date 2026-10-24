@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 enum AppView {
+  dashboard('Dashboard', 'Dashboard', Icons.space_dashboard_rounded),
   facilities('Facilities', 'Facilities', Icons.apartment_rounded),
   addFacility('Add facility', 'Add a facility', Icons.add_business_rounded),
   reservations(

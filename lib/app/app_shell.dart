@@ -15,6 +15,7 @@ import '../features/backups/backups_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/facilities/facilities_screen.dart';
 import '../features/facilities/facility_configuration_dialog.dart';
+import '../features/dashboard/dashboard_screen.dart';
 import '../features/feedback/feedback_screen.dart';
 import '../features/loyalty/loyalty_admin_screen.dart';
 import '../features/notes/notes_screen.dart';
@@ -480,6 +481,9 @@ class _AppShellState extends State<AppShell> {
       layout: layout,
       onSave: () => saveFacility(context, state, _addFacility),
       onBackToList: () => state.goTo(AppView.facilities),
+    ),
+    AppView.dashboard => DashboardScreen(
+      onNewFacility: state.isAdmin ? () => _openEditor(state, null) : null,
     ),
     AppView.facilities => FacilitiesScreen(
       onEdit: (facility) => _openEditor(state, facility),

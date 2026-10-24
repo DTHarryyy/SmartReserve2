@@ -1614,7 +1614,7 @@ class AppState extends ChangeNotifier {
     // session before loading workspace data so a later feature failure cannot
     // strand a valid user on the sign-in screen.
     view = profile.isAdmin
-        ? AppView.facilities
+        ? AppView.dashboard
         : profile.isActive &&
               profile.onboardingComplete &&
               !profile.mustChangePassword &&

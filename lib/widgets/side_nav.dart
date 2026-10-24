@@ -9,6 +9,7 @@ import 'sr_logo.dart';
 import '../theme/sr_theme.dart';
 
 const adminSections = <AppView>[
+  AppView.dashboard,
   AppView.facilities,
   AppView.reservations,
   AppView.calendar,
@@ -25,6 +26,7 @@ const adminSections = <AppView>[
 typedef NavGroup = ({String label, List<AppView> items});
 
 const _internalGroups = <NavGroup>[
+  (label: 'Overview', items: [AppView.dashboard]),
   (
     label: 'Operations',
     items: [
@@ -48,6 +50,7 @@ const _internalGroups = <NavGroup>[
 ];
 
 const _externalGroups = <NavGroup>[
+  (label: 'Overview', items: [AppView.dashboard]),
   (
     label: 'Operations',
     items: [
