@@ -5,6 +5,7 @@ enum NotificationDestination {
   feedback,
   anomalies,
   renterReservation,
+  support,
   loyalty,
   browse,
   unavailable,
@@ -51,6 +52,7 @@ NotificationNavigationIntent resolveNotificationNavigation({
   required bool isAdmin,
   String? requestId,
   String? anomalyId,
+  String? supportTicketId,
   Map<String, dynamic> eventDetails = const {},
 }) {
   String? detailId(String key) {
@@ -58,6 +60,14 @@ NotificationNavigationIntent resolveNotificationNavigation({
     return value is String && value.isNotEmpty ? value : null;
   }
 
+  if (kind.startsWith('support_')) {
+    return NotificationNavigationIntent(
+      destination: NotificationDestination.support,
+      focus: NotificationFocus.details,
+      actionLabel: 'View ticket',
+      resourceId: supportTicketId,
+    );
+  }
   if (isAdmin && kind.startsWith('anomaly_')) {
     return NotificationNavigationIntent(
       destination: NotificationDestination.anomalies,

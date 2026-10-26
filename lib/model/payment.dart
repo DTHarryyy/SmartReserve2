@@ -64,6 +64,7 @@ class FacilityPaymentMethod {
     required this.instructions,
     this.methodType = 'gcash',
     this.enabled = true,
+    this.qrPath,
   });
 
   final String id;
@@ -74,7 +75,13 @@ class FacilityPaymentMethod {
   final String instructions;
   final bool enabled;
 
+  /// Storage path (payment-qr bucket) of the GCash QR an administrator
+  /// uploaded, or null when the destination is number-only.
+  final String? qrPath;
+
   bool get isWalkIn => methodType == 'walk_in';
+
+  bool get hasQr => !isWalkIn && (qrPath?.isNotEmpty ?? false);
 
   /// Short label for pickers and review rows.
   String get label => isWalkIn ? 'Walk-in (cashier)' : 'GCash';

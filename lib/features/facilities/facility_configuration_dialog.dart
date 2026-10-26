@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
@@ -64,6 +65,10 @@ class _FacilityConfigurationDialogState
   late final List<_AmenityEdit> _amenities;
   String? _internalFacilityRow;
   String? _externalFacilityRow;
+
+  /// The saved QR (storage path) and a newly picked one awaiting upload.
+  String? _qrPath;
+  ReservationUpload? _pendingQr;
   bool _saving = false;
   String? _error;
 
@@ -92,6 +97,7 @@ class _FacilityConfigurationDialogState
     _accountName = TextEditingController(text: method?.accountName ?? '');
     _accountNumber = TextEditingController(text: method?.accountNumber ?? '');
     _instructions = TextEditingController(text: method?.instructions ?? '');
+    _qrPath = method?.qrPath;
     _depositHours = TextEditingController(
       text: (facility.depositWindowMinutes / 60).toStringAsFixed(0),
     );
@@ -122,6 +128,117 @@ class _FacilityConfigurationDialogState
   }
 
   static String _pesos(int centavos) => (centavos / 100).toStringAsFixed(2);
+
+  Future<void> _pickQr() async {
+    final picked = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg'],
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    if (bytes.isEmpty || bytes.lengthInBytes > 5 * 1024 * 1024) {
+      setState(() => _error = 'Choose a PNG or JPEG QR no larger than 5 MB.');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _pendingQr = ReservationUpload(
+        name: picked.name,
+        mimeType: picked.name.toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : 'image/jpeg',
+        bytes: bytes,
+      );
+    });
+  }
+
+  Widget _qrEditor(BuildContext context) {
+    final pending = _pendingQr;
+    final savedUrl = widget.state.paymentQrUrl(_qrPath);
+    final hasQr = pending != null || savedUrl != null;
+    final preview = pending != null
+        ? Image.memory(pending.bytes, fit: BoxFit.contain)
+        : savedUrl != null
+        ? Image.network(
+            savedUrl,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) =>
+                const Icon(Icons.broken_image_outlined, size: 32),
+          )
+        : Icon(
+            Icons.qr_code_2_rounded,
+            size: 40,
+            color: context.srColors.mutedLight,
+          );
+    return Container(
+      key: const Key('gcash-qr-editor'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: context.srColors.border),
+        borderRadius: BorderRadius.circular(SR.rMd),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(SR.rSm),
+              border: Border.all(color: context.srColors.border),
+            ),
+            child: preview,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('GCash QR code', style: SrType.label()),
+                const SizedBox(height: 2),
+                Text(
+                  pending != null
+                      ? 'New QR selected — it is uploaded when you save.'
+                      : hasQr
+                      ? 'Renters can scan this from the payment dialog.'
+                      : 'Optional. Upload the QR from your GCash app '
+                            '(Receive › QR) so renters can scan to pay.',
+                  style: SrType.caption(),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('gcash-qr-pick'),
+                      onPressed: _saving ? null : _pickQr,
+                      icon: const Icon(Icons.upload_rounded, size: 18),
+                      label: Text(hasQr ? 'Replace QR' : 'Upload QR'),
+                    ),
+                    if (hasQr)
+                      TextButton(
+                        key: const Key('gcash-qr-remove'),
+                        onPressed: _saving
+                            ? null
+                            : () => setState(() {
+                                _pendingQr = null;
+                                _qrPath = null;
+                              }),
+                        child: const Text('Remove'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -456,6 +573,8 @@ class _FacilityConfigurationDialogState
                     ),
                   ),
                   const SizedBox(height: 12),
+                  _qrEditor(context),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -619,6 +738,29 @@ class _FacilityConfigurationDialogState
       _saving = true;
       _error = null;
     });
+    var qrPath = _qrPath;
+    final pendingQr = _pendingQr;
+    if (pendingQr != null) {
+      if (_accountName.text.trim().isEmpty ||
+          _accountNumber.text.trim().isEmpty) {
+        setState(() {
+          _saving = false;
+          _error = 'Add the GCash account name and number before the QR.';
+        });
+        return;
+      }
+      qrPath = await widget.state.uploadPaymentQr(facility.id, pendingQr);
+      if (!mounted) return;
+      if (qrPath == null) {
+        setState(() {
+          _saving = false;
+          _error = 'The QR was not uploaded. Try again.';
+        });
+        return;
+      }
+      _qrPath = qrPath;
+      _pendingQr = null;
+    }
     final success = await widget.state.saveFacilityConfiguration(
       FacilityConfigurationDraft(
         facilityId: facility.id,
@@ -633,6 +775,7 @@ class _FacilityConfigurationDialogState
         downPaymentPercent: percent,
         internalPermitRowCode: _internalFacilityRow,
         externalPermitRowCode: _externalFacilityRow,
+        qrPath: qrPath,
       ),
     );
     if (!mounted) return;

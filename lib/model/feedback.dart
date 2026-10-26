@@ -422,3 +422,90 @@ class FeedbackSentimentAnalytics {
 /// list) lives in supabase_service.dart as a wire DTO, matching where
 /// AuditQuery lives -- not here.
 enum FeedbackSort { newest, oldest, highest, lowest }
+
+/// One rating of the reservation office's service, not tied to a facility.
+/// Mirrors `public.office_feedback` (20261025130000_office_feedback.sql).
+class OfficeFeedback {
+  const OfficeFeedback({
+    required this.id,
+    required this.userId,
+    required this.overallRating,
+    required this.comment,
+    required this.createdAt,
+    this.responsivenessRating,
+    this.helpfulnessRating,
+    this.clarityRating,
+    this.personName = '',
+    this.personEmail = '',
+  });
+
+  final String id;
+  final String userId;
+  final int overallRating;
+  final int? responsivenessRating;
+  final int? helpfulnessRating;
+  final int? clarityRating;
+  final String comment;
+  final DateTime createdAt;
+  final String personName;
+  final String personEmail;
+
+  FeedbackRating? get rating => FeedbackRating.fromValue(overallRating);
+
+  factory OfficeFeedback.fromJson(Map<String, dynamic> json) {
+    final person = json['person'] is Map
+        ? Map<String, dynamic>.from(json['person'] as Map)
+        : const <String, dynamic>{};
+    int? optional(String key) => (json[key] as num?)?.toInt();
+    return OfficeFeedback(
+      id: '${json['id']}',
+      userId: '${json['user_id']}',
+      overallRating: (json['overall_rating'] as num?)?.toInt() ?? 0,
+      responsivenessRating: optional('responsiveness_rating'),
+      helpfulnessRating: optional('helpfulness_rating'),
+      clarityRating: optional('clarity_rating'),
+      comment: '${json['comment'] ?? ''}',
+      createdAt: DateTime.parse('${json['created_at']}').toLocal(),
+      personName: '${person['full_name'] ?? ''}',
+      personEmail: '${person['email'] ?? ''}',
+    );
+  }
+}
+
+/// Averages per dimension; a dimension nobody rated is null.
+class OfficeFeedbackSummary {
+  const OfficeFeedbackSummary({
+    required this.count,
+    this.overall,
+    this.responsiveness,
+    this.helpfulness,
+    this.clarity,
+    this.lowCount = 0,
+  });
+
+  final int count;
+  final double? overall;
+  final double? responsiveness;
+  final double? helpfulness;
+  final double? clarity;
+
+  /// Ratings of 1-2 stars.
+  final int lowCount;
+
+  factory OfficeFeedbackSummary.of(List<OfficeFeedback> rows) {
+    double? average(Iterable<int?> values) {
+      final rated = values.whereType<int>().toList();
+      if (rated.isEmpty) return null;
+      return rated.reduce((a, b) => a + b) / rated.length;
+    }
+
+    return OfficeFeedbackSummary(
+      count: rows.length,
+      overall: average(rows.map((row) => row.overallRating)),
+      responsiveness: average(rows.map((row) => row.responsivenessRating)),
+      helpfulness: average(rows.map((row) => row.helpfulnessRating)),
+      clarity: average(rows.map((row) => row.clarityRating)),
+      lowCount: rows.where((row) => row.overallRating <= 2).length,
+    );
+  }
+}

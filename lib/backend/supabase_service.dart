@@ -24,6 +24,7 @@ import '../model/audit_entry.dart';
 import '../model/anomaly.dart';
 import '../model/feedback.dart';
 import '../model/loyalty.dart';
+import '../model/support_ticket.dart';
 import '../util/geo.dart';
 
 enum AccountManagementRetryability {
@@ -954,6 +955,7 @@ class FacilityConfigurationDraft {
     this.downPaymentPercent = 50,
     this.internalPermitRowCode,
     this.externalPermitRowCode,
+    this.qrPath,
   });
 
   final String facilityId;
@@ -968,6 +970,9 @@ class FacilityConfigurationDraft {
   final int downPaymentPercent;
   final String? internalPermitRowCode;
   final String? externalPermitRowCode;
+
+  /// GCash QR to show after saving; null removes it.
+  final String? qrPath;
 }
 
 class BackendReservationOccurrence {
@@ -1584,6 +1589,7 @@ class BackendNotification {
     this.requestId,
     this.eventId,
     this.anomalyId,
+    this.supportTicketId,
     this.eventDetails = const {},
     this.readAt,
   });
@@ -1595,6 +1601,7 @@ class BackendNotification {
   final String? requestId;
   final String? eventId;
   final String? anomalyId;
+  final String? supportTicketId;
   final Map<String, dynamic> eventDetails;
   final DateTime createdAt;
   final DateTime? readAt;
@@ -1610,6 +1617,7 @@ class BackendNotification {
     requestId: requestId,
     eventId: eventId,
     anomalyId: anomalyId,
+    supportTicketId: supportTicketId,
     eventDetails: eventDetails,
     readAt: at,
   );
@@ -1623,6 +1631,7 @@ class BackendNotification {
         requestId: json['request_id'] as String?,
         eventId: json['event_id'] as String?,
         anomalyId: json['anomaly_id'] as String?,
+        supportTicketId: json['support_ticket_id'] as String?,
         eventDetails: _notificationEventDetails(json['event']),
         createdAt: DateTime.parse(json['created_at'] as String),
         readAt: _date(json['read_at']),
@@ -2059,27 +2068,28 @@ class BackendFeedbackSummary {
   final List<BackendFacilityRating> highest;
   final List<BackendFacilityRating> lowest;
 
-  factory BackendFeedbackSummary.fromJson(Map<String, dynamic> json) =>
-      BackendFeedbackSummary(
-        average: _decimal(json['average']),
-        total: (json['total'] as num?)?.toInt() ?? 0,
-        fiveStar: (json['five_star'] as num?)?.toInt() ?? 0,
-        lowRated: (json['low_rated'] as num?)?.toInt() ?? 0,
-        highest: ((json['highest'] as List?) ?? const [])
-            .map(
-              (row) => BackendFacilityRating.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(),
-        lowest: ((json['lowest'] as List?) ?? const [])
-            .map(
-              (row) => BackendFacilityRating.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(),
-      );
+  factory BackendFeedbackSummary.fromJson(
+    Map<String, dynamic> json,
+  ) => BackendFeedbackSummary(
+    average: _decimal(json['average']),
+    total: (json['total'] as num?)?.toInt() ?? 0,
+    fiveStar: (json['five_star'] as num?)?.toInt() ?? 0,
+    lowRated: (json['low_rated'] as num?)?.toInt() ?? 0,
+    highest: ((json['highest'] as List?) ?? const [])
+        .map(
+          (row) => BackendFacilityRating.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+    lowest: ((json['lowest'] as List?) ?? const [])
+        .map(
+          (row) => BackendFacilityRating.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(),
+  );
 
   FeedbackSummary toModel() => FeedbackSummary(
     average: average,
@@ -3313,6 +3323,31 @@ abstract interface class SmartReserveBackend {
     OfficialSignatureSlot slot,
   );
   String facilityPhotoUrl(String path);
+  String paymentQrUrl(String path);
+
+  /// Tickets the caller can see: their own, or every ticket for an admin.
+  Future<List<SupportTicket>> supportTickets();
+  Future<SupportTicket> createSupportTicket(
+    SupportTicketDraft draft, {
+    ReservationUpload? attachment,
+  });
+  Future<void> replySupportTicket(String ticketId, String message);
+  Future<void> setSupportTicketStatus(String ticketId, SupportStatus status);
+  Future<String> supportAttachmentUrl(String path);
+
+  /// Office service ratings: the caller's own, or all of them for an admin.
+  Future<List<OfficeFeedback>> officeFeedback();
+  Future<void> submitOfficeFeedback({
+    required int overall,
+    int? responsiveness,
+    int? helpfulness,
+    int? clarity,
+    String comment = '',
+  });
+
+  /// Uploads a GCash QR image for [facilityId] and returns its storage path.
+  /// It is shown to renters only once saved with the facility configuration.
+  Future<String> uploadPaymentQr(String facilityId, ReservationUpload image);
 }
 
 abstract interface class SmartReserveCoreBackend {
@@ -3452,6 +3487,7 @@ FacilityPaymentMethod _facilityPaymentMethod(Map<String, dynamic> json) =>
       instructions: '${json['instructions'] ?? ''}',
       methodType: '${json['method_type'] ?? 'gcash'}',
       enabled: json['enabled'] as bool? ?? true,
+      qrPath: json['qr_path'] as String?,
     );
 
 class BackendFacility {
@@ -5052,7 +5088,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
     FacilityConfigurationDraft draft,
   ) async {
     await _client.rpc(
-      'save_facility_configuration_v3',
+      'save_facility_configuration_v4',
       params: {
         'p_facility_id': draft.facilityId,
         'p_rates': [
@@ -5081,6 +5117,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
         'p_down_payment_percent': draft.downPaymentPercent,
         'p_internal_permit_row_code': draft.internalPermitRowCode,
         'p_external_permit_row_code': draft.externalPermitRowCode,
+        'p_qr_path': draft.qrPath,
       },
     );
   }
@@ -5832,6 +5869,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'Decision on my requests': row?['reservation_decisions'] as bool? ?? true,
       'Reminder the day before': row?['day_before_reminders'] as bool? ?? true,
       'New facilities on campus': row?['new_facilities'] as bool? ?? false,
+      'Email me notifications': row?['email_notifications'] as bool? ?? true,
     };
   }
 
@@ -5846,6 +5884,7 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
       'reservation_decisions': preferences['Decision on my requests'] ?? true,
       'day_before_reminders': preferences['Reminder the day before'] ?? true,
       'new_facilities': preferences['New facilities on campus'] ?? false,
+      'email_notifications': preferences['Email me notifications'] ?? true,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
   }
@@ -5878,6 +5917,146 @@ class SupabaseService implements SmartReserveBackend, SmartReserveCoreBackend {
 
   String facilityPhotoUrl(String path) =>
       _client.storage.from('facility-photos').getPublicUrl(path);
+
+  static const _supportTicketSelect =
+      '*,requester:profiles!support_tickets_requester_id_fkey(full_name,email),'
+      'replies:support_ticket_replies(*)';
+
+  @override
+  Future<List<SupportTicket>> supportTickets() async {
+    if (user == null) return const [];
+    final rows = await _client
+        .from('support_tickets')
+        .select(_supportTicketSelect)
+        .order('last_activity_at', ascending: false)
+        .limit(200);
+    return [
+      for (final row in rows as List)
+        SupportTicket.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<SupportTicket> createSupportTicket(
+    SupportTicketDraft draft, {
+    ReservationUpload? attachment,
+  }) async {
+    final currentUser = user;
+    if (currentUser == null) throw const AuthException('Please sign in again.');
+    String? attachmentPath;
+    if (attachment != null) {
+      final extension = attachment.mimeType == 'image/png' ? 'png' : 'jpg';
+      attachmentPath =
+          '${currentUser.id}/${DateTime.now().toUtc().millisecondsSinceEpoch}'
+          '.$extension';
+      await _client.storage
+          .from('support-attachments')
+          .uploadBinary(
+            attachmentPath,
+            attachment.bytes,
+            fileOptions: FileOptions(contentType: attachment.mimeType),
+          );
+    }
+    final created = await _client.rpc(
+      'create_support_ticket',
+      params: {
+        'p_category': draft.category.raw,
+        'p_subject': draft.subject.trim(),
+        'p_message': draft.message.trim(),
+        'p_attachment_path': attachmentPath,
+      },
+    );
+    final id = (created as Map)['id'] as String;
+    final row = await _client
+        .from('support_tickets')
+        .select(_supportTicketSelect)
+        .eq('id', id)
+        .single();
+    return SupportTicket.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  @override
+  Future<void> replySupportTicket(String ticketId, String message) async {
+    await _client.rpc(
+      'reply_support_ticket',
+      params: {'p_ticket_id': ticketId, 'p_message': message.trim()},
+    );
+  }
+
+  @override
+  Future<void> setSupportTicketStatus(
+    String ticketId,
+    SupportStatus status,
+  ) async {
+    await _client.rpc(
+      'set_support_ticket_status',
+      params: {'p_ticket_id': ticketId, 'p_status': status.raw},
+    );
+  }
+
+  @override
+  Future<String> supportAttachmentUrl(String path) => _client.storage
+      .from('support-attachments')
+      .createSignedUrl(path, 60 * 30);
+
+  @override
+  Future<List<OfficeFeedback>> officeFeedback() async {
+    if (user == null) return const [];
+    final rows = await _client
+        .from('office_feedback')
+        .select(
+          '*,person:profiles!office_feedback_user_id_fkey(full_name,email)',
+        )
+        .order('created_at', ascending: false)
+        .limit(500);
+    return [
+      for (final row in rows as List)
+        OfficeFeedback.fromJson(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
+  @override
+  Future<void> submitOfficeFeedback({
+    required int overall,
+    int? responsiveness,
+    int? helpfulness,
+    int? clarity,
+    String comment = '',
+  }) async {
+    await _client.rpc(
+      'submit_office_feedback',
+      params: {
+        'p_overall_rating': overall,
+        'p_responsiveness_rating': responsiveness,
+        'p_helpfulness_rating': helpfulness,
+        'p_clarity_rating': clarity,
+        'p_comment': comment.trim(),
+      },
+    );
+  }
+
+  @override
+  String paymentQrUrl(String path) =>
+      _client.storage.from('payment-qr').getPublicUrl(path);
+
+  @override
+  Future<String> uploadPaymentQr(
+    String facilityId,
+    ReservationUpload image,
+  ) async {
+    final extension = image.mimeType == 'image/png' ? 'png' : 'jpg';
+    final path =
+        '$facilityId/gcash-${DateTime.now().toUtc().millisecondsSinceEpoch}'
+        '.$extension';
+    await _client.storage
+        .from('payment-qr')
+        .uploadBinary(
+          path,
+          image.bytes,
+          fileOptions: FileOptions(contentType: image.mimeType),
+        );
+    return path;
+  }
 
   @override
   Future<List<BackendFacility>> facilities() async {
