@@ -15,7 +15,8 @@ import '../features/backups/backups_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/facilities/facilities_screen.dart';
 import '../features/facilities/facility_configuration_dialog.dart';
-import '../features/feedback/feedback_screen.dart';
+import '../features/dashboard/dashboard_screen.dart';
+import '../features/feedback/office_feedback_panel.dart';
 import '../features/loyalty/loyalty_admin_screen.dart';
 import '../features/notes/notes_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -23,6 +24,7 @@ import '../features/reports/reports_screen.dart';
 import '../features/reports/reports_data.dart';
 import '../features/reservations/reservations_screen.dart';
 import '../features/student/student_app.dart';
+import '../features/support/support_screen.dart';
 import '../features/users/users_screen.dart';
 import '../features/users/organization_accounts_dialog.dart';
 import '../features/verifications/verifications_screen.dart';
@@ -119,6 +121,12 @@ class _AppShellState extends State<AppShell> {
       if (state.view == AppView.addFacility) {
         saveFacility(context, state, _addFacility);
       }
+      return true;
+    }
+    if (accel &&
+        event.logicalKey == LogicalKeyboardKey.keyB &&
+        state.view.usesAdminChrome) {
+      state.setSideNavHidden(!state.sideNavHidden);
       return true;
     }
     if (accel && event.logicalKey == LogicalKeyboardKey.keyK) {
@@ -225,7 +233,14 @@ class _AppShellState extends State<AppShell> {
       body: SafeArea(
         child: Row(
           children: [
-            if (layout.isDesktop) SideNav(state: state, onSelect: _navSelect),
+            if (layout.isDesktop && !state.sideNavHidden)
+              SideNav(
+                state: state,
+                onSelect: _navSelect,
+                collapsed: state.sideNavCollapsed,
+                onToggleCollapsed: () =>
+                    state.setSideNavCollapsed(!state.sideNavCollapsed),
+              ),
             Expanded(child: _chrome(state, layout)),
           ],
         ),
@@ -259,8 +274,18 @@ class _AppShellState extends State<AppShell> {
                 avatarInitials: state.currentAdmin.initials,
                 onOpenProfile: () => state.goTo(AppView.profile),
                 onMenu: layout.isDesktop
-                    ? null
+                    ? () => state.setSideNavHidden(!state.sideNavHidden)
                     : () => _scaffoldKey.currentState?.openDrawer(),
+                menuIcon: layout.isDesktop
+                    ? (state.sideNavHidden
+                          ? Icons.menu_open_rounded
+                          : Icons.menu_rounded)
+                    : Icons.menu_rounded,
+                menuTooltip: layout.isDesktop
+                    ? (state.sideNavHidden
+                          ? 'Show side panel (Ctrl+B)'
+                          : 'Hide side panel (Ctrl+B)')
+                    : 'Sections',
                 chip: _headerChip(state),
                 actions: _headerActions(state, layout),
               ),
@@ -458,6 +483,9 @@ class _AppShellState extends State<AppShell> {
       onSave: () => saveFacility(context, state, _addFacility),
       onBackToList: () => state.goTo(AppView.facilities),
     ),
+    AppView.dashboard => DashboardScreen(
+      onNewFacility: state.isAdmin ? () => _openEditor(state, null) : null,
+    ),
     AppView.facilities => FacilitiesScreen(
       onEdit: (facility) => _openEditor(state, facility),
     ),
@@ -471,11 +499,12 @@ class _AppShellState extends State<AppShell> {
     ),
     AppView.users => const UsersScreen(),
     AppView.organizations => const OrganizationsScreen(),
-    AppView.feedback => const FeedbackScreen(),
+    AppView.feedback => const FeedbackHub(),
     AppView.anomalies => const AnomaliesScreen(),
     AppView.loyalty => const LoyaltyAdminScreen(),
     AppView.audit => const AuditScreen(),
     AppView.backups => const BackupsScreen(),
+    AppView.support => const SupportScreen(),
     AppView.notes => const NotesScreen(),
     AppView.profile => const ProfileScreen(),
 

@@ -40,6 +40,8 @@ import 'facility_preview.dart';
 import 'feedback_dialog.dart';
 import 'payment_proof_sheet.dart';
 import 'loyalty_page.dart';
+import '../feedback/office_feedback_dialog.dart';
+import '../support/support_page.dart';
 
 enum StudentTab {
   browse('Browse', 'Browse', Icons.grid_view_outlined, Icons.grid_view_rounded),
@@ -129,6 +131,14 @@ class _StudentAppState extends State<StudentApp> {
     _assistant.aiClient = backend == null
         ? null
         : SupabaseAssistantAiClient(backend);
+    if (state.pendingSupportTicketId case final ticketId?) {
+      state.pendingSupportTicketId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _tab = StudentTab.account);
+        _openSupport(context, ticketId: ticketId.isEmpty ? null : ticketId);
+      });
+    }
     if (state.pendingLoyaltyOpen) {
       state.pendingLoyaltyOpen = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -388,6 +398,13 @@ class _StudentAppState extends State<StudentApp> {
   Future<void> _openLoyalty(BuildContext context) => Navigator.of(
     context,
   ).push(MaterialPageRoute(builder: (_) => const LoyaltyPage()));
+
+  Future<void> _openSupport(BuildContext context, {String? ticketId}) =>
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SupportPage(initialTicketId: ticketId),
+        ),
+      );
 
   Widget _scrollable(
     Widget child,
@@ -1844,8 +1861,22 @@ class _StudentAppState extends State<StudentApp> {
           label: 'Rate your visit',
           kind: SrButtonKind.primary,
           dense: true,
-          onPressed: () =>
-              showFeedbackDialog(context, state: state, request: request),
+          onPressed: () async {
+            final sent = await showFeedbackDialog(
+              context,
+              state: state,
+              request: request,
+            );
+            if (sent != true || !mounted) return;
+            // Invite a rating of the office too, at most once a day.
+            await state.refreshOfficeFeedback();
+            if (!mounted || state.officeFeedbackGivenToday) return;
+            await showOfficeFeedbackDialog(
+              context,
+              state: state,
+              prompted: true,
+            );
+          },
         ),
       );
     } else if (request.lifecycleStatus ==
@@ -2805,6 +2836,28 @@ class _StudentAppState extends State<StudentApp> {
           ),
           const SizedBox(height: SR.space16),
         ],
+        SrCard.bare(
+          child: SrListRow(
+            key: const Key('student-support-entry'),
+            icon: Icons.support_agent_rounded,
+            label: 'Help & support',
+            value: 'Report a problem',
+            trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+            onTap: () => _openSupport(context),
+          ),
+        ),
+        const SizedBox(height: SR.space16),
+        SrCard.bare(
+          child: SrListRow(
+            key: const Key('student-office-feedback-entry'),
+            icon: Icons.thumb_up_alt_outlined,
+            label: 'Rate our office',
+            value: 'Service feedback',
+            trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+            onTap: () => showOfficeFeedbackDialog(context, state: state),
+          ),
+        ),
+        const SizedBox(height: SR.space16),
         _preferencesPanel(state, compact),
         const SizedBox(height: SR.space16),
         _policiesPanel(),

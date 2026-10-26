@@ -449,6 +449,78 @@ contract and the `verify_jwt` config guard), `supabase test db`
 (`supabase/tests/push_delivery_test.sql`: enqueue, lease, retry, dead
 tokens, RLS) and `flutter test test/push_notifications_test.dart`.
 
+### Email notifications (Gmail)
+
+Every `app_notifications` row is also emailed to its recipient, next to the
+push. The pipeline mirrors push: an insert trigger enqueues an
+`email_deliveries` row → pg_net nudge (and a 1-minute pg_cron sweep) calls the
+`send-email` Edge Function → Gmail SMTP → inbox. Failed sends retry with
+backoff (1, 2, 4 … 30 minutes); a rejected address fails immediately.
+
+A user gets email only when their account is active, "Email me
+notifications" is on (Account → Notifications for renters, Profile for
+admins), and the per-kind toggles allow it — turning off "Reminder the day
+before" stops the reminder email as well as the push. Opting out also drops
+email that is already queued.
+
+The function sends through the same Gmail account as the Auth emails, using a
+Gmail **app password** (Google Account → Security → 2-Step Verification → App
+passwords), never the account password:
+
+```bash
+supabase functions deploy send-email --no-verify-jwt
+supabase secrets set EMAIL_WORKER_KEY=... \
+  SMARTRESERVE_SMTP_USERNAME=you@gmail.com \
+  SMARTRESERVE_SMTP_PASSWORD=<app password> \
+  SMARTRESERVE_APP_URL=https://<your SmartReserve web address> \
+  EMAIL_ENABLED=true
+```
+
+Store `smartreserve_email_worker_key` (the same value as `EMAIL_WORKER_KEY`)
+in Supabase Vault next to `smartreserve_function_url`. Optional settings:
+`SMTP_HOST` (default `smtp.gmail.com`), `SMTP_PORT` (587; 465 for implicit
+TLS), `EMAIL_FROM_NAME`, `EMAIL_BATCH_SIZE`, `EMAIL_MAX_ATTEMPTS`. Gmail caps
+a personal account at about 500 messages a day; use a Workspace account or a
+transactional provider's SMTP for more. Check delivery with
+`select status, last_error_code from email_deliveries order by created_at desc
+limit 5;`. Tests: `supabase/tests/email_notification_delivery_test.sql` and
+`deno task test` (`send-email/contract_test.ts`).
+
+### Technical support
+
+Renters open **Account → Help & support** to file a ticket (topic, subject,
+message, optional screenshot) and follow its thread. Administrators answer
+from **Support** in the console, which lists every ticket by status and
+flags the ones still waiting on an answer (also counted on the Dashboard and
+the side-panel badge). An admin reply moves an open ticket to *In progress*;
+a renter reply reopens a *Resolved* one; a *Closed* ticket takes no more
+replies. New tickets notify the Internal Admins, and every reply or status
+change notifies the other side — in the app, by push and by email.
+
+Writes go through `create_support_ticket`, `reply_support_ticket` and
+`set_support_ticket_status`; screenshots live in the private
+`support-attachments` bucket under the requester's id. Tests:
+`supabase/tests/support_tickets_test.sql` and
+`flutter test test/support_tickets_test.dart`.
+
+### Office service feedback
+
+Besides rating a facility after a visit, renters can rate the reservation
+**office** — overall, response time, staff helpfulness and how clear the
+process was — from **Account → Rate our office**, and are invited to right
+after they rate a completed visit. One rating per person per day. Admins read
+the ratings and per-dimension averages under **Feedback → Office service**.
+Tests: `supabase/tests/office_feedback_test.sql` and
+`flutter test test/office_feedback_test.dart`.
+
+### GCash QR codes
+
+In a facility's settings (Configure → GCash destination), Internal and
+External Admins can upload the QR from their GCash app. Renters see it in the
+payment dialog above the account number and can open it full size to save
+and scan. Images live in the public `payment-qr` bucket under the facility's
+id; only administrators can write there.
+
 ### The reservation assistant
 
 The in-app assistant answers reservation, payment, permit, availability,

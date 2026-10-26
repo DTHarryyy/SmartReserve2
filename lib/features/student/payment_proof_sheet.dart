@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_state.dart';
 import '../../backend/supabase_service.dart';
@@ -205,6 +206,9 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
                   _method.instructions,
                   style: SrType.bodySm(color: context.srColors.muted),
                 ),
+              if (_method.hasQr)
+                if (widget.state.paymentQrUrl(_method.qrPath) case final url?)
+                  _GcashQr(url: url),
               if (correction && payment != null) ...[
                 const SizedBox(height: SR.space12),
                 Container(
@@ -336,4 +340,57 @@ class _PaymentProofDialogState extends State<_PaymentProofDialog> {
     setState(() => _submitting = false);
     if (ok) Navigator.pop(context, true);
   }
+}
+
+/// The administrator-uploaded GCash QR, scannable from the renter's GCash
+/// app. Opening it full size lets the renter save it to scan from gallery.
+class _GcashQr extends StatelessWidget {
+  const _GcashQr({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: SR.space12),
+    child: Column(
+      children: [
+        Container(
+          key: const Key('payment-gcash-qr'),
+          width: 220,
+          height: 220,
+          padding: const EdgeInsets.all(SR.space8),
+          decoration: BoxDecoration(
+            // QR codes need a light quiet zone to scan, in either theme.
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(SR.rMd),
+            border: Border.all(color: context.srColors.border),
+          ),
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            semanticLabel: 'GCash QR code',
+            errorBuilder: (_, _, _) => Center(
+              child: Text(
+                'The QR could not be loaded. Use the number above.',
+                textAlign: TextAlign.center,
+                style: SrType.caption(),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: SR.space4),
+        Text(
+          'Scan with GCash › Pay QR, or open it to save to your gallery.',
+          textAlign: TextAlign.center,
+          style: SrType.caption(),
+        ),
+        TextButton.icon(
+          onPressed: () =>
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          icon: const Icon(Icons.open_in_new_rounded, size: 18),
+          label: const Text('Open QR full size'),
+        ),
+      ],
+    ),
+  );
 }

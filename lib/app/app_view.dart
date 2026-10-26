@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 enum AppView {
+  dashboard('Dashboard', 'Dashboard', Icons.space_dashboard_rounded),
   facilities('Facilities', 'Facilities', Icons.apartment_rounded),
   addFacility('Add facility', 'Add a facility', Icons.add_business_rounded),
   reservations(
@@ -16,12 +17,13 @@ enum AppView {
   ),
   users('Users', 'Accounts', Icons.people_alt_rounded),
   organizations('Organizations', 'Organizations', Icons.account_tree_rounded),
-  feedback('Feedback', 'Reservation feedback', Icons.reviews_rounded),
+  feedback('Feedback', 'Feedback', Icons.reviews_rounded),
   anomalies('Anomalies', 'Anomaly Center', Icons.shield_moon_rounded),
   loyalty('Loyalty', 'Loyalty points', Icons.stars_rounded),
   audit('Audit log', 'Audit log', Icons.history_rounded),
   reports('Reports', 'Reports', Icons.insights_rounded),
   backups('Backups', 'Backup and recovery', Icons.backup_rounded),
+  support('Support', 'Technical support', Icons.support_agent_rounded),
   notes('Design notes', 'Design notes', Icons.sticky_note_2_rounded),
   profile('Profile', 'Your profile', Icons.account_circle_rounded),
   userApp('User app', 'SmartReserve', Icons.phone_iphone_rounded),

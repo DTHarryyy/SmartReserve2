@@ -82,6 +82,7 @@ class NotificationInbox extends StatelessWidget {
           isAdmin: state.isAdmin,
           requestId: notification.requestId,
           anomalyId: notification.anomalyId,
+          supportTicketId: notification.supportTicketId,
           eventDetails: notification.eventDetails,
         );
         return _NotificationRow(
