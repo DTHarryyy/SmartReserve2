@@ -1215,94 +1215,105 @@ class _DecisionPanelState extends State<DecisionPanel> {
       );
     }
 
+    SrButton approve({bool expand = false}) => SrButton(
+      label: saving ? 'Saving…' : 'Approve request',
+      icon: saving ? null : const Icon(Icons.check_rounded, size: SR.iconSm),
+      kind: SrButtonKind.primary,
+      fontSize: 12.5,
+      minHeight: 42,
+      expand: expand,
+      onPressed: saving || assessment.hasConflict || _request.overCapacity
+          ? null
+          : () =>
+                widget.state.decideRequest(_request.id, RequestStatus.approved),
+    );
+    SrButton requestChanges({bool expand = false}) => SrButton(
+      label: 'Request changes',
+      icon: Icon(
+        Icons.edit_note_rounded,
+        size: SR.iconSm,
+        color: context.srColors.ink3,
+      ),
+      fontSize: 12.5,
+      minHeight: 42,
+      expand: expand,
+      onPressed: saving
+          ? null
+          : () => setState(() => _prompt = _Prompt.changes),
+    );
+    SrButton decline({bool expand = false}) => SrButton(
+      label: 'Decline',
+      icon: Icon(
+        Icons.close_rounded,
+        size: SR.iconSm,
+        color: context.srColors.red,
+      ),
+      kind: SrButtonKind.danger,
+      fontSize: 12.5,
+      minHeight: 42,
+      expand: expand,
+      onPressed: saving
+          ? null
+          : () => setState(() => _prompt = _Prompt.decline),
+    );
+    final expire = widget.state.canExpire(_request)
+        ? SrButton(
+            label: 'No decision needed — mark expired',
+            icon: Icon(
+              Icons.event_busy_rounded,
+              size: SR.iconSm,
+              color: context.srColors.muted,
+            ),
+            kind: SrButtonKind.ghost,
+            fontSize: 12,
+            minHeight: 42,
+            onPressed: saving
+                ? null
+                : () => widget.state.expireRequest(_request.id),
+          )
+        : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: SR.space8,
-          runSpacing: SR.space8,
-          children: [
-            SrButton(
-              label: saving ? 'Saving…' : 'Approve request',
-              icon: saving
-                  ? null
-                  : const Icon(Icons.check_rounded, size: SR.iconSm),
-              kind: SrButtonKind.primary,
-              fontSize: 12.5,
-              minHeight: 42,
-              onPressed:
-                  saving || assessment.hasConflict || _request.overCapacity
-                  ? null
-                  : () => widget.state.decideRequest(
-                      _request.id,
-                      RequestStatus.approved,
-                    ),
-            ),
-            SrButton(
-              label: 'Request changes',
-              icon: Icon(
-                Icons.edit_note_rounded,
-                size: SR.iconSm,
-                color: context.srColors.ink3,
-              ),
-              fontSize: 12.5,
-              minHeight: 42,
-              onPressed: saving
-                  ? null
-                  : () => setState(() => _prompt = _Prompt.changes),
-            ),
-            SrButton(
-              label: 'Decline',
-              icon: Icon(
-                Icons.close_rounded,
-                size: SR.iconSm,
-                color: context.srColors.red,
-              ),
-              kind: SrButtonKind.danger,
-              fontSize: 12.5,
-              minHeight: 42,
-              onPressed: saving
-                  ? null
-                  : () => setState(() => _prompt = _Prompt.decline),
-            ),
-          ],
-        ),
-
-        if (widget.state.canExpire(_request)) ...[
-          const SizedBox(height: SR.space8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Hoverable(
-              builder: (context, hovered) => GestureDetector(
-                onTap: () => widget.state.expireRequest(_request.id),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SR.space12,
-                    vertical: SR.space8,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(SR.rSm),
-                    border: Border.all(
-                      color: hovered
-                          ? context.srColors.redLine
-                          : context.srColors.borderField,
-                      style: BorderStyle.solid,
-                    ),
-                  ),
-                  child: Text(
-                    'No decision needed — mark expired',
-                    style: SrType.caption(
-                      w: 500,
-                      color: hovered
-                          ? context.srColors.red
-                          : context.srColors.muted,
-                    ),
-                  ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Wide: decision buttons sit right-aligned like a dialog footer,
+            // with the expire escape hatch on the left. Narrow: approve gets
+            // the full width and the other two share a row beneath it.
+            if (constraints.maxWidth >= 600) {
+              return Row(
+                children: [
+                  ?expire,
+                  const Spacer(),
+                  decline(),
+                  const SizedBox(width: SR.space8),
+                  requestChanges(),
+                  const SizedBox(width: SR.space8),
+                  approve(),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                approve(expand: true),
+                const SizedBox(height: SR.space8),
+                Row(
+                  children: [
+                    Expanded(child: requestChanges(expand: true)),
+                    const SizedBox(width: SR.space8),
+                    Expanded(child: decline(expand: true)),
+                  ],
                 ),
-              ),
-            ),
-          ),
-        ],
+                if (expire != null) ...[
+                  const SizedBox(height: SR.space4),
+                  Center(child: expire),
+                ],
+              ],
+            );
+          },
+        ),
         if (_prompt == _Prompt.decline)
           ReasonBox(
             title: 'Reason for declining',

@@ -79,6 +79,8 @@ class ReservationsScreen extends StatelessWidget {
         .toList();
 
     return QueueShell(
+      dialog: true,
+      dialogTitle: 'Reservation request',
       stacked: stacked || selected == null,
       panelOpen: selected != null,
       onClosePanel: () => state.selectRequest(null),

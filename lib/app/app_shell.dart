@@ -134,6 +134,15 @@ class _AppShellState extends State<AppShell> {
       return true;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
+      // The reservation dialog closes first, unless a route (e.g. the decline
+      // reason dialog) or the notifications popover sits on top of it.
+      if (state.view == AppView.reservations &&
+          state.selectedRequestId != null &&
+          !state.notificationsOpen &&
+          (ModalRoute.of(context)?.isCurrent ?? true)) {
+        state.selectRequest(null);
+        return true;
+      }
       state.closeOverlays();
       if (_addFacility.map.fullscreenMap) {
         _addFacility.map.setFullscreenMap(false);

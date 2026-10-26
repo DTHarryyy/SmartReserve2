@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/sr_tokens.dart';
 import 'notices.dart';
+import 'responsive_dialog.dart';
 import 'sr_controls.dart';
 import 'sr_scroll_view.dart';
 
@@ -18,6 +19,8 @@ class QueueShell extends StatelessWidget {
     required this.onClosePanel,
     this.listPadding = const EdgeInsets.fromLTRB(20, 16, 20, 32),
     this.panelPadding = const EdgeInsets.fromLTRB(16, 16, 20, 24),
+    this.dialog = false,
+    this.dialogTitle = 'Decision',
   });
 
   final Widget list;
@@ -27,6 +30,11 @@ class QueueShell extends StatelessWidget {
   final bool stacked;
   final bool panelOpen;
   final VoidCallback onClosePanel;
+
+  /// Shows the list full width and opens [panel] as a modal dialog instead
+  /// of a side pane. [stacked] is ignored in this mode.
+  final bool dialog;
+  final String dialogTitle;
 
   final EdgeInsets listPadding;
   final EdgeInsets panelPadding;
@@ -43,6 +51,16 @@ class QueueShell extends StatelessWidget {
         ? const EdgeInsets.fromLTRB(14, 14, 14, 28)
         : panelPadding;
     final listPane = SrScrollView(padding: effectiveListPadding, child: list);
+
+    if (dialog) {
+      return _QueueDialog(
+        title: dialogTitle,
+        panel: panelOpen ? panel : null,
+        panelPadding: effectivePanelPadding,
+        onClose: onClosePanel,
+        child: listPane,
+      );
+    }
 
     if (stacked) {
       return Stack(
@@ -131,6 +149,98 @@ class QueueShell extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Renders the panel through the navigator's overlay so the dialog covers the
+/// whole app, while staying driven by the same state as the side pane.
+class _QueueDialog extends StatefulWidget {
+  const _QueueDialog({
+    required this.title,
+    required this.panel,
+    required this.panelPadding,
+    required this.onClose,
+    required this.child,
+  });
+
+  final String title;
+  final Widget? panel;
+  final EdgeInsets panelPadding;
+  final VoidCallback onClose;
+  final Widget child;
+
+  @override
+  State<_QueueDialog> createState() => _QueueDialogState();
+}
+
+class _QueueDialogState extends State<_QueueDialog> {
+  final _portal = OverlayPortalController();
+
+  @override
+  void initState() {
+    super.initState();
+    _portal.show();
+  }
+
+  @override
+  Widget build(BuildContext context) => OverlayPortal(
+    controller: _portal,
+    overlayChildBuilder: (context) => AnimatedSwitcher(
+      duration: SR.stateChange,
+      child: widget.panel == null
+          ? const SizedBox.shrink()
+          : _surface(context, widget.panel!),
+    ),
+    child: widget.child,
+  );
+
+  Widget _surface(BuildContext context, Widget panel) => Stack(
+    children: [
+      Positioned.fill(
+        child: GestureDetector(
+          onTap: widget.onClose,
+          child: ColoredBox(color: context.srColors.scrim),
+        ),
+      ),
+      SrAdaptiveDialog(
+        maxWidth: 880,
+        maxHeight: 920,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: context.srColors.border),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: sans(13, w: 600, tracking: -.01),
+                    ),
+                  ),
+                  SrIconButton(
+                    glyph: '✕',
+                    tooltip: 'Close',
+                    size: 36,
+                    fontSize: 14,
+                    onPressed: widget.onClose,
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SrScrollView(padding: widget.panelPadding, child: panel),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
 class _NothingSelected extends StatelessWidget {
